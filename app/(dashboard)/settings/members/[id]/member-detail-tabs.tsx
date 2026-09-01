@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { RevealInput } from "@/components/ui/password-field";
 import { Label } from "@/components/ui/label";
 import {
   Tabs,
@@ -520,9 +521,8 @@ export function MemberDetailTabs({
             <div className="grid gap-4">
               <div className="space-y-2">
                 <Label htmlFor="transfer-password">Your password</Label>
-                <Input
+                <RevealInput
                   id="transfer-password"
-                  type="password"
                   autoComplete="current-password"
                   value={transferPassword}
                   onChange={(e) => setTransferPassword(e.target.value)}

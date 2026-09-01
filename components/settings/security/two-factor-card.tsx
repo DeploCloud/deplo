@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RevealInput } from "@/components/ui/password-field";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { TwoFactorWizard } from "./two-factor-wizard";
@@ -81,8 +82,7 @@ export function TwoFactorCard({
    */
   const stepUpFields = (
     <div className="space-y-2">
-      <Input
-        type="password"
+      <RevealInput
         autoComplete="current-password"
         placeholder="Current password"
         value={password}

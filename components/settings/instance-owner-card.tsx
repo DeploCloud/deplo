@@ -8,7 +8,7 @@ import { Crown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { RevealInput } from "@/components/ui/password-field";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/shared/combobox";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -147,9 +147,8 @@ export function InstanceOwnerCard({
           extra={
             <div className="space-y-2">
               <Label htmlFor="transfer-password">Your password</Label>
-              <Input
+              <RevealInput
                 id="transfer-password"
-                type="password"
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

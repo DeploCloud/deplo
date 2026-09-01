@@ -6,10 +6,9 @@ import { Loader2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InfoTip } from "@/components/ui/info-tip";
-import { PasswordField } from "@/components/ui/password-field";
+import { PasswordField, RevealInput } from "@/components/ui/password-field";
 import { passwordMeetsPolicy } from "@/lib/password-policy";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -82,10 +81,9 @@ export function PasswordCard({
         >
           <div className="space-y-2">
             <Label htmlFor="acct-current">Current password</Label>
-            <Input
+            <RevealInput
               id="acct-current"
               name="currentPassword"
-              type="password"
               autoComplete="current-password"
               placeholder="The one you sign in with"
               value={current}
@@ -102,10 +100,9 @@ export function PasswordCard({
             />
             <div className="space-y-2">
               <Label htmlFor="acct-confirm">Confirm new password</Label>
-              <Input
+              <RevealInput
                 id="acct-confirm"
                 name="confirmPassword"
-                type="password"
                 autoComplete="new-password"
                 placeholder="Type it again"
                 value={confirm}

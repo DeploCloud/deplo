@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RevealInput } from "@/components/ui/password-field";
 import { InfoTip, FieldLabel } from "@/components/ui/info-tip";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -257,9 +258,8 @@ function AddPasskeyDialog({
         <>
           <div className="space-y-2">
             <Label htmlFor="passkey-password">Current password</Label>
-            <Input
+            <RevealInput
               id="passkey-password"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
@@ -377,9 +377,8 @@ function DeletePasskey({
           <Label htmlFor={`passkey-delete-${passkey.id}`}>
             Current password
           </Label>
-          <Input
+          <RevealInput
             id={`passkey-delete-${passkey.id}`}
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"

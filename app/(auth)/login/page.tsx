@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { gql } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RevealInput } from "@/components/ui/password-field";
 import { Label } from "@/components/ui/label";
 import { OtpInput } from "@/components/ui/otp-input";
 import { AlertCircle, Fingerprint, Loader2 } from "lucide-react";
@@ -297,10 +298,9 @@ export default function LoginPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
+              <RevealInput
                 id="password"
                 name="password"
-                type="password"
                 autoComplete="current-password"
                 placeholder="••••••••"
                 required

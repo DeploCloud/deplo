@@ -28,7 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { RevealInput } from "@/components/ui/password-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { OtpInput } from "@/components/ui/otp-input";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
@@ -299,8 +299,7 @@ export function TwoFactorWizard({
 
               {step === "password" && (
                 <div className="space-y-4">
-                  <Input
-                    type="password"
+                  <RevealInput
                     autoComplete="current-password"
                     placeholder="Your password"
                     value={password}
