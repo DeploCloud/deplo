@@ -521,6 +521,13 @@ phase "Containers and networks"
 # Deplo stopped the other panel to take its ports; leaving it stopped would hand
 # back a machine serving nothing. The route Deplo dropped into its proxy goes too.
 if [ -n "$TAKEOVER" ] && [ "$TAKEOVER_STATE" != removed ] && [ "$HAVE_DOCKER" = true ]; then
+  # Dokploy runs its panel as a SWARM SERVICE, scaled to 0 by the cutover. Starting
+  # its task container is not starting it back up.
+  for svc in $(docker service ls --format '{{.Name}}' 2>/dev/null | grep -E '^dokploy(-postgres)?$' || true); do
+    N="$(sed -n "s/^foreign_replicas_$svc=//p" "$CP_STATE" 2>/dev/null | tail -n1)"
+    step "Scaling $svc back to ${N:-1}"
+    run docker service update --detach --replicas "${N:-1}" "$svc"
+  done
   FOREIGN="$(docker ps -aq --filter "name=^${TAKEOVER}" 2>/dev/null || true)"
   if [ -n "$FOREIGN" ]; then
     step "Starting $TAKEOVER again - it owned this machine before Deplo"

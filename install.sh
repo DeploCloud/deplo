@@ -1544,7 +1544,9 @@ foreign_stop() {
   for svc in $(foreign_services); do
     n="$(docker service inspect "$svc" --format '{{.Spec.Mode.Replicated.Replicas}}' 2>/dev/null || true)"
     state_set "foreign_replicas_$svc" "${n:-1}"
-    docker service scale "$svc=0" >&9 2>&9 || true
+    # --detach, or this blocks until the service converges - and a panel whose
+    # database is already at zero never will.
+    docker service update --detach --replicas 0 "$svc" >&9 2>&9 || true
   done
   names="$(foreign_containers)"
   [ -n "$names" ] || return 0
@@ -1558,7 +1560,7 @@ foreign_start() {
   local names svc n
   for svc in $(foreign_services); do
     n="$(state_get "foreign_replicas_$svc" || true)"
-    docker service scale "$svc=${n:-1}" >&9 2>&9 || true
+    docker service update --detach --replicas "${n:-1}" "$svc" >&9 2>&9 || true
   done
   names="$(foreign_containers)"
   [ -n "$names" ] || return 0
