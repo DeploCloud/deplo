@@ -115,6 +115,7 @@ import { requireFolderCapability } from "./folder-access";
 import { defaultEnvironmentFor } from "./projects";
 import {
   resolveServerIp,
+  productionDomain,
   instanceHost,
   rehostNip,
   rehostBlueprintHosts,
@@ -129,6 +130,9 @@ import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { detectAppFavicon } from "../apps/favicon-detect";
 import { faviconSourceKind } from "../apps/favicon-shared";
+import { getTemplateBlueprint } from "../templates-blueprint";
+import { DEFAULT_VARIANT_SLUG } from "@/templates/types";
+import { getTemplateVariant, templateLogoDataUri } from "@/templates/catalog";
 import {
   detectRepoFramework,
   type RepoBuildHints,
@@ -658,6 +662,17 @@ export interface CreateAppInput {
    * Not exposed over GraphQL: it is a property of the import, not a choice an
    * API client makes about one app.
    */
+  deploy?: boolean;
+}
+
+export interface CreateAppFromTemplateInput {
+  templateSlug: string;
+  variantSlug?: string;
+  name?: string;
+  serverId?: string;
+  projectId?: string;
+  environmentId?: string;
+  folderId?: string;
   deploy?: boolean;
 }
 
@@ -1273,6 +1288,46 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   }
 
   return summarizeOne((await loadAppGraph(project.id))!);
+}
+
+export async function createAppFromTemplate(
+  input: CreateAppFromTemplateInput,
+): Promise<AppSummary> {
+  const template = await getTemplateVariant(
+    input.templateSlug,
+    input.variantSlug?.trim() || DEFAULT_VARIANT_SLUG,
+  );
+  if (!template) throw new Error("That template or variant isn't available.");
+
+  const autoDomain = productionDomain(template.slug, instanceHost());
+  const blueprint = getTemplateBlueprint(template, { domain: autoDomain });
+  const logo = await templateLogoDataUri(template.variant.logo);
+
+  return createApp({
+    name: input.name?.trim() || template.name,
+    source: "compose",
+    repo: null,
+    logo,
+    compose: blueprint.compose,
+    env: blueprint.env,
+    autoDeploy: false,
+    composeService: blueprint.expose?.service ?? null,
+    composePort: blueprint.expose?.port ?? null,
+    extraDomains: blueprint.exposes.slice(1).map((expose) => ({
+      service: expose.service,
+      port: expose.port,
+      host: expose.host ?? "",
+      path: expose.path ?? null,
+    })),
+    autoDomain,
+    autoDomainPath: blueprint.expose?.path ?? null,
+    mounts: blueprint.mounts,
+    serverId: input.serverId,
+    projectId: input.projectId ?? null,
+    environmentId: input.environmentId ?? null,
+    folderId: input.folderId ?? null,
+    deploy: input.deploy ?? false,
+  });
 }
 
 export async function updateAppBuild(

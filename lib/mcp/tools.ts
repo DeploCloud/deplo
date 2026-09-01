@@ -151,6 +151,40 @@ const DEPLOYMENT_FIELDS = /* GraphQL */ `
 
 const APPS_READ: McpToolDef[] = [
   tool({
+    name: "list_templates",
+    title: "List templates",
+    description:
+      "List compact deployable variants from the public template catalog. Each row identifies the family with templateSlug and the selectable variant with variantSlug.",
+    group: "Apps",
+    requires: "view",
+    readOnly: true,
+    idempotent: true,
+    paginate: true,
+    input: z.object({
+      q: z
+        .string()
+        .optional()
+        .describe(
+          "Keep variants whose template, variant, category or description matches.",
+        ),
+      category: z.string().optional().describe("Filter by category slug."),
+      ...page,
+    }),
+    query: /* GraphQL */ `
+      query McpListTemplates($q: String, $category: String) {
+        templateVariants(q: $q, category: $category) {
+          templateSlug
+          variantSlug
+          name
+          variantName
+          category
+          shortDescription
+          docsUrl
+        }
+      }
+    `,
+  }),
+  tool({
     name: "list_apps",
     title: "List apps",
     description:
@@ -482,6 +516,55 @@ const APPS_OPS: McpToolDef[] = [
  * ------------------------------------------------------------------ */
 
 const APPS_CONFIG: McpToolDef[] = [
+  tool({
+    name: "create_app_from_template",
+    title: "Create an app from a template",
+    description:
+      "Create an idle App from a public catalog template. Set deploy=true to request its first deployment. Generated credentials are stored in the App Variables and are never returned by this tool.",
+    group: "Apps",
+    requires: "create_apps",
+    input: z.object({
+      templateSlug: z
+        .string()
+        .describe("The templateSlug from list_templates."),
+      variantSlug: z
+        .string()
+        .optional()
+        .describe('The variantSlug. Omit to use the "default" variant.'),
+      name: z
+        .string()
+        .optional()
+        .describe("The new App name. Omit to use the template name."),
+      serverId: z.string().optional(),
+      projectId: z.string().optional(),
+      environmentId: z.string().optional(),
+      folderId: z.string().optional(),
+      deploy: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Request the first deployment. Defaults to false; a token also needs deploy_apps.",
+        ),
+    }),
+    query: /* GraphQL */ `
+      mutation McpCreateAppFromTemplate($input: CreateAppFromTemplateInput!) {
+        createAppFromTemplate(input: $input) { ${APP_FIELDS} }
+      }
+    `,
+    variables: (a) => ({
+      input: {
+        templateSlug: a.templateSlug,
+        variantSlug: a.variantSlug,
+        name: a.name,
+        serverId: a.serverId,
+        projectId: a.projectId,
+        environmentId: a.environmentId,
+        folderId: a.folderId,
+        deploy: a.deploy ?? false,
+      },
+    }),
+  }),
   tool({
     name: "create_app",
     title: "Create an app",
