@@ -143,22 +143,15 @@ async function advance(to: TakeoverState, opts: { runId?: string } = {}) {
 }
 
 /**
- * Stamp that something other than the installer has reached the panel. Called
- * from the pages a browser lands on; the installer polls for it to find out
- * whether its port is reachable at all.
+ * Stamp that a BROWSER has reached the panel. Called from the two pages one can
+ * land on; the installer only ever calls `/api/takeover`, so rendering either of
+ * them is the signal - and a remote address is not available to a server
+ * component anyway.
  */
-export async function noteExternalRequest(
-  remote: string | null,
-): Promise<void> {
-  if (!remote || isLoopback(remote)) return;
+export async function noteBrowserReached(): Promise<void> {
   const t = await takeoverStatus();
   if (!t || t.seenExternalRequest) return;
   await writeState({ takeoverSeenExternalAt: nowIso() });
-}
-
-function isLoopback(addr: string): boolean {
-  const a = addr.trim().toLowerCase().split(",")[0].trim();
-  return a === "::1" || a === "127.0.0.1" || a.startsWith("127.");
 }
 
 /** The operator asked for the ports. The installer takes it from here. */
@@ -263,4 +256,77 @@ async function restartSourceServices(
     }
   }
   return { restarted, left };
+}
+
+/* ------------------------------------------------------------------ */
+/* What this machine can actually take                                 */
+/* ------------------------------------------------------------------ */
+
+export interface TakeoverPreflight {
+  diskFreeBytes: number;
+  diskTotalBytes: number;
+  /**
+   * The copy writes a second copy of every volume it moves, and nothing here can
+   * measure what they hold - so this is a warning with the real numbers, never a
+   * refusal over an amount nobody knows.
+   *
+   * ponytail: a `VolumeSize` RPC would turn this into a real comparison; it needs
+   * an agent release, and the free space is the number that actually goes wrong.
+   */
+  diskTight: boolean;
+  /** Whether the agent on this machine ANSWERS - a live probe, not a stored row. */
+  agentReady: boolean;
+  agentMessage: string;
+}
+
+/** Under either of these, a volume copy on this machine is a gamble. */
+const DISK_FLOOR_BYTES = 5 * 1024 * 1024 * 1024;
+const DISK_FLOOR_RATIO = 0.1;
+
+/**
+ * What a takeover of THIS machine is walking into. Both halves are things that
+ * only show up mid-copy otherwise: a disk with no room for a second copy, and an
+ * agent the control plane cannot dial.
+ */
+export async function takeoverPreflight(): Promise<TakeoverPreflight | null> {
+  await requireInstanceAdmin();
+  const { deploHostServer } = await import("./instance-settings");
+  const host = await deploHostServer();
+  if (!host) return null;
+
+  const { checkServerHealth } = await import("./server-health");
+  const { fetchHostInfo } = await import("../infra/agent-client");
+
+  let agentReady = false;
+  let agentMessage = "";
+  try {
+    const probed = await checkServerHealth(host.id, { force: true });
+    agentReady = probed.status === "online";
+    agentMessage = probed.statusMessage || "";
+  } catch (e) {
+    agentMessage = e instanceof Error ? e.message : "the agent did not answer";
+  }
+
+  let diskTotalBytes = 0;
+  let diskFreeBytes = 0;
+  if (agentReady) {
+    try {
+      const info = await fetchHostInfo(host.id);
+      diskTotalBytes = info.diskTotalBytes;
+      diskFreeBytes = Math.max(0, info.diskTotalBytes - info.diskUsedBytes);
+    } catch {
+      /* the host answered Hello but not this; the disk line simply reads 0 */
+    }
+  }
+
+  return {
+    diskFreeBytes,
+    diskTotalBytes,
+    diskTight:
+      diskTotalBytes > 0 &&
+      (diskFreeBytes < DISK_FLOOR_BYTES ||
+        diskFreeBytes / diskTotalBytes < DISK_FLOOR_RATIO),
+    agentReady,
+    agentMessage,
+  };
 }

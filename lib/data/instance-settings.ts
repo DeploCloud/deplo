@@ -272,7 +272,7 @@ export async function instancePublicBaseUrl(): Promise<string> {
 /**
  * The server this panel runs on, when it is one Deplo knows about.
  */
-async function deploHostServer() {
+export async function deploHostServer() {
   const { listAllServers } = await import("./servers");
   const servers = await listAllServers();
   const selfAddresses = deploHostSelfAddresses();

@@ -2733,6 +2733,11 @@ type Mutation {
   cancelDeployment(id: String!): Boolean
 
   """
+  Back out. Starts again everything the migration stopped on the other platform, undoes what it created here, and tells the installer to uninstall Deplo. The panel's API token is wiped when a run ends, so one has to be handed over again.
+  """
+  cancelTakeover(apiKey: String): TakeoverCancelResult
+
+  """
   Change the current user's password after verifying the current one. Returns true.
   """
   changePassword(currentPassword: String!, newPassword: String!): Boolean
@@ -3226,6 +3231,16 @@ type Mutation {
 
   """Set the team-wide display order of Project containers."""
   reorderProjects(projectIds: [ID!]!): Boolean
+
+  """
+  Take the old platform off this machine for good - containers, volumes, networks, images and its directory. Only offered once the ports are Deplo's, so the operator has already had the chance to deploy their apps and check them.
+  """
+  requestPlatformRemoval: Takeover
+
+  """
+  Hand the machine's ports to Deplo. The installer is waiting for this: it stops the other platform, inherits its certificates, moves Traefik onto 80/443 and the dashboard onto 3000. Nothing is deployed and nothing is removed.
+  """
+  requestTakeover(runId: String!): Takeover
 
   """
   Restore a default role to exactly what Deplo ships, for its members too. Returns true.
@@ -4333,6 +4348,16 @@ type Query {
   """
   shellLabel(input: ShellLabelInput!): String
 
+  """
+  The takeover in progress, or null. The screen that replaces the dashboard reads its own state server-side; this is the poll behind the buttons, and only an instance admin has any.
+  """
+  takeover: Takeover
+
+  """
+  Null when this panel's own machine is not a server Deplo knows about, which is the one case where none of it can be measured.
+  """
+  takeoverPreflight: TakeoverPreflight
+
   """Every role of the active team - defaults first, then the team's own."""
   teamRoles: [TeamRole!]
 
@@ -5298,6 +5323,65 @@ type Subscription {
   Emits the whole cleanup history whenever it changes - a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.
   """
   dockerCleanupRuns: [DockerCleanupRun!]
+}
+
+"""
+The takeover this instance is in the middle of. Null on an ordinary install.
+"""
+type Takeover {
+  platform: TakeoverPlatform
+  runId: String
+
+  """
+  Whether anything but the installer has ever reached this panel. False means its port is probably closed, not that nobody has looked.
+  """
+  seenExternalRequest: Boolean
+  state: TakeoverState
+}
+
+type TakeoverCancelResult {
+  """The ones that would not start, with the reason."""
+  left: [String!]
+
+  """How many services were started again on the platform being kept."""
+  restarted: Int
+}
+
+"""The panel this install is replacing."""
+enum TakeoverPlatform {
+  coolify
+  dokploy
+}
+
+"""
+What a takeover of this machine is walking into. Both halves are things that otherwise only show up mid-copy.
+"""
+type TakeoverPreflight {
+  agentMessage: String
+
+  """
+  Whether the agent on this machine answers a live probe. Without it no volume can be read at all.
+  """
+  agentReady: Boolean
+  diskFreeBytes: Float
+
+  """
+  The copy writes a second copy of every volume it moves, and this machine has little room for one. A warning with the real numbers, never a refusal.
+  """
+  diskTight: Boolean
+  diskTotalBytes: Float
+}
+
+"""
+pending = the migration is not finished. ready = the operator asked for the ports and the installer is moving them. done = they are Deplo's, and the old platform is stopped but still on the disk. removing / removed = it is being taken off. cancelled = the operator backed out and Deplo is uninstalling itself.
+"""
+enum TakeoverState {
+  cancelled
+  done
+  pending
+  ready
+  removed
+  removing
 }
 
 """A team that owns apps, infra and members."""

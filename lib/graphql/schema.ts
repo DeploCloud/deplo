@@ -40,6 +40,7 @@ import "./types/search";
 import "./types/server";
 import "./types/session";
 import "./types/shared-env";
+import "./types/takeover";
 import "./types/team";
 import "./types/templates";
 import "./types/token";

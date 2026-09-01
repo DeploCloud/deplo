@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { isSetupNeeded } from "@/lib/auth";
+import { noteBrowserReached } from "@/lib/data/takeover";
 import { OnboardingWizard } from "@/components/auth/onboarding-wizard";
 
 export const metadata = { title: "Set up Deplo" };
@@ -7,6 +8,9 @@ export const metadata = { title: "Set up Deplo" };
 export default async function SetupPage() {
   // Once an account exists the wizard is done; send people to sign in.
   if (!(await isSetupNeeded())) redirect("/login");
+  // On a takeover this is the first page a browser can reach, and reaching it is
+  // what tells the waiting installer that its port is open.
+  await noteBrowserReached();
 
   return (
     <div className="relative grid min-h-dvh place-items-center px-4 pt-10 pb-16">

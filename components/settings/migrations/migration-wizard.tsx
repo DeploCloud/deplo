@@ -366,6 +366,7 @@ export function MigrationWizard({
   isInstanceAdmin,
   canExposePorts,
   resumable,
+  prefill = null,
 }: {
   teamId: string;
   teamName: string;
@@ -383,6 +384,11 @@ export function MigrationWizard({
    */
   resumable: ImportRun | null;
   /**
+   * The panel this machine is being taken over from, when the installer already
+   * found it. The operator then only has to paste a key.
+   */
+  prefill?: { url: string; kind: SourceKind } | null;
+  /**
    * An address handed over from the History tab. The nonce is what makes
    * picking the same run twice still land in the field.
    */
@@ -390,13 +396,17 @@ export function MigrationWizard({
   const router = useRouter();
 
   const [step, setStep] = React.useState<StepId>("connect");
-  const [url, setUrl] = React.useState("");
+  const [url, setUrl] = React.useState(prefill?.url ?? "");
   const [apiKey, setApiKey] = React.useState("");
-  const [sameMachine, setSameMachine] = React.useState(false);
+  // A takeover is the same-machine case by definition, and the toggle is an
+  // instance-admin one - which whoever ran the installer is.
+  const [sameMachine, setSameMachine] = React.useState(prefill != null);
   const [scanning, setScanning] = React.useState(false);
   const [plan, setPlan] = React.useState<Plan | null>(null);
   /** Pinned by the person after a scan that could not identify the panel. */
-  const [forcedKind, setForcedKind] = React.useState<SourceKind | null>(null);
+  const [forcedKind, setForcedKind] = React.useState<SourceKind | null>(
+    prefill?.kind ?? null,
+  );
   /** The last refusal, kept on screen: its fix is in another browser tab. */
   const [scanError, setScanError] = React.useState<string | null>(null);
 

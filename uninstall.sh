@@ -43,6 +43,14 @@ NAMED_CONTAINERS=(deplo-traefik deplo-ssh-gateway deplo-ssh-gateway-proxy)
 # file somebody deleted first.
 CP_CONTAINERS=(deplo-deplo-1 deplo-postgres-1 traefik-deplo-socket-proxy-1)
 
+# This install may have been a TAKEOVER of another panel, which is still on the
+# machine and, past the cutover, stopped by us. See install.sh section 5b.
+CP_STATE="$DEPLO_DIR/.install-state"
+takeover_state() { [ -f "$CP_STATE" ] && sed -n "s/^takeover=//p" "$CP_STATE" | tail -n1 || true; }
+takeover_platform() { [ -f "$CP_STATE" ] && sed -n "s/^takeover_platform=//p" "$CP_STATE" | tail -n1 || true; }
+TAKEOVER="$(takeover_platform)"
+TAKEOVER_STATE="$(takeover_state)"
+
 # ==== Deplo terminal UI ===================================== KEEP IN SYNC ====
 # One renderer for install.sh, install-agent.sh and uninstall.sh. It degrades on
 # purpose: no TTY, NO_COLOR, TERM=dumb or a non-UTF-8 locale drops to plain ASCII
@@ -393,6 +401,10 @@ fi
 # one that opens by asking for confirmation of an abstraction.
 phase "Found on this host"
 
+if [ -n "$TAKEOVER" ] && [ "$TAKEOVER_STATE" != removed ]; then
+  ok "This Deplo was replacing $TAKEOVER" "still on this machine, untouched"
+fi
+
 INV_CP=false; INV_AGENT=false
 [ -f "$CP_COMPOSE" ] && INV_CP=true
 { [ -f "$UNIT" ] || [ -f "$AGENT_BIN" ]; } && INV_AGENT=true
@@ -505,6 +517,25 @@ fi
 # 3. Containers Deplo runs on this host
 # ==============================================================================
 phase "Containers and networks"
+
+# Deplo stopped the other panel to take its ports; leaving it stopped would hand
+# back a machine serving nothing. The route Deplo dropped into its proxy goes too.
+if [ -n "$TAKEOVER" ] && [ "$TAKEOVER_STATE" != removed ] && [ "$HAVE_DOCKER" = true ]; then
+  FOREIGN="$(docker ps -aq --filter "name=^${TAKEOVER}" 2>/dev/null || true)"
+  if [ -n "$FOREIGN" ]; then
+    step "Starting $TAKEOVER again - it owned this machine before Deplo"
+    # shellcheck disable=SC2086 # word splitting is the point: one id per arg
+    run docker update --restart=unless-stopped $FOREIGN
+    # shellcheck disable=SC2086
+    run docker start $FOREIGN
+  fi
+  for f in /etc/dokploy/traefik/dynamic/deplo-setup.yml /data/coolify/proxy/dynamic/deplo-setup.yml; do
+    if [ -f "$f" ]; then
+      step "Removing the setup route Deplo added to $TAKEOVER"
+      run rm -f "$f"
+    fi
+  done
+fi
 
 if [ "$HAVE_DOCKER" = true ]; then
   # Traefik first, via its compose file when we still have it, so the network is

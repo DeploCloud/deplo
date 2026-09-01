@@ -7,8 +7,10 @@ import {
   TwoFactorRequiredError,
 } from "@/lib/membership";
 import { getBreadcrumbGraph } from "@/lib/data/breadcrumb";
+import { takeoverBlocksDashboard } from "@/lib/data/takeover";
 import { userHasPasskey } from "@/lib/passkey-policy";
 import { AppShell } from "@/components/layout/app-shell";
+import { TakeoverBanner } from "@/components/takeover/takeover-banner";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
 
 export default async function DashboardLayout({
@@ -17,6 +19,10 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
+  // The machine's ports still belong to another panel, so there is nothing here
+  // to deploy onto yet. See lib/data/takeover.ts.
+  if (await takeoverBlocksDashboard()) redirect("/takeover");
+
   const teams = await listMyTeams();
   // A user can end up with zero teams (their last team was deleted, or they
   // were removed from it). The dashboard needs an active team, so route them
@@ -66,6 +72,7 @@ export default async function DashboardLayout({
       isAdmin={isAdmin}
       hasPasskey={await userHasPasskey(user.id)}
     >
+      <TakeoverBanner />
       {children}
     </AppShell>
   );

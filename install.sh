@@ -309,6 +309,7 @@ usage() {
   printf ' %bEnvironment%b  DEPLO_DOMAIN, ACME_EMAIL, DEPLO_VERSION,\n' "$C_B" "$C_OFF"
   printf '               DEPLO_SKIP_NET_CHECKS=1 (no outbound probes, no public-IP lookup),\n'
   printf '               DEPLO_TRACE=0 (transcript without the command trace),\n'
+  printf '               DEPLO_IMAGE=<ref> (an image already on the host, no pull),\n'
   printf '               DEPLO_TAKEOVER=dokploy|coolify (replace that panel without being asked),\n'
   printf '               DEPLO_TAKEOVER_WAIT=<seconds> (how long this window waits, default 7200)\n\n'
 }
@@ -545,9 +546,17 @@ fi
 MODE="install"
 [ -f "$ENV_FILE" ] && MODE="update"
 
-[ "$DEPLO_VERSION" = latest ] && resolve_version
-DEPLO_IMAGE="ghcr.io/deplocloud/deplo:${DEPLO_VERSION}"
-case "$DEPLO_VERSION" in latest) VERSION_LABEL="latest" ;; *) VERSION_LABEL="v$DEPLO_VERSION" ;; esac
+# An image already on the host, for an air-gapped install or a registry mirror.
+# Set it and the version lookup and the pull below are both skipped.
+IMAGE_PINNED=false
+if [ -n "${DEPLO_IMAGE:-}" ]; then
+  IMAGE_PINNED=true
+  VERSION_LABEL="$DEPLO_IMAGE"
+else
+  [ "$DEPLO_VERSION" = latest ] && resolve_version
+  DEPLO_IMAGE="ghcr.io/deplocloud/deplo:${DEPLO_VERSION}"
+  case "$DEPLO_VERSION" in latest) VERSION_LABEL="latest" ;; *) VERSION_LABEL="v$DEPLO_VERSION" ;; esac
+fi
 
 if [ "$CHECK_ONLY" = true ]; then
   ui_title "Deplo Preflight - $VERSION_LABEL" \
@@ -1334,7 +1343,11 @@ write_panel_compose
 # Pull the control-plane image first so a bad version tag (or, on an update, the
 # newest image) fails clearly instead of a cryptic compose error. The image is
 # public, so let Docker's own message through rather than guessing the cause.
-if ! spin_run "Pulling $DEPLO_IMAGE" docker pull "$DEPLO_IMAGE"; then
+# A pinned image is only ever skipped when it is REALLY here: an update must
+# still pull, or `latest` would never move again.
+if [ "$IMAGE_PINNED" = true ] && docker image inspect "$DEPLO_IMAGE" >/dev/null 2>&9; then
+  skip "$DEPLO_IMAGE is already on this host"
+elif ! spin_run "Pulling $DEPLO_IMAGE" docker pull "$DEPLO_IMAGE"; then
   err "Could not pull $DEPLO_IMAGE."
   note "Check the internet connection, and that $VERSION_LABEL is a released version."
   note "Transcript: $UI_LOG"
