@@ -60,7 +60,7 @@ const INTRO_HOLD_MS = 2200;
 const INTRO_OUT_MS = 700;
 const INTRO_SEEN = "deplo.onboarding-intro";
 /** Longest name the greeting will show before it truncates. */
-const NAME_MAX = 10;
+const NAME_MAX = 16;
 
 type Phase = "boot" | "intro" | "intro-out" | "steps";
 
@@ -252,8 +252,13 @@ export function OnboardingWizard({ version }: { version: string }) {
                 </div>
                 <div className="text-center">
                   <h1 className="text-xl font-semibold sm:text-2xl">
-                    Welcome to deplo
-                    <GreetingTail name={name} />
+                    Welcome to{" "}
+                    {/* One unit, or a narrow screen wraps the comma onto a
+                      line of its own. */}
+                    <span className="whitespace-nowrap">
+                      deplo
+                      <GreetingTail name={name} />
+                    </span>
                   </h1>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Create the account that runs this instance.
