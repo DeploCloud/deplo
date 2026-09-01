@@ -297,12 +297,14 @@ function PresetChip({
       disabled={disabled}
       onClick={onClick}
       aria-pressed={selected}
+      aria-label={label}
+      title={label}
       className={cn(
-        "flex items-center gap-2 rounded-full border py-1 pr-3 pl-1 text-xs font-medium transition-colors outline-none",
+        "rounded-full transition outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring",
         selected
-          ? "border-primary bg-accent"
-          : "border-border bg-card hover:bg-accent",
+          ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          : "opacity-70 hover:opacity-100",
         disabled && "cursor-not-allowed opacity-60",
       )}
     >
@@ -310,9 +312,8 @@ function PresetChip({
       <img
         src={pixelbotPath(preset, seed)}
         alt=""
-        className="size-7 rounded-full"
+        className="size-8 rounded-full"
       />
-      {label}
     </button>
   );
 }
@@ -392,19 +393,6 @@ function AvatarSourceDialog({
             Pick a look, then a face - or upload your own.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap gap-2">
-          {PIXELBOT_PRESETS.map(({ id, label }, i) => (
-            <PresetChip
-              key={id}
-              preset={id}
-              label={label}
-              seed={chipSeeds[i]!}
-              disabled={busy}
-              selected={id === look}
-              onClick={() => setLook(id)}
-            />
-          ))}
-        </div>
         <div className="flex flex-wrap justify-center gap-3 rounded-xl border border-border bg-card p-3">
           {rowSeeds.map((rowSeed) => (
             <FaceTile
@@ -419,6 +407,19 @@ function AvatarSourceDialog({
                 choice.seed === rowSeed
               }
               onClick={() => onPick(`${PIXELBOT_PREFIX}${look}:${rowSeed}`)}
+            />
+          ))}
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          {PIXELBOT_PRESETS.map(({ id, label }, i) => (
+            <PresetChip
+              key={id}
+              preset={id}
+              label={label}
+              seed={chipSeeds[i]!}
+              disabled={busy}
+              selected={id === look}
+              onClick={() => setLook(id)}
             />
           ))}
         </div>
