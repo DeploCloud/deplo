@@ -71,8 +71,8 @@ export interface DatabaseResourceOption {
 /**
  * The Activity page's filter row. Every pick is a navigation, so the URL is the
  * whole state: a link to "what did Ada do last week" is just this page's address.
- * On one app's or one database's own tab the resource is fixed, so that facet is
- * left out and `base` points back at the tab instead of the team-wide page.
+ * Whichever dimension a page fixes - the resource on an app's tab, the person on
+ * a member's - loses its facet, and `base` points back at that page.
  */
 export function ActivityFilters({
   params,
@@ -87,7 +87,8 @@ export function ActivityFilters({
   base = "/activity",
 }: {
   params: ActivityParams;
-  actors: FacetOption[];
+  /** Omitted on a person's own page, where the User facet is left out. */
+  actors?: FacetOption[];
   /** Omitted on a resource's own tab, where the Resource facet is left out. */
   apps?: ResourceOption[];
   folders?: ResourceOption[];
@@ -156,14 +157,16 @@ export function ActivityFilters({
         pending && "opacity-60",
       )}
     >
-      <div className="flex min-w-0 flex-1">
-        <FacetCombobox
-          facet={facet("actor", "User", "Anyone", UserRound, actors)}
-          counts={actorCounts}
-          values={params.actorUserIds}
-          onChange={(actorUserIds) => go({ actorUserIds })}
-        />
-      </div>
+      {actors && (
+        <div className="flex min-w-0 flex-1">
+          <FacetCombobox
+            facet={facet("actor", "User", "Anyone", UserRound, actors)}
+            counts={actorCounts}
+            values={params.actorUserIds}
+            onChange={(actorUserIds) => go({ actorUserIds })}
+          />
+        </div>
+      )}
       <DateRangeFilter params={params} onChange={go} />
       <div className="flex min-w-0 flex-1">
         <FacetCombobox

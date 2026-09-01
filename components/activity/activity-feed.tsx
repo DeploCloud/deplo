@@ -63,6 +63,7 @@ export function ActivityFeed({
   databaseLinks,
   variables,
   pageSize,
+  showActor,
 }: {
   initialItems: ActivityItem[];
   monthCounts: Record<string, number>;
@@ -71,6 +72,8 @@ export function ActivityFeed({
   /** The filter arguments, repeated verbatim for every later page. */
   variables: Record<string, unknown>;
   pageSize: number;
+  /** False on a feed that is already one person's - see {@link ActivityTimeline}. */
+  showActor?: boolean;
 }) {
   const [items, setItems] = React.useState(initialItems);
   const [done, setDone] = React.useState(initialItems.length < pageSize);
@@ -117,6 +120,7 @@ export function ActivityFeed({
       monthCounts={monthCounts}
       appLinks={appLinks}
       databaseLinks={databaseLinks}
+      showActor={showActor}
     >
       {!done && (
         <li className="relative flex items-start gap-3">

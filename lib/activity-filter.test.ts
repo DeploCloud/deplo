@@ -5,6 +5,7 @@ import {
   EMPTY_ACTIVITY_PARAMS,
   activityCountWindow,
   activityCountWindowLabel,
+  scopedActivityFilter,
   type ActivityParams,
 } from "./activity-filter";
 
@@ -48,5 +49,40 @@ test("a custom range wins even when only one end is set", () => {
   assert.equal(
     activityCountWindowLabel(params({ from: "2026-08-01" })),
     "Since 1 Aug",
+  );
+});
+
+/** A scoped page pins one dimension, and the URL must not be able to widen it. */
+
+test("a person's own page ignores an actor picked in the URL", () => {
+  const p = params({
+    actorUserIds: ["usr_someone_else"],
+    types: ["deployment"],
+    resourceIds: ["prj_1"],
+    range: "7d",
+  });
+  assert.deepEqual(
+    scopedActivityFilter(p, { kind: "actor", userId: "usr_ada" }, NOW),
+    {
+      actorUserIds: ["usr_ada"],
+      // Everything the reader DID pick still narrows on top of the pin.
+      types: ["deployment"],
+      resourceIds: ["prj_1"],
+      from: "2026-08-24T00:00:00.000Z",
+    },
+  );
+});
+
+test("a resource's own tab ignores a resource picked in the URL", () => {
+  const p = params({ actorUserIds: ["usr_ada"], resourceIds: ["prj_other"] });
+  assert.deepEqual(
+    scopedActivityFilter(p, { kind: "resource", resourceId: "prj_1" }, NOW),
+    {
+      actorUserIds: ["usr_ada"],
+      types: [],
+      resourceIds: ["prj_1"],
+      from: undefined,
+      to: undefined,
+    },
   );
 });

@@ -99,23 +99,25 @@ function UnderlineTabsList({
 }
 UnderlineTabsList.displayName = "UnderlineTabsList";
 
+/** A trigger's look on its own, for an entry that NAVIGATES instead of switching
+ *  a panel: a link that sits in the strip is a link, not a `role="tab"`. */
+const underlineTabClass =
+  "inline-flex h-12 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none data-[state=active]:text-foreground";
+
 const UnderlineTabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
-    className={cn(
-      "inline-flex h-12 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none data-[state=active]:text-foreground",
-      TRIGGER_ICON,
-      className,
-    )}
+    className={cn(underlineTabClass, TRIGGER_ICON, className)}
     {...props}
   />
 ));
 UnderlineTabsTrigger.displayName = "UnderlineTabsTrigger";
 
 export {
+  underlineTabClass,
   Tabs,
   TabsList,
   TabsTrigger,

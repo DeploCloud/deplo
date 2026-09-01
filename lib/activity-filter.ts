@@ -146,6 +146,34 @@ export function activityCountWindow(
   };
 }
 
+/** What a page pins the trail to: one app or database, or one person. */
+export type ActivityScope =
+  { kind: "resource"; resourceId: string } | { kind: "actor"; userId: string };
+
+/**
+ * What a scoped page queries. The pin BEATS the URL: a person's own page is not
+ * a place `?actor=` may widen to somebody else, and the facet it fixes is left
+ * out of the filter row precisely because there is nothing left to pick.
+ */
+export function scopedActivityFilter(
+  p: ActivityParams,
+  scope: ActivityScope,
+  now = Date.now(),
+): {
+  actorUserIds: string[];
+  types: ActivityType[];
+  resourceIds: string[];
+  from?: string;
+  to?: string;
+} {
+  return {
+    actorUserIds: scope.kind === "actor" ? [scope.userId] : p.actorUserIds,
+    types: p.types,
+    resourceIds: scope.kind === "resource" ? [scope.resourceId] : p.resourceIds,
+    ...activityWindow(p, now),
+  };
+}
+
 /** What {@link activityCountWindow} chose, said out loud above the counts. */
 export function activityCountWindowLabel(p: ActivityParams): string {
   const preset = ACTIVITY_RANGES.find((r) => r.value === p.range);

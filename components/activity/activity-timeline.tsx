@@ -50,6 +50,30 @@ export type DatabaseLinks = Record<
   { name: string; logo: string | null; type: DatabaseType }
 >;
 
+/** Only what the caller could list: an app they cannot reach stays plain text in
+ *  the sentence rather than becoming a link into a 404. */
+export function toAppLinks(
+  apps: { id: string; name: string; slug: string; logo: string | null }[],
+): AppLinks {
+  return Object.fromEntries(
+    apps.map((a) => [a.id, { name: a.name, slug: a.slug, logo: a.logo }]),
+  );
+}
+
+/** The database twin of {@link toAppLinks}. */
+export function toDatabaseLinks(
+  databases: {
+    id: string;
+    name: string;
+    logo: string | null;
+    type: DatabaseType;
+  }[],
+): DatabaseLinks {
+  return Object.fromEntries(
+    databases.map((d) => [d.id, { name: d.name, logo: d.logo, type: d.type }]),
+  );
+}
+
 export function toActivityItem(a: Activity): ActivityItem {
   return {
     id: a.id,

@@ -68,17 +68,6 @@ export async function listActivity(
 }
 
 /**
- * The same feed narrowed to what ONE person did - the Activity tab of a member's
- * page.
- */
-export async function listActivityByActor(
-  userId: string,
-  limit = 10,
-): Promise<Activity[]> {
-  return queryActivity(limit, { actorUserIds: [userId] });
-}
-
-/**
  * The filter predicates, minus the team and the scope. Arrays are spelled out
  * rather than handed to `inArray(col, [])`, whose behaviour has changed across
  * Drizzle versions.

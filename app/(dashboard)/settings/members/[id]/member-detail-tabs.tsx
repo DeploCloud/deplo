@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
-  Activity as ActivityIcon,
   Check,
   Crown,
   Loader2,
@@ -26,6 +25,7 @@ import {
   TabsContent,
   UnderlineTabsList,
   UnderlineTabsTrigger,
+  underlineTabClass,
 } from "@/components/ui/tabs";
 import { RoleSelect } from "@/components/members/role-select";
 import { PermissionPicker } from "@/components/settings/permission-picker";
@@ -46,12 +46,8 @@ import {
   boundedBy,
   sameCapabilities,
 } from "@/lib/membership-shared";
-import { ALL_CAPABILITIES, type Activity, type Capability } from "@/lib/types";
+import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { timeAgo } from "@/lib/utils";
-import {
-  ActivityTimeline,
-  toActivityItem,
-} from "@/components/activity/activity-timeline";
 import type { MemberDTO } from "@/lib/data/members";
 import type { TeamRoleDTO } from "@/lib/data/roles";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
@@ -64,7 +60,7 @@ import { titleClass } from "@/components/shared/page-header";
  * else and switching tabs silently discards the edit.
  */
 
-const TABS = ["permissions", "activity", "advanced"] as const;
+const TABS = ["permissions", "advanced"] as const;
 type TabId = (typeof TABS)[number];
 
 export function MemberDetailTabs({
@@ -75,7 +71,6 @@ export function MemberDetailTabs({
   canAssignOwner,
   isSelf,
   canManageAccount,
-  activity,
   viewerIsPrimaryOwner,
   viewerTwoFactorEnabled,
 }: {
@@ -88,8 +83,6 @@ export function MemberDetailTabs({
   isSelf: boolean;
   /** Instance admin - the link to this person's global account is theirs alone. */
   canManageAccount: boolean;
-  /** Their last few events in this team, newest first. */
-  activity: Activity[];
   /** The VIEWER holds the crown, so the team is theirs to hand over. */
   viewerIsPrimaryOwner: boolean;
   /** The VIEWER's own 2FA, which decides whether the transfer asks for a code. */
@@ -105,7 +98,7 @@ export function MemberDetailTabs({
 
   const tab = params.get("tab") as TabId;
   const active: TabId = TABS.includes(tab) ? tab : "permissions";
-  // Only the editing tab carries the Save - Activity has nothing to save.
+  // Only the editing tab carries the Save - Advanced has nothing to save.
   const onTeamTab = active === "permissions";
 
   function selectTab(next: string) {
@@ -328,7 +321,14 @@ export function MemberDetailTabs({
           <UnderlineTabsTrigger value="permissions">
             Role &amp; permissions
           </UnderlineTabsTrigger>
-          <UnderlineTabsTrigger value="activity">Activity</UnderlineTabsTrigger>
+          {/* A page, not a panel: their trail gets the same feed, filters and
+              counts as every other Activity view. */}
+          <Link
+            href={`/settings/members/${member.userId}/activity`}
+            className={underlineTabClass}
+          >
+            Activity
+          </Link>
           <UnderlineTabsTrigger value="advanced">Advanced</UnderlineTabsTrigger>
         </UnderlineTabsList>
 
@@ -433,37 +433,6 @@ export function MemberDetailTabs({
           )}
         </form>
 
-        <TabsContent value="activity" className="space-y-4 pt-4">
-          {/* What they have actually done here, not a pointer to where it lives:
-              the tab answering "what has this person been up to" with a sentence
-              about another page was an empty state pretending to be content. */}
-          {activity.length === 0 ? (
-            <EmptyState
-              icon={ActivityIcon}
-              title="Nothing yet"
-              description={`@${member.username} hasn't done anything in this team that gets logged.`}
-              action={
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/activity">Open Activity</Link>
-                </Button>
-              }
-            />
-          ) : (
-            <Card>
-              <CardContent className="space-y-4 pt-6">
-                {/* The actor is this page, so the rows name only the event. */}
-                <ActivityTimeline
-                  variant="compact"
-                  showActor={false}
-                  items={activity.map(toActivityItem)}
-                />
-                <Button variant="outline" size="sm" className="w-full" asChild>
-                  <Link href="/activity">Open Activity</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
         {/* The two actions that end a membership rather than shape it: they are
             not edits, they have no Save, and one of them hands the team over. */}
         <TabsContent value="advanced" className="space-y-4 pt-4">

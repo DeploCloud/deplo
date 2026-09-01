@@ -20,8 +20,8 @@ import {
 } from "@/components/activity/activity-summary";
 import {
   toActivityItem,
-  type AppLinks,
-  type DatabaseLinks,
+  toAppLinks,
+  toDatabaseLinks,
 } from "@/components/activity/activity-timeline";
 import { ACTIVITY_TYPES } from "@/lib/activity-types";
 import {
@@ -162,8 +162,8 @@ export default async function ActivityPage(props: PageProps<"/activity">) {
           monthCounts={Object.fromEntries(
             months.map((m) => [m.month, m.count]),
           )}
-          appLinks={appLinks(apps)}
-          databaseLinks={databaseLinks(databases)}
+          appLinks={toAppLinks(apps)}
+          databaseLinks={toDatabaseLinks(databases)}
           variables={{
             actorUserIds: nonEmpty(params.actorUserIds),
             types: nonEmpty(params.types),
@@ -199,23 +199,4 @@ function actorOptions(
     label: a.label,
     author: a.author ?? undefined,
   }));
-}
-
-/** Only what `listApps` returned: an app the caller cannot list stays plain text
- *  in the sentence rather than becoming a link into a 404. */
-function appLinks(
-  apps: { id: string; name: string; slug: string; logo: string | null }[],
-): AppLinks {
-  return Object.fromEntries(
-    apps.map((a) => [a.id, { name: a.name, slug: a.slug, logo: a.logo }]),
-  );
-}
-
-/** The database twin of {@link appLinks}. */
-function databaseLinks(
-  databases: Awaited<ReturnType<typeof listDatabases>>,
-): DatabaseLinks {
-  return Object.fromEntries(
-    databases.map((d) => [d.id, { name: d.name, logo: d.logo, type: d.type }]),
-  );
 }

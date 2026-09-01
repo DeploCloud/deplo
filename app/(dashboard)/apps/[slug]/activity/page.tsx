@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { getAppBySlug } from "@/lib/data/apps";
 import { PageHeader } from "@/components/shared/page-header";
-import { ResourceActivity } from "@/components/activity/resource-activity";
+import { ScopedActivity } from "@/components/activity/scoped-activity";
 
 export const metadata = { title: "Activity" };
 
@@ -25,10 +25,11 @@ export default async function AppActivityPage(
         docs="team.activity"
         description="Everything that happened to this app, newest first."
       />
-      <ResourceActivity
-        resourceId={app.id}
+      <ScopedActivity
+        scope={{ kind: "resource", resourceId: app.id }}
         base={`/apps/${slug}/activity`}
         searchParams={await props.searchParams}
+        emptyDescription="Every change made here shows up in this list."
         appLinks={{ [app.id]: { name: app.name, slug, logo: app.logo } }}
       />
     </div>

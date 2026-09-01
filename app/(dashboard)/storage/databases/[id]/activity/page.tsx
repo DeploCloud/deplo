@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { getDatabase } from "@/lib/data/databases";
 import { PageHeader } from "@/components/shared/page-header";
-import { ResourceActivity } from "@/components/activity/resource-activity";
+import { ScopedActivity } from "@/components/activity/scoped-activity";
 
 export const metadata = { title: "Activity" };
 
@@ -25,10 +25,11 @@ export default async function DatabaseActivityPage(
         docs="team.activity"
         description="Everything that happened to this database, newest first."
       />
-      <ResourceActivity
-        resourceId={db.id}
+      <ScopedActivity
+        scope={{ kind: "resource", resourceId: db.id }}
         base={`/storage/databases/${id}/activity`}
         searchParams={await props.searchParams}
+        emptyDescription="Every change made here shows up in this list."
         databaseLinks={{
           [db.id]: { name: db.name, logo: db.logo, type: db.type },
         }}
