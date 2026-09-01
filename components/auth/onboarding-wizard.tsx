@@ -60,8 +60,8 @@ const COMPLETE_SETUP = /* GraphQL */ `
 `;
 
 /** The mark holds the screen for this long before it dissolves into step one. */
-const INTRO_HOLD_MS = 2200;
-const INTRO_OUT_MS = 700;
+const INTRO_HOLD_MS = 1500;
+const INTRO_OUT_MS = 550;
 const INTRO_SEEN = "deplo.onboarding-intro";
 /** Longest name the greeting will show before it truncates. */
 const NAME_MAX = 16;
