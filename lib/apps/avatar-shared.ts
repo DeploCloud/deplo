@@ -101,8 +101,20 @@ export const INITIALS_PRESETS = [
 
 export const DEFAULT_INITIALS_PRESET = INITIALS_PRESETS[0].id;
 
-/** Styles whose licence asks for a credit where the art is shown. */
-export const AVATAR_CREDITS = "Glyphs by Matt Houser (CC BY 4.0)";
+/**
+ * The credit CC BY asks for, wherever the art is shown: creator, source, licence,
+ * and the fact that it is a remix. Copied from the style's own `meta.license`.
+ * The other styles are CC0 and ask for nothing.
+ */
+export const AVATAR_ATTRIBUTION = {
+  style: "Glyphs",
+  source: "Abstract Avatars for All Creative Profile Use",
+  sourceUrl: "https://www.figma.com/community/file/1249154526125777853",
+  creator: "Matt Houser",
+  creatorUrl: "https://x.com/mattkhouser",
+  license: "CC BY 4.0",
+  licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
+} as const;
 
 export function isValidAvatarStyle(value: string): value is AvatarStyle {
   return value in AVATAR_STYLES;

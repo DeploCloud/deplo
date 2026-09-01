@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   AVATAR_ACCEPT_ATTR,
-  AVATAR_CREDITS,
+  AVATAR_ATTRIBUTION,
   AVATAR_IMAGE_TYPES,
   AVATAR_PACKS,
   type AvatarChoice,
@@ -494,7 +494,9 @@ function AvatarSourceDialog({
               />
             }
             label="Use my initials"
-            selected={onInitials || worn?.style === "initials"}
+            // What they WEAR, never what the row above happens to be showing:
+            // browsing to the letters is not choosing them.
+            selected={worn?.style === "initials"}
             disabled={busy}
             className={gravatar ? undefined : "sm:col-span-2"}
             onClick={() => setOnInitials(true)}
@@ -509,8 +511,26 @@ function AvatarSourceDialog({
             onClick={onUpload}
           />
         </div>
-        <p className="text-center text-[11px] text-muted-foreground">
-          Pictures by DiceBear - {AVATAR_CREDITS}
+        <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+          Pictures by DiceBear. {AVATAR_ATTRIBUTION.style} is a remix of{" "}
+          <a
+            href={AVATAR_ATTRIBUTION.sourceUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            {AVATAR_ATTRIBUTION.source}
+          </a>{" "}
+          by {AVATAR_ATTRIBUTION.creator},{" "}
+          <a
+            href={AVATAR_ATTRIBUTION.licenseUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            {AVATAR_ATTRIBUTION.license}
+          </a>
+          .
         </p>
       </DialogContent>
     </Dialog>
