@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { initialsFallbackUrl } from "@/lib/apps/avatar-shared";
 import { cn } from "@/lib/utils";
 
 /**
@@ -44,44 +45,26 @@ export function avatarInitials(
 
 function Mark({
   src,
-  initials,
   size,
   className,
 }: {
-  src: string | null | undefined;
-  initials: string;
+  src: string;
   size: AvatarSize;
   className?: string;
 }) {
-  const [status, setStatus] = React.useState<
-    "idle" | "loading" | "loaded" | "error"
-  >("idle");
-  // A picture that is still arriving gets the skeleton, not the monogram: the
-  // initials would flash for as long as the download takes and then be replaced.
-  const pending = Boolean(src) && status === "loading";
-
   return (
     <Avatar className={cn(SIZE[size], className)}>
       <AvatarImage
-        src={src ?? undefined}
+        src={src}
         alt=""
         // Without this, every avatar tells gravatar.com which page of this panel
         // it was rendered on.
         referrerPolicy="no-referrer"
-        onLoadingStatusChange={setStatus}
       />
-      {/**
-       * No `delayMs`.
-       */}
-      <AvatarFallback
-        className={cn(
-          "font-medium",
-          pending && "animate-pulse",
-          !pending && "bg-secondary text-secondary-foreground",
-        )}
-      >
-        {pending ? null : initials}
-      </AvatarFallback>
+      {/* A picture that is still arriving, or one that will not: a plain disc,
+        never the letters - every avatar in the product is drawn by the same
+        renderer now. */}
+      <AvatarFallback className="bg-muted" />
     </Avatar>
   );
 }
@@ -105,8 +88,7 @@ export function UserAvatar({
 }) {
   return (
     <Mark
-      src={avatarUrl}
-      initials={avatarInitials(name, username)}
+      src={avatarUrl || initialsFallbackUrl(name, username)}
       size={size}
       className={className}
     />
@@ -127,8 +109,7 @@ export function TeamAvatar({
 }) {
   return (
     <Mark
-      src={avatarUrl}
-      initials={avatarInitials(name)}
+      src={avatarUrl || initialsFallbackUrl(name)}
       size={size}
       className={className}
     />

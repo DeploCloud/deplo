@@ -71,7 +71,9 @@ export const AVATAR_STYLES = {
   planets: ["electric"],
   glass: ["default"],
   pixelbot: ["terminal"],
-  initials: ["electric", "greyscale", "sunrise", "bold-pop"],
+  // `default` is the style's own palette, picked from the seed: what a name
+  // falls back to when nobody chose anything.
+  initials: ["default", "electric", "greyscale", "sunrise", "bold-pop"],
 } as const;
 
 export type AvatarStyle = keyof typeof AVATAR_STYLES;
@@ -139,6 +141,33 @@ export function rowSeeds(ownSeed: string): string[] {
     0,
     AVATAR_ROW,
   );
+}
+
+/**
+ * A name, as a seed: DiceBear's initials style reads the letters out of it
+ * ("Acme Corp" and "Acme-Corp" both draw AC) and the palette out of the whole
+ * string, so two teams with the same initials still differ.
+ */
+export function avatarSeedFromName(
+  ...parts: (string | null | undefined)[]
+): string {
+  for (const part of parts) {
+    const seed = part
+      ?.trim()
+      .replace(/[^A-Za-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64);
+    if (seed) return seed;
+  }
+  return "deplo";
+}
+
+/** The picture a name falls back to when there is nothing stored: never a
+ *  monogram drawn by the app, always the same renderer as everything else. */
+export function initialsFallbackUrl(
+  ...parts: (string | null | undefined)[]
+): string {
+  return facePath("initials", "default", avatarSeedFromName(...parts));
 }
 
 /** What a seed may look like: it lands in a URL path and in a render. For the

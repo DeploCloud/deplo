@@ -8,6 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { AvatarPicker } from "@/components/shared/avatar-picker";
+import {
+  avatarChoiceFromUrl,
+  avatarSeedFromName,
+} from "@/lib/apps/avatar-shared";
 import { gqlAction } from "@/lib/graphql-client";
 
 export function TeamForm({
@@ -58,6 +62,14 @@ export function TeamForm({
         <AvatarPicker
           label="Change the team picture"
           hasImage={Boolean(avatarUrl)}
+          sources={{
+            simple: true,
+            choice: avatarChoiceFromUrl(avatarUrl),
+            // The SAVED name, like the picture beside it: the field is editable
+            // and the tile must not drift as it is typed.
+            seed: avatarSeedFromName(initialName),
+            letters: avatarSeedFromName(initialName),
+          }}
           preview={teamMark}
           onSave={(image) =>
             gqlAction(

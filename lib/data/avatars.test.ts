@@ -9,6 +9,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { sha256Hex } from "../crypto";
 import {
   avatarChoiceFromUrl,
+  initialsFallbackUrl,
   avatarChoiceFromValue,
   avatarPreviewUrl,
   AVATAR_PACKS,
@@ -227,7 +228,6 @@ test("a seed that is not a plain word is refused, in and out of the URL", async 
     `pixelbot:terminal:${"a".repeat(65)}`,
     "pixelbot:evil.com/x",
     // A preset of the OTHER style: each style owns its own list.
-    "initials:default:AL",
     "initials:terminal:AL",
     "nosuchstyle:electric:AL",
     "glyphs:electric:zoe",
@@ -279,6 +279,23 @@ test("the picker reads back the source it just wrote", () => {
   assert.deepEqual(avatarChoiceFromValue("gravatar"), { kind: "gravatar" });
   assert.deepEqual(avatarChoiceFromValue(PICTURE), { kind: "uploaded" });
   assert.deepEqual(avatarChoiceFromValue(null), { kind: "initials" });
+});
+
+test("a name with no picture falls back to its letters, drawn by DiceBear", () => {
+  // Never a monogram the app draws itself: same renderer as every other avatar.
+  assert.equal(
+    initialsFallbackUrl("Acme Corp"),
+    "/api/avatar/initials/default/Acme-Corp.svg",
+  );
+  // Same initials, different seed - so two teams are not one picture.
+  assert.notEqual(
+    initialsFallbackUrl("Acme Corp"),
+    initialsFallbackUrl("Acme Inc"),
+  );
+  assert.equal(
+    initialsFallbackUrl("", null),
+    "/api/avatar/initials/default/deplo.svg",
+  );
 });
 
 test("every pack offers the same four pictures, and never one twice", () => {

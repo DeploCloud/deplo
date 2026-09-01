@@ -50,6 +50,9 @@ export type AvatarSources = {
   /** Their Gravatar address when the instance allows it, so the card previews
    *  the real thing. Absent = the source is not offered. */
   gravatar?: string | null;
+  /** A TEAM has no packs to browse: its picture is the letters of its name or a
+   *  file, so the dialog shows those two and nothing else. */
+  simple?: boolean;
 };
 
 export function AvatarPicker({
@@ -398,7 +401,7 @@ function AvatarSourceDialog({
   /** One preview picture per pack, rolled by the caller as it mounts. */
   previews: string[] | null;
   dragging: boolean;
-  onPick: (value: string) => void;
+  onPick: (value: string | null) => void;
   onUpload: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -436,52 +439,68 @@ function AvatarSourceDialog({
               : "Pick a pack, then a picture - or upload your own."}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-4 gap-2">
-          {onInitials
-            ? INITIALS_PRESETS.map(({ id, label }) => (
+        {sources.simple ? (
+          <div className="grid grid-cols-4 gap-2">
+            <FaceTile
+              src={facePath("initials", "default", seed)}
+              label="The name's letters"
+              disabled={busy}
+              selected={choice.kind !== "uploaded"}
+              onClick={() => onPick(null)}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-4 gap-2">
+              {onInitials
+                ? INITIALS_PRESETS.map(({ id, label }) => (
+                    <FaceTile
+                      key={id}
+                      src={facePath("initials", id, letters)}
+                      label={label}
+                      disabled={busy}
+                      selected={
+                        worn?.style === "initials" && worn.preset === id
+                      }
+                      onClick={() => onPick(`initials:${id}:${letters}`)}
+                    />
+                  ))
+                : seeds.map((rowSeed) => (
+                    <FaceTile
+                      key={rowSeed}
+                      src={facePath(pack.style, pack.preset, rowSeed)}
+                      label={`${pack.label}, ${rowSeed === seed ? "yours" : rowSeed}`}
+                      disabled={busy}
+                      selected={
+                        worn?.style === pack.style &&
+                        worn.preset === pack.preset &&
+                        worn.seed === rowSeed
+                      }
+                      onClick={() =>
+                        onPick(`${pack.style}:${pack.preset}:${rowSeed}`)
+                      }
+                    />
+                  ))}
+            </div>
+            <div className="flex justify-center gap-2">
+              {AVATAR_PACKS.map((p, i) => (
                 <FaceTile
-                  key={id}
-                  src={facePath("initials", id, letters)}
-                  label={label}
+                  key={p.style}
+                  small
+                  src={facePath(
+                    p.style,
+                    p.preset,
+                    p.style === "initials" ? letters : chipSeeds[i]!,
+                  )}
+                  label={p.label}
                   disabled={busy}
-                  selected={worn?.style === "initials" && worn.preset === id}
-                  onClick={() => onPick(`initials:${id}:${letters}`)}
-                />
-              ))
-            : seeds.map((rowSeed) => (
-                <FaceTile
-                  key={rowSeed}
-                  src={facePath(pack.style, pack.preset, rowSeed)}
-                  label={`${pack.label}, ${rowSeed === seed ? "yours" : rowSeed}`}
-                  disabled={busy}
-                  selected={
-                    worn?.style === pack.style &&
-                    worn.preset === pack.preset &&
-                    worn.seed === rowSeed
-                  }
-                  onClick={() =>
-                    onPick(`${pack.style}:${pack.preset}:${rowSeed}`)
-                  }
+                  selected={p.style === pack.style}
+                  onClick={() => setPack(p)}
                 />
               ))}
-        </div>
-        <div className="flex justify-center gap-2">
-          {AVATAR_PACKS.map((p, i) => (
-            <FaceTile
-              key={p.style}
-              small
-              src={facePath(
-                p.style,
-                p.preset,
-                p.style === "initials" ? letters : chipSeeds[i]!,
-              )}
-              label={p.label}
-              disabled={busy}
-              selected={p.style === pack.style}
-              onClick={() => setPack(p)}
-            />
-          ))}
-        </div>
+            </div>
+          </>
+        )}
         <div className="grid gap-2">
           {gravatar ? (
             <SourceCard
@@ -513,27 +532,29 @@ function AvatarSourceDialog({
             onClick={onUpload}
           />
         </div>
-        <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-          Pictures by DiceBear. {AVATAR_ATTRIBUTION.style} is a remix of{" "}
-          <a
-            href={AVATAR_ATTRIBUTION.sourceUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            {AVATAR_ATTRIBUTION.source}
-          </a>{" "}
-          by {AVATAR_ATTRIBUTION.creator},{" "}
-          <a
-            href={AVATAR_ATTRIBUTION.licenseUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            {AVATAR_ATTRIBUTION.license}
-          </a>
-          .
-        </p>
+        {sources.simple ? null : (
+          <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+            Pictures by DiceBear. {AVATAR_ATTRIBUTION.style} is a remix of{" "}
+            <a
+              href={AVATAR_ATTRIBUTION.sourceUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              {AVATAR_ATTRIBUTION.source}
+            </a>{" "}
+            by {AVATAR_ATTRIBUTION.creator},{" "}
+            <a
+              href={AVATAR_ATTRIBUTION.licenseUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              {AVATAR_ATTRIBUTION.license}
+            </a>
+            .
+          </p>
+        )}
       </DialogContent>
     </Dialog>
   );

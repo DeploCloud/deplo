@@ -7,6 +7,7 @@ import { AvatarPicker } from "@/components/shared/avatar-picker";
 import {
   avatarChoiceFromValue,
   avatarPreviewUrl,
+  avatarSeedFromName,
 } from "@/lib/apps/avatar-shared";
 import {
   avatarInitials,
@@ -357,6 +358,12 @@ export function TeamStep({
           quiet
           label="Add a team picture"
           hasImage={Boolean(draft.image)}
+          sources={{
+            simple: true,
+            choice: avatarChoiceFromValue(draft.image),
+            seed: avatarSeedFromName(draft.name),
+            letters: avatarSeedFromName(draft.name),
+          }}
           onSave={async (image) => {
             onChange({ ...draft, image });
             return { ok: true };

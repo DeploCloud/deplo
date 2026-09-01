@@ -47,6 +47,7 @@ const PRESET_OPTIONS: Record<
     terminal: { backgroundColor: ["0a0f0a"], glowColor: ["4ade80"] },
   },
   initials: {
+    default: {},
     electric: {
       backgroundColor: [
         "ff2e88",
