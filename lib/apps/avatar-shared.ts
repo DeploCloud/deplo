@@ -94,7 +94,9 @@ export const AVATAR_PACKS = [
   label: string;
 }[];
 
-export const DEFAULT_PACK = AVATAR_PACKS[0];
+/** What a person with nothing chosen already wears - their letters, the same as
+ *  a team's - so the dialog opens on the pack whose first tile is that. */
+export const DEFAULT_PACK = AVATAR_PACKS.find((p) => p.style === "initials")!;
 
 /**
  * The initials looks: ONE seed - the letters are the person or the team, they do
@@ -230,13 +232,10 @@ export function isValidTeamAvatarValue(value: string): boolean {
  */
 export function avatarPreviewUrl(
   value: string | null | undefined,
-  defaultSeed?: string | null,
 ): string | null {
   const parts = faceParts(value);
   if (parts) return facePath(parts.style, parts.preset, parts.seed);
   if (value && isValidAvatarValue(value)) return value;
-  if (!value && defaultSeed)
-    return facePath(DEFAULT_PACK.style, DEFAULT_PACK.preset, defaultSeed);
   return null;
 }
 

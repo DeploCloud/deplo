@@ -160,9 +160,9 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
 
 test("with the instance switch off, no Gravatar address is emitted anywhere", async () => {
   await as(OWNER, () => setGravatarEnabled(false));
-  const url = (await memberRow(MEMBER)).avatarUrl;
-  assert.equal(url, `/api/avatar/glyphs/default/${MEMBER}.svg`);
-  assert.ok(!url!.includes("gravatar"), "no address may be emitted");
+  // Null, and the component draws the letters of their name - the same fallback
+  // a team has. Nothing about them leaves the instance.
+  assert.equal((await memberRow(MEMBER)).avatarUrl, null);
 
   // An UPLOADED picture is unaffected - the switch is about talking to
   // gravatar.com, not about whether people may have a face.
@@ -170,15 +170,13 @@ test("with the instance switch off, no Gravatar address is emitted anywhere", as
   assert.equal((await memberRow(MEMBER)).avatarUrl, PICTURE);
 });
 
-test("nothing chosen and no Gravatar leaves a generated face, seeded per person", async () => {
+test("nothing chosen leaves the letters to the component, like a team", async () => {
   await as(OWNER, () => setGravatarEnabled(false));
+  assert.equal((await memberRow(MEMBER)).avatarUrl, null);
+  // And that null is what the picture is built from, per name.
   assert.equal(
-    (await memberRow(MEMBER)).avatarUrl,
-    `/api/avatar/glyphs/default/${MEMBER}.svg`,
-  );
-  assert.notEqual(
-    (await memberRow(OWNER)).avatarUrl,
-    (await memberRow(MEMBER)).avatarUrl,
+    initialsFallbackUrl("Ada Lovelace"),
+    "/api/avatar/initials/default/Ada-Lovelace.svg",
   );
 });
 
@@ -213,7 +211,7 @@ test("choosing Gravatar falls back to a face when the instance turns it off", as
   await as(OWNER, () => setGravatarEnabled(false));
   assert.equal(
     (await memberRow(MEMBER)).avatarUrl,
-    `/api/avatar/glyphs/default/${MEMBER}.svg`,
+    null,
     "their pick is off instance-wide, so nothing about them leaves the box",
   );
 });

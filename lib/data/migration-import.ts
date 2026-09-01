@@ -1210,7 +1210,7 @@ async function planMembers(
       ...p,
       name: p.name || p.email,
       hasAccount: account != null,
-      avatarUrl: account ? url({ ...account, userId: account.id }) : null,
+      avatarUrl: account ? url(account) : null,
       avatarColor: account?.avatarColor ?? null,
       inTeam: account != null && memberIds.has(account.id),
     };
@@ -4370,7 +4370,7 @@ async function actorFaces(
       {
         username: p.username,
         avatarColor: p.avatarColor,
-        avatarUrl: url({ ...p, userId: p.id }),
+        avatarUrl: url(p),
       },
     ]),
   );

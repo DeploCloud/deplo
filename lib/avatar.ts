@@ -7,7 +7,6 @@ import { getDb } from "./db/client";
 import { instanceSettings } from "./db/schema/control-plane";
 import { sha256Hex } from "./crypto";
 import {
-  DEFAULT_PACK,
   facePath,
   faceParts,
   GRAVATAR_ORIGINS,
@@ -48,10 +47,6 @@ function gravatarUrl(email: string): string {
 
 /** A row far enough along to answer "what picture does this person have?". */
 export type AvatarSource = {
-  /** Seeds the generated face. Required so a new caller cannot forget it and
-   *  silently drop a whole list back to monograms; null for somebody with no
-   *  account here (an imported author). */
-  userId: string | null;
   image?: string | null;
   email?: string | null;
 };
@@ -62,7 +57,8 @@ export type AvatarSource = {
  * rows without N awaits.
  *
  * A person chooses their source (see `avatar-shared.ts`); nothing chosen falls to
- * their Gravatar when the instance allows it, and then to a generated face.
+ * their Gravatar when the instance allows it, and then to NULL - which the avatar
+ * component draws as the letters of their name, exactly like a team's.
  */
 export async function avatarResolver(): Promise<
   (row: AvatarSource) => string | null
@@ -70,9 +66,6 @@ export async function avatarResolver(): Promise<
   const gravatar = await gravatarEnabled();
   return (row) => {
     const value = row.image?.trim();
-    const generated = row.userId
-      ? facePath(DEFAULT_PACK.style, DEFAULT_PACK.preset, row.userId)
-      : null;
     const parts = faceParts(value);
     if (parts) return facePath(parts.style, parts.preset, parts.seed);
     if (value === INITIALS_VALUE) return null;
@@ -80,7 +73,7 @@ export async function avatarResolver(): Promise<
       return value;
     const email = row.email?.trim();
     if (gravatar && email) return gravatarUrl(email);
-    return generated;
+    return null;
   };
 }
 

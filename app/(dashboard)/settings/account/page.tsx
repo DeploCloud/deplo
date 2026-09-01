@@ -18,7 +18,7 @@ export default async function SettingsAccountPage() {
   // Their own address, and null when the instance keeps Gravatar off: the same
   // resolver every avatar goes through, asked about one person.
   const gravatar = user
-    ? await avatarUrlFor({ userId: null, image: "gravatar", email: user.email })
+    ? await avatarUrlFor({ image: "gravatar", email: user.email })
     : null;
 
   return (

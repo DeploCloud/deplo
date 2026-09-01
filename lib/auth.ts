@@ -115,7 +115,7 @@ async function toPublic(u: {
     role: u.role as PublicUser["role"],
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     avatarColor: u.avatarColor,
-    avatarUrl: await avatarUrlFor({ ...u, userId: u.id }),
+    avatarUrl: await avatarUrlFor(u),
     twoFactorEnabled: u.twoFactorEnabled ?? false,
   };
 }

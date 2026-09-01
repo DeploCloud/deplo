@@ -345,7 +345,6 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   return rows.map(({ createdByImage, createdByEmail, ...r }) => ({
     ...r,
     createdByAvatarUrl: avatarUrl({
-      userId: r.createdByUserId,
       image: createdByImage,
       email: createdByEmail,
     }),
