@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AtSign, Upload } from "lucide-react";
+import { AtSign, Camera, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +26,6 @@ import {
   INITIALS_PRESETS,
   MAX_AVATAR_STRING_LEN,
   rowSeeds,
-  TEAM_PRESETS,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 
@@ -228,15 +227,24 @@ export function AvatarPicker({
         }}
         aria-label={label}
         className={cn(
-          // No badge and no veil: the picture dims on hover, the way every tile
-          // inside the dialog does.
-          "col-start-1 row-start-1 cursor-pointer rounded-full transition outline-none",
-          "hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring",
+          "group relative col-start-1 row-start-1 cursor-pointer rounded-full transition outline-none",
+          "focus-visible:ring-2 focus-visible:ring-ring",
           dragging && "ring-2 ring-ring",
-          busy && "cursor-not-allowed opacity-60 hover:opacity-60",
+          busy && "cursor-not-allowed opacity-60",
         )}
       >
         {preview}
+        {/* The affordance, and the only one: a round picture says nothing about
+          being a control until the pointer is already on it. */}
+        <span
+          className={cn(
+            "absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 transition",
+            !busy && "group-hover:opacity-100 group-focus-visible:opacity-100",
+            dragging && "opacity-100",
+          )}
+        >
+          <Camera className="size-4 text-foreground" />
+        </span>
       </button>
       {hasImage && !sources && (
         <Button
@@ -430,7 +438,7 @@ function AvatarSourceDialog({
         </DialogHeader>
         {sources.simple ? (
           <div className="grid grid-cols-4 gap-2">
-            {TEAM_PRESETS.map(({ id, label }) => (
+            {INITIALS_PRESETS.map(({ id, label }) => (
               <FaceTile
                 key={id}
                 src={facePath("initials", id, seed)}
@@ -525,7 +533,21 @@ function AvatarSourceDialog({
           ) : null}
           <SourceCard
             quiet
-            visual={<Upload className="size-3.5" />}
+            visual={
+              // The picture they uploaded, not a symbol for uploading one: it is
+              // the only source whose current value is a picture we hold.
+              choice.kind === "uploaded" ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={choice.src}
+                  alt=""
+                  draggable={false}
+                  className="size-full object-cover"
+                />
+              ) : (
+                <Upload className="size-3.5" />
+              )
+            }
             label="Upload a picture"
             selected={choice.kind === "uploaded"}
             disabled={busy}

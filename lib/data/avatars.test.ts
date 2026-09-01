@@ -264,7 +264,10 @@ test("the picker reads back the source it just wrote", () => {
     });
   }
   assert.deepEqual(avatarChoiceFromUrl(null), { kind: "initials" });
-  assert.deepEqual(avatarChoiceFromUrl(PICTURE), { kind: "uploaded" });
+  assert.deepEqual(avatarChoiceFromUrl(PICTURE), {
+    kind: "uploaded",
+    src: PICTURE,
+  });
   assert.deepEqual(avatarChoiceFromUrl("https://gravatar.com/avatar/abc?s=1"), {
     kind: "gravatar",
   });
@@ -277,7 +280,10 @@ test("the picker reads back the source it just wrote", () => {
     seed: "zoe",
   });
   assert.deepEqual(avatarChoiceFromValue("gravatar"), { kind: "gravatar" });
-  assert.deepEqual(avatarChoiceFromValue(PICTURE), { kind: "uploaded" });
+  assert.deepEqual(avatarChoiceFromValue(PICTURE), {
+    kind: "uploaded",
+    src: PICTURE,
+  });
   assert.deepEqual(avatarChoiceFromValue(null), { kind: "initials" });
 });
 

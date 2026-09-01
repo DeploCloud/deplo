@@ -48,6 +48,12 @@ const PRESET_OPTIONS: Record<
   },
   initials: {
     default: {},
+    greyscale: { backgroundColor: ["343437", "5e5e62", "8c8c90", "b6b6b9"] },
+    sunrise: {
+      backgroundColor: ["ffd9b0", "ffa8bf"],
+      backgroundColorFill: "linear",
+      backgroundColorAngle: 135,
+    },
     electric: {
       backgroundColor: [
         "ff2e88",
@@ -57,15 +63,6 @@ const PRESET_OPTIONS: Record<
         "ff6a00",
         "b400ff",
       ],
-    },
-    greyscale: { backgroundColor: ["343437", "5e5e62", "8c8c90", "b6b6b9"] },
-    sunrise: {
-      backgroundColor: ["ffd9b0", "ffa8bf"],
-      backgroundColorFill: "linear",
-      backgroundColorAngle: 135,
-    },
-    "bold-pop": {
-      backgroundColor: ["ff5d8f", "ffb703", "43aa8b", "4d96ff", "b57bff"],
     },
   },
 };

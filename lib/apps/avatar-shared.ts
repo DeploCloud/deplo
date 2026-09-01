@@ -94,23 +94,16 @@ export const AVATAR_PACKS = [
 
 export const DEFAULT_PACK = AVATAR_PACKS[0];
 
-/** The initials looks. Electric leads - it is the one to recommend. */
+/**
+ * The initials looks: ONE seed - the letters are the person or the team, they do
+ * not vary - in four variants. `default` is the palette DiceBear picks from the
+ * seed itself, which is what a name with nothing stored already wears.
+ */
 export const INITIALS_PRESETS = [
-  { id: "electric", label: "Initials Electric" },
-  { id: "greyscale", label: "Initials Greyscale" },
-  { id: "sunrise", label: "Initials Sunrise" },
-  { id: "bold-pop", label: "Initials Bold" },
-] as const;
-
-export const DEFAULT_INITIALS_PRESET = INITIALS_PRESETS[0].id;
-
-/** What a TEAM is offered: the same set, four of it. `default` is the derived
- *  one - the picture it already wears - and storing it means storing nothing. */
-export const TEAM_PRESETS = [
   { id: "default", label: "Initials" },
-  { id: "electric", label: "Initials Electric" },
   { id: "greyscale", label: "Initials Greyscale" },
   { id: "sunrise", label: "Initials Sunrise" },
+  { id: "electric", label: "Initials Electric" },
 ] as const;
 
 /**
@@ -249,7 +242,7 @@ export function avatarPreviewUrl(
  *  one in use without a second field on every DTO. */
 export type AvatarChoice =
   | { kind: "generated"; style: AvatarStyle; preset: string; seed: string }
-  | { kind: "uploaded" }
+  | { kind: "uploaded"; src: string }
   | { kind: "gravatar" }
   | { kind: "initials" };
 
@@ -261,7 +254,8 @@ export function avatarChoiceFromValue(
   const parts = faceParts(value);
   if (parts) return { kind: "generated", ...parts };
   if (value === GRAVATAR_VALUE) return { kind: "gravatar" };
-  if (value && isValidAvatarValue(value)) return { kind: "uploaded" };
+  if (value && isValidAvatarValue(value))
+    return { kind: "uploaded", src: value };
   return { kind: "initials" };
 }
 
@@ -269,7 +263,7 @@ export function avatarChoiceFromUrl(
   url: string | null | undefined,
 ): AvatarChoice {
   if (!url) return { kind: "initials" };
-  if (url.startsWith("data:")) return { kind: "uploaded" };
+  if (url.startsWith("data:")) return { kind: "uploaded", src: url };
   if (GRAVATAR_ORIGINS.some((o) => url.startsWith(o)))
     return { kind: "gravatar" };
   if (!url.startsWith("/api/avatar/")) return { kind: "initials" };
