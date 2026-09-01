@@ -65,6 +65,7 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+/** Set once the account step is behind you, so a reload before that replays it. */
 function introAlreadyPlayed(): boolean {
   try {
     return window.sessionStorage.getItem(INTRO_SEEN) === "1";
@@ -95,12 +96,6 @@ export function OnboardingWizard() {
 
   React.useEffect(() => {
     const play = !introAlreadyPlayed() && !prefersReducedMotion();
-    // Stamped up front, not at the end: a reload mid-intro must not replay it.
-    if (play) {
-      try {
-        window.sessionStorage.setItem(INTRO_SEEN, "1");
-      } catch {}
-    }
     // Every phase is scheduled rather than set inline, the first one included:
     // the first paint has to stay blank until the client knows what is owed.
     const at = (ms: number, next: Phase) =>
@@ -174,7 +169,11 @@ export function OnboardingWizard() {
             className="space-y-5"
             onSubmit={(e) => {
               e.preventDefault();
-              if (accountReady) go("team", "forward");
+              if (!accountReady) return;
+              try {
+                window.sessionStorage.setItem(INTRO_SEEN, "1");
+              } catch {}
+              go("team", "forward");
             }}
           >
             <div className="flex justify-center">
@@ -200,7 +199,7 @@ export function OnboardingWizard() {
               />
             </div>
             <div className="text-center">
-              <h1 className="text-2xl font-semibold">Welcome to deplo</h1>
+              <h1 className="text-2xl font-semibold">Welcome to deplo.</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Create the account that runs this instance.
               </p>
@@ -372,14 +371,14 @@ export function OnboardingWizard() {
           </form>
         )}
       </div>
-      <ol className="mt-8 flex justify-center gap-1.5">
+      <ol className="animate-soft-in mt-8 flex justify-center gap-1.5">
         {(["account", "team"] as const).map((s) => (
           <li
             key={s}
             aria-current={s === step ? "step" : undefined}
             className={cn(
-              "h-1 w-8 rounded-full transition-colors",
-              s === step ? "bg-foreground" : "bg-border",
+              "h-1 rounded-full transition-all duration-300",
+              s === step ? "w-8 bg-foreground" : "w-4 bg-border",
             )}
           >
             <span className="sr-only">
