@@ -1528,10 +1528,24 @@ foreign_containers() {
   docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^$TAKEOVER" || true
 }
 
+# The platform's own SWARM services, which is how Dokploy runs its panel and its
+# database. Stopping the task container is not stopping them: the swarm puts it
+# straight back and takes :3000 with it.
+foreign_services() {
+  [ "$TAKEOVER" = dokploy ] || return 0
+  docker service ls --format '{{.Name}}' 2>/dev/null | grep -E '^dokploy(-postgres)?$' || true
+}
+
 # Stop it for good: `--restart=no` FIRST, or the docker restart below brings the
-# whole platform back up underneath Deplo.
+# whole platform back up underneath Deplo. Replica counts are written down so a
+# rollback puts them back the way they were.
 foreign_stop() {
-  local names
+  local names svc n
+  for svc in $(foreign_services); do
+    n="$(docker service inspect "$svc" --format '{{.Spec.Mode.Replicated.Replicas}}' 2>/dev/null || true)"
+    state_set "foreign_replicas_$svc" "${n:-1}"
+    docker service scale "$svc=0" >&9 2>&9 || true
+  done
   names="$(foreign_containers)"
   [ -n "$names" ] || return 0
   # shellcheck disable=SC2086
@@ -1541,7 +1555,11 @@ foreign_stop() {
 }
 
 foreign_start() {
-  local names
+  local names svc n
+  for svc in $(foreign_services); do
+    n="$(state_get "foreign_replicas_$svc" || true)"
+    docker service scale "$svc=${n:-1}" >&9 2>&9 || true
+  done
   names="$(foreign_containers)"
   [ -n "$names" ] || return 0
   # shellcheck disable=SC2086
@@ -1619,8 +1637,59 @@ takeover_apply_ports() {
   TAKEOVER_API="$AGENT_BOOTSTRAP_URL/api/takeover"
   write_traefik_compose
   write_panel_compose
+  takeover_up_stacks
+}
+
+takeover_up_stacks() {
   docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
   docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
+}
+
+# Which container is listening on a port, when nothing in `docker ps` shows it -
+# a `network_mode: host` container binds the host's port directly.
+container_on_port() {
+  local pid
+  pid="$(ss -ltnpH 2>/dev/null | awk -v p="$1" '$4 ~ "[:.]"p"$" {print $NF}' | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -n1)"
+  [ -n "$pid" ] || return 1
+  sed -n 's#.*/docker-\([0-9a-f]\{12\}\)[0-9a-f]*\.scope.*#\1#p' "/proc/$pid/cgroup" 2>/dev/null | head -n1
+}
+
+proxy_running() {
+  docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^deplo-traefik$'
+}
+
+# Traefik must have 80 and 443, and a workload of the platform being replaced can
+# grab one the moment its proxy lets go - a host-network container does exactly
+# that. Take the port back, from THEIRS only.
+ensure_proxy_bound() {
+  proxy_running && return 0
+  local port cid took=0 workloads
+  # Read once, and match WITHOUT a pipe: `grep -q` closes the pipe on its first
+  # hit, the producer dies of SIGPIPE, and under `pipefail` a real match then
+  # reads as no match at all.
+  workloads="$(foreign_workloads)"
+  for port in 80 443; do
+    cid="$(container_on_port "$port" || true)"
+    [ -n "$cid" ] || continue
+    case "
+$workloads
+" in
+      *"
+$cid
+"*) ;;
+      *)
+        warn "Port $port is held by something that is not ${FOREIGN_LABEL}'s, so Deplo's proxy cannot start."
+        continue
+        ;;
+    esac
+    step "Taking :$port back from $(docker inspect "$cid" --format '{{.Name}}' 2>/dev/null | tr -d /)"
+    docker update --restart=no "$cid" >&9 2>&9 || true
+    docker stop "$cid" >&9 2>&9 || true
+    took=1
+  done
+  [ "$took" = 1 ] && takeover_up_stacks
+  proxy_running || warn "Deplo's proxy is not running - the dashboard works, but no app domain will answer."
+  return 0
 }
 
 takeover_cutover() {
@@ -1630,6 +1699,14 @@ takeover_cutover() {
   spin_start "Stopping $FOREIGN_LABEL"
   foreign_stop
   takeover_side_door_remove
+  # A swarm takes a moment to give a published port back, and binding 3000 while
+  # it still holds it is how a cutover fails on a machine that was fine.
+  local waited=0
+  while [ "$waited" -lt 45 ]; do
+    port_in_use 80 || port_in_use 443 || port_in_use 3000 || break
+    sleep 1
+    waited=$((waited + 1))
+  done
   spin_ok "$FOREIGN_LABEL stopped" "nothing of it was removed"
 
   inherit_acme
@@ -1640,9 +1717,11 @@ takeover_cutover() {
   spin_ok "Ports moved" "Traefik on 80/443, the dashboard on 3000"
 
   apply_address_pools
-  # The restart takes the panel down with everything else; it comes back on its
-  # own policy, and this is what proves it did.
-  docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
+  # The restart takes both stacks down with it, and on the way back a leftover of
+  # theirs can win the race for :80 - which is how Traefik ends up dead on a
+  # machine whose cutover otherwise worked.
+  takeover_up_stacks
+  ensure_proxy_bound
 
   spin_start "Waiting for the dashboard on its own ports"
   if wait_for_panel 60; then
@@ -1692,6 +1771,9 @@ foreign_workloads() {
     wd="$(docker inspect "$c" --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)"
     case "$wd" in "$dir"/*) printf '%s\n' "$c" ;; esac
   done
+  # Explicit, because `set -o pipefail` reads the loop's last exit status as this
+  # function's, and `foreign_workloads | grep -q` then FAILS on a real match.
+  return 0
 }
 
 # The named volumes those containers actually mount, and the networks they are
@@ -1701,14 +1783,14 @@ foreign_volumes_of() {
   local c
   for c in "$@"; do
     docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' 2>/dev/null || true
-  done | grep -vE '^(deplo|$)' | sort -u
+  done | grep -vE '^(deplo|$)' | sort -u || true
 }
 
 foreign_networks_of() {
   local c
   for c in "$@"; do
     docker inspect "$c" --format '{{range $n, $v := .NetworkSettings.Networks}}{{println $n}}{{end}}' 2>/dev/null || true
-  done | grep -vE '^(bridge|host|none|deplo|deplo-.*|.*_deplo.*|$)$' | sort -u
+  done | grep -vE '^(bridge|host|none|deplo|deplo-.*|.*_deplo.*|$)$' | sort -u || true
 }
 
 foreign_remove() {
