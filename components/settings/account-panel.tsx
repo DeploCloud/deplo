@@ -130,6 +130,14 @@ function ProfileCard({
             choice: avatarChoiceFromUrl(user.avatarUrl),
             defaultSeed: user.id,
             gravatar,
+            monogram: (
+              <UserAvatar
+                name={user.name}
+                username={user.username}
+                avatarUrl={null}
+                size="md"
+              />
+            ),
           }}
           onSave={(image) =>
             gqlAction(
@@ -270,6 +278,7 @@ function EmailCard({ user }: { user: PublicUser }) {
               id="acct-email-pw"
               type="password"
               autoComplete="current-password"
+              placeholder="The one you sign in with"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
