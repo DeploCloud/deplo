@@ -22,7 +22,7 @@ export default async function RegisterPage(props: {
           <RegisterWizard
             token={token}
             mode={info.mode}
-            teamNames={info.teamNames}
+            teams={info.teams}
             gravatar={await gravatarEnabled()}
           />
         ) : (
@@ -34,7 +34,7 @@ export default async function RegisterPage(props: {
             <AuthChrome />
             <div className="animate-soft-in w-full max-w-sm text-center">
               <InvalidLinkGraphic className="mx-auto mb-4" />
-              <h1 className="text-xl font-semibold sm:text-2xl">
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
                 Link not valid
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">

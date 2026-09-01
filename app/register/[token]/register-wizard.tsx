@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertCircle, ShieldCheck, Users } from "lucide-react";
+import { AlertCircle, ShieldCheck } from "lucide-react";
 
 import {
   AuthChrome,
@@ -19,6 +19,7 @@ import {
   TeamStep,
 } from "@/components/auth/wizard-steps";
 import { useStepSwap } from "@/components/apps/wizard/wizard-card";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { Collapse } from "@/components/ui/field-error";
 import { gql } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
@@ -59,15 +60,15 @@ const STEPS = [
 export function RegisterWizard({
   token,
   mode,
-  teamNames,
+  teams,
   gravatar = false,
 }: {
   token: string;
   /** How this link decides the team: own_team asks for a name; existing_teams
    * pre-assigns and so has no team step. */
   mode: "own_team" | "existing_teams";
-  /** For existing_teams: the names of the teams the registrant will join. */
-  teamNames: string[];
+  /** For existing_teams: the teams the registrant will join. */
+  teams: { name: string; avatarUrl: string | null }[];
   /** Whether the instance offers Gravatar as a picture source. */
   gravatar?: boolean;
 }) {
@@ -142,16 +143,25 @@ export function RegisterWizard({
                 pending={!ownTeam && pending}
                 onSubmit={() => (ownTeam ? go("team", "forward") : submit())}
               >
-                {!ownTeam && teamNames.length > 0 && (
-                  <p className="flex items-start justify-center gap-2 text-sm text-muted-foreground">
-                    <Users className="mt-0.5 size-4 shrink-0" />
-                    <span>
-                      You will join{" "}
-                      <span className="font-medium text-foreground">
-                        {teamNames.join(", ")}
+                {!ownTeam && teams.length > 0 && (
+                  <p className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-2 text-sm text-muted-foreground">
+                    <span>You will join</span>
+                    {/* Each team wears its OWN picture, monogram included -
+                        never one stand-in icon for the lot of them. */}
+                    {teams.map((t, i) => (
+                      <span
+                        key={t.name}
+                        className="inline-flex items-center gap-1.5 font-medium text-foreground"
+                      >
+                        <TeamAvatar
+                          name={t.name}
+                          avatarUrl={t.avatarUrl}
+                          size="sm"
+                        />
+                        {t.name}
+                        {i < teams.length - 1 ? "," : "."}
                       </span>
-                      .
-                    </span>
+                    ))}
                   </p>
                 )}
               </AccountStep>

@@ -227,8 +227,9 @@ export interface RegistrationLinkDTO {
 export interface RegistrationLinkInfo {
   valid: boolean;
   mode: RegistrationMode;
-  /** For `existing_teams`: the names of the teams the registrant will join. */
-  teamNames: string[];
+  /** For `existing_teams`: the teams the registrant will join, with their own
+   * pictures - the register screen shows each team, never a stand-in icon. */
+  teams: { name: string; avatarUrl: string | null }[];
 }
 
 /**
@@ -1579,21 +1580,24 @@ export async function getRegistrationLinkInfo(
     )
     .limit(1);
   const link = rows[0];
-  if (!link) return { valid: false, mode: "own_team", teamNames: [] };
+  if (!link) return { valid: false, mode: "own_team", teams: [] };
   const mode = link.mode as RegistrationMode;
-  if (mode !== "existing_teams") return { valid: true, mode, teamNames: [] };
+  if (mode !== "existing_teams") return { valid: true, mode, teams: [] };
 
   const teamRows = await getDb()
-    .select({ name: teamsTable.name })
+    .select({ name: teamsTable.name, image: teamsTable.image })
     .from(registrationLinkTeamsTable)
     .innerJoin(teamsTable, eq(teamsTable.id, registrationLinkTeamsTable.teamId))
     .where(eq(registrationLinkTeamsTable.linkId, link.id))
     .orderBy(asc(teamsTable.name));
-  const teamNames = teamRows.map((r) => r.name);
+  const teams = teamRows.map((r) => ({
+    name: r.name,
+    avatarUrl: teamAvatarUrl(r.image),
+  }));
   // Every assigned team was deleted before use → nothing to join → unusable.
-  if (teamNames.length === 0)
-    return { valid: false, mode: "existing_teams", teamNames: [] };
-  return { valid: true, mode: "existing_teams", teamNames };
+  if (teams.length === 0)
+    return { valid: false, mode: "existing_teams", teams: [] };
+  return { valid: true, mode: "existing_teams", teams };
 }
 
 /**
