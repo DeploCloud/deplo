@@ -838,6 +838,12 @@ export interface ExportHostPathRequest {
    * will not hand over wholesale.
    */
   path: string;
+  /**
+   * Accept a plain FILE at `path` too, streamed as a one-entry tar. Its DIRECTORY
+   * is deny-listed as well, so a file never reaches further than the directory
+   * holding it would.
+   */
+  allowFile: boolean;
 }
 
 export interface HostPathChunk {
@@ -857,6 +863,12 @@ export interface HostPathChunk_Header {
    * alone - see VolumeChunk.Header.wipe_first for why.
    */
   wipeFirst: boolean;
+  /**
+   * `path` names a FILE, not a directory: the archive holds its single entry and
+   * replaces it in place. Without this the agent creates a DIRECTORY at `path`,
+   * which is what a stack that binds a config file comes back up on.
+   */
+  file: boolean;
 }
 
 export interface ExportVolumeRequest {
@@ -5200,13 +5212,16 @@ export const StackResult: MessageFns<StackResult> = {
 };
 
 function createBaseExportHostPathRequest(): ExportHostPathRequest {
-  return { path: "" };
+  return { path: "", allowFile: false };
 }
 
 export const ExportHostPathRequest: MessageFns<ExportHostPathRequest> = {
   encode(message: ExportHostPathRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.path !== "") {
       writer.uint32(10).string(message.path);
+    }
+    if (message.allowFile !== false) {
+      writer.uint32(16).bool(message.allowFile);
     }
     return writer;
   },
@@ -5226,6 +5241,14 @@ export const ExportHostPathRequest: MessageFns<ExportHostPathRequest> = {
           message.path = reader.string();
           continue;
         }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.allowFile = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -5236,13 +5259,23 @@ export const ExportHostPathRequest: MessageFns<ExportHostPathRequest> = {
   },
 
   fromJSON(object: any): ExportHostPathRequest {
-    return { path: isSet(object.path) ? globalThis.String(object.path) : "" };
+    return {
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      allowFile: isSet(object.allowFile)
+        ? globalThis.Boolean(object.allowFile)
+        : isSet(object.allow_file)
+        ? globalThis.Boolean(object.allow_file)
+        : false,
+    };
   },
 
   toJSON(message: ExportHostPathRequest): unknown {
     const obj: any = {};
     if (message.path !== "") {
       obj.path = message.path;
+    }
+    if (message.allowFile !== false) {
+      obj.allowFile = message.allowFile;
     }
     return obj;
   },
@@ -5253,6 +5286,7 @@ export const ExportHostPathRequest: MessageFns<ExportHostPathRequest> = {
   fromPartial<I extends Exact<DeepPartial<ExportHostPathRequest>, I>>(object: I): ExportHostPathRequest {
     const message = createBaseExportHostPathRequest();
     message.path = object.path ?? "";
+    message.allowFile = object.allowFile ?? false;
     return message;
   },
 };
@@ -5336,7 +5370,7 @@ export const HostPathChunk: MessageFns<HostPathChunk> = {
 };
 
 function createBaseHostPathChunk_Header(): HostPathChunk_Header {
-  return { path: "", wipeFirst: false };
+  return { path: "", wipeFirst: false, file: false };
 }
 
 export const HostPathChunk_Header: MessageFns<HostPathChunk_Header> = {
@@ -5346,6 +5380,9 @@ export const HostPathChunk_Header: MessageFns<HostPathChunk_Header> = {
     }
     if (message.wipeFirst !== false) {
       writer.uint32(16).bool(message.wipeFirst);
+    }
+    if (message.file !== false) {
+      writer.uint32(24).bool(message.file);
     }
     return writer;
   },
@@ -5373,6 +5410,14 @@ export const HostPathChunk_Header: MessageFns<HostPathChunk_Header> = {
           message.wipeFirst = reader.bool();
           continue;
         }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.file = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -5390,6 +5435,7 @@ export const HostPathChunk_Header: MessageFns<HostPathChunk_Header> = {
         : isSet(object.wipe_first)
         ? globalThis.Boolean(object.wipe_first)
         : false,
+      file: isSet(object.file) ? globalThis.Boolean(object.file) : false,
     };
   },
 
@@ -5401,6 +5447,9 @@ export const HostPathChunk_Header: MessageFns<HostPathChunk_Header> = {
     if (message.wipeFirst !== false) {
       obj.wipeFirst = message.wipeFirst;
     }
+    if (message.file !== false) {
+      obj.file = message.file;
+    }
     return obj;
   },
 
@@ -5411,6 +5460,7 @@ export const HostPathChunk_Header: MessageFns<HostPathChunk_Header> = {
     const message = createBaseHostPathChunk_Header();
     message.path = object.path ?? "";
     message.wipeFirst = object.wipeFirst ?? false;
+    message.file = object.file ?? false;
     return message;
   },
 };

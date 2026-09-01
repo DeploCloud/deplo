@@ -2465,6 +2465,102 @@ test("composeHostMounts resolves a `./x` bind against the stack's directory", ()
   ]);
 });
 
+test("mapMounts drops the machine's own files and anything not text", () => {
+  // Both panels hand a bind mount over WITH its content. `/etc/localtime` is a
+  // binary TZif blob, and writing it into a config file killed the whole import
+  // on a Postgres encoding error - one line of somebody else's compose file.
+  const mapped = mapMounts(
+    [
+      {
+        mountId: "1",
+        type: "file",
+        filePath: "localtime",
+        content: "TZif2\u0000\u0000",
+        mountPath: "/etc/localtime",
+      },
+      {
+        mountId: "2",
+        type: "file",
+        filePath: "timezone",
+        content: "Europe/Rome\n",
+        mountPath: "/etc/timezone",
+      },
+      {
+        mountId: "3",
+        type: "file",
+        filePath: "resolv.conf",
+        content: "nameserver 1.1.1.1\n",
+        mountPath: "/etc/resolv.conf",
+      },
+      // A real file of the app's, but binary: its bytes belong to the data phase.
+      {
+        mountId: "4",
+        type: "file",
+        filePath: "data.sqlite",
+        content: "SQLite\u0000fmt",
+        mountPath: "/app/data.sqlite",
+      },
+      // The one that must survive all of it.
+      {
+        mountId: "5",
+        type: "file",
+        filePath: "app.conf",
+        content: "listen 8080;\n",
+        mountPath: "/etc/app.conf",
+      },
+    ],
+    { isCompose: false },
+  );
+  assert.deepEqual(
+    mapped.value.files.map((f) => f.filePath),
+    ["app.conf"],
+  );
+  assert.deepEqual(
+    mapped.value.volumes.map((v) => v.mountPath),
+    ["/etc/app.conf"],
+  );
+  // The binary one is SAID; a machine's own file is not worth a line.
+  assert.deepEqual(mapped.notes, [
+    "/app/data.sqlite is not a text file, so it does not come across as a config file - its bytes travel with the data.",
+  ]);
+});
+
+test("pairHostMounts drops what belongs to the MACHINE, not to the app", () => {
+  // `/etc/localtime:/etc/localtime:ro` is on half the compose files in the world.
+  // The target has its own, and reading one is not a copy that can succeed.
+  const host = [
+    "/etc/localtime",
+    "/etc/timezone",
+    "/etc/hosts",
+    "/etc/resolv.conf",
+    "/etc/machine-id",
+    "/etc/passwd",
+    "/var/run/docker.sock",
+    "/proc/cpuinfo",
+    "/sys/fs/cgroup",
+  ];
+  const paired = pairHostMounts(
+    host.map((p) => ({ hostPath: p, mountPath: p })),
+    host.map((p) => ({ hostPath: p, mountPath: p })),
+  );
+  assert.deepEqual(paired, []);
+  // A path that only LOOKS like one of them is still the app's own data.
+  assert.equal(
+    pairHostMounts(
+      [{ hostPath: "/etc/localtime.bak", mountPath: "/cfg" }],
+      [{ hostPath: "/etc/localtime.bak", mountPath: "/cfg" }],
+    ).length,
+    1,
+  );
+  assert.equal(
+    pairHostMounts(
+      [{ hostPath: "/srv/app/etc/hosts", mountPath: "/cfg" }],
+      [{ hostPath: "/srv/app/etc/hosts", mountPath: "/cfg" }],
+    ).length,
+    1,
+  );
+});
+
 test("pairHostMounts carries the stack-relative flag off the target", () => {
   const paired = pairHostMounts(
     [

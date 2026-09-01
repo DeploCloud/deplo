@@ -53,11 +53,9 @@ import {
   copyHostPathBetween,
   copyVolumeBetween,
   isCopyAborted,
-  isNotADirectory,
   startStackOn,
   stopStackOn,
   type OnBytes,
-  type VolumeCopyResult,
 } from "./volume-migration";
 import { recordActivity } from "./activity";
 import { clearDataCopyError, markDataCopyFailed } from "./data-copy";
@@ -313,12 +311,6 @@ function unfilledStackBinds(
     );
 }
 
-/** The directory a host path sits in. Both sides are already absolute here. */
-function parentDir(path: string): string {
-  const at = path.replace(/\/+$/, "").lastIndexOf("/");
-  return at > 0 ? path.slice(0, at) : "/";
-}
-
 /* ------------------------------------------------------------------ */
 /* The destination, and how it is found                                */
 /* ------------------------------------------------------------------ */
@@ -571,16 +563,16 @@ export async function planMigrationDataMove(
       sourceReachable: reachable,
       volumes: [
         ...paired.value,
-        // A bind mount is listed as what it is: a host DIRECTORY, copied by a different RPC
-        // behind a different permission. Naming it a volume in the report would be the sort
-        // of half-truth that makes someone believe data moved when it could not.
+        // A bind mount is listed as what it is: a host PATH - a directory or a single
+        // file - copied by a different RPC behind a different permission. Which of the
+        // two it is only the host knows, so the copy says it and the plan does not guess.
         ...binds.map((b) => ({
           sourceVolume: b.sourcePath,
           targetVolume: b.targetPath,
           mountPath: b.mountPath,
           note: b.stackRelative
-            ? "A directory the stack binds beside its own compose file, not a volume."
-            : "A host directory, not a volume. Copying it needs instance admin and the host-volumes permission.",
+            ? "A path the stack binds beside its own compose file, not a volume."
+            : "A path on the host, not a volume. Copying it needs instance admin and the host-volumes permission.",
         })),
       ].map((v) => ({ ...v, note: v.note ? said(v.note) : null })),
       notes: [
@@ -1104,8 +1096,6 @@ async function runMoveMigrationServiceData(
         });
       }
     }
-    /** Stack directories already copied whole, so two file binds are one copy. */
-    const copiedStackDirs = new Set<string>();
     for (const bind of binds) {
       if (!mayCopyHostPaths && !bind.stackRelative) {
         await appendRunItem(input.runId, panel, {
@@ -1138,44 +1128,16 @@ async function runMoveMigrationServiceData(
         continue;
       }
       try {
-        let copied: VolumeCopyResult;
-        /** Where the bytes actually landed - the file's directory on a fallback. */
-        let landedIn = bind.targetPath;
-        try {
-          copied = await copyHostPathBetween(
-            source,
-            dest,
-            bind.sourcePath,
-            bind.targetPath,
-            input.onBytes,
-            aborter.signal,
-          );
-        } catch (e) {
-          // `./nginx.conf:/etc/nginx/nginx.conf` - a FILE, which the directory
-          // export refuses and Docker then materialises as a DIRECTORY on the
-          // target, so the stack never comes up. Both ends sit in the stack's own
-          // directory, so copying THAT carries the file across, and every sibling
-          // bind with it - which is why it runs once per directory.
-          // ponytail: a whole directory for one file; a per-file export RPC is the
-          // fix if a stack dir ever holds more than the stack's own state.
-          if (!isNotADirectory(e) || !bind.stackRelative) throw e;
-          const into = parentDir(bind.targetPath);
-          if (copiedStackDirs.has(into)) {
-            moved++;
-            continue;
-          }
-          copiedStackDirs.add(into);
-          landedIn = into;
-          copied = await copyHostPathBetween(
-            source,
-            dest,
-            parentDir(bind.sourcePath),
-            into,
-            input.onBytes,
-            aborter.signal,
-            false,
-          );
-        }
+        // A bind that names a FILE is carried as that one file - see
+        // copyHostPathBetween, which asks the agent rather than guessing.
+        const copied = await copyHostPathBetween(
+          source,
+          dest,
+          bind.sourcePath,
+          bind.targetPath,
+          input.onBytes,
+          aborter.signal,
+        );
         if (copied.empty) {
           empty++;
           if (copied.missing) missing++;
@@ -1206,7 +1168,7 @@ async function runMoveMigrationServiceData(
           outcome: "created",
           targetKind: landed.targetKind,
           targetId: landed.targetId,
-          message: `Copied ${formatBytes(copied.bytes)} (compressed) into ${landedIn} (${bind.mountPath}), a host directory.`,
+          message: `Copied ${formatBytes(copied.bytes)} (compressed) into ${bind.targetPath} (${bind.mountPath}), a host ${copied.file ? "file" : "directory"}.`,
         });
       } catch (e) {
         if (isCopyAborted(e)) throw e;

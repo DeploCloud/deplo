@@ -1513,6 +1513,19 @@ export function mapMounts(
   for (const m of mounts ?? []) {
     const mountPath = m.mountPath?.trim();
     if (m.type === "file") {
+      // The machine's own clock, resolver and hosts file, which half the compose
+      // files in the world bind read-only. A panel hands them over WITH their
+      // content, and `/etc/localtime` is a binary TZif blob: written into a
+      // config file it took the whole import down with an encoding error.
+      if (mountPath && !isDataHostPath(mountPath)) continue;
+      // A real file of the app's that simply is not text. Its bytes travel in the
+      // data phase, which is what copies a bind mount.
+      if (m.content != null && !isTextFileContent(m.content)) {
+        notes.push(
+          `${mountPath || m.filePath} is not a text file, so it does not come across as a config file - its bytes travel with the data.`,
+        );
+        continue;
+      }
       // Deplo owns the whole files dir, so only the file's own name travels -
       // never Dokploy's `../files/` prefix and never an absolute path.
       const declared = (m.filePath ?? "")
@@ -1961,9 +1974,38 @@ export function composeHostMounts(
  */
 const NOT_DATA_HOST_PATH = /^\/(proc|sys|dev)(\/|$)|\.sock$/;
 
+/**
+ * The host's own identity, clock and resolver, which half the compose files in the
+ * world bind read-only. They belong to the MACHINE, the target already has its own,
+ * and copying one would overwrite it.
+ */
+const HOST_OWNED_FILES = new Set([
+  "/etc/localtime",
+  "/etc/timezone",
+  "/etc/hosts",
+  "/etc/hostname",
+  "/etc/resolv.conf",
+  "/etc/machine-id",
+  "/var/lib/dbus/machine-id",
+  "/etc/nsswitch.conf",
+  "/etc/passwd",
+  "/etc/group",
+  "/etc/shadow",
+  "/etc/ssl/certs/ca-certificates.crt",
+]);
+
+/**
+ * Whether a file's content can be carried as a CONFIG FILE. Postgres refuses a NUL
+ * in a text column, so a binary file written into `app_mounts` took the whole
+ * import down; its bytes belong to the data phase, which copies bind mounts.
+ */
+export function isTextFileContent(content: string): boolean {
+  return !content.includes("\u0000");
+}
+
 /** Whether a host path is one a copy has any business reading. */
 export function isDataHostPath(hostPath: string): boolean {
-  return !NOT_DATA_HOST_PATH.test(hostPath);
+  return !NOT_DATA_HOST_PATH.test(hostPath) && !HOST_OWNED_FILES.has(hostPath);
 }
 
 /**
@@ -1984,7 +2026,7 @@ export function pairHostMounts(
 ): PairedHostMount[] {
   const out: PairedHostMount[] = [];
   for (const s of source) {
-    if (NOT_DATA_HOST_PATH.test(s.hostPath)) continue;
+    if (!isDataHostPath(s.hostPath)) continue;
     const hit = target.find((t) => t.mountPath === s.mountPath);
     if (!hit) continue;
     out.push({

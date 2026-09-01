@@ -199,7 +199,7 @@ function fakeAgent(serverId: string) {
       return {
         contractVersion: 1,
         dockerAvailable: true,
-        capabilities: [],
+        capabilities: ["host-path-copy.file"],
         version: "1.0.0",
       };
     },
@@ -220,22 +220,27 @@ function fakeAgent(serverId: string) {
       volumes[serverId][name] = Buffer.concat(parts);
       return { ok: true, error: "" };
     },
-    async *exportHostPath(path: string) {
-      say("export-path", path);
-      // The agent tars a DIRECTORY and refuses a file, which is what a
-      // `./nginx.conf` bind names.
-      if (hostFiles.has(path))
-        throw new Error(
-          `3 INVALID_ARGUMENT: ${path} is a file, not a directory`,
-        );
+    async *exportHostPath(path: string, allowFile = false) {
+      say(allowFile ? "export-file" : "export-path", path);
+      // The agent tars a DIRECTORY and refuses a file unless the caller says a
+      // file is what it wants - which is what a `./nginx.conf` bind names.
+      if (hostFiles.has(path)) {
+        if (!allowFile)
+          throw new Error(
+            `3 INVALID_ARGUMENT: ${path} is a file, not a directory`,
+          );
+        yield hostPaths[serverId]?.[path] ?? EMPTY_ARCHIVE;
+        return;
+      }
       yield hostPaths[serverId]?.[path] ?? EMPTY_ARCHIVE;
     },
     async importHostPath(
       path: string,
       wipeFirst: boolean,
       chunks: AsyncIterable<Buffer>,
+      file = false,
     ) {
-      say("import-path", path);
+      say(file ? "import-file" : "import-path", path);
       if (wipeFirst) say("wipe-path", path);
       const parts: Buffer[] = [];
       for await (const ch of chunks) parts.push(ch);
@@ -639,12 +644,12 @@ test("a `./x` bind beside the compose file crosses, and is not called a host pat
   );
 });
 
-test("a `./file` bind carries across in the directory it sits in", async () => {
+test("a `./file` bind carries across as that FILE, not its directory", async () => {
   await seedPanelHost();
   const filesDir = `${process.env.DEPLO_DATA_DIR}/stacks/files/blink-bind`;
   const stackDir = "/data/coolify/services/svc-bind";
   hostPaths.srv_migration_host[`${stackDir}/content`] = tarGzOf(1024, 3);
-  hostPaths.srv_migration_host[stackDir] = tarGzOf(4096, 9);
+  hostPaths.srv_migration_host[`${stackDir}/nginx.conf`] = tarGzOf(512, 1);
   // Docker materialises a missing `./nginx.conf` as a DIRECTORY, and the stack
   // then does not start at all - so the file has to come over.
   hostFiles.add(`${stackDir}/nginx.conf`);
@@ -660,8 +665,15 @@ test("a `./file` bind carries across in the directory it sits in", async () => {
   );
   assert.equal(res.moved, 2, JSON.stringify(res));
   assert.deepEqual(
-    hostPaths[SERVER_1][filesDir],
-    hostPaths.srv_migration_host[stackDir],
+    hostPaths[SERVER_1][`${filesDir}/nginx.conf`],
+    hostPaths.srv_migration_host[`${stackDir}/nginx.conf`],
+  );
+  // Never the stack directory around it: dragging that across carried every
+  // sibling of the file with it, Deplo's own config files included.
+  assert.equal(
+    agentCalls.includes(`${SERVER_1}:import-path:${filesDir}`),
+    false,
+    agentCalls.join(" | "),
   );
   // The files dir holds Deplo's own config files too, so it is never emptied.
   assert.equal(

@@ -12,6 +12,8 @@ import {
   composeServiceExposingPort,
   composeServices,
   deploFilesPath,
+  isDataHostPath,
+  isTextFileContent,
   parseEnvBlob,
   sharedRefsIn,
 } from "../map";
@@ -391,20 +393,46 @@ export function coolifyMounts(
     );
   }
 
+  // {panel} files EVERY bind mount here, a config file and a whole data directory
+  // alike, so this loop picks which of the two channels carries each one: the
+  // config file travels as content, everything else as a bind the data phase copies.
   for (const f of st?.file_storages ?? []) {
     const mountPath = f.mount_path?.trim();
     if (!mountPath) continue;
+    const hostPath = f.fs_path?.trim() || null;
+    // The machine's own clock, resolver and hosts file. Neither channel: the
+    // target has its own, and `/etc/localtime` is a binary blob that took the
+    // whole import down when it was written into a config file.
+    if (!isDataHostPath(hostPath ?? mountPath)) continue;
+    const asBind = () => {
+      if (hostPath) {
+        mounts.push({
+          mountId: f.uuid ?? `cool-file-${n++}`,
+          type: "bind",
+          hostPath,
+          mountPath,
+        });
+        return true;
+      }
+      return false;
+    };
+    // A directory is not a config file, and it used to be dropped by BOTH
+    // channels - {panel} names no bind for it either, so a whole data directory
+    // arrived empty with one note to show for it.
     if (f.is_directory) {
-      // A directory is not a file: its bytes travel in the data phase, not here.
-      notes.push(
-        `${mountPath} is a mounted DIRECTORY on {panel}, not a file - its contents come across with the data, not as a config file.`,
-      );
+      if (!asBind())
+        notes.push(
+          `${mountPath} is a mounted DIRECTORY on {panel} and it named no path on the host, so nothing of it could be copied.`,
+        );
       continue;
     }
-    if (typeof f.content !== "string") {
-      notes.push(
-        `The file mounted at ${mountPath} did not come with its contents - re-add it under Storage.`,
-      );
+    // Content missing or not text: a config file cannot hold it (Postgres refuses
+    // a NUL), but the data phase copies the file itself.
+    if (typeof f.content !== "string" || !isTextFileContent(f.content)) {
+      if (!asBind())
+        notes.push(
+          `The file mounted at ${mountPath} did not come with its contents - re-add it under Storage.`,
+        );
       continue;
     }
     mounts.push({

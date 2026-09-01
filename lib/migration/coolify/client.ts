@@ -202,6 +202,9 @@ export interface CoolifyStorage {
   name?: string | null;
   mount_path?: string | null;
   host_path?: string | null;
+  /** File storages: where the file/directory actually IS on the host. The only
+   *  column that says so, and without it neither channel could copy the bytes. */
+  fs_path?: string | null;
   container_id?: string | null;
   is_directory?: boolean | null;
   /** File storages only, and only for a token holding `read:sensitive`. */

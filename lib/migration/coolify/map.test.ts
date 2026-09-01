@@ -252,6 +252,58 @@ test("coolifyMounts splits volumes, binds and files", () => {
   assert.match(notes[1], /did not come with its contents/);
 });
 
+test("coolifyMounts sends each storage down the channel that can carry it", () => {
+  // Coolify files EVERY bind mount as a "file storage", a config file and a whole
+  // data directory alike, and `fs_path` is the only column that says where it is
+  // on the host. Unread, a directory and a binary file were dropped by BOTH
+  // channels: no config file, and no bind for the data phase to copy.
+  const { mounts, notes } = coolifyMounts({
+    file_storages: [
+      {
+        uuid: "f1",
+        fs_path: "/srv/site/nginx.conf",
+        mount_path: "/etc/nginx/nginx.conf",
+        content: "server {}",
+      },
+      {
+        uuid: "f2",
+        fs_path: "/srv/site/data",
+        mount_path: "/data",
+        is_directory: true,
+      },
+      {
+        uuid: "f3",
+        fs_path: "/srv/site/app.db",
+        mount_path: "/app/app.db",
+        content: "SQLite\u0000fmt",
+      },
+      {
+        uuid: "f4",
+        fs_path: "/etc/localtime",
+        mount_path: "/etc/localtime",
+        content: "TZif2\u0000\u0000",
+      },
+      { uuid: "f5", fs_path: "/srv/site/big.bin", mount_path: "/app/big.bin" },
+      // No fs_path at all: nothing can carry it, and that has to be said.
+      { uuid: "f6", mount_path: "/app/orphan", is_directory: true },
+    ],
+  });
+
+  assert.deepEqual(
+    mounts.map((m) => [m.type, m.hostPath ?? m.filePath]),
+    [
+      ["file", "nginx.conf"],
+      ["bind", "/srv/site/data"],
+      ["bind", "/srv/site/app.db"],
+      ["bind", "/srv/site/big.bin"],
+    ],
+  );
+  // The machine's own file is not worth a line; the one nothing can carry is.
+  assert.deepEqual(notes, [
+    "/app/orphan is a mounted DIRECTORY on {panel} and it named no path on the host, so nothing of it could be copied.",
+  ]);
+});
+
 // The name on the host has to stay whole - it is what the data copy reads - and
 // the name the owner sees has to lose the panel's own id.
 test("a volume keeps its host name and loses the panel's id", () => {

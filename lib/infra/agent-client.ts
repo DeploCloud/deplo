@@ -350,13 +350,20 @@ export interface AgentConnection {
    * bind-mount half of a migration from another platform, whose services may keep
    * their data in a plain directory.
    */
-  exportHostPath(path: string): AsyncGenerator<Buffer, void, unknown>;
+  exportHostPath(
+    path: string,
+    /** Take a plain FILE at `path` too, as a one-entry tar. Off by default, so a
+     *  caller that means a directory still gets told when it named a file. */
+    allowFile?: boolean,
+  ): AsyncGenerator<Buffer, void, unknown>;
   /** Untar a stream into a HOST DIRECTORY on this host - the receiving half. The
    *  wipe happens on the first data frame, never on the header alone. */
   importHostPath(
     path: string,
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
+    /** `path` names a FILE: the one entry replaces it in place. */
+    file?: boolean,
   ): Promise<{
     ok: boolean;
     error: string;
@@ -1346,13 +1353,13 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
-    exportHostPath(path: string) {
+    exportHostPath(path: string, allowFile = false) {
       // Same bridge as exportVolume; the agent refuses a missing directory rather
       // than creating it, so an empty archive here means the directory really is
       // empty.
       return (async function* () {
         const stream = client.exportHostPath(
-          { path },
+          { path, allowFile },
           { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
         );
         for await (const chunk of streamEvents<VolumeChunk>(stream, {
@@ -1367,6 +1374,7 @@ function dial(target: DialTarget): AgentConnection {
       path: string,
       wipeFirst: boolean,
       chunks: AsyncIterable<Buffer>,
+      file = false,
     ) {
       return new Promise<{
         ok: boolean;
@@ -1389,7 +1397,7 @@ function dial(target: DialTarget): AgentConnection {
         );
         pumpClientStream<HostPathChunk>(
           call,
-          { header: { path, wipeFirst } },
+          { header: { path, wipeFirst, file } },
           chunks,
           (data) => ({ data }),
           (e) => reject(toAgentError(e)),

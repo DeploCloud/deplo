@@ -62,6 +62,10 @@ const CONNECT = { url: "https://dokploy.acme.test", apiKey: "dk_test_key" };
 /** Every procedure the fake was asked for, in order. */
 let calls: string[] = [];
 
+/** What every fake agent advertises. A host-path copy of a single FILE is refused
+ *  outright when the receiving agent does not, so a test can take it away. */
+let agentCapabilities: string[] = ["host-path-copy.file"];
+
 /** Servers whose agent refuses to answer us - the pre-flight's whole subject. */
 const unreachableAgents = new Set<string>();
 
@@ -162,6 +166,9 @@ const INSPECT: Record<string, unknown> = {
   },
 };
 
+/** Bind mounts added to `ct-web` by a single test. Reset between tests. */
+let extraWebMounts: unknown[] = [];
+
 /** Which containers each `appName` has. */
 const CONTAINERS: Record<
   string,
@@ -217,9 +224,19 @@ function fakeSource() {
     if (procedure === "docker.getContainersByAppLabel")
       return json(CONTAINERS[url.searchParams.get("appName") ?? ""] ?? []);
     if (procedure === "docker.getConfig") {
-      const row = INSPECT[url.searchParams.get("containerId") ?? ""];
+      const id = url.searchParams.get("containerId") ?? "";
+      const row = INSPECT[id] as { Mounts?: unknown[] } | undefined;
       return json(
-        row ? { ...(row as object), State: { Running: sourceRunning } } : {},
+        row
+          ? {
+              ...row,
+              State: { Running: sourceRunning },
+              Mounts: [
+                ...(row.Mounts ?? []),
+                ...(id === "ct-web" ? extraWebMounts : []),
+              ],
+            }
+          : {},
       );
     }
     if (procedure.endsWith(".stop")) {
@@ -245,6 +262,9 @@ let agentCalls: string[] = [];
 let volumes: Record<string, Record<string, Buffer>> = {};
 /** What each host has in a plain DIRECTORY, for the bind-mount half. */
 let hostPaths: Record<string, Record<string, Buffer>> = {};
+/** Host paths that are a FILE, not a directory - what the export refuses unless
+ *  it is told a file is acceptable. Value is the archive of that one file. */
+let hostFiles: Record<string, Record<string, Buffer>> = {};
 
 /** A gzipped tar of an empty directory: the archive a missing volume produces. */
 const EMPTY_ARCHIVE = EMPTY_TAR_GZ;
@@ -285,7 +305,7 @@ function fakeAgent(serverId: string) {
       return {
         contractVersion: 1,
         dockerAvailable: true,
-        capabilities: [],
+        capabilities: agentCapabilities,
         version: "1.0.0",
       };
     },
@@ -336,21 +356,31 @@ function fakeAgent(serverId: string) {
           .map((n) => [n, 1024]),
       );
     },
-    async *exportHostPath(path: string) {
-      say("export-path", path);
+    async *exportHostPath(path: string, allowFile = false) {
+      say(allowFile ? "export-file" : "export-path", path);
+      const file = hostFiles[serverId]?.[path];
+      if (file) {
+        // The real agent's refusal, verbatim - it is what the caller matches on.
+        if (!allowFile) throw new Error(`${path} is a file, not a directory`);
+        yield file;
+        return;
+      }
       yield hostPaths[serverId]?.[path] ?? EMPTY_ARCHIVE;
     },
     async importHostPath(
       path: string,
       wipeFirst: boolean,
       chunks: AsyncIterable<Buffer>,
+      file = false,
     ) {
-      say("import-path", path);
+      say(file ? "import-file" : "import-path", path);
       if (wipeFirst) say("wipe-path", path);
       const parts: Buffer[] = [];
       for await (const c of chunks) parts.push(c);
-      hostPaths[serverId] ??= {};
-      hostPaths[serverId][path] = Buffer.concat(parts);
+      const into = file
+        ? (hostFiles[serverId] ??= {})
+        : (hostPaths[serverId] ??= {});
+      into[path] = Buffer.concat(parts);
       return { ok: true, error: "" };
     },
     async stopStack(slug: string) {
@@ -498,6 +528,9 @@ beforeEach(async () => {
   hostPaths = {
     srv_migration_host: { "/etc/dokploy/x": CONFIG_DIR },
   };
+  hostFiles = {};
+  extraWebMounts = [];
+  agentCapabilities = ["host-path-copy.file"];
   // The Dokploy host holds both source volumes, with real content in them.
   volumes = {
     srv_migration_host: {
@@ -636,13 +669,13 @@ test("the plan pairs an imported app's volume with the one Deplo will mount", as
     ),
     [
       "blink-web-abc_uploads->deplo-blink-web-uploads@/app/uploads",
-      // The bind mount is listed as what it is - a host DIRECTORY, moved by a different
+      // The bind mount is listed as what it is - a host PATH, moved by a different
       // RPC behind a different permission - rather than dropped in silence, which is how
       // an app used to arrive missing half its data with a report that said everything
       "/etc/dokploy/x->/etc/dokploy/x@/app/config.json",
     ],
   );
-  assert.match(web.volumes[1].note!, /host directory/);
+  assert.match(web.volumes[1].note!, /path on the host, not a volume/);
 });
 
 test("a service that was never imported is not listed at all", async () => {
@@ -1324,6 +1357,149 @@ test("a config file that came across as a project file is not reported lost", as
     res.notes.some((n) => n.includes("was not copied")),
     false,
     res.notes.join(" | "),
+  );
+});
+
+test("a bind mount that names a FILE copies the file, not what surrounds it", async () => {
+  // `- /srv/site/nginx.conf:/etc/nginx/nginx.conf` - ordinary compose, and the
+  // export refuses a file. Copying the directory it sits in would carry every
+  // sibling of it across; the file is what the stack mounts.
+  extraWebMounts.push({
+    Type: "bind",
+    Source: "/srv/site/nginx.conf",
+    Destination: "/etc/nginx/nginx.conf",
+  });
+  await db.insert(appVolumesTable).values({
+    appId: "prj_web",
+    position: 2,
+    volumeId: "vol_file",
+    type: "host",
+    name: "nginx-conf",
+    service: null,
+    projectPath: null,
+    hostPath: "/srv/site/nginx.conf",
+    mountPath: "/etc/nginx/nginx.conf",
+    readOnly: false,
+    propagation: null,
+  });
+  hostFiles = { srv_migration_host: { "/srv/site/nginx.conf": CONFIG_DIR } };
+  await seedMigrationHostServer();
+  const runId = await openRun();
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.equal(res.failed, 0, JSON.stringify(res));
+  assert.equal(res.moved, 3, JSON.stringify(res));
+  assert.deepEqual(hostFiles[SERVER_1]?.["/srv/site/nginx.conf"], CONFIG_DIR);
+  // Never the directory around it: that is somebody else's data.
+  assert.equal(
+    agentCalls.some((c) => c.endsWith(":/srv/site")),
+    false,
+    agentCalls.join(" | "),
+  );
+});
+
+test("a file the destination agent cannot take is refused, never guessed", async () => {
+  // An agent that does not know the flag would create a DIRECTORY of that name and
+  // the stack would come back up on it - broken, and reported as copied.
+  agentCapabilities = [];
+  extraWebMounts.push({
+    Type: "bind",
+    Source: "/srv/site/nginx.conf",
+    Destination: "/etc/nginx/nginx.conf",
+  });
+  await db.insert(appVolumesTable).values({
+    appId: "prj_web",
+    position: 2,
+    volumeId: "vol_file",
+    type: "host",
+    name: "nginx-conf",
+    service: null,
+    projectPath: null,
+    hostPath: "/srv/site/nginx.conf",
+    mountPath: "/etc/nginx/nginx.conf",
+    readOnly: false,
+    propagation: null,
+  });
+  hostFiles = { srv_migration_host: { "/srv/site/nginx.conf": CONFIG_DIR } };
+  await seedMigrationHostServer();
+  const runId = await openRun();
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.equal(res.failed, 1, JSON.stringify(res));
+  assert.ok(
+    res.notes.some((n) => n.includes("too old")),
+    res.notes.join(" | "),
+  );
+  // Nothing of it reached the target: no directory of that name, no bytes.
+  assert.equal(hostPaths[SERVER_1]?.["/srv/site/nginx.conf"], undefined);
+  assert.equal(hostFiles[SERVER_1]?.["/srv/site/nginx.conf"], undefined);
+});
+
+test("a system file a stack binds is not data, and is never even read", async () => {
+  // `- /etc/localtime:/etc/localtime:ro` is on half the compose files in the
+  // world. It holds no data of the app, the export refuses it, and the refusal
+  // used to reach the report as a lost volume AND hold the deploy.
+  for (const p of ["/etc/localtime", "/etc/timezone", "/etc/resolv.conf"])
+    extraWebMounts.push({ Type: "bind", Source: p, Destination: p });
+  await db.insert(appVolumesTable).values(
+    ["/etc/localtime", "/etc/timezone", "/etc/resolv.conf"].map((p, i) => ({
+      appId: "prj_web",
+      position: 2 + i,
+      volumeId: `vol_sys_${i}`,
+      type: "host" as const,
+      name: `sys-${i}`,
+      service: null,
+      projectPath: null,
+      hostPath: p,
+      mountPath: p,
+      readOnly: true,
+      propagation: null,
+    })),
+  );
+  await seedMigrationHostServer();
+  const runId = await openRun();
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.equal(res.failed, 0, JSON.stringify(res));
+  assert.equal(
+    agentCalls.some((c) => c.includes("/etc/localtime")),
+    false,
+    agentCalls.join(" | "),
+  );
+  const items = await db.execute(
+    `select message from migration_run_items where run_id = '${runId}' and message like '%/etc/localtime%'`,
+  );
+  assert.deepEqual(
+    items.rows.map((r) => r.message),
+    [],
+    "a system file is not something to report on",
   );
 });
 

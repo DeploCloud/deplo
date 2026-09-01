@@ -112,10 +112,33 @@ async function destMustProveTheCopy(dest: AgentConnection): Promise<boolean> {
   }
 }
 
+/** Both halves of a host-path copy can carry ONE FILE, not only a directory. */
+const FILE_COPY_CAPABILITY = "host-path-copy.file";
+
+async function carriesOneFile(agent: AgentConnection): Promise<boolean> {
+  try {
+    return (
+      (await agent.hello()).capabilities?.includes(FILE_COPY_CAPABILITY) ===
+      true
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** An agent too old to move a single file, named as the host it is on. */
+function tooOldForFiles(sourcePath: string, which: string): Error {
+  return new Error(
+    `"${sourcePath}" is a single file, and the server agent on the ${which} host is too old to copy one. Update that server's agent and run the copy again.`,
+  );
+}
+
 /**
  * What a copy actually moved.
  */
 export interface VolumeCopyResult {
+  /** The source was one FILE, not a directory - so the report can say which. */
+  file?: boolean;
   /** Compressed bytes relayed through the control plane. */
   bytes: number;
   /** sha256 of the relayed stream, for the destination's own digest to meet. */
@@ -358,13 +381,31 @@ export async function copyHostPathBetween(
    *  stack's files dir, where a second bind and Deplo's own File mounts live. */
   wipe = true,
 ): Promise<VolumeCopyResult> {
+  // `- ./nginx.conf:/etc/nginx/nginx.conf` is ordinary compose, and the export
+  // refuses a file rather than guessing. That refusal is the only reliable way to
+  // learn which of the two this path is, so it drives the second attempt: from
+  // here both halves carry the ONE entry instead of the directory around it.
+  let file = false;
   try {
     if (!(await archiveHasEntries(source.exportHostPath(sourcePath))))
       return { bytes: 0, sha256: "", empty: true };
   } catch (e) {
     if (isNotFound(e))
       return { bytes: 0, sha256: "", empty: true, missing: true };
-    throw attributeCopyError(e);
+    if (!isNotADirectory(e)) throw attributeCopyError(e);
+    file = true;
+    // Asked BEFORE anything is streamed: an agent that does not know the flag
+    // would create a DIRECTORY at the target and the stack would come back up on
+    // it, which is worse than the copy that did not happen.
+    if (!(await carriesOneFile(dest)))
+      throw tooOldForFiles(sourcePath, "target");
+    try {
+      if (!(await archiveHasEntries(source.exportHostPath(sourcePath, true))))
+        return { bytes: 0, sha256: "", empty: true };
+    } catch (again) {
+      if (isNotADirectory(again)) throw tooOldForFiles(sourcePath, "source");
+      throw attributeCopyError(again);
+    }
   }
 
   const hash = createHash("sha256");
@@ -372,7 +413,7 @@ export async function copyHostPathBetween(
   const head: Buffer[] = [];
   let headBytes = 0;
   const counted = (async function* () {
-    for await (const chunk of source.exportHostPath(sourcePath)) {
+    for await (const chunk of source.exportHostPath(sourcePath, file)) {
       stopIfAborted(signal);
       bytes += chunk.length;
       hash.update(chunk);
@@ -392,7 +433,7 @@ export async function copyHostPathBetween(
     sha256?: string;
   };
   try {
-    res = await dest.importHostPath(targetPath, wipe, counted);
+    res = await dest.importHostPath(targetPath, wipe, counted, file);
   } catch (e) {
     stopIfAborted(signal);
     throw attributeCopyError(e);
@@ -424,7 +465,7 @@ export async function copyHostPathBetween(
       `the copy of "${sourcePath}" was truncated: ${bytes} bytes sent, ${res.bytesWritten} written`,
     );
 
-  return { bytes, sha256: digest, empty: false };
+  return { bytes, sha256: digest, empty: false, file };
 }
 
 /**
