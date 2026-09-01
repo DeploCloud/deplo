@@ -84,9 +84,12 @@ about 11 minutes. `next typegen` before `tsc` is not optional on a clean tree, s
 
 - **The server agent** (`DeploCloud/deplo-agent`) versions on its own clock, in its own repo. It is
   on the **0.x line too** since 24 Aug 2026, when its 1.x numbering was reset alongside the control
-  plane, but the two numbers move independently and are not meant to match. The same two buckets
-  apply. Its offline fallback (`FALLBACK_AGENT_VERSION`, `lib/agent/release.ts`) follows the fleet in
-  its own `chore(agent):` commit.
+  plane. The same two buckets apply, and its offline fallback (`FALLBACK_AGENT_VERSION`,
+  `lib/agent/release.ts`) follows the fleet in its own `chore(agent):` commit.
+  **Until `0.1.1`, the re-cut rule above covers the agent as well** (owner, 2 Sep 2026): while both
+  repos are still on `0.1.0`, a number the agent has already published is re-cut rather than bumped,
+  and a higher tag that was cut in the meantime is deleted so `releases/latest` has one answer. The
+  clocks separate again from `0.1.1` onwards.
 - **The fleet only ever moves forward.** `updateServerAgent` has no version argument anywhere in the
   path: it installs `releases/latest`, whatever that resolves to. So a control-plane release that
   needs a newer agent ships the agent **first**, and the reset above was a deliberate one-off, not a
