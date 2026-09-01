@@ -821,38 +821,38 @@ label:hover .deplo-gear,
   mask-image: linear-gradient(to top, #000 10%, transparent 95%);
 }
 
+/* `--foreground`, not #fff: it is the near-white the dark theme wants and a
+ * soft haze on the light one, where a white glow would be invisible. */
 .deplo-blob {
   position: absolute;
   border-radius: 9999px;
-  opacity: 0.38;
+  background: var(--foreground);
+  opacity: 0.08;
   filter: blur(90px);
   will-change: transform;
 }
 
 .deplo-blob:nth-child(1) {
-  bottom: -34%;
+  bottom: -58%;
   left: -8%;
   width: 46vw;
   height: 46vw;
-  background: var(--info);
   animation: deplo-blob-drift-a 16s ease-in-out infinite;
 }
 
 .deplo-blob:nth-child(2) {
-  bottom: -42%;
+  bottom: -66%;
   left: 26%;
   width: 52vw;
   height: 52vw;
-  background: var(--violet);
   animation: deplo-blob-drift-b 21s ease-in-out infinite;
 }
 
 .deplo-blob:nth-child(3) {
   right: -10%;
-  bottom: -32%;
+  bottom: -56%;
   width: 44vw;
   height: 44vw;
-  background: var(--chart-3);
   animation: deplo-blob-drift-c 18s ease-in-out infinite;
 }
 
