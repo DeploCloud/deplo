@@ -366,7 +366,11 @@ export default async function ServersPage(
     server.cpuCores > 0
       ? Promise.resolve(server)
       : measured.then((m) => m.get(server.id) ?? server);
-  const teams: TeamOption[] = teamsRaw.map((t) => ({ id: t.id, name: t.name }));
+  const teams: TeamOption[] = teamsRaw.map((t) => ({
+    id: t.id,
+    name: t.name,
+    avatarUrl: t.avatarUrl,
+  }));
 
   // Which server (if any) is the host running Deplo itself - computed once, then
   // used both to pull it to the front and to badge its card. Sorting it first makes

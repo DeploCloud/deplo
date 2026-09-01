@@ -75,7 +75,11 @@ export default async function ServerDetailPage(
   // the same helper the list page uses; no per-second polling.
   const [hydrated] = await hydrateServerSpecs([server]);
   const isDeploHost = isDeploHostServer(server, deploHostSelfAddresses());
-  const teams: TeamOption[] = teamsRaw.map((t) => ({ id: t.id, name: t.name }));
+  const teams: TeamOption[] = teamsRaw.map((t) => ({
+    id: t.id,
+    name: t.name,
+    avatarUrl: t.avatarUrl,
+  }));
   const agentVersion = reportedAgentVersion(hydrated);
 
   // A working hostname for the Traefik panel that needs no DNS at all, the same

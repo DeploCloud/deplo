@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check, Globe, Users } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { veilProps } from "@/components/templates/veil";
 import { cn } from "@/lib/utils";
@@ -10,6 +11,7 @@ import { cn } from "@/lib/utils";
 export interface TeamOption {
   id: string;
   name: string;
+  avatarUrl?: string | null;
 }
 
 export interface ServerAccess {
@@ -85,6 +87,7 @@ export function ServerTeamAccess({
                   onCheckedChange={(c) => toggleTeam(team.id, c === true)}
                   disabled={disabled}
                 />
+                <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} />
                 <span className="truncate text-sm">{team.name}</span>
               </label>
             ))
