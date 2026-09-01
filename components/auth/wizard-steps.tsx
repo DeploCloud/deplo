@@ -10,7 +10,7 @@ import {
 } from "@/lib/apps/avatar-shared";
 import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
-import { FieldError, invalidField } from "@/components/ui/field-error";
+import { Field, fieldControl, invalidField } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordField } from "@/components/ui/password-field";
@@ -133,7 +133,9 @@ function StepTitle({
 }) {
   return (
     <div className="text-center">
-      <h1 className="text-xl font-semibold sm:text-2xl">{title}</h1>
+      <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+        {title}
+      </h1>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
     </div>
   );
@@ -199,7 +201,7 @@ export function AccountStep({
               name={draft.name}
               username={handle}
               avatarUrl={avatarPreviewUrl(draft.image)}
-              size="3xl"
+              size="4xl"
             />
           }
         />
@@ -221,7 +223,7 @@ export function AccountStep({
       {children}
       <div className="space-y-2">
         <Label htmlFor="name">Your name</Label>
-        <div>
+        <Field error={nameError}>
           <Input
             id="name"
             value={draft.name}
@@ -232,12 +234,11 @@ export function AccountStep({
             maxLength={80}
             autoFocus
             aria-invalid={Boolean(nameError)}
-            className={cn(nameError && invalidField)}
+            className={cn(fieldControl, nameError && invalidField)}
           />
-          <FieldError>{nameError}</FieldError>
-        </div>
+        </Field>
         {draft.handleEdited ? (
-          <div>
+          <Field error={handleError}>
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm text-muted-foreground">
                 @
@@ -252,11 +253,14 @@ export function AccountStep({
                 aria-label="Handle"
                 autoFocus
                 aria-invalid={Boolean(handleError)}
-                className={cn("ps-7", handleError && invalidField)}
+                className={cn(
+                  "ps-7",
+                  fieldControl,
+                  handleError && invalidField,
+                )}
               />
             </div>
-            <FieldError>{handleError}</FieldError>
-          </div>
+          </Field>
         ) : (
           <button
             type="button"
@@ -288,19 +292,19 @@ export function AccountStep({
       />
       <div className="space-y-2">
         <Label htmlFor="confirm">Confirm password</Label>
-        <div>
+        <Field error={mismatch}>
           <Input
             id="confirm"
             type="password"
             value={draft.confirm}
             onChange={(e) => set("confirm", e.target.value)}
             autoComplete="new-password"
+            placeholder="Repeat your password"
             required
             aria-invalid={Boolean(mismatch)}
-            className={cn(mismatch && invalidField)}
+            className={cn(fieldControl, mismatch && invalidField)}
           />
-          <FieldError>{mismatch}</FieldError>
-        </div>
+        </Field>
       </div>
       {note}
       <Button
@@ -356,7 +360,7 @@ export function TeamStep({
             <TeamAvatar
               name={draft.name || "Team"}
               avatarUrl={draft.image}
-              size="3xl"
+              size="4xl"
             />
           }
         />

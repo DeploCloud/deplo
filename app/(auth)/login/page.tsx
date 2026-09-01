@@ -180,7 +180,9 @@ export default function LoginPage() {
 
   const title = (heading: string, description: React.ReactNode) => (
     <div className="mb-5 text-center">
-      <h1 className="text-xl font-semibold sm:text-2xl">{heading}</h1>
+      <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+        {heading}
+      </h1>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
     </div>
   );
