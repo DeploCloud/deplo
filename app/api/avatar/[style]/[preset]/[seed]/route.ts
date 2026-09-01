@@ -80,12 +80,17 @@ export async function GET(
   )
     return new Response("Not found", { status: 404 });
 
+  // A preset the offer list has and this table has not would render the plain
+  // style and look like it worked. It is a 404 instead.
+  const options = PRESET_OPTIONS[style][preset];
+  if (!options) return new Response("Not found", { status: 404 });
+
   // ponytail: rendered per request (~1ms, no I/O); add a cache if a cold fleet
   // ever makes it show up in a profile.
   const svg = new Avatar(STYLES[style], {
     seed,
     size: AVATAR_EDGE_PX,
-    ...PRESET_OPTIONS[style][preset],
+    ...options,
   }).toString();
   return new Response(svg, {
     headers: {

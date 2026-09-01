@@ -73,7 +73,7 @@ export const AVATAR_STYLES = {
   pixelbot: ["terminal"],
   // `default` is the style's own palette, picked from the seed: what a name
   // falls back to when nobody chose anything.
-  initials: ["default", "electric", "greyscale", "sunrise", "bold-pop"],
+  initials: ["default", "greyscale", "sunrise", "electric"],
 } as const;
 
 export type AvatarStyle = keyof typeof AVATAR_STYLES;
