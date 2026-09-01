@@ -43,6 +43,30 @@ const REMOVE = /* GraphQL */ `
   }
 `;
 
+/** The same scan the wizard runs. A service still `new` after the migration is
+ *  one that did not come across, which is exactly what the removal destroys. */
+const LEFTOVERS = /* GraphQL */ `
+  mutation TakeoverLeftovers(
+    $url: String!
+    $apiKey: String!
+    $kind: MigrationPlatform
+  ) {
+    scanMigrationSource(
+      input: { url: $url, apiKey: $apiKey, allowPrivate: true, kind: $kind }
+    ) {
+      projects {
+        name
+        environments {
+          services {
+            name
+            status
+          }
+        }
+      }
+    }
+  }
+`;
+
 const CANCEL = /* GraphQL */ `
   mutation CancelTakeover($apiKey: String) {
     cancelTakeover(apiKey: $apiKey) {
@@ -60,11 +84,16 @@ const POLL_MS = 3000;
 
 export function TakeoverActions({
   platformLabel,
+  platform,
+  sourceUrl,
   state: initialState,
   finishedRunId,
   finalUrl,
 }: {
   platformLabel: string;
+  platform: "dokploy" | "coolify";
+  /** Where that panel answers on this machine, for the leftovers check. */
+  sourceUrl: string;
   state: TakeoverState;
   /** The last run that finished. Without one there is nothing to take over for. */
   finishedRunId: string | null;
@@ -74,6 +103,34 @@ export function TakeoverActions({
   const [state, setState] = React.useState<TakeoverState>(initialState);
   const [busy, setBusy] = React.useState(false);
   const [cancelKey, setCancelKey] = React.useState("");
+  const [removeKey, setRemoveKey] = React.useState("");
+  const [leftovers, setLeftovers] = React.useState<string[] | null>(null);
+
+  async function checkLeftovers() {
+    setBusy(true);
+    const res = await gqlAction<
+      {
+        scanMigrationSource: {
+          projects: {
+            name: string;
+            environments: { services: { name: string; status: string }[] }[];
+          }[];
+        };
+      },
+      string[]
+    >(LEFTOVERS, { url: sourceUrl, apiKey: removeKey, kind: platform }, (d) =>
+      d.scanMigrationSource.projects.flatMap((p) =>
+        p.environments.flatMap((e) =>
+          e.services
+            .filter((sv) => sv.status === "new")
+            .map((sv) => `${p.name} / ${sv.name}`),
+        ),
+      ),
+    );
+    setBusy(false);
+    if (!res.ok) return toast.error(res.error);
+    setLeftovers(res.data ?? []);
+  }
 
   // While the installer is working, the panel is the only thing that knows how
   // far it has got - and during the port move this page's own origin dies, so
@@ -148,32 +205,66 @@ export function TakeoverActions({
             Deploy your apps and check them before you remove it.
           </p>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
-          <Button asChild variant="outline">
-            <Link href="/">Go to the dashboard</Link>
-          </Button>
-          <ConfirmAction
-            trigger={
-              <Button variant="destructive">Remove {platformLabel}</Button>
-            }
-            title={`Remove ${platformLabel}?`}
-            description={
-              <>
-                Its containers, volumes, networks, images and directory come off
-                this machine. Anything you chose not to migrate goes with them,
-                and none of it can be brought back.
-              </>
-            }
-            confirmText={platformLabel.toLowerCase()}
-            confirmLabel="Remove it"
-            successMessage={`Removing ${platformLabel}`}
-            optimistic
-            onConfirm={async () => {
-              const res = await gqlAction(REMOVE);
-              if (res.ok) setState("removing");
-              return res;
-            }}
-          />
+        <CardContent className="space-y-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="remove-key">
+              {platformLabel} API token, to list what stays behind
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id="remove-key"
+                type="password"
+                autoComplete="off"
+                value={removeKey}
+                onChange={(e) => {
+                  setRemoveKey(e.target.value);
+                  setLeftovers(null);
+                }}
+                placeholder="The same one you pasted before"
+              />
+              <Button
+                variant="outline"
+                onClick={checkLeftovers}
+                disabled={!removeKey || busy}
+              >
+                {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+                Check
+              </Button>
+            </div>
+          </div>
+
+          {leftovers !== null && <Leftovers names={leftovers} />}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline">
+              <Link href="/">Go to the dashboard</Link>
+            </Button>
+            <ConfirmAction
+              trigger={
+                <Button variant="destructive">Remove {platformLabel}</Button>
+              }
+              title={`Remove ${platformLabel}?`}
+              description={
+                <>
+                  Its containers, the workloads it ran, their volumes and
+                  networks, its images and its directory all come off this
+                  machine. None of it can be brought back.
+                </>
+              }
+              extra={
+                leftovers !== null ? <Leftovers names={leftovers} /> : null
+              }
+              confirmText={platformLabel.toLowerCase()}
+              confirmLabel="Remove it"
+              successMessage={`Removing ${platformLabel}`}
+              optimistic
+              onConfirm={async () => {
+                const res = await gqlAction(REMOVE);
+                if (res.ok) setState("removing");
+                return res;
+              }}
+            />
+          </div>
         </CardContent>
       </Card>
     );
@@ -280,5 +371,28 @@ function Working({ title, body }: { title: string; body: React.ReactNode }) {
         <p className="mt-1 text-sm text-muted-foreground">{body}</p>
       </CardHeader>
     </Card>
+  );
+}
+
+/** What never came across, and is about to go with the platform that holds it. */
+function Leftovers({ names }: { names: string[] }) {
+  if (names.length === 0)
+    return (
+      <p className="text-sm text-muted-foreground">
+        Everything came across. Nothing is left behind.
+      </p>
+    );
+  return (
+    <div className="rounded-lg border border-destructive/40 bg-destructive/[0.06] p-3">
+      <p className="text-sm font-medium">
+        {names.length} {names.length === 1 ? "service was" : "services were"}{" "}
+        not brought across, and will be destroyed:
+      </p>
+      <ul className="mt-1 space-y-0.5 text-sm text-muted-foreground">
+        {names.map((n) => (
+          <li key={n}>{n}</li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -98,6 +98,8 @@ export default async function TakeoverPage() {
 
       <TakeoverActions
         platformLabel={copy.name}
+        platform={status.platform}
+        sourceUrl={takeoverSourceUrl(status.platform)}
         state={status.state}
         finishedRunId={finished?.id ?? null}
         finalUrl={finalPanelUrl()}

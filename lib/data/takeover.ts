@@ -154,9 +154,27 @@ export async function noteBrowserReached(): Promise<void> {
   await writeState({ takeoverSeenExternalAt: nowIso() });
 }
 
-/** The operator asked for the ports. The installer takes it from here. */
+/**
+ * The operator asked for the ports. The installer takes it from here.
+ *
+ * A run that finished is the point of the whole thing: taking the ports with
+ * nothing brought across costs the operator their old panel's routing for
+ * nothing, and the button being disabled is not a gate.
+ */
 export async function requestTakeover(runId: string): Promise<TakeoverStatus> {
   await requireInstanceAdmin();
+  const [run] = await getDb()
+    .select({ status: runsTable.status })
+    .from(runsTable)
+    .where(eq(runsTable.id, runId));
+  if (!run)
+    throw new Error(
+      "That migration does not exist, so there is nothing to take the ports for.",
+    );
+  if (run.status !== "done")
+    throw new Error(
+      `That migration is ${run.status}. Let it finish before handing Deplo the ports.`,
+    );
   return advance("ready", { runId });
 }
 

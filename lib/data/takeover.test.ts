@@ -68,6 +68,17 @@ const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
 const read = () =>
   runWithIdentity({ userId: ADMIN, teamId: TEAM_A }, takeoverStatus);
 
+/** A finished run, which is what taking the ports is allowed to follow. */
+async function seedFinishedRun(id: string, status = "done"): Promise<void> {
+  await db.execute(
+    `insert into migration_runs
+       (id, team_id, source_url, platform, actor, status, created, skipped, failed,
+        manual, started_at, total_steps, done_steps, phase)
+     values ('${id}', '${TEAM_A}', 'http://panel.test:3000', 'dokploy', 'Tester',
+             '${status}', 1, 0, 0, 0, now(), 1, 1, 'done');`,
+  );
+}
+
 async function seedPending(platform = "dokploy"): Promise<void> {
   process.env.DEPLO_TAKEOVER = platform;
   await asUser(ADMIN, ensureTakeoverFromEnv);
@@ -108,6 +119,7 @@ test("the installer's platform becomes a pending takeover, and it blocks", async
 
 test("a restart mid-run does not send the operator back to the beginning", async () => {
   await seedPending();
+  await seedFinishedRun("run_1");
   await asUser(ADMIN, () => requestTakeover("run_1"));
   // Boot again with the same env var still set, as every restart does.
   await asUser(ADMIN, ensureTakeoverFromEnv);
@@ -116,6 +128,7 @@ test("a restart mid-run does not send the operator back to the beginning", async
 
 test("the ladder only ever goes forward", async () => {
   await seedPending();
+  await seedFinishedRun("run_1");
   await asUser(ADMIN, () => requestTakeover("run_1"));
   assert.equal((await read())?.runId, "run_1");
 
@@ -123,6 +136,7 @@ test("the ladder only ever goes forward", async () => {
   await asUser(ADMIN, () => markTakeoverProgress("done"));
   assert.equal((await read())?.state, "done");
 
+  await seedFinishedRun("run_2");
   await assert.rejects(
     () => asUser(ADMIN, () => requestTakeover("run_2")),
     /cannot move to "ready"/,
@@ -146,6 +160,7 @@ test("the ladder only ever goes forward", async () => {
 
 test("the dashboard opens again once the ports are Deplo's", async () => {
   await seedPending();
+  await seedFinishedRun("run_1");
   await asUser(ADMIN, () => requestTakeover("run_1"));
   await asUser(ADMIN, () => markTakeoverProgress("done"));
   assert.equal(
@@ -160,6 +175,7 @@ test("the dashboard opens again once the ports are Deplo's", async () => {
 
 test("only an instance admin decides any of it", async () => {
   await seedPending();
+  await seedFinishedRun("run_1");
   await assert.rejects(() => asUser(MEMBER, () => requestTakeover("run_1")));
   await assert.rejects(() => asUser(MEMBER, () => cancelTakeover()));
   assert.equal((await read())?.state, "pending");
@@ -244,4 +260,18 @@ test("with no token there is nothing to sign in with, and it says so", async () 
   await seedStoppedTarget();
   const res = await asUser(ADMIN, () => cancelTakeover());
   assert.deepEqual(res.left, ["netcase: no API token to sign in with"]);
+});
+
+test("the ports are not handed over for a migration that never finished", async () => {
+  await seedPending();
+  await assert.rejects(
+    () => asUser(ADMIN, () => requestTakeover("nope")),
+    /does not exist/,
+  );
+  await seedFinishedRun("run_live", "running");
+  await assert.rejects(
+    () => asUser(ADMIN, () => requestTakeover("run_live")),
+    /is running/,
+  );
+  assert.equal((await read())?.state, "pending");
 });
