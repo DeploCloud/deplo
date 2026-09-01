@@ -15,6 +15,7 @@ import {
 } from "./identity-test-helpers";
 import { listMembers } from "./members";
 import {
+  createTeam,
   getTeam,
   getTeamIdentity,
   listMyTeams,
@@ -187,6 +188,15 @@ test("a team picture is scoped to the ACTIVE team, never another one", async () 
     .from(teamsTable)
     .where(eq(teamsTable.id, TEAM_A));
   assert.equal(a!.image, null, "the other team's row must be untouched");
+});
+
+// Only the refusal half: createTeam ends in `setActiveTeam`, which writes a
+// cookie, and the pglite harness has no request scope to write it into.
+test("a team picture is validated at creation, not only when it is changed", async () => {
+  await assert.rejects(
+    as(MEMBER, () => createTeam({ name: "Bad", image: "https://x.io/a.png" })),
+    /Unsupported/i,
+  );
 });
 
 test("a team picture is refused the same values a person's is", async () => {

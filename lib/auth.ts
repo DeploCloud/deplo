@@ -347,7 +347,13 @@ export async function createAccountWithTeam(
  * into the link.
  */
 export async function createAccountWithTeams(
-  input: { username: string; name: string; email: string; password: string },
+  input: {
+    username: string;
+    name: string;
+    email: string;
+    password: string;
+    image?: string | null;
+  },
   assignments: { teamId: string; role: Role; capabilities: Capability[] }[],
   opts: { guard?: (tx: DbTx) => Promise<void> } = {},
 ): Promise<{ user: User; activeTeamId: string }> {
@@ -358,6 +364,9 @@ export async function createAccountWithTeams(
   if (!name) throw new Error("Name is required");
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@")) throw new Error("Enter a valid email address");
+  const image = input.image?.trim() || null;
+  if (image && !isValidAvatarValue(image))
+    throw new Error("Unsupported profile picture");
   assertPasswordPolicy(input.password);
   await assertPasswordNotPwned(input.password);
   if (assignments.length === 0)
@@ -384,7 +393,7 @@ export async function createAccountWithTeams(
 
     const user = await insertUserCore(
       tx,
-      { username, name, email, password: input.password },
+      { username, name, email, password: input.password, image },
       { isInstanceAdmin: false, userRole: "member" },
     );
 

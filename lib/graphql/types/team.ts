@@ -174,8 +174,11 @@ builder.mutationFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "Create a new team; the viewer becomes its owner and it is made active.",
-    args: { name: t.arg.string({ required: true }) },
-    resolve: (_r, { name }) => createTeam({ name }),
+    args: {
+      name: t.arg.string({ required: true }),
+      image: t.arg.string(),
+    },
+    resolve: (_r, { name, image }) => createTeam({ name, image }),
   }),
   switchTeam: t.field({
     type: "Boolean",

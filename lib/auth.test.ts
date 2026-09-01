@@ -177,6 +177,42 @@ test("createAccountWithTeams joins existing teams with per-team roles + caps, ow
   assert.deepEqual(new Set(capsB.map((r) => r.c)), new Set(["view"]));
 });
 
+const AVATAR = "data:image/png;base64,iVBORw0KGgo=";
+
+test("createAccountWithTeams stores the profile picture and refuses a bad one", async () => {
+  await seedIdentity(db);
+  const joining = {
+    username: "joiner",
+    name: "Joiner",
+    email: "joiner@x.io",
+    password: "Passw0rd!1",
+  };
+  const assignments = [
+    {
+      teamId: TEAM_A,
+      role: "member" as const,
+      capabilities: ["view" as const],
+    },
+  ];
+  await assert.rejects(
+    createAccountWithTeams(
+      { ...joining, image: "https://example.com/a.png" },
+      assignments,
+    ),
+    /Unsupported profile picture/,
+  );
+  const { user } = await createAccountWithTeams(
+    { ...joining, image: AVATAR },
+    assignments,
+  );
+  const urow = (
+    await db.select().from(usersTable).where(eq(usersTable.id, user.id))
+  )[0]!;
+  assert.equal(urow.image, AVATAR);
+  // A link that joins existing teams never mints one.
+  assert.equal((await db.select().from(teamsTable)).length, 2);
+});
+
 test("createAccountWithTeams skips teams deleted before use, and fails if none remain", async () => {
   await seedIdentity(db);
   // One real team + one already-gone team → user joins only the survivor.

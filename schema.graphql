@@ -2804,7 +2804,7 @@ type Mutation {
   createRole(input: CreateRoleInput!): TeamRole
 
   """Create a new team; the viewer becomes its owner and it is made active."""
-  createTeam(name: String!): Team
+  createTeam(image: String, name: String!): Team
 
   """
   Create a new API token with its own permissions. The raw secret is returned once in the payload.
@@ -3112,7 +3112,7 @@ type Mutation {
   """
   Create a new account + team via a single-use registration link. Signs in.
   """
-  registerThroughLink(email: String!, name: String!, password: String!, teamName: String, token: String!, username: String!): AuthPayload
+  registerThroughLink(email: String!, image: String, name: String!, password: String!, teamImage: String, teamName: String, token: String!, username: String!): AuthPayload
 
   """
   Mint a fresh install command for a server still provisioning (the original token expired or was lost).

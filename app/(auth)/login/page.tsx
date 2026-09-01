@@ -6,21 +6,16 @@ import { gql } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { OtpInput } from "@/components/ui/otp-input";
 import { AlertCircle, Fingerprint, Loader2 } from "lucide-react";
+import { useStepSwap } from "@/components/apps/wizard/wizard-card";
 import {
   getPasskeyAssertion,
   passkeyError,
   passkeysSupported,
 } from "@/lib/passkey-client";
 import { DocsLink } from "@/components/ui/docs-link";
+import { cn } from "@/lib/utils";
 
 const LOGIN = /* GraphQL */ `
   mutation Login($email: String!, $password: String!) {
@@ -79,7 +74,7 @@ export default function LoginPage() {
   // The password step succeeded but the account has an authenticator app. The
   // challenge itself lives in a short-lived httpOnly cookie the server set, so
   // this flag is all the client holds - no token in state.
-  const [step, setStep] = useState<"password" | "code">("password");
+  const { step, leaving, go } = useStepSwap<"password" | "code">("password");
   const [useRecovery, setUseRecovery] = useState(false);
   const [code, setCode] = useState("");
 
@@ -115,7 +110,7 @@ export default function LoginPage() {
           },
         );
         if (res.login.requiresTwoFactor) {
-          setStep("code");
+          go("code", "forward");
           return;
         }
         done();
@@ -180,36 +175,29 @@ export default function LoginPage() {
     </div>
   );
 
-  const back = (
-    <button
-      type="button"
-      className="text-muted-foreground hover:text-foreground"
-      onClick={() => {
-        setStep("password");
-        setUseRecovery(false);
-        setCode("");
-        setError(null);
-      }}
-    >
-      Back
-    </button>
+  const title = (heading: string, description: React.ReactNode) => (
+    <div className="mb-5 text-center">
+      <h1 className="text-xl font-semibold sm:text-2xl">{heading}</h1>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+    </div>
   );
 
-  if (step === "code")
-    return (
-      <Card className="border-transparent! bg-transparent!">
-        <CardHeader>
-          <CardTitle className="text-2xl lg:text-2xl">
-            Two-factor authentication
-          </CardTitle>
-          <CardDescription>
-            {useRecovery
-              ? "Enter one of the recovery codes you saved when you turned this on."
-              : "Enter the 6-digit code from your authenticator app."}{" "}
-            <DocsLink topic="team.twoFactor" />
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+  return (
+    <div
+      key={step}
+      className={cn(leaving ? "animate-soft-out" : "animate-soft-in")}
+    >
+      {step === "code" ? (
+        <>
+          {title(
+            "Two-factor authentication",
+            <>
+              {useRecovery
+                ? "Enter one of the recovery codes you saved when you turned this on."
+                : "Enter the 6-digit code from your authenticator app."}{" "}
+              <DocsLink topic="team.twoFactor" />
+            </>,
+          )}
           <form
             // POST, even though JS always intercepts this: if the page has not hydrated yet (or
             // its bundle failed to load) the browser submits natively, and a GET would put the
@@ -268,67 +256,70 @@ export default function LoginPage() {
                   ? "Use your authenticator app"
                   : "Use a recovery code"}
               </button>
-              {back}
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  go("password", "back");
+                  setUseRecovery(false);
+                  setCode("");
+                  setError(null);
+                }}
+              >
+                Back
+              </button>
             </div>
           </form>
-        </CardContent>
-      </Card>
-    );
-
-  return (
-    <Card className="border-transparent! bg-transparent!">
-      <CardHeader>
-        <CardTitle className="text-2xl lg:text-2xl">Welcome back.</CardTitle>
-        <CardDescription>
-          Welcome back. Enter your credentials to continue.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {/**
-         * `method="post"` is load-bearing SECURITY, not a formality.
-         */}
-        <form method="post" onSubmit={onSubmit} className="space-y-4">
-          {banner}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={pending}>
-            {pending && <Loader2 className="size-4 animate-spin" />}
-            Sign in
+        </>
+      ) : (
+        <>
+          {title("Welcome back.", "Sign in to continue.")}
+          {/**
+           * `method="post"` is load-bearing SECURITY, not a formality.
+           */}
+          <form method="post" onSubmit={onSubmit} className="space-y-4">
+            {banner}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={pending}>
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Sign in
+            </Button>
+          </form>
+          {/* Secondary, and outside the form so it can never submit it. No email
+              field: the challenge is for a discoverable credential, so the browser
+              offers the passkeys it holds for this site and the person picks one. */}
+          <Button
+            variant="outline"
+            className="mt-3 w-full"
+            onClick={signInWithPasskey}
+            disabled={pending}
+          >
+            <Fingerprint className="size-4" />
+            Sign in with a passkey
           </Button>
-        </form>
-        {/* Secondary, and outside the form so it can never submit it. No email
-            field: the challenge is for a discoverable credential, so the browser
-            offers the passkeys it holds for this site and the person picks one. */}
-        <Button
-          variant="outline"
-          className="mt-3 w-full"
-          onClick={signInWithPasskey}
-          disabled={pending}
-        >
-          <Fingerprint className="size-4" />
-          Sign in with a passkey
-        </Button>
-      </CardContent>
-    </Card>
+        </>
+      )}
+    </div>
   );
 }

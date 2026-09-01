@@ -167,6 +167,8 @@ const registerSchema = z.object({
   // pre-assign teams, so the registrant never names one and the form sends an
   // explicit `null` (a nullable GraphQL arg).
   teamName: z.string().min(1).max(80).nullish(),
+  image: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
+  teamImage: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
 });
 
 builder.mutationFields((t) => ({
@@ -325,6 +327,8 @@ builder.mutationFields((t) => ({
       password: t.arg.string({ required: true }),
       // Optional: only collected/required for own_team links (see resolver).
       teamName: t.arg.string({ required: false }),
+      image: t.arg.string(),
+      teamImage: t.arg.string(),
     },
     resolve: async (_r, args) => {
       const parsed = registerSchema.safeParse(args);
@@ -371,6 +375,7 @@ builder.mutationFields((t) => ({
             name: parsed.data.name,
             email: parsed.data.email,
             password: parsed.data.password,
+            image: parsed.data.image,
           },
           assignments,
           { guard },
@@ -386,6 +391,8 @@ builder.mutationFields((t) => ({
             email: parsed.data.email,
             password: parsed.data.password,
             teamName,
+            image: parsed.data.image,
+            teamImage: parsed.data.teamImage,
           },
           { guard },
         );

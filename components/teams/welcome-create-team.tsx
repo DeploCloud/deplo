@@ -3,18 +3,18 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { gqlAction } from "@/lib/graphql-client";
+
+import { EMPTY_TEAM, TeamStep } from "@/components/auth/wizard-steps";
 import { DocsLink } from "@/components/ui/docs-link";
+import { gqlAction } from "@/lib/graphql-client";
+
+const CREATE_TEAM = /* GraphQL */ `
+  mutation CreateTeam($name: String!, $image: String) {
+    createTeam(name: $name, image: $image) {
+      id
+    }
+  }
+`;
 
 /**
  * The create-team form for a user with ZERO teams. The dashboard needs an active
@@ -22,19 +22,14 @@ import { DocsLink } from "@/components/ui/docs-link";
 export function WelcomeCreateTeam({ userName }: { userName: string }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  const [name, setName] = React.useState("");
-
-  function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    create();
-  }
+  const [team, setTeam] = React.useState(EMPTY_TEAM);
 
   function create() {
     startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($name: String!) { createTeam(name: $name) { id } }`,
-        { name },
-      );
+      const res = await gqlAction(CREATE_TEAM, {
+        name: team.name,
+        image: team.image,
+      });
       if (res.ok) {
         router.push("/");
         router.refresh();
@@ -43,38 +38,21 @@ export function WelcomeCreateTeam({ userName }: { userName: string }) {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-base">Welcome, {userName}</CardTitle>
-          <CardDescription>
-            You&apos;re not a member of any team right now. Create one to keep
-            using Deplo, or ask a teammate to invite you.{" "}
+    <div className="animate-soft-in w-full max-w-sm">
+      <TeamStep
+        draft={team}
+        onChange={setTeam}
+        title={`Welcome, ${userName}`}
+        description={
+          <>
+            You are not in a team right now. Create one to keep going.{" "}
             <DocsLink topic="team.overview" />
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="welcome-team-name">Team name</Label>
-              <Input
-                id="welcome-team-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Acme Inc"
-                autoFocus
-              />
-            </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={pending || !name.trim()}
-            >
-              {pending ? "Creating…" : "Create team"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+          </>
+        }
+        submitLabel="Create team"
+        pending={pending}
+        onSubmit={create}
+      />
     </div>
   );
 }

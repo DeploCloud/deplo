@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getRegistrationLinkInfo } from "@/lib/data/members";
-import { DeploLogo } from "@/components/logo";
-import { RegisterForm } from "./register-form";
+import { AuthChrome } from "@/components/auth/auth-chrome";
+import { Button } from "@/components/ui/button";
+import { RegisterWizard } from "./register-wizard";
 
 export const metadata = { title: "Register" };
 
@@ -12,40 +13,37 @@ export default async function RegisterPage(props: {
   const info = await getRegistrationLinkInfo(token);
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center px-4">
+    <div className="relative grid min-h-dvh place-items-center px-4 pt-10 pb-16">
       <div className="deplo-grid-bg pointer-events-none absolute inset-0 opacity-[0.35]" />
-      <div className="relative z-10 w-full max-w-md">
-        <div className="mb-8 flex justify-center">
-          <Link href="/" className="cursor-pointer">
-            <DeploLogo className="text-base" />
-          </Link>
-        </div>
-
+      <div className="relative z-10 flex w-full justify-center">
         {info.valid ? (
-          <RegisterForm
+          <RegisterWizard
             token={token}
             mode={info.mode}
             teamNames={info.teamNames}
           />
         ) : (
-          <div className="rounded-xl border border-border bg-card p-6 text-center">
-            <h1 className="text-lg font-semibold">Link not valid</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              This registration link has expired, been revoked, or already been
-              used.
-            </p>
-            <Link
-              href="/login"
-              className="mt-4 inline-block text-sm text-foreground underline"
-            >
-              Go to sign in
-            </Link>
-          </div>
+          // No intro in front of this one: a dead link should not cost two
+          // seconds of animation before it says so. The chrome stays OUTSIDE the
+          // animated box: its `filter` would become the containing block and
+          // strand both fixed corners mid-screen.
+          <>
+            <AuthChrome />
+            <div className="animate-soft-in w-full max-w-sm text-center">
+              <h1 className="text-xl font-semibold sm:text-2xl">
+                Link not valid
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                This registration link has expired, been revoked, or already
+                been used.
+              </p>
+              <Button asChild variant="outline" className="mt-6 w-full">
+                <Link href="/login">Go to sign in</Link>
+              </Button>
+            </div>
+          </>
         )}
       </div>
-      <p className="relative z-10 mt-8 text-center text-xs text-muted-foreground">
-        Deplo - self-hosted deployments with Docker &amp; Traefik
-      </p>
     </div>
   );
 }

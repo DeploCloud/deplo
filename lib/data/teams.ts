@@ -361,10 +361,16 @@ export async function membersWithoutTwoFactor(): Promise<{
  * Create a brand-new team. The current user becomes its owner and the new team
  * is made active. A new team starts empty (it can target the shared servers).
  */
-export async function createTeam(input: { name: string }): Promise<Team> {
+export async function createTeam(input: {
+  name: string;
+  image?: string | null;
+}): Promise<Team> {
   const user = await assertUser();
   const name = input.name.trim();
   if (!name) throw new Error("Team name is required");
+  const image = input.image?.trim() || null;
+  if (image && !isValidAvatarValue(image))
+    throw new Error("Unsupported profile picture");
   const now = nowIso();
   const team = await getDb().transaction(async (tx) => {
     const taken = new Set(
@@ -382,7 +388,7 @@ export async function createTeam(input: { name: string }): Promise<Team> {
       plan: "pro",
       // The creator is the founder (absolute owner / "crown") of the new team.
       founderUserId: user.id,
-      avatarUrl: null,
+      avatarUrl: teamAvatarUrl(image),
       createdAt: now,
     };
     const membershipId = newId("mbr");
@@ -392,6 +398,7 @@ export async function createTeam(input: { name: string }): Promise<Team> {
       slug: t.slug,
       plan: t.plan,
       founderUserId: t.founderUserId,
+      image,
       createdAt: t.createdAt,
     });
     await tx.insert(membershipsTable).values({
