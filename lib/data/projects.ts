@@ -626,6 +626,9 @@ export async function moveAppToProject(
     // reaches part of the team could file an app it controls into a project outside its
     // own scope.
     if (!p || !inProjectScope(projectId)) throw new Error("Project not found");
+    // The DESTINATION is a row too: a migration still writing this project owns
+    // what lands in it until it finishes.
+    await assertContainerNotMigrating("project", projectId);
     const env = await defaultEnvironmentFor(projectId);
     environmentId = env?.id ?? null;
     msg = env
@@ -707,6 +710,8 @@ export async function moveAppToEnvironment(
     })
   )
     throw new Error("Environment not found");
+  // The DESTINATION is a row too - see moveAppToProject.
+  await assertContainerNotMigrating("environment", environmentId);
   // Check and write under one lock: apart, two concurrent moves both read the name
   // as free and both take it.
   await withNetworkLock({ teamId, environmentId: env.id }, async () => {

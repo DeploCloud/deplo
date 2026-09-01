@@ -59,6 +59,7 @@ export default async function DatabaseLayout(
       {/* Same readable width as the App pages, and the same exception: on a
           full-bleed route DetailFrame drops both the measure and the header. */}
       <DetailFrame
+        locked={Boolean(db.migrationRunId)}
         header={
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">

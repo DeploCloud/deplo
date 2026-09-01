@@ -425,10 +425,12 @@ export function ProjectContainerCard({
     );
 
   // Still arriving: the run is still deciding what environments and apps this
-  // project has, and every mutation on it is refused server-side until it ends.
+  // project has. `inert`, not just pointer-events-none, which the ⋯ cluster opts
+  // back out of with pointer-events-auto - the menu opened and Delete worked.
   if (project.migrationRunId)
     return (
       <div
+        inert
         aria-busy
         title="This is still being brought over by a migration"
         className="pointer-events-none animate-pulse opacity-70 select-none"

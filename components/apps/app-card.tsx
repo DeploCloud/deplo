@@ -743,10 +743,12 @@ export function AppCard({
     );
 
   // Still arriving: a migration is writing this app and copying data into its
-  // volumes, and every mutation on it is refused server-side until that run ends.
+  // volumes. `inert`, not just pointer-events-none, which the ⋯ cluster opts
+  // back out of with pointer-events-auto - the menu opened and Delete worked.
   if (project.migrationRunId)
     return (
       <div
+        inert
         aria-busy
         title="This is still being brought over by a migration"
         className="pointer-events-none animate-pulse opacity-70 select-none"

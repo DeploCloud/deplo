@@ -66,6 +66,8 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
       id: string,
       e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean },
     ): boolean => {
+      // Not offered as selectable → not selectable by click either.
+      if (!idsRef.current.includes(id)) return false;
       if (e.shiftKey) {
         const ids = idsRef.current;
         const anchor = anchorRef.current ?? id;
@@ -131,9 +133,14 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
     // just arithmetic, no querySelectorAll and no getBoundingClientRect-per-card
     const crect = canvas.getBoundingClientRect();
     const cardRects: { id: string; r: DOMRect }[] = [];
+    // Only ids the caller offered: a card it left out is one it will not act on
+    // (a row a migration is still writing), and the marquee is the one path that
+    // could still put it in the selection.
+    const selectable = new Set(idsRef.current);
     canvas.querySelectorAll<HTMLElement>("[data-card-id]").forEach((el) => {
       const id = el.getAttribute("data-card-id");
-      if (id) cardRects.push({ id, r: el.getBoundingClientRect() });
+      if (id && selectable.has(id))
+        cardRects.push({ id, r: el.getBoundingClientRect() });
     });
 
     // The 4px threshold gates only the START (so a plain click stays a click).

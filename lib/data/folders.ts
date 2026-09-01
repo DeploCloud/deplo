@@ -24,6 +24,7 @@ import {
   visibleFolderIds,
 } from "./folder-access";
 import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
+import { assertNotMigrating } from "./migration-guard";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
 import { assertNoNameClash, withNetworkLock } from "./name-clash";
@@ -558,6 +559,8 @@ export async function moveAppsToFolder(
   const owned = await getDb()
     .select({
       id: appsTable.id,
+      name: appsTable.name,
+      migrationRunId: appsTable.migrationRunId,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
       environmentId: appsTable.environmentId,
@@ -592,6 +595,12 @@ export async function moveAppsToFolder(
     if (!(reach.get(id) ?? []).includes("move_apps"))
       throw new Error("App not found");
   }
+  // The check the batched gate cannot make: reading the whole selection at once
+  // skips `requireAppCapability`, which is where an app a migration is still
+  // writing is refused. Same order as there - reachability first, then this.
+  for (const p of owned)
+    if (toMove.includes(p.id))
+      assertNotMigrating("app", p.name, p.migrationRunId);
   // Checked for the whole selection before the single write, so a clash refuses the
   // move instead of leaving half of it applied.
   await withNetworkLock({ teamId, environmentId: null }, async () => {

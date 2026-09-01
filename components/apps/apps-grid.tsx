@@ -581,16 +581,29 @@ function SortableGrid({
     overId != null &&
     (folderIdSet.has(overId) || projectIdSet.has(overId));
 
+  // Rows a migration is still writing: their cards are inert, and here they are
+  // taken out of drag and selection too - selection is what feeds every bulk
+  // action, so leaving them in is a delete the card's own menu already refuses.
+  const lockedIds = React.useMemo(
+    () =>
+      new Set([
+        ...projectItems.filter((p) => p.migrationRunId).map((p) => p.id),
+        ...items.filter((p) => p.migrationRunId).map((p) => p.id),
+      ]),
+    [projectItems, items],
+  );
+
   /* ---- Multi-selection (marquee + ctrl/shift-click) + bulk actions ------- */
   // Selectable ids in DISPLAY order - projects, then folders, then the visible
   // apps, so a shift-click range spans the grid exactly as it reads on screen.
   const selectableIds = React.useMemo(
-    () => [
-      ...projectItems.map((p) => p.id),
-      ...folderItems.map((f) => f.id),
-      ...items.map((p) => p.id),
-    ],
-    [projectItems, folderItems, items],
+    () =>
+      [
+        ...projectItems.map((p) => p.id),
+        ...folderItems.map((f) => f.id),
+        ...items.map((p) => p.id),
+      ].filter((id) => !lockedIds.has(id)),
+    [projectItems, folderItems, items, lockedIds],
   );
   const {
     selected,
@@ -1160,6 +1173,7 @@ function SortableGrid({
                       dragging={dragging}
                       selected={selected.has(p.id)}
                       groupDragging={groupDragIds.has(p.id)}
+                      locked={lockedIds.has(p.id)}
                       dataKind="project"
                       onSelect={(e) => onItemClick(p.id, e)}
                     >
@@ -1227,6 +1241,7 @@ function SortableGrid({
                   scaleOut={draggedOverFolder}
                   selected={selected.has(p.id)}
                   groupDragging={groupDragIds.has(p.id)}
+                  locked={lockedIds.has(p.id)}
                   dataKind="service"
                   onSelect={(e) => onItemClick(p.id, e)}
                 >
@@ -1380,6 +1395,7 @@ function SortableItem({
   scaleOut = false,
   selected = false,
   groupDragging = false,
+  locked = false,
   dataKind,
   onSelect,
   children,
@@ -1394,6 +1410,9 @@ function SortableItem({
   /** This card travels with the lifted one (multi-selection drag) → dim it too,
    *  so the whole moving group reads as picked up. */
   groupDragging?: boolean;
+  /** A migration is still writing this row: no drag, no modifier-select. The card
+   *  itself renders inert. */
+  locked?: boolean;
   /** "project" | "folder" | "service" - surfaced as data-card-kind for marquee
    *  hit-testing. */
   dataKind?: string;
@@ -1415,7 +1434,7 @@ function SortableItem({
     isDragging,
     isOver,
     index,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled: locked });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -1479,7 +1498,12 @@ function SortableItem({
       return;
     }
     // 2) Modifier-click selects this card instead of navigating (spare the ⋯).
-    if ((e.metaKey || e.ctrlKey || e.shiftKey) && onSelect && !onControls) {
+    if (
+      (e.metaKey || e.ctrlKey || e.shiftKey) &&
+      onSelect &&
+      !locked &&
+      !onControls
+    ) {
       e.preventDefault();
       e.stopPropagation();
       onSelect(e);

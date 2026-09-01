@@ -69,6 +69,7 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
          * width instead of the wide shell the list pages use.
          */}
         <DetailFrame
+          locked={Boolean(project.migrationRunId)}
           header={
             <div>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

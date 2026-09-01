@@ -76,10 +76,12 @@ export function DatabaseCard({
   canReveal?: boolean;
 }) {
   // Still arriving: a migration is creating this database and copying its volume
-  // across, and every mutation on it is refused server-side until that run ends.
+  // across. `inert`, not just pointer-events-none, which the ⋯ cluster opts back
+  // out of with pointer-events-auto - the menu opened and Delete worked.
   if (db.migrationRunId)
     return (
       <div
+        inert
         aria-busy
         title="This is still being brought over by a migration"
         className="pointer-events-none animate-pulse opacity-70 select-none"

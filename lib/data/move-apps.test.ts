@@ -303,3 +303,58 @@ test("the transfer picker offers exactly the teams the mover may move INTO", asy
     "only the other team the mover holds move_apps in",
   );
 });
+
+/* ------------------------------------------------------------------ */
+/* A migration owns the rows it is still writing                       */
+/* ------------------------------------------------------------------ */
+
+test("a bulk move refuses an app a migration is still writing", async () => {
+  await db
+    .update(appsTable)
+    .set({ migrationRunId: "mig_run_1" })
+    .where(eq(appsTable.id, APP_2));
+
+  // The single move goes through requireAppCapability, which asks; the bulk one
+  // reads the whole selection's capabilities at once and never did.
+  await assert.rejects(
+    () => asMover(() => moveAppToFolder(APP_2, MY_FOLDER)),
+    /still being brought over/,
+  );
+  await assert.rejects(
+    () => asMover(() => moveAppsToFolder([APP, APP_2], MY_FOLDER)),
+    /still being brought over/,
+  );
+  assert.equal(
+    (await placementOf(APP)).folderId,
+    null,
+    "and the rest of the selection stayed where it was",
+  );
+});
+
+test("a project or environment a migration is still writing is no destination", async () => {
+  await db
+    .update(projectsTable)
+    .set({ migrationRunId: "mig_run_1" })
+    .where(eq(projectsTable.id, PROJECT));
+  await assert.rejects(
+    () => asMover(() => moveAppToProject(APP, PROJECT)),
+    /still being brought over/,
+  );
+  await db
+    .update(projectsTable)
+    .set({ migrationRunId: null })
+    .where(eq(projectsTable.id, PROJECT));
+
+  await db
+    .update(environmentsTable)
+    .set({ migrationRunId: "mig_run_1" })
+    .where(eq(environmentsTable.id, ENV_SIDE));
+  await assert.rejects(
+    () => asMover(() => moveAppToEnvironment(APP, ENV_SIDE)),
+    /still being brought over/,
+  );
+
+  const still = await placementOf();
+  assert.equal(still.projectId, null);
+  assert.equal(still.environmentId, null);
+});

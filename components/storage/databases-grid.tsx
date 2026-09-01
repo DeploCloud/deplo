@@ -149,7 +149,9 @@ export function DatabasesGrid({
   // Only what is ON SCREEN is selectable, in display order, so a shift-click
   // range spans the grid exactly as it reads and a filtered-out database can
   // never become a bulk target.
-  const visibleIds = filtered.map((d) => d.id);
+  // A database a migration is still writing is not selectable: its card is inert,
+  // and selection is what feeds the bulk delete.
+  const visibleIds = filtered.filter((d) => !d.migrationRunId).map((d) => d.id);
   const selection = useCardSelection(visibleIds);
   const {
     selected,
@@ -320,6 +322,7 @@ export function DatabasesGrid({
                     id={d.id}
                     selected={selected.has(d.id)}
                     groupDragging={groupDragIds.has(d.id)}
+                    locked={Boolean(d.migrationRunId)}
                     onSelect={(e) => onItemClick(d.id, e)}
                   >
                     {({ handle, dragActive }) => (
@@ -503,6 +506,7 @@ function SortableCard({
   id,
   selected,
   groupDragging = false,
+  locked = false,
   onSelect,
   children,
 }: {
@@ -510,6 +514,8 @@ function SortableCard({
   selected: boolean;
   /** This card travels with the lifted one (multi-selection drag) → dim it too. */
   groupDragging?: boolean;
+  /** A migration is still writing this row: no drag, no modifier-select. */
+  locked?: boolean;
   onSelect: (e: {
     metaKey: boolean;
     ctrlKey: boolean;
@@ -528,7 +534,7 @@ function SortableCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled: locked });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -580,7 +586,7 @@ function SortableCard({
       return;
     }
     // 2) Modifier-click selects this card instead of opening it (spare the ⋯).
-    if ((e.metaKey || e.ctrlKey || e.shiftKey) && !onControls) {
+    if ((e.metaKey || e.ctrlKey || e.shiftKey) && !locked && !onControls) {
       e.preventDefault();
       e.stopPropagation();
       onSelect(e);

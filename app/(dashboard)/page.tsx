@@ -348,7 +348,11 @@ export default async function OverviewPage(props: PageProps<"/">) {
                   isDefault: e.isDefault,
                 }))}
                 selectedId={selectedEnv.id}
-                canManage={canDeploy || isAdmin}
+                // A migration still writing this project owns its environments
+                // too, and every one of these actions is refused server-side.
+                canManage={
+                  (canDeploy || isAdmin) && !openProject.migrationRunId
+                }
               />
             ) : undefined
           }
