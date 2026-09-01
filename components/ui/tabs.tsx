@@ -117,7 +117,6 @@ const UnderlineTabsTrigger = React.forwardRef<
 UnderlineTabsTrigger.displayName = "UnderlineTabsTrigger";
 
 export {
-  underlineTabClass,
   Tabs,
   TabsList,
   TabsTrigger,

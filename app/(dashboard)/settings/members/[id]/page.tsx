@@ -1,13 +1,28 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { getCurrentUser } from "@/lib/auth";
-import { hasCapability, isInstanceAdmin } from "@/lib/membership";
+import {
+  hasCapability,
+  isInstanceAdmin,
+  reachesWholeTeam,
+} from "@/lib/membership";
 import { listMembers } from "@/lib/data/members";
 import { getMemberAccess } from "@/lib/data/user-access";
 import { listRoles } from "@/lib/data/roles";
 import { listTeamScopeTree } from "@/lib/data/tokens";
+import { listApps } from "@/lib/data/apps";
+import { listDatabases } from "@/lib/data/databases";
+import { listFolders } from "@/lib/data/folders";
+import { listProjects } from "@/lib/data/projects";
+import { ScopedActivity } from "@/components/activity/scoped-activity";
+import { ActivitySkeleton } from "@/components/activity/activity-skeleton";
+import {
+  toAppLinks,
+  toDatabaseLinks,
+} from "@/components/activity/activity-timeline";
 import { MemberDetailTabs } from "./member-detail-tabs";
 
 export async function generateMetadata(
@@ -68,6 +83,15 @@ export default async function MemberPage(
         Members
       </Link>
       <MemberDetailTabs
+        activity={
+          <Suspense fallback={<ActivitySkeleton />}>
+            <MemberActivity
+              userId={id}
+              username={member.username}
+              searchParams={await props.searchParams}
+            />
+          </Suspense>
+        }
         member={member}
         access={access}
         roles={roles}
@@ -79,5 +103,45 @@ export default async function MemberPage(
         viewerTwoFactorEnabled={viewer?.twoFactorEnabled ?? false}
       />
     </div>
+  );
+}
+
+/**
+ * Their trail: the same feed, filters and counts as /activity, with the User
+ * facet fixed to them and left out.
+ */
+async function MemberActivity({
+  userId,
+  username,
+  searchParams,
+}: {
+  userId: string;
+  username: string;
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
+  // A database belongs to the team and to no project, so `listDatabases` refuses a
+  // role that only reaches part of it - and such a role reaches no database row in
+  // the feed either, so there is nothing to name.
+  const [apps, folders, projects, teamWide] = await Promise.all([
+    listApps(),
+    listFolders(),
+    listProjects(),
+    reachesWholeTeam(),
+  ]);
+  const databases = teamWide ? await listDatabases() : [];
+
+  return (
+    <ScopedActivity
+      scope={{ kind: "actor", userId }}
+      base={`/settings/members/${userId}?tab=activity`}
+      searchParams={searchParams}
+      emptyDescription={`@${username} hasn't done anything in this team that gets logged.`}
+      apps={apps}
+      folders={folders}
+      projects={projects}
+      databases={databases}
+      appLinks={toAppLinks(apps)}
+      databaseLinks={toDatabaseLinks(databases)}
+    />
   );
 }

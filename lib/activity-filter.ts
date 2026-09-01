@@ -88,7 +88,9 @@ export function activityHref(p: ActivityParams, base = "/activity"): string {
     if (p.to) q.set("to", p.to);
   }
   const s = q.toString();
-  return s ? `${base}?${s}` : base;
+  if (!s) return base;
+  // The base may already carry a query, e.g. the tab a scoped feed lives on.
+  return `${base}${base.includes("?") ? "&" : "?"}${s}`;
 }
 
 /** Short month names, for every date the trail spells out itself. */

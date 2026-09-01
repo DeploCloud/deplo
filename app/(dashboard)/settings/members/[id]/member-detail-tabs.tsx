@@ -26,7 +26,6 @@ import {
   TabsContent,
   UnderlineTabsList,
   UnderlineTabsTrigger,
-  underlineTabClass,
 } from "@/components/ui/tabs";
 import { RoleSelect } from "@/components/members/role-select";
 import { PermissionPicker } from "@/components/settings/permission-picker";
@@ -61,10 +60,11 @@ import { titleClass } from "@/components/shared/page-header";
  * else and switching tabs silently discards the edit.
  */
 
-const TABS = ["permissions", "advanced"] as const;
+const TABS = ["permissions", "activity", "advanced"] as const;
 type TabId = (typeof TABS)[number];
 
 export function MemberDetailTabs({
+  activity,
   member,
   access,
   roles,
@@ -75,6 +75,8 @@ export function MemberDetailTabs({
   viewerIsPrimaryOwner,
   viewerTwoFactorEnabled,
 }: {
+  /** Their trail, rendered on the server - see the page's `MemberActivity`. */
+  activity: React.ReactNode;
   member: MemberDTO;
   access: UserTeamAccessDTO;
   roles: TeamRoleDTO[];
@@ -322,14 +324,7 @@ export function MemberDetailTabs({
           <UnderlineTabsTrigger value="permissions">
             Role &amp; permissions
           </UnderlineTabsTrigger>
-          {/* A page, not a panel: their trail gets the same feed, filters and
-              counts as every other Activity view. */}
-          <Link
-            href={`/settings/members/${member.userId}/activity`}
-            className={underlineTabClass}
-          >
-            Activity
-          </Link>
+          <UnderlineTabsTrigger value="activity">Activity</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="advanced">Advanced</UnderlineTabsTrigger>
         </UnderlineTabsList>
 
@@ -341,7 +336,7 @@ export function MemberDetailTabs({
             save();
           }}
         >
-          <TabsContent value="permissions" className="space-y-4 pt-4">
+          <TabsContent value="permissions" className="space-y-4 pt-2">
             {/* Why nothing on this tab can be edited, above the things that
                 can't be: it belongs to the editors, not to the person. */}
             {lockReason && (
@@ -434,9 +429,14 @@ export function MemberDetailTabs({
           )}
         </form>
 
+        {/* Its filters navigate, so the tab rides in the URL with them. */}
+        <TabsContent value="activity" className="pt-2">
+          {activity}
+        </TabsContent>
+
         {/* The two actions that end a membership rather than shape it: they are
             not edits, they have no Save, and one of them hands the team over. */}
-        <TabsContent value="advanced" className="space-y-4 pt-4">
+        <TabsContent value="advanced" className="space-y-4 pt-2">
           {canTransfer && (
             <Card className="border-destructive/40">
               <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">

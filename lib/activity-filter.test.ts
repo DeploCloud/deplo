@@ -5,6 +5,7 @@ import {
   EMPTY_ACTIVITY_PARAMS,
   activityCountWindow,
   activityCountWindowLabel,
+  activityHref,
   scopedActivityFilter,
   type ActivityParams,
 } from "./activity-filter";
@@ -84,5 +85,17 @@ test("a resource's own tab ignores a resource picked in the URL", () => {
       from: undefined,
       to: undefined,
     },
+  );
+});
+
+test("a base that is a tab keeps its query", () => {
+  const p = params({ types: ["deployment"] });
+  assert.equal(
+    activityHref(p, "/settings/members/u1?tab=activity"),
+    "/settings/members/u1?tab=activity&event=deployment",
+  );
+  assert.equal(
+    activityHref(EMPTY_ACTIVITY_PARAMS, "/settings/members/u1?tab=activity"),
+    "/settings/members/u1?tab=activity",
   );
 });
