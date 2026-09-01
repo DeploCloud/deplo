@@ -68,6 +68,15 @@ export default async function AppAdvancedSettingsPage(
             />
           </CapabilityFieldset>
 
+          <CapabilityFieldset cap="manage_crons">
+            <CronSettingsForm
+              targetKind="app"
+              targetId={project.id}
+              enabled={cron?.enabled ?? project.cronEnabled}
+              jobCount={cron?.jobs.length ?? 0}
+            />
+          </CapabilityFieldset>
+
           {project.source !== "compose" && (
             <CapabilityFieldset cap="configure_apps">
               <HealthCheckForm
@@ -87,15 +96,6 @@ export default async function AppAdvancedSettingsPage(
               />
             </CapabilityFieldset>
           )}
-
-          <CapabilityFieldset cap="manage_crons">
-            <CronSettingsForm
-              targetKind="app"
-              targetId={project.id}
-              enabled={cron?.enabled ?? project.cronEnabled}
-              jobCount={cron?.jobs.length ?? 0}
-            />
-          </CapabilityFieldset>
         </CardContent>
       </Card>
 
