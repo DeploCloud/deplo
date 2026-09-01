@@ -23,6 +23,7 @@ export function AppShell({
   capabilities,
   isAdmin,
   hasPasskey = false,
+  gravatar,
   children,
 }: {
   user: PublicUser;
@@ -36,6 +37,8 @@ export function AppShell({
   isAdmin: boolean;
   /** Holds a passkey that works here: already a second factor (ADR-0024). */
   hasPasskey?: boolean;
+  /** Their Gravatar address, or null where the instance keeps it off. */
+  gravatar?: string | null;
   children: React.ReactNode;
 }) {
   return (
@@ -82,6 +85,7 @@ export function AppShell({
                 <>
                   <Topbar
                     user={user}
+                    gravatar={gravatar}
                     team={team}
                     teams={teams}
                     breadcrumb={breadcrumb}

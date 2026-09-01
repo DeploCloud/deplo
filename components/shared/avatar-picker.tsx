@@ -55,19 +55,22 @@ export type AvatarSources = {
 
 export function AvatarPicker({
   preview,
-  hasImage,
+  hasImage = false,
   onSave,
   disabled,
   quiet = false,
   label = "Change picture",
   children,
   sources,
+  controlled,
+  preload = true,
 }: {
-  /** The avatar to render - the caller's own `<UserAvatar>` / `<TeamAvatar>`. */
-  preview: React.ReactNode;
+  /** The avatar to render - the caller's own `<UserAvatar>` / `<TeamAvatar>`.
+   *  Unused, and unnecessary, when `controlled` supplies the trigger. */
+  preview?: React.ReactNode;
   /** Whether there is an uploaded picture to remove. Gravatar is not removable
    *  here: it is not stored, and turning it off is an instance-wide decision. */
-  hasImage: boolean;
+  hasImage?: boolean;
   onSave: (image: string | null) => Promise<{ ok: boolean; error?: string }>;
   disabled?: boolean;
   /** Held, not saved: skip the toast and the refresh - onboarding picks a
@@ -77,18 +80,27 @@ export function AvatarPicker({
   /** What sits beside the picture. Remove lands under the picture itself. */
   children?: React.ReactNode;
   sources?: AvatarSources;
+  /** Driven from outside instead of by the built-in trigger: the header menu
+   *  opens it from a dropdown, where a dialog nested in the menu would unmount
+   *  with it. Renders the dialogs and nothing else. */
+  controlled?: { open: boolean; onOpenChange: (open: boolean) => void };
+  /** Whether to fetch the pictures now. The header mounts on every page, so it
+   *  waits until the menu is open - one click before they can be needed. */
+  preload?: boolean;
 }) {
   const router = useRouter();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [pending, startTransition] = React.useTransition();
   const [dragging, setDragging] = React.useState(false);
   const [picked, setPicked] = React.useState<File | null>(null);
-  const [choosing, setChoosing] = React.useState(false);
+  const [ownChoosing, setOwnChoosing] = React.useState(false);
+  const choosing = controlled ? controlled.open : ownChoosing;
+  const setChoosing = controlled ? controlled.onOpenChange : setOwnChoosing;
   const [previews, setPreviews] = React.useState<string[] | null>(null);
   const seed = sources?.seed;
   const letters = sources?.letters;
   React.useEffect(() => {
-    if (!seed || !letters) return;
+    if (!preload || !seed || !letters) return;
     const rolled = rollPreviewSeeds(seed);
     setPreviews(rolled);
     // Fetched now, not on the click: the dialog would otherwise open onto empty
@@ -103,7 +115,7 @@ export function AvatarPicker({
       const img = new window.Image();
       img.src = url;
     }
-  }, [seed, letters]);
+  }, [preload, seed, letters]);
   const busy = pending || disabled;
 
   function commit(image: string | null) {
@@ -131,6 +143,67 @@ export function AvatarPicker({
     }
     setPicked(file);
   }
+
+  const editor = (
+    <>
+      {sources ? (
+        <AvatarSourceDialog
+          open={choosing}
+          onOpenChange={setChoosing}
+          sources={sources}
+          busy={Boolean(busy)}
+          previews={previews}
+          dragging={dragging}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            pick(e.dataTransfer.files?.[0]);
+          }}
+          onPick={(value) => {
+            setChoosing(false);
+            commit(value);
+          }}
+          onUpload={() => inputRef.current?.click()}
+        />
+      ) : null}
+      <ImageCropDialog
+        file={picked}
+        variant="avatar"
+        onClose={() => setPicked(null)}
+        onCropped={(dataUri) => {
+          setPicked(null);
+          setChoosing(false);
+          // A 256px WebP lands two orders of magnitude inside the cap, so this
+          // only fires on something pathological - and it is worth saying here
+          // rather than letting the server answer for it.
+          if (dataUri.length > MAX_AVATAR_STRING_LEN) {
+            toast.error("That image is too large");
+            return;
+          }
+          commit(dataUri);
+        }}
+      />
+      <input
+        ref={inputRef}
+        type="file"
+        accept={AVATAR_ACCEPT_ATTR}
+        className="hidden"
+        onChange={(e) => {
+          pick(e.target.files?.[0]);
+          // Reset so re-picking the same file fires change again.
+          e.target.value = "";
+        }}
+      />
+    </>
+  );
+
+  // Nothing but the dialogs: the caller drew the trigger and owns the state.
+  if (controlled) return editor;
 
   return (
     <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5">
@@ -190,59 +263,7 @@ export function AvatarPicker({
       {children ? (
         <div className="col-start-2 row-start-1 min-w-0">{children}</div>
       ) : null}
-      {sources ? (
-        <AvatarSourceDialog
-          open={choosing}
-          onOpenChange={setChoosing}
-          sources={sources}
-          busy={Boolean(busy)}
-          previews={previews}
-          dragging={dragging}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            pick(e.dataTransfer.files?.[0]);
-          }}
-          onPick={(value) => {
-            setChoosing(false);
-            commit(value);
-          }}
-          onUpload={() => inputRef.current?.click()}
-        />
-      ) : null}
-      <ImageCropDialog
-        file={picked}
-        variant="avatar"
-        onClose={() => setPicked(null)}
-        onCropped={(dataUri) => {
-          setPicked(null);
-          setChoosing(false);
-          // A 256px WebP lands two orders of magnitude inside the cap, so this
-          // only fires on something pathological - and it is worth saying here
-          // rather than letting the server answer for it.
-          if (dataUri.length > MAX_AVATAR_STRING_LEN) {
-            toast.error("That image is too large");
-            return;
-          }
-          commit(dataUri);
-        }}
-      />
-      <input
-        ref={inputRef}
-        type="file"
-        accept={AVATAR_ACCEPT_ATTR}
-        className="hidden"
-        onChange={(e) => {
-          pick(e.target.files?.[0]);
-          // Reset so re-picking the same file fires change again.
-          e.target.value = "";
-        }}
-      />
+      {editor}
     </div>
   );
 }
