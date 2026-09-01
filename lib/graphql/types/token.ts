@@ -86,8 +86,16 @@ export const ApiTokenRef = builder
         nullable: true,
         description:
           "Set when this token was minted by connecting an AI client over " +
-          "OAuth rather than from the tokens page. Such a token is managed " +
-          "under Settings → MCP Server and is not edited by hand.",
+          "OAuth rather than from the tokens page. Such a token is also listed " +
+          "under Settings → MCP Server, and `updateToken` re-authors it like " +
+          "any other: the client sees the new permissions on its next call.",
+      }),
+      mcp: t.exposeBoolean("mcp", {
+        description:
+          "Whether this credential drives Deplo over MCP: minted by approving " +
+          "an OAuth consent, or a bearer token that has already called the MCP " +
+          "server. The question a company asks is which of its tokens an AI " +
+          "agent holds, and either shape answers yes.",
       }),
       expiresAt: t.exposeString("expiresAt", {
         nullable: true,

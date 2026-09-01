@@ -110,6 +110,11 @@ export interface ApiTokenDTO {
    */
   oauthClientName: string | null;
   /**
+   * Talks MCP: minted by approving a consent, or a bearer token that has already
+   * called `/api/mcp`. The same two columns `listMcpConnections` selects on.
+   */
+  mcp: boolean;
+  /**
    * When this credential stops working, or null for "never", which is what every
    * token minted before expiry existed still is.
    */
@@ -281,6 +286,10 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
       createdByImage: usersTable.image,
       createdByEmail: usersTable.email,
       oauthClientName: oauthClient.name,
+      // Consumed by `mcp` and dropped: the id, not the joined name, because a
+      // client row that has been deleted must not un-mark its connection.
+      oauthClientId: apiTokens.oauthClientId,
+      mcpLastUsedAt: apiTokens.mcpLastUsedAt,
     })
     .from(apiTokens)
     .leftJoin(teamsTable, eq(teamsTable.id, apiTokens.teamId))
@@ -342,23 +351,32 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   // `createdByImage` / `createdByEmail` are DESTRUCTURED OUT before the spread: the
   // row carries them so the avatar can be resolved, and `...rest` would otherwise
   // walk both straight into the DTO - an email this list has never exposed.
-  return rows.map(({ createdByImage, createdByEmail, ...r }) => ({
-    ...r,
-    createdByAvatarUrl: avatarUrl({
-      image: createdByImage,
-      email: createdByEmail,
+  return rows.map(
+    ({
+      createdByImage,
+      createdByEmail,
+      oauthClientId,
+      mcpLastUsedAt,
+      ...r
+    }) => ({
+      ...r,
+      createdByAvatarUrl: avatarUrl({
+        image: createdByImage,
+        email: createdByEmail,
+      }),
+      mcp: oauthClientId !== null || mcpLastUsedAt !== null,
+      expired: r.expiresAt != null && Date.parse(r.expiresAt) <= now,
+      homeTeamName: r.homeTeamName ?? "",
+      // Chosen by the app at registration: free text, any length, shown in a badge.
+      oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
+      capabilities: inCatalogOrder((capsById.get(r.id) ?? []) as Capability[]),
+      teamIds: teamsById.get(r.id) ?? [],
+      projectIds: projectsById.get(r.id) ?? [],
+      folderIds: foldersById.get(r.id) ?? [],
+      appIds: appsById.get(r.id) ?? [],
+      teamsReached: reachedByToken.get(r.id) ?? [],
     }),
-    expired: r.expiresAt != null && Date.parse(r.expiresAt) <= now,
-    homeTeamName: r.homeTeamName ?? "",
-    // Chosen by the app at registration: free text, any length, shown in a badge.
-    oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
-    capabilities: inCatalogOrder((capsById.get(r.id) ?? []) as Capability[]),
-    teamIds: teamsById.get(r.id) ?? [],
-    projectIds: projectsById.get(r.id) ?? [],
-    folderIds: foldersById.get(r.id) ?? [],
-    appIds: appsById.get(r.id) ?? [],
-    teamsReached: reachedByToken.get(r.id) ?? [],
-  }));
+  );
 }
 
 /**
@@ -765,6 +783,7 @@ export async function createToken(
       // Set by `mintMcpConnection` right after this, in the same flow, when the
       // mint came from an OAuth consent rather than from the tokens page.
       oauthClientName: null,
+      mcp: false,
       expiresAt,
       // Refused if it were not (see cleanExpiry).
       expired: false,

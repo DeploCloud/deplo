@@ -732,6 +732,7 @@ test("the connection appears in the API tokens list, marked", async () => {
   const tokens = await as(OWNER, () => listTokens());
   assert.equal(tokens.length, 1);
   assert.equal(tokens[0].oauthClientName, "Claude");
+  assert.equal(tokens[0].mcp, true, "the robot mark did not reach the list");
 });
 
 /* ------------------------------------------------------------------ */
@@ -774,12 +775,24 @@ test("a bearer token that has spoken MCP is listed as a connection", async () =>
   assert.ok(list[0].mcpLastUsedAt, "the MCP stamp did not reach the DTO");
 });
 
+test("a bearer token that has spoken MCP is marked in the tokens list", async () => {
+  // The mark is what tells a company an AI agent holds this credential, and it
+  // is not the OAuth join: a bearer connector has no registered client row.
+  const id = await bearer("Claude Code");
+  await markSpokeMcp(id);
+  const [token] = await as(OWNER, () => listTokens());
+  assert.equal(token.id, id);
+  assert.equal(token.oauthClientName, null);
+  assert.equal(token.mcp, true);
+});
+
 test("a token that has never spoken MCP is not a connection", async () => {
   // The whole reason for a second column. This is a CI credential, and listing
   // it here would tell a company an AI agent is in their infrastructure when
   // none is.
   await bearer("Nightly CI");
   assert.deepEqual(await as(OWNER, () => listMcpConnections()), []);
+  assert.equal((await as(OWNER, () => listTokens()))[0].mcp, false);
 });
 
 test("an OAuth connector is still listed, and marked as a web app", async () => {

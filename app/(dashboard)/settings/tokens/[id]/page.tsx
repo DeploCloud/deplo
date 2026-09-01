@@ -12,6 +12,7 @@ import { getToken, listScopeTree } from "@/lib/data/tokens";
 import { PageHeader } from "@/components/shared/page-header";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
+import { tokenEditable } from "@/components/settings/tokens/editable";
 import { timeAgo } from "@/lib/utils";
 import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
 
@@ -43,8 +44,11 @@ export default async function TokenPage(
   if (!token) notFound();
   // SOMEONE ELSE's token is editable only from the team it was created in:
   // re-authoring it is bounded by what you may do there (`updateToken`).
-  const editableHere =
-    token.createdByUserId === user.id || token.homeTeamId === activeTeamId;
+  const editableHere = tokenEditable(token, {
+    userId: user.id,
+    activeTeamId,
+    canManage: true,
+  });
   const canEdit = canManage && editableHere;
 
   return (

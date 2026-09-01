@@ -8,7 +8,7 @@ import {
   ShieldAlert,
   FolderTree,
   ServerCog,
-  Plug,
+  Bot,
   Pencil,
   Eye,
 } from "lucide-react";
@@ -35,6 +35,7 @@ import { timeAgo } from "@/lib/utils";
 import { CAPABILITY_META } from "@/lib/capabilities";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
 import { scopeLabel } from "@/components/settings/tokens/scope-label";
+import { tokenEditable } from "@/components/settings/tokens/editable";
 import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
 import type { ApiTokenDTO } from "@/lib/data/tokens";
 
@@ -45,6 +46,7 @@ export function TokensList({
   tokens,
   names,
   activeTeamId,
+  currentUserId,
   canManage,
 }: {
   tokens: ApiTokenDTO[];
@@ -52,6 +54,8 @@ export function TokensList({
   names: Record<string, string>;
   /** Revoking takes away THIS team's access, so the dialog has to name it. */
   activeTeamId: string;
+  /** Your own tokens are yours to edit from any team, so the row has to know you. */
+  currentUserId: string;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -96,8 +100,11 @@ export function TokensList({
               (c) => CAPABILITY_META[c]?.sensitive,
             );
             const scope = scopeLabel(t, names);
-            const editable =
-              canManage && !t.oauthClientName && t.homeTeamId === activeTeamId;
+            const editable = tokenEditable(t, {
+              userId: currentUserId,
+              activeTeamId,
+              canManage,
+            });
             return (
               <TableRow key={t.id}>
                 <TableCell>
@@ -140,14 +147,22 @@ export function TokensList({
                         Instance admin
                       </Badge>
                     )}
-                    {t.oauthClientName && (
-                      <SimpleTooltip content="Created by connecting this app over OAuth. It is also listed under Settings → MCP Server.">
+                    {t.mcp && (
+                      <SimpleTooltip
+                        content={
+                          t.oauthClientName
+                            ? "An AI client connected over OAuth. Edit it here, or take its access away under Settings → MCP Server."
+                            : "This token has already driven Deplo over MCP. It is also listed under Settings → MCP Server."
+                        }
+                      >
                         {/* The name is whatever the app called itself at
                             registration - free text, any length. Bounded here so
                             a 200-character one cannot stretch the row. */}
                         <Badge variant="outline" className="max-w-40 gap-1">
-                          <Plug className="size-3 shrink-0" aria-hidden />
-                          <span className="truncate">{t.oauthClientName}</span>
+                          <Bot className="size-3 shrink-0" aria-hidden />
+                          <span className="truncate">
+                            {t.oauthClientName ?? "MCP"}
+                          </span>
                         </Badge>
                       </SimpleTooltip>
                     )}
@@ -202,8 +217,8 @@ export function TokensList({
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     {/**
-                     * Same rule the token's own page applies: an OAuth connection is re-authored by
-                     * connecting again, and a token managed in another team can only be revoked here.
+                     * Same rule the token's own page applies: a token managed in another
+                     * team can only be revoked here, an OAuth one is edited like any other.
                      */}
                     <Button asChild variant="ghost" size="icon-sm">
                       <Link
