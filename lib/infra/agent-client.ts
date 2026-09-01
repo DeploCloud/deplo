@@ -119,10 +119,10 @@ const SELF_UNINSTALL_TIMEOUT_MS = 60_000; // a few file removals + two systemctl
 // these run under the per-DB lifecycle lock (lib/data/keyed-mutex), so a hung RPC
 // with no deadline would wedge every future op for that database.
 const STACK_DEADLINE_MS = 3 * 60_000;
-// A cross-host volume copy (export/import) tars a whole DB data volume across the
-// wire; the agent caps each side at ~30min. Match the backup-class deadline plus
-// dial slack - same reasoning as BACKUP_DEADLINE_MS (a volume-heavy move is long).
-const VOLUME_COPY_DEADLINE_MS = 60 * 60_000;
+// A cross-host volume copy (export/import) tars a whole volume across the wire; the
+// agent caps each side at 6h. Kept an hour wider so the agent's own timeout is what
+// fires, and its message names the step - a bare DEADLINE_EXCEEDED names nothing.
+const VOLUME_COPY_DEADLINE_MS = 7 * 60 * 60_000;
 // How many BYTE-carrying frames a relay may hold before it pauses the source
 // stream.
 const STREAM_BYTES_PAUSE_ABOVE = 8;
