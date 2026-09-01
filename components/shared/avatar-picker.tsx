@@ -474,7 +474,9 @@ function AvatarSourceDialog({
         <DialogHeader>
           <DialogTitle>Profile picture</DialogTitle>
           <DialogDescription>
-            Pick a look, then a face - or upload your own.
+            {style === "initials"
+              ? "Two letters. Plain, or slightly less plain."
+              : "Pick a look, then a face - or upload your own."}
           </DialogDescription>
         </DialogHeader>
         {style === "pixelbot" ? (
