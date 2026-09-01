@@ -104,6 +104,15 @@ export const INITIALS_PRESETS = [
 
 export const DEFAULT_INITIALS_PRESET = INITIALS_PRESETS[0].id;
 
+/** What a TEAM is offered: the same set, four of it. `default` is the derived
+ *  one - the picture it already wears - and storing it means storing nothing. */
+export const TEAM_PRESETS = [
+  { id: "default", label: "Initials" },
+  { id: "electric", label: "Initials Electric" },
+  { id: "greyscale", label: "Initials Greyscale" },
+  { id: "sunrise", label: "Initials Sunrise" },
+] as const;
+
 /**
  * The credit CC BY asks for, wherever the art is shown: creator, source, licence,
  * and the fact that it is a remix. Copied from the style's own `meta.license`.
@@ -210,6 +219,13 @@ export function isValidUserAvatarValue(value: string): boolean {
   if (value === GRAVATAR_VALUE || value === INITIALS_VALUE) return true;
   if (faceParts(value)) return true;
   return isValidAvatarValue(value);
+}
+
+/** Whether a TEAM may store this: an uploaded picture or a generated one. Never
+ *  `gravatar` - a team has no address - and never the bare `initials`, which is
+ *  what storing nothing already means. */
+export function isValidTeamAvatarValue(value: string): boolean {
+  return Boolean(faceParts(value)) || isValidAvatarValue(value);
 }
 
 /**

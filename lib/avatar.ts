@@ -91,10 +91,12 @@ export async function avatarUrlFor(row: AvatarSource): Promise<string | null> {
 
 /**
  * A team's picture. Sync and flagless: a team has no email, so there is no
- * Gravatar to fall back to and nothing to ask the instance about - it is the
- * uploaded image or the monogram.
+ * Gravatar to ask the instance about - it is the uploaded image, a generated one,
+ * or null, which the component draws as the letters of the team's name.
  */
 export function teamAvatarUrl(image: string | null | undefined): string | null {
   const value = image?.trim();
+  const parts = faceParts(value);
+  if (parts) return facePath(parts.style, parts.preset, parts.seed);
   return value && isValidAvatarValue(value) ? value : null;
 }

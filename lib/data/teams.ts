@@ -27,7 +27,7 @@ import {
 } from "../membership";
 import { recordActivity } from "./activity";
 import { teamAvatarUrl } from "../avatar";
-import { isValidAvatarValue } from "../apps/avatar-shared";
+import { isValidTeamAvatarValue } from "../apps/avatar-shared";
 import type { Team } from "../types";
 
 function slugify(s: string): string {
@@ -267,7 +267,7 @@ export async function updateTeam(input: {
 export async function updateTeamAvatar(image: string | null): Promise<Team> {
   const { teamId } = await requireCapability("manage_team");
   const next = image?.trim() || null;
-  if (next && !isValidAvatarValue(next))
+  if (next && !isValidTeamAvatarValue(next))
     throw new Error("Unsupported profile picture");
 
   const rows = await getDb()
@@ -369,7 +369,7 @@ export async function createTeam(input: {
   const name = input.name.trim();
   if (!name) throw new Error("Team name is required");
   const image = input.image?.trim() || null;
-  if (image && !isValidAvatarValue(image))
+  if (image && !isValidTeamAvatarValue(image))
     throw new Error("Unsupported profile picture");
   const now = nowIso();
   const team = await getDb().transaction(async (tx) => {

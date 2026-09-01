@@ -28,7 +28,7 @@ import {
   validateUsername,
 } from "./username";
 import {
-  isValidAvatarValue,
+  isValidTeamAvatarValue,
   isValidUserAvatarValue,
 } from "./apps/avatar-shared";
 import { newId } from "./ids";
@@ -249,7 +249,7 @@ export async function createAccountWithTeam(
   if (image && !isValidUserAvatarValue(image))
     throw new Error("Unsupported profile picture");
   const teamImage = input.teamImage?.trim() || null;
-  if (teamImage && !isValidAvatarValue(teamImage))
+  if (teamImage && !isValidTeamAvatarValue(teamImage))
     throw new Error("Unsupported team picture");
 
   assertPasswordPolicy(input.password);

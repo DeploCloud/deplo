@@ -352,6 +352,24 @@ test("a team picture is validated at creation, not only when it is changed", asy
   );
 });
 
+test("a team may wear a generated picture, not a person's sources", async () => {
+  await as(OWNER, () => updateTeamAvatar("initials:electric:Acme-Corp"));
+  assert.equal(
+    (await as(OWNER, () => getTeam())).avatarUrl,
+    "/api/avatar/initials/electric/Acme-Corp.svg",
+  );
+  // A team has no address and no monogram of its own to fall back to.
+  for (const bad of ["gravatar", "initials"])
+    await assert.rejects(
+      as(OWNER, () => updateTeamAvatar(bad)),
+      /Unsupported/i,
+      `must refuse ${bad}`,
+    );
+  // Clearing goes back to the letters of the name, drawn on the fly.
+  await as(OWNER, () => updateTeamAvatar(null));
+  assert.equal((await as(OWNER, () => getTeam())).avatarUrl, null);
+});
+
 test("a team picture is refused the same values a person's is", async () => {
   await assert.rejects(
     as(OWNER, () => updateTeamAvatar("data:image/svg+xml;base64,PHN2Zz4=")),

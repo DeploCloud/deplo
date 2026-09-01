@@ -26,6 +26,7 @@ import {
   INITIALS_PRESETS,
   MAX_AVATAR_STRING_LEN,
   rowSeeds,
+  TEAM_PRESETS,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 
@@ -441,13 +442,24 @@ function AvatarSourceDialog({
         </DialogHeader>
         {sources.simple ? (
           <div className="grid grid-cols-4 gap-2">
-            <FaceTile
-              src={facePath("initials", "default", seed)}
-              label="The name's letters"
-              disabled={busy}
-              selected={choice.kind !== "uploaded"}
-              onClick={() => onPick(null)}
-            />
+            {TEAM_PRESETS.map(({ id, label }) => (
+              <FaceTile
+                key={id}
+                src={facePath("initials", id, seed)}
+                label={label}
+                disabled={busy}
+                selected={
+                  // The derived one is what storing NOTHING already draws.
+                  id === "default"
+                    ? choice.kind !== "uploaded" &&
+                      !(worn && worn.preset !== "default")
+                    : worn?.style === "initials" && worn.preset === id
+                }
+                onClick={() =>
+                  onPick(id === "default" ? null : `initials:${id}:${seed}`)
+                }
+              />
+            ))}
           </div>
         ) : (
           <>
