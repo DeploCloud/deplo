@@ -247,7 +247,7 @@ function FaceTile({
       aria-label={label}
       title={label}
       className={cn(
-        "rounded-full transition outline-none",
+        "w-full rounded-full transition outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring",
         selected
           ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
@@ -259,7 +259,7 @@ function FaceTile({
       <img
         src={pixelbotPath(preset, seed)}
         alt=""
-        className="size-12 rounded-full"
+        className="block w-full rounded-full"
       />
     </button>
   );
@@ -300,10 +300,10 @@ function PresetChip({
       aria-label={label}
       title={label}
       className={cn(
-        "rounded-full transition outline-none",
+        "w-full rounded-full transition outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring",
         selected
-          ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
           : "opacity-70 hover:opacity-100",
         disabled && "cursor-not-allowed opacity-60",
       )}
@@ -312,7 +312,7 @@ function PresetChip({
       <img
         src={pixelbotPath(preset, seed)}
         alt=""
-        className="size-8 rounded-full"
+        className="block w-full rounded-full"
       />
     </button>
   );
@@ -393,7 +393,7 @@ function AvatarSourceDialog({
             Pick a look, then a face - or upload your own.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap justify-center gap-3 rounded-xl border border-border bg-card p-3">
+        <div className="grid grid-cols-6 gap-2">
           {rowSeeds.map((rowSeed) => (
             <FaceTile
               key={rowSeed}
@@ -410,7 +410,7 @@ function AvatarSourceDialog({
             />
           ))}
         </div>
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="grid grid-cols-9 gap-1.5">
           {PIXELBOT_PRESETS.map(({ id, label }, i) => (
             <PresetChip
               key={id}
