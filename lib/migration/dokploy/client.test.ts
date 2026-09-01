@@ -205,3 +205,39 @@ test("the address keeps rejecting a key smuggled into it", () => {
     /API key field/,
   );
 });
+
+test("starting a service again calls the stop procedure's own mirror", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+
+  // Measured against a real Dokploy: `compose.stop` and `compose.start` are a
+  // pair, and `application.start` exists too (it answered with its own tRPC
+  // path, not a 404).
+  const seen: { url: string; body: string }[] = [];
+  __setMigrationFetchForTest(async (input, init) => {
+    seen.push({
+      url: String(input),
+      body: String((init as RequestInit | undefined)?.body ?? ""),
+    });
+    return new Response("true", { status: 200 });
+  });
+
+  await dokployClient(cred).startService("compose", "c1");
+  await dokployClient(cred).startService("application", "a1");
+
+  assert.deepEqual(
+    seen.map((s) => s.url),
+    [
+      "http://dokploy.test:3000/api/compose.start",
+      "http://dokploy.test:3000/api/application.start",
+    ],
+  );
+  assert.deepEqual(JSON.parse(seen[0].body), { composeId: "c1" });
+  assert.deepEqual(JSON.parse(seen[1].body), { applicationId: "a1" });
+});
+
+test("a kind Dokploy has no procedure for is refused rather than posted", async () => {
+  await assert.rejects(
+    () => dokployClient(cred).startService("libsql", "x1"),
+    /cannot start a libsql/i,
+  );
+});

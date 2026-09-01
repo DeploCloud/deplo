@@ -121,6 +121,13 @@ export interface MigrationSourceClient {
    */
   stopService(kind: string, id: string): Promise<void>;
 
+  /**
+   * Start it again over there. The ONE case Deplo writes to a platform it is
+   * leaving: an operator backing out of a takeover, whose services this migration
+   * is the reason are stopped.
+   */
+  startService(kind: string, id: string): Promise<void>;
+
   /** The platform's own networks to take out of THIS service's compose. Fixed for
    *  Dokploy, per-resource for Coolify. */
   platformNetworks(svc: { kind: string; id: string }): string[];

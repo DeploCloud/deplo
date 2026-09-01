@@ -8,6 +8,7 @@ import {
   apps as appsTable,
   databases as databasesTable,
   migrationRunItems as itemsTable,
+  migrationRunTargets as targetsTable,
   migrationRuns as runsTable,
 } from "../db/schema/control-plane";
 import { formatBytes, mapLimit } from "../utils";
@@ -619,6 +620,23 @@ function missingVolumeMessage(
 }
 
 /**
+ * Write down that the SOURCE service is now stopped over there. Backing out of a
+ * takeover reads exactly these rows to start them again.
+ */
+async function recordSourceStopped(
+  runId: string,
+  serviceId: string,
+  kind: string,
+): Promise<void> {
+  await getDb()
+    .update(targetsTable)
+    .set({ stoppedKind: kind, stoppedAt: nowIso() })
+    .where(
+      and(eq(targetsTable.runId, runId), eq(targetsTable.serviceId, serviceId)),
+    );
+}
+
+/**
  * Write down the stop the copy just performed, because it was DELIBERATE.
  */
 async function recordStoppedForCopy(
@@ -958,8 +976,10 @@ async function runMoveMigrationServiceData(
   // service the panel will not stop because it was never deployed, which answers
   // 500 to its own stop. Nothing is running, so nothing is moving under the
   // copy; the run has no business ending over it.
+  let stoppedThere = false;
   try {
     await sourceClient(c).stopService(input.sourceKind, input.sourceId);
+    stoppedThere = true;
   } catch (e) {
     const why = e instanceof Error ? e.message : `${panel} refused`;
     if (state.running) {
@@ -990,6 +1010,11 @@ async function runMoveMigrationServiceData(
       `{panel} would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was copied as it is.`,
     );
   }
+  // Only a stop that HAPPENED is written down: backing out of a takeover starts
+  // these again, and starting something the operator had stopped themselves
+  // would be this feature undoing their decision.
+  if (stoppedThere)
+    await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
 
   // Stop the destination too: untarring into a volume a container is writing to is
   // the same mistake in the other direction.

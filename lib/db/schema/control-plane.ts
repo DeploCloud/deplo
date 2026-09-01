@@ -2649,6 +2649,22 @@ export const instanceSettings = pgTable("instance_settings", {
    */
   networkSweepAt: isoTimestamptz("network_sweep_at"),
   networkSweepFailed: integer("network_sweep_failed").notNull().default(0),
+  /**
+   * The platform this instance is taking the machine back from - `'dokploy'` /
+   * `'coolify'`, NULL on an ordinary install. Seeded at boot from the installer's
+   * `DEPLO_TAKEOVER`, because only the installer can see the other platform.
+   */
+  takeoverPlatform: text("takeover_platform"),
+  /** `'pending'` | `'ready'` | `'done'` | `'removing'` | `'removed'` | `'cancelled'`. */
+  takeoverState: text("takeover_state"),
+  /** The migration run that carried the machine over, for the report to link. */
+  takeoverRunId: text("takeover_run_id"),
+  /**
+   * When a request first reached the panel from something other than loopback.
+   * NULL while only the installer has ever talked to it, which is what tells the
+   * installer that its port is not reachable and another way in is needed.
+   */
+  takeoverSeenExternalAt: isoTimestamptz("takeover_seen_external_at"),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 
@@ -2714,6 +2730,13 @@ export const migrationRunTargets = pgTable(
     exposedPortSet: boolean("exposed_port_set").notNull().default(false),
     /** `'pending'` | `'done'` | `'failed'`. */
     state: text("state").notNull().default("pending"),
+    /**
+     * The service's kind on the source, written only once the data phase has
+     * actually STOPPED it over there. Backing out of a takeover starts exactly
+     * these again; a target that was never stopped is not one of them.
+     */
+    stoppedKind: text("stopped_kind"),
+    stoppedAt: isoTimestamptz("stopped_at"),
   },
   (t) => [index("migration_run_targets_run_idx").on(t.runId, t.seq)],
 );

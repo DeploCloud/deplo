@@ -47,6 +47,16 @@ export async function register(): Promise<void> {
     console.error("[deplo] could not register this host as a server:", e);
   }
   try {
+    // The installer is the only thing that can see the platform it is replacing,
+    // so what it saw arrives as an env var and becomes state here.
+    const { ensureTakeoverFromEnv } = await import("./lib/data/takeover");
+    await ensureTakeoverFromEnv();
+  } catch (e) {
+    // Loud: without this the dashboard opens normally on a machine whose ports
+    // still belong to somebody else's panel.
+    console.error("[deplo] could not read the takeover this install is:", e);
+  }
+  try {
     // Retire anything left by the withdrawn Plugins feature (ADR-0013): with no Plugins
     // UI left, an installed plugin's container would otherwise be an orphan only a
     // shell on the host could remove.

@@ -21,6 +21,7 @@ import {
   listProjects,
   listSchedules,
   listServers,
+  startService,
   stopService,
   type DokployRuntime,
 } from "./client";
@@ -160,6 +161,7 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     listBackupDestinations: async () => [],
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),
+    startService: (kind, id) => startService(c, kind, id),
     // Dokploy puts every stack on one shared network, whatever the stack is.
     platformNetworks: () => [...DOKPLOY_PLATFORM.networks],
   };

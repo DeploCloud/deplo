@@ -389,6 +389,22 @@ export async function stopService(
   await post(c, procedure, { [`${kind}Id`]: id });
 }
 
+/**
+ * Undo that stop - the only reason Deplo ever starts something on a platform it
+ * is migrating away from is an operator backing out of a takeover.
+ */
+export async function startService(
+  c: SourceCredential,
+  kind: string,
+  id: string,
+): Promise<void> {
+  const procedure = STOP_PROCEDURE[kind];
+  if (!procedure) throw new Error(`Deplo cannot start a ${kind} on Dokploy.`);
+  await post(c, procedure.replace(/\.stop$/, ".start"), {
+    [`${kind}Id`]: id,
+  });
+}
+
 /** The cron jobs attached to one service. Best-effort, same reasoning as above. */
 export async function listSchedules(
   c: SourceCredential,

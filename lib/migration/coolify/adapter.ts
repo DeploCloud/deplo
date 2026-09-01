@@ -43,6 +43,7 @@ import {
   listTeamMembers,
   resourceState,
   resourceStatus,
+  startResource,
   stopResource,
   type CoolifyEnvironment,
   type CoolifyResourceGroup,
@@ -494,6 +495,19 @@ async function stopService(
   }
 }
 
+/**
+ * Undo that stop. No polling on the way back: nothing is reading the volume any
+ * more, and Coolify's `status` stays `exited` for minutes after the container is
+ * up again, so waiting on it would only invent a failure.
+ */
+async function startService(
+  c: SourceCredential,
+  kind: string,
+  id: string,
+): Promise<void> {
+  await startResource(c, await resolveGroup(c, kind, id), id);
+}
+
 /** 30 seconds, plus 20 for every container in the stack, capped at three minutes. */
 export function stopDeadlineMs(containers: number): number {
   return Math.min(
@@ -575,6 +589,7 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
 
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),
+    startService: (kind, id) => startService(c, kind, id),
 
     // Coolify puts every service of ONE stack on a network named after that
     // resource, so this is per-resource rather than a fixed name.

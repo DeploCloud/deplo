@@ -593,6 +593,15 @@ export function stopResource(
   return post<unknown>(c, `${group}/${uuid}/stop`);
 }
 
+/** Its mirror, used only when an operator backs out of a takeover. */
+export function startResource(
+  c: SourceCredential,
+  group: CoolifyResourceGroup,
+  uuid: string,
+): Promise<unknown> {
+  return post<unknown>(c, `${group}/${uuid}/start`);
+}
+
 /** The status Coolify reports for one resource, for the stop to poll. */
 export async function resourceStatus(
   c: SourceCredential,

@@ -246,3 +246,34 @@ test("a compose the panel DOES hand over settles the token", async (t) => {
   });
   await coolifyClient(cred).assertReadable();
 });
+
+test("backing out starts the service again, on the group it belongs to", async (t) => {
+  const seen = serve(t, {
+    "/api/v1/services/svc-gitea/start": { message: "queued" },
+  });
+  // A Coolify one-click service arrives as kind `compose`; the group is settled
+  // from the service list, the same way the stop settles it.
+  await coolifyClient(cred).startService("compose", "svc-gitea");
+  assert.ok(
+    seen.includes("/api/v1/services/svc-gitea/start"),
+    `no start was posted; calls were ${seen.join(", ")}`,
+  );
+  // Measured on a real Coolify: `status` still reads `exited` minutes after the
+  // container is back, so a start that waited on it would invent a failure.
+  assert.ok(
+    !seen.some(
+      (p) => p.endsWith("/start") && p !== "/api/v1/services/svc-gitea/start",
+    ),
+  );
+});
+
+test("a database is started on its own group, not the services one", async (t) => {
+  const seen = serve(t, {
+    "/api/v1/databases/db-1/start": { message: "queued" },
+  });
+  await coolifyClient(cred).startService("postgres", "db-1");
+  assert.ok(
+    seen.includes("/api/v1/databases/db-1/start"),
+    `no database start was posted; calls were ${seen.join(", ")}`,
+  );
+});
