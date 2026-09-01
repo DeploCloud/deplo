@@ -7,6 +7,7 @@ import { Check, Clock, Copy, LinkIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RevealChip } from "@/components/shared/reveal-chip";
+import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 import type { RegistrationLinkDTO } from "@/lib/data/members";
@@ -75,14 +76,13 @@ export function RegistrationLinkRow({
     });
   }
 
-  function copy() {
-    void resolve().then((v) => {
-      if (v === null) return;
-      navigator.clipboard.writeText(v);
-      toast.success("Registration link copied");
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+  async function copy() {
+    const v = await resolve();
+    if (v === null) return;
+    if (!(await copyText(v))) return;
+    toast.success("Registration link copied");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   function revoke() {

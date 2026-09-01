@@ -49,6 +49,7 @@ import {
   type Entry,
   type EntryOwner,
 } from "@/lib/command-palette/entries";
+import { copyText } from "@/lib/clipboard";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { SEARCH_QUERY } from "@/lib/command-palette/search-query";
 import { DOCS_BASE } from "@/lib/docs";
@@ -562,8 +563,7 @@ function PaletteBody({
         else router.push(entry.run.href);
         return;
       case "copy":
-        await navigator.clipboard.writeText(entry.run.text);
-        toast.success("Copied");
+        if (await copyText(entry.run.text)) toast.success("Copied");
         return;
       case "mutation": {
         const res = await gqlAction(entry.run.query, entry.run.variables);

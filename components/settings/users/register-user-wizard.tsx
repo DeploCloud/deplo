@@ -30,6 +30,7 @@ import { TeamAvatar } from "@/components/shared/user-avatar";
 import { ChoiceCard } from "@/components/shared/choice-card";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { atClock } from "@/components/settings/registration-link-row";
+import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { capabilitiesForRole } from "@/lib/membership-shared";
 import { cn } from "@/lib/utils";
@@ -214,11 +215,10 @@ export function RegisterUserWizard({
     });
   }
 
-  function copy() {
-    if (link) {
-      navigator.clipboard.writeText(link);
-      toast.success("Registration link copied");
-    }
+  async function copy() {
+    if (!link) return;
+    if (!(await copyText(link))) return;
+    toast.success("Registration link copied");
   }
 
   return (

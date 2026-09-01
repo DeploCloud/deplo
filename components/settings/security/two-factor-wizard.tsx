@@ -34,6 +34,7 @@ import { OtpInput } from "@/components/ui/otp-input";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { SetupKey } from "./setup-key";
 import { deploMarkDataUri } from "@/components/logo";
+import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
@@ -205,8 +206,8 @@ export function TwoFactorWizard({
     else if (step === "codes" && saved) finish();
   }
 
-  function copyCodes() {
-    void navigator.clipboard.writeText(backupCodes.join("\n"));
+  async function copyCodes() {
+    if (!(await copyText(backupCodes.join("\n")))) return;
     toast.success("Recovery codes copied");
   }
 

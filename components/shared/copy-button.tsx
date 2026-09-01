@@ -2,39 +2,9 @@
 
 import * as React from "react";
 import { Check, Copy } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
-
-/**
- * `navigator.clipboard` exists only in a SECURE context.
- */
-async function writeClipboard(value: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(value);
-    return true;
-  } catch {
-    /* no clipboard API, or the permission was refused - try the old way */
-  }
-  const active = document.activeElement as HTMLElement | null;
-  const ta = document.createElement("textarea");
-  ta.value = value;
-  ta.setAttribute("readonly", "");
-  // Off-screen but still selectable; `display:none` would make select() a no-op.
-  ta.style.position = "fixed";
-  ta.style.top = "0";
-  ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  try {
-    ta.select();
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    ta.remove();
-    active?.focus?.();
-  }
-}
 
 export function CopyButton({
   value,
@@ -52,14 +22,8 @@ export function CopyButton({
   const [copied, setCopied] = React.useState(false);
 
   async function copy() {
-    if (
-      !(await writeClipboard(typeof value === "function" ? value() : value))
-    ) {
-      // Both paths are gone (a hardened browser). Say so - a button that
-      // reports nothing reads as "copied" and the value never arrives.
-      toast.error("Couldn't copy - select the text and copy it manually");
+    if (!(await copyText(typeof value === "function" ? value() : value)))
       return;
-    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }

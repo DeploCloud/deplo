@@ -12,6 +12,7 @@ import { RevealChip } from "@/components/shared/reveal-chip";
 import { CommandLine } from "@/components/shared/code-block";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
+import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -197,14 +198,10 @@ function CopyResolved({ resolve }: { resolve: () => Promise<string | null> }) {
     const v = await resolve();
     setBusy(false);
     if (v === null) return; // resolve() already said why
-    try {
-      await navigator.clipboard.writeText(v);
-      setCopied(true);
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error("Couldn't copy to the clipboard");
-    }
+    if (!(await copyText(v))) return;
+    setCopied(true);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setCopied(false), 1500);
   }
 
   return (

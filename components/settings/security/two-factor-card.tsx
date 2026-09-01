@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { TwoFactorWizard } from "./two-factor-wizard";
+import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 
 const DISABLE = /* GraphQL */ `
@@ -189,8 +190,8 @@ export function TwoFactorCard({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  void navigator.clipboard.writeText(codes.join("\n"));
+                onClick={async () => {
+                  if (!(await copyText(codes.join("\n")))) return;
                   toast.success("Recovery codes copied");
                 }}
               >

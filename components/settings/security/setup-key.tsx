@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Check, Copy, Eye, EyeOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
 /**
@@ -31,8 +32,8 @@ export function SetupKey({ secret }: { secret: string }) {
     [secret.length],
   );
 
-  function copy() {
-    void navigator.clipboard.writeText(secret);
+  async function copy() {
+    if (!(await copyText(secret))) return;
     setCopied(true);
     toast.success("Setup key copied");
     setTimeout(() => setCopied(false), 1600);

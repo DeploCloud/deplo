@@ -26,6 +26,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { copyText } from "@/lib/clipboard";
 import { gql } from "@/lib/graphql-client";
 import { FacetMenu, type EnvFacet } from "@/components/env/env-filters";
 import type { ReportItem } from "./types";
@@ -245,10 +246,10 @@ export function MigrationConsole({
     >,
   );
 
-  function copyLog() {
+  async function copyLog() {
     // What is on screen, not the whole run: somebody who filtered to the four
     // failures is copying four failures.
-    navigator.clipboard.writeText(
+    const ok = await copyText(
       shown
         .map(
           (i) =>
@@ -257,7 +258,7 @@ export function MigrationConsole({
         )
         .join("\n"),
     );
-    toast.success("Log copied");
+    if (ok) toast.success("Log copied");
   }
 
   return (
