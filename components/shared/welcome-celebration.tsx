@@ -2,14 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  ArrowUpRight,
-  BookOpen,
-  MessagesSquare,
-  ShieldCheck,
-} from "lucide-react";
+import { ArrowUpRight, BookOpen, ShieldCheck } from "lucide-react";
 
 import { DeploMark } from "@/components/logo";
+import { ChannelMark } from "@/components/settings/channel-brand";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,39 +49,58 @@ export function WelcomeCelebration({ show }: { show: boolean }) {
     <>
       {confetti && <ConfettiBurst cannons count={64} className="z-[60]" />}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="bg-linear-to-b from-success/15 to-transparent to-45% sm:max-w-lg">
           <DialogHeader className="items-center text-center">
-            <span className="mb-2 flex size-10 items-center justify-center rounded-full bg-primary/10">
-              <DeploMark className="text-primary" size={18} />
+            <span className="mb-2 flex size-16 items-center justify-center rounded-2xl bg-success/10">
+              <DeploMark className="text-foreground" size={34} />
             </span>
-            <DialogTitle>Your instance is ready</DialogTitle>
+            <DialogTitle>Your Deplo is ready.</DialogTitle>
             <DialogDescription>
               Your account and team are ready. Deploy your first app whenever
               you like.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2">
-            <Button variant="outline" className="justify-start" asChild>
-              <a href={DISCORD_URL} target="_blank" rel="noreferrer">
-                <MessagesSquare className="size-4" />
-                Join the Discord for updates
-                <ArrowUpRight className="ml-auto size-4" />
+          <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <a
+                href={DISCORD_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="flex flex-col gap-2 rounded-lg border border-border p-4 transition-colors hover:bg-accent"
+              >
+                <ChannelMark channel="discord" />
+                <span className="flex items-center gap-1 text-sm font-medium">
+                  Join our Discord
+                  <ArrowUpRight className="size-3.5 text-muted-foreground" />
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Get help and updates from the community.
+                </span>
               </a>
-            </Button>
-            <Button variant="outline" className="justify-start" asChild>
-              <a href={docsUrl("docs.home")} target="_blank" rel="noreferrer">
-                <BookOpen className="size-4" />
-                Read the docs
-                <ArrowUpRight className="ml-auto size-4" />
-              </a>
-            </Button>
-            <Button variant="outline" className="justify-start" asChild>
-              <Link href="/settings/security" onClick={() => setOpen(false)}>
-                <ShieldCheck className="size-4" />
-                Turn on two-factor authentication
-                <ArrowUpRight className="ml-auto size-4" />
+              <Link
+                href="/settings/security"
+                onClick={() => setOpen(false)}
+                className="flex flex-col gap-2 rounded-lg border border-border p-4 transition-colors hover:bg-accent"
+              >
+                <span className="flex size-9 items-center justify-center rounded-lg bg-success/15">
+                  <ShieldCheck className="size-5 text-success" />
+                </span>
+                <span className="text-sm font-medium">Turn on 2FA</span>
+                <span className="text-xs text-muted-foreground">
+                  Ask for a second step when you sign in.
+                </span>
               </Link>
-            </Button>
+            </div>
+            <a
+              href={docsUrl("docs.home")}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm transition-colors hover:bg-accent"
+            >
+              <BookOpen className="size-4 text-muted-foreground" />
+              Read the docs
+              <ArrowUpRight className="ml-auto size-4 text-muted-foreground" />
+            </a>
           </div>
           <DialogFooter>
             <Button onClick={() => setOpen(false)}>Get started</Button>
