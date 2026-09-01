@@ -50,7 +50,7 @@ export function StorageFileEditor({
   const label = (
     <FieldLabel
       className="text-xs"
-      info="What deplo writes into the file. The app sees the new contents on its next deploy."
+      info="What Deplo writes into the file. The app sees the new contents on its next deploy."
       docs="storage.source"
     >
       What&apos;s in the file
@@ -113,7 +113,7 @@ export function StorageFileEditor({
               <Badge variant="secondary">Unsaved edit</Badge>
             ) : null
           ) : (
-            <Badge variant="outline">deplo creates this file</Badge>
+            <Badge variant="outline">Deplo creates this file</Badge>
           )
         }
       >

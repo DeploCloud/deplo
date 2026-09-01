@@ -107,7 +107,7 @@ services:
   assert.deepEqual(doc.services.metrics.ports, ["9090:9090"]);
 });
 
-test("Traefik labels + deplo network applied alongside the preserved ports", () => {
+test("Traefik labels + Deplo network applied alongside the preserved ports", () => {
   const doc = buildDoc(`
 services:
   web:
@@ -116,7 +116,7 @@ services:
       - "8080:80"
 `);
   const labels = labelsOf(doc.services.web);
-  // Routing rides the deplo network to the container port - orthogonal to host
+  // Routing rides the Deplo network to the container port - orthogonal to host
   // publishing, so the labels coexist with the kept ports.
   assert.ok(
     labels.includes("traefik.docker.network=deplo-team-team_test"),
@@ -197,7 +197,7 @@ test("each domain route becomes one router to its named service", () => {
   assert.ok(web.some((l) => /loadbalancer\.server\.port=80$/.test(l)));
   assert.ok(api.some((l) => l.includes("Host(`api.1.2.3.4.nip.io`)")));
   assert.ok(api.some((l) => /loadbalancer\.server\.port=8080$/.test(l)));
-  // Each routed service is wired onto the deplo network.
+  // Each routed service is wired onto the Deplo network.
   assert.ok((doc.services.web.networks as string[]).includes("deplo"));
   assert.ok((doc.services.api.networks as string[]).includes("deplo"));
 });
@@ -345,7 +345,7 @@ services:
   );
 });
 
-test("detectDefaultApp skips a service named after deplo's own network names", () => {
+test("detectDefaultApp skips a service named after Deplo's own network names", () => {
   // The first-service fallback used to hand back `postgres`, and a domain routed
   // there makes every later render of the stack throw - the app deploys once and
   // never again.
@@ -943,7 +943,7 @@ test("a hand-written alias on the shared network does not survive the render", (
     image: nginx
     networks:
       deplo:
-        aliases: [postgres, deplo]
+        aliases: [postgres, Deplo]
 networks:
   deplo: {external: true}`,
     name: "deplo-demo",

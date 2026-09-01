@@ -1059,7 +1059,7 @@ export async function updateRole(input: {
   );
 }
 
-/** Restore a default role to exactly what deplo ships. Built-ins only. */
+/** Restore a default role to exactly what Deplo ships. Built-ins only. */
 export async function resetRole(id: string): Promise<void> {
   const { teamId, userId, membership } =
     await requireCapability("manage_roles");

@@ -55,7 +55,7 @@ import {
 } from "../auth/request-context";
 
 /**
- * API tokens - bearer credentials that drive deplo's API from outside the
+ * API tokens - bearer credentials that drive Deplo's API from outside the
  * dashboard.
  */
 

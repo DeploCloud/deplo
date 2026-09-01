@@ -18,7 +18,7 @@ import type { Capability } from "../types";
  */
 
 /**
- * The revision deplo targets, spelled out rather than taken from the SDK's
+ * The revision Deplo targets, spelled out rather than taken from the SDK's
  * `LATEST_PROTOCOL_VERSION`, which still names the PREVIOUS revision
  * (`2025-11-25`), because "latest" there means "latest of the two eras this build
  */
@@ -165,7 +165,7 @@ test("instance-admin tools appear only for an instance-admin token", async () =>
 });
 
 test("a destructive tool runs straight away, with no confirmation step", () => {
-  // deplo adds no gate of its own: what an agent may do is the token's Capabilities
+  // Deplo adds no gate of its own: what an agent may do is the token's Capabilities
   // and nothing on top.
   return rpc("tools/call", principal(ALL, true), {
     name: "delete_app",
@@ -174,14 +174,14 @@ test("a destructive tool runs straight away, with no confirmation step", () => {
     assert.notEqual(
       json.result?.resultType,
       "input_required",
-      "deplo must not ask for input of its own",
+      "Deplo must not ask for input of its own",
     );
     assert.equal(json.result?.isError, true);
   });
 });
 
 test("a client that cannot prompt is served exactly like one that can", async () => {
-  // The old behaviour refused here, because deplo owned the confirmation.
+  // The old behaviour refused here, because Deplo owned the confirmation.
   const withPrompt = await rpc("tools/call", principal(ALL, true), {
     name: "delete_app",
     arguments: { appId: "prj_whatever" },

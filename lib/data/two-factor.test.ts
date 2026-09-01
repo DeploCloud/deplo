@@ -113,7 +113,7 @@ test("the gate leaves the rest of Better Auth alone", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Step-up on the deplo path                                           */
+/* Step-up on the Deplo path                                           */
 /* ------------------------------------------------------------------ */
 
 test("enrolment is refused when two-factor is already on", async () => {

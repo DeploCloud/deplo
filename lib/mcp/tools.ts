@@ -5,7 +5,7 @@ import type { Capability } from "../types";
 
 /**
  * The MCP tool table. ** A secret that enters a model's context window has left
- * deplo for a third party's logs and cannot be revoked from there.
+ * Deplo for a third party's logs and cannot be revoked from there.
  */
 
 export type ToolRequirement = Capability | "instanceAdmin";
@@ -85,7 +85,7 @@ const DIAGNOSTICS: McpToolDef[] = [
     name: "whoami",
     title: "Who am I",
     description:
-      "Which deplo team this connection acts in, and what this token is allowed to do. Run this first when something is refused.",
+      "Which Deplo team this connection acts in, and what this token is allowed to do. Run this first when something is refused.",
     group: "Diagnostics",
     requires: null,
     readOnly: true,
@@ -298,7 +298,7 @@ const APPS_READ: McpToolDef[] = [
     name: "render_compose",
     title: "Render an app's compose file",
     description:
-      "The exact Docker Compose deplo would ship for this app. Read-only: it renders, it does not deploy.",
+      "The exact Docker Compose Deplo would ship for this app. Read-only: it renders, it does not deploy.",
     group: "Apps",
     requires: "view",
     readOnly: true,
@@ -933,7 +933,7 @@ const DOMAINS: McpToolDef[] = [
     name: "set_primary_domain",
     title: "Make a domain primary",
     description:
-      "Choose the canonical hostname; the app's URL follows it everywhere in deplo.",
+      "Choose the canonical hostname; the app's URL follows it everywhere in Deplo.",
     group: "Domains",
     requires: "manage_domains",
     idempotent: true,
@@ -1916,7 +1916,7 @@ const SERVERS: McpToolDef[] = [
     name: "update_server_agent",
     title: "Update a server's agent",
     description:
-      "Update the deplo agent binary on one host in place. Agent releases are forward-only: this cannot be undone.",
+      "Update the Deplo agent binary on one host in place. Agent releases are forward-only: this cannot be undone.",
     group: "Servers",
     requires: "instanceAdmin",
     destructive: true,

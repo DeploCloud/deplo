@@ -271,7 +271,7 @@ test("a bucket name carrying shell syntax cannot escape the reproduce block", ()
 
 test("reproduce commands NEVER carry a real credential", () => {
   const cmd = reproduceCommand(target);
-  // Placeholders only - a stored secret has no reveal path in deplo, and this
+  // Placeholders only - a stored secret has no reveal path in Deplo, and this
   // block must not become one.
   assert.match(cmd, /AWS_ACCESS_KEY_ID='<access key>'/);
   assert.match(cmd, /AWS_SECRET_ACCESS_KEY='<secret key>'/);
@@ -409,7 +409,7 @@ test("the folder reproduce block is shell on that host, with no aws and no secre
 
 test("an untested managed folder admits it does not know the path yet", () => {
   const bare = { ...serverTarget, path: "" };
-  // No invented path anywhere: the agent picks it, and deplo learns it from the
+  // No invented path anywhere: the agent picks it, and Deplo learns it from the
   // first successful check.
   assert.ok(
     !reproduceCommand(bare).includes("/var/lib/deplo"),

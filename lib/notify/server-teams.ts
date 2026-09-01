@@ -12,7 +12,7 @@ import {
 
 /**
  * Who to tell about a SERVER-level or fleet-level event. Servers are the one
- * cross-team resource in deplo, so "this host is offline" has no single owner: it
+ * cross-team resource in Deplo, so "this host is offline" has no single owner: it
  * belongs to every team with something running on it.
  */
 

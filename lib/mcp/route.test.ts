@@ -39,7 +39,7 @@ import type { Capability } from "../types";
 
 /**
  * The MCP endpoint as a resource server. The first section is the regression net:
- * it passes on the pre-OAuth code and is what says "we did not break deplo".
+ * it passes on the pre-OAuth code and is what says "we did not break Deplo".
  */
 
 let db: TestDb;
@@ -212,7 +212,7 @@ test("register → sign in → authorize → mint → consent → exchange → a
   assert.match(
     String(authorized.location),
     /^\/oauth\/consent\?/,
-    "authorize must land on deplo's own consent page",
+    "authorize must land on Deplo's own consent page",
   );
 
   // What the consent page's browser fetch does FIRST - it verifies the
@@ -580,7 +580,7 @@ test("deleting the minted token stops the NEXT request", async () => {
 });
 
 test("disabling the client stops the next request", async () => {
-  // The plugin's own token lookup never reads this column; deplo's join does.
+  // The plugin's own token lookup never reads this column; Deplo's join does.
   const conn = await connect(["view"]);
   assert.equal((await mcp(conn.accessToken)).status, 200);
   await pg.query(
@@ -734,7 +734,7 @@ test("the MCP route contains no authorization check of its own", async () => {
 });
 
 test("better-auth's own MCP helpers are imported nowhere", async () => {
-  // `withMcpAuth` / `getMcpSession` bypass deplo's identity resolution entirely,
+  // `withMcpAuth` / `getMcpSession` bypass Deplo's identity resolution entirely,
   // never read `client.disabled`, and return the row including the refresh
   // token. Four holes this file tests for individually, in one import.
   const { execSync } = await import("node:child_process");

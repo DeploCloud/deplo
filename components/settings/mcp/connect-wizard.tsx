@@ -808,7 +808,7 @@ function AgentCard({
 }) {
   // Shown but refused, with the reason - the two branches need different
   // capabilities, and hiding half the grid would leave a reader wondering
-  // whether deplo supports their agent at all.
+  // whether Deplo supports their agent at all.
   const blocked = agent.kind === "web" ? !canManageMcp : !canManageTokens;
   const note =
     agent.kind === "web"

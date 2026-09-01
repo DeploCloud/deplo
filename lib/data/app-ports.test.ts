@@ -23,7 +23,7 @@ import { setAppPorts } from "./apps";
 import { loadAppGraph } from "./app-graph-load";
 
 /**
- * Host ports an app publishes - what deplo's proxy cannot route, and what used
+ * Host ports an app publishes - what Deplo's proxy cannot route, and what used
  * to force anybody moving a game server or an SMTP relay to rewrite their app as
  * a compose stack by hand.
  */

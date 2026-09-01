@@ -15,7 +15,7 @@ export default async function AppGeneralSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // "Detect from source" is offered for every app whose files deplo can
+  // "Detect from source" is offered for every app whose files Deplo can
   // actually read: a GitHub repo, an uploaded archive, or, for a compose stack,
   // the app's own files on its server. Same dispatch the detector runs.
   const detectable = faviconSourceKind(project) !== "none";

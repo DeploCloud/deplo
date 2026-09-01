@@ -9,7 +9,7 @@ Amends [ADR-0012](./0012-shared-variables-are-opt-in-per-app.md) on one point (D
 
 ## Context
 
-deplo could deploy an App from GitHub and redeploy it on every push, but there was no way to
+Deplo could deploy an App from GitHub and redeploy it on every push, but there was no way to
 see a pull request running before it merged. The open-source competitors all ship this; it is
 the loudest gap in the competitive analysis and the feature that makes "self-hosted Vercel"
 credible rather than aspirational.
@@ -42,7 +42,7 @@ destroyed production the first time anything reached them:
 
 Separately, `defaultRoute` hardcoded `letsencrypt`, which is precisely wrong for the nip.io
 hosts previews use, since nip.io is a single registered domain whose Let's Encrypt issuance
-budget is shared with the entire internet (the same reason deplo's own auto domains are born
+budget is shared with the entire internet (the same reason Deplo's own auto domains are born
 `certProvider: "none"`).
 
 ## Decisions
@@ -218,7 +218,7 @@ gate belongs to its callers.
 ### 13. Previews may run on a different server than production
 
 `apps.preview_server_id`, NULL ⇒ the app's own server, set from Advanced. The default is the
-honest one, a preview is only worth trusting if it runs where production runs, but deplo is
+honest one, a preview is only worth trusting if it runs where production runs, but Deplo is
 multi-server and the competitors are not, so an operator who wants pull request builds off the
 box serving users can have that for one dropdown.
 

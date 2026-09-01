@@ -36,7 +36,7 @@ const BROWSERS: [RegExp, string][] = [
   [/\bSafari\//, "Safari"],
   // Non-browser clients. Someone hitting the API from a script deserves to see
   // it named rather than filed under "Unknown".
-  [/^deplo/i, "deplo CLI"],
+  [/^deplo/i, "Deplo CLI"],
   [/\bcurl\//i, "curl"],
   [/\bWget\//i, "Wget"],
   [/\bPostmanRuntime\//i, "Postman"],

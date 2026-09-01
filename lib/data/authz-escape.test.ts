@@ -70,7 +70,7 @@ import {
 } from "./deploy-hook";
 
 /**
- * ESCAPING YOUR OWN BOUNDARY - the three ways deplo hands out less than
+ * ESCAPING YOUR OWN BOUNDARY - the three ways Deplo hands out less than
  * everything, and what happens when a caller tries to reach past the line. a
  * DEPLOY HOOK, which is one app's URL secret plus a bearer token.
  */

@@ -33,7 +33,7 @@ import {
 } from "./deploy-hook";
 
 /**
- * The deploy hook: the URL that lets something outside deplo trigger a deploy.
+ * The deploy hook: the URL that lets something outside Deplo trigger a deploy.
  */
 
 let db: TestDb;

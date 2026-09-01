@@ -147,7 +147,7 @@ export const DeploymentRef = builder
       buildDurationMs: t.exposeInt("buildDurationMs", { nullable: true }),
       creator: t.exposeString("creator"),
       // Who `creator` names, when it names an account here. Null for a webhook
-      // push (a GitHub login, not a deplo user) and for rows predating it - both
+      // push (a GitHub login, not a Deplo user) and for rows predating it - both
       // of which show the bare string with no picture.
       creatorUser: t.field({
         type: VarAuthorRef,

@@ -522,7 +522,7 @@ async function s3DestinationFields(input: CreateDestinationInput) {
 }
 
 /**
- * A bucket name deplo is willing to store, print and hand to an operator. The
+ * A bucket name Deplo is willing to store, print and hand to an operator. The
  * report quotes what it prints as well - both, because either alone is one edit
  * away from being the only one.
  */
@@ -562,7 +562,7 @@ function assertHttpUrl(raw: string, label: string): void {
 /**
  * The `server` half of {@link createDestination}: pick the host, mint the keypair,
  * and gate the custom path. Two rules are easy to get wrong: the server must be
- * one the ACTIVE TEAM can already reach (servers are the resource deplo does not
+ * one the ACTIVE TEAM can already reach (servers are the resource Deplo does not
  * team-scope), and a custom path is instance-admin only.
  */
 async function serverDestinationFields(input: CreateDestinationInput) {

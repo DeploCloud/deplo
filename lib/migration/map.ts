@@ -1,7 +1,7 @@
 // https://deplo.build/docs/guides/move-from-dokploy
 
 /**
- * Dokploy row → deplo input. The convention for anything that cannot be
+ * Dokploy row → Deplo input. The convention for anything that cannot be
  * represented: return the value that IS representable and add a line to `notes`.
  */
 
@@ -48,13 +48,13 @@ export type ResourceInput = {
   [K in keyof ResourceLimits]?: ResourceLimits[K] | null;
 };
 
-/** What a mapper produces: the deplo input plus what could not come across. */
+/** What a mapper produces: the Deplo input plus what could not come across. */
 export interface Mapped<T> {
   value: T;
   notes: string[];
 }
 
-/** deplo's env-var key grammar (`KEY_RE` in lib/data/env.ts). */
+/** Deplo's env-var key grammar (`KEY_RE` in lib/data/env.ts). */
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 /* ------------------------------------------------------------------ */
@@ -178,7 +178,7 @@ function namesAnAddress(key: string): boolean {
 }
 
 /**
- * Dokploy keeps env as one `.env`-shaped text column; deplo keeps rows.
+ * Dokploy keeps env as one `.env`-shaped text column; Deplo keeps rows.
  */
 export function parseEnvBlob(blob: string | null | undefined): {
   key: string;
@@ -336,7 +336,7 @@ export function resolveSharedRefs(
 
 /**
  * Dokploy's own template syntax for pulling a value in from the project or a
- * sibling service (`${{project.KEY}}`). deplo resolves nothing at deploy time, so
+ * sibling service (`${{project.KEY}}`). Deplo resolves nothing at deploy time, so
  * such a value would reach the container literally.
  */
 export function envNeedsInterpolation(
@@ -968,7 +968,7 @@ const BUILD_METHOD: Record<string, BuildMethod> = {
   nixpacks: "nixpacks",
   railpack: "railpack",
   static: "static",
-  // Neither buildpack family has a deplo equivalent. Nixpacks is the closest
+  // Neither buildpack family has a Deplo equivalent. Nixpacks is the closest
   // thing: an auto-detecting builder that reads the same repos. Noted, never
   // silent - a Heroku buildpack with a custom `bin/compile` will not survive it.
   heroku_buildpacks: "nixpacks",
@@ -976,7 +976,7 @@ const BUILD_METHOD: Record<string, BuildMethod> = {
 };
 
 /**
- * Dokploy's per-service build fields → deplo's `BuildConfig`.
+ * Dokploy's per-service build fields → Deplo's `BuildConfig`.
  */
 export function mapBuildSettings(
   app: SourceApplication,
@@ -1019,9 +1019,9 @@ export function mapBuildSettings(
   const root = buildPathFor(app);
   if (root) build.rootDirectory = root;
 
-  // Dokploy's `command` overrides the container's command; deplo's closest field
+  // Dokploy's `command` overrides the container's command; Deplo's closest field
   // is the builder's start command. Same intent, different layer for a
-  // Dockerfile build (where deplo leaves CMD alone), hence the note.
+  // Dockerfile build (where Deplo leaves CMD alone), hence the note.
   const command = app.command?.trim();
   if (command) {
     build.startCommand = command;
@@ -1093,7 +1093,7 @@ export function parseMemoryMb(raw: string | null | undefined): number | null {
 }
 
 /**
- * Dokploy's CPU limit → deplo's milli-CPUs.
+ * Dokploy's CPU limit → Deplo's milli-CPUs.
  *
  * ponytail: the column is free text and holds two conventions - cores as a
  * decimal (`0.5`, what Dokploy's form asks for) and nano-CPUs (`500000000`, what
@@ -1121,7 +1121,7 @@ function isNoLimit(raw: string | null | undefined): boolean {
   return NO_LIMIT.test((raw ?? "").trim());
 }
 
-/** Dokploy's four limit columns → deplo's `resource_*`. Null when nothing was set. */
+/** Dokploy's four limit columns → Deplo's `resource_*`. Null when nothing was set. */
 export function mapResources(row: {
   memoryLimit?: string | null;
   memoryReservation?: string | null;
@@ -1143,13 +1143,13 @@ export function mapResources(row: {
         `${label} "${raw.trim()}" is not a value Deplo can read - set it by hand.`,
       );
 
-  // Dokploy's cpuReservation is a swarm scheduling hint with no deplo column.
+  // Dokploy's cpuReservation is a swarm scheduling hint with no Deplo column.
   if (row.cpuReservation?.trim() && !isNoLimit(row.cpuReservation))
     notes.push(
       `CPU reservation "${row.cpuReservation.trim()}" is a Swarm placement hint. Deplo has no equivalent, so it is not imported.`,
     );
 
-  // A reservation above the limit is what deplo's own validator refuses; drop it
+  // A reservation above the limit is what Deplo's own validator refuses; drop it
   // rather than lose the limit too.
   const reservation =
     memoryReservationMb != null &&
@@ -1189,7 +1189,7 @@ export function mapLogo(icon: string | null | undefined): string | null {
 /* Git source                                                          */
 /* ------------------------------------------------------------------ */
 
-/** A source deplo can deploy, or null when the app has to be rebuilt by hand. */
+/** A source Deplo can deploy, or null when the app has to be rebuilt by hand. */
 export type MappedSource =
   | { kind: "git"; repo: GitRepo }
   | { kind: "docker-image"; image: string }
@@ -1410,7 +1410,7 @@ export interface MappedDomain {
 
 /**
  * The domains worth importing, in Dokploy's own order (the first survivor becomes
- * deplo's primary).
+ * Deplo's primary).
  */
 export function mapDomains(
   domains: SourceDomain[] | null | undefined,
@@ -1498,7 +1498,7 @@ export interface MappedMounts {
   volumes: Omit<VolumeMount, "id">[];
 }
 
-/** lowercase-kebab, which is what deplo requires of a volume label. */
+/** lowercase-kebab, which is what Deplo requires of a volume label. */
 export function volumeLabel(raw: string, fallback: string): string {
   const cleaned = raw
     .trim()
@@ -1545,7 +1545,7 @@ function uniqueFilePath(base: string, used: Set<string>): string {
 }
 
 /**
- * Dokploy's three mount kinds -> deplo's writers.
+ * Dokploy's three mount kinds -> Deplo's writers.
  */
 export function mapMounts(
   mounts: SourceMount[] | null | undefined,
@@ -1656,7 +1656,7 @@ const DB_ENGINE: Record<string, DatabaseType> = {
 };
 
 /**
- * The deplo engine for one of the source platform's database tables, or null when
+ * The Deplo engine for one of the source platform's database tables, or null when
  * there is none (libsql, keydb, dragonfly).
  */
 export function deploEngineFor(kind: string): DatabaseType | null {
@@ -1679,7 +1679,7 @@ export interface MappedDatabase {
    * The start command Dokploy overrode, or null.
    */
   command: string | null;
-  /** The engine's config files, in deplo's shape. Almost always empty. */
+  /** The engine's config files, in Deplo's shape. Almost always empty. */
   mounts: { filePath: string; content: string; mountPath: string }[];
 }
 
@@ -1722,7 +1722,7 @@ export function mapDatabase(
     return { value: null, notes };
   }
 
-  // The source's EXACT image is kept, canonical or not - deplo never re-derives one
+  // The source's EXACT image is kept, canonical or not - Deplo never re-derives one
   // here. Data must be reopened by the binary that wrote it.
   const customImage = row.dockerImage?.trim() || `${kind}:latest`;
   const tag = imageTag(customImage);
@@ -1769,19 +1769,19 @@ export function mapDatabase(
     );
 
   // mysql and mariadb keep TWO credentials on Dokploy - an application user and root
-  // - while deplo models ONE and uses it for both.
+  // - while Deplo models ONE and uses it for both.
   const rootPassword =
     (type === "mysql" || type === "mariadb") && row.databaseRootPassword?.trim()
       ? row.databaseRootPassword.trim()
       : null;
-  // Said whenever root IS the login deplo carries, not only when the two passwords
+  // Said whenever root IS the login Deplo carries, not only when the two passwords
   // differ: the login changed either way, and half the panels answer with one password.
   if (rootPassword && row.databaseUser?.trim() !== "root")
     notes.push(
       `Connects as root, because that is the login Deplo's own backups and console use and the copied data keeps {panel}'s users. "${row.databaseUser?.trim() || "the application user"}" still works from inside the database.`,
     );
 
-  // A variable that IS a credential deplo carried came across - counting it read
+  // A variable that IS a credential Deplo carried came across - counting it read
   // as "your password did not make it", which is the opposite of what happened.
   const carried = new Set(
     [
@@ -1817,7 +1817,7 @@ export function mapDatabase(
           : null,
       customImage,
       command: command && !/[\r\n\t]/.test(command) ? command : null,
-      // Every file mount Dokploy had, named and pathed the way deplo stores
+      // Every file mount Dokploy had, named and pathed the way Deplo stores
       // them. A file with no container path cannot be mounted anywhere and is
       // dropped by `mapMounts` with a note of its own.
       mounts: mapped.value.files.filter((f) => f.mountPath),
@@ -1830,7 +1830,7 @@ export function mapDatabase(
 /* The data cutover: pairing volumes                                   */
 /* ------------------------------------------------------------------ */
 
-/** A source volume matched to the deplo volume it should be copied into. */
+/** A source volume matched to the Deplo volume it should be copied into. */
 export interface VolumePair {
   sourceVolume: string;
   targetVolume: string;
@@ -1953,7 +1953,7 @@ export function stackRelativePath(
 
 /**
  * The host directories a compose file binds ITSELF. Neither side saw one: not the
- * panel's mount rows, not deplo's `app_volumes` - so `- /etc/app:/cfg` arrived in
+ * panel's mount rows, not Deplo's `app_volumes` - so `- /etc/app:/cfg` arrived in
  * the YAML byte for byte and the directory it names arrived empty.
  *
  * A `./x` source is one too, and pretending otherwise ("the compose import brings
@@ -2017,7 +2017,7 @@ export function isDataHostPath(hostPath: string): boolean {
 }
 
 /**
- * Match every source bind mount to the deplo host mount that should receive it.
+ * Match every source bind mount to the Deplo host mount that should receive it.
  */
 export interface PairedHostMount {
   sourcePath: string;
@@ -2111,7 +2111,7 @@ const EMPTY_BY_DESIGN: Record<string, string> = {
 };
 
 /**
- * Match every source volume to the deplo volume that should receive it.
+ * Match every source volume to the Deplo volume that should receive it.
  */
 export function pairVolumes(
   source: NamedVolume[],
@@ -2344,7 +2344,7 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) : s;
 }
 
-/** Published host ports on an application, which deplo does not do for apps. */
+/** Published host ports on an application, which Deplo does not do for apps. */
 export function mapPorts(app: SourceApplication): Mapped<PublishedPort[]> {
   const notes: string[] = [];
   const value: PublishedPort[] = [];
@@ -2416,7 +2416,7 @@ export function swarmHealthCheck(spec: unknown): HealthCheck | null {
   };
 }
 
-/** Everything else on a Dokploy service with no deplo column at all. */
+/** Everything else on a Dokploy service with no Deplo column at all. */
 export function unsupportedNotes(app: SourceApplication): string[] {
   const notes: string[] = [];
   if ((app.redirects ?? []).length > 0)

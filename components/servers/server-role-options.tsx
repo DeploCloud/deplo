@@ -20,7 +20,7 @@ export const SERVER_ROLES: {
   icon: React.ElementType;
   title: string;
   description: string;
-  /** oklch angle of the deplo token the icon wears. */
+  /** oklch angle of the Deplo token the icon wears. */
   hue: number;
   iconClassName: string;
   beta?: boolean;

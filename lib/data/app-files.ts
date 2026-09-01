@@ -110,14 +110,14 @@ export function storageFileStateForError(e: unknown): StorageFileState | null {
 }
 
 /**
- * The user-facing failure for a read deplo could NOT classify - the editor puts
+ * The user-facing failure for a read Deplo could NOT classify - the editor puts
  * this next to a "Try again" button, so it has to say what happened.
  */
 export function storageFileReadError(e: unknown): Error {
   return new Error(
     e instanceof AgentUnreachableError
-      ? "The server that runs this app didn't answer, so deplo couldn't read this file. It may be offline."
-      : "deplo couldn't read this file from the server that runs this app.",
+      ? "The server that runs this app didn't answer, so Deplo couldn't read this file. It may be offline."
+      : "Deplo couldn't read this file from the server that runs this app.",
     { cause: e },
   );
 }

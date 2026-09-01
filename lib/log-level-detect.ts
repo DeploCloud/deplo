@@ -3,13 +3,13 @@ import type { LogLevel } from "./types";
 /**
  * Level detection for RAW log lines that arrive without a level tag - a
  * container's stdout/stderr from `docker logs -f`, and a build's output, which the
- * agent forwards verbatim under a blanket `info` (only the lines deplo itself
+ * agent forwards verbatim under a blanket `info` (only the lines Deplo itself
  * writes into a build's sink carry an authored level, so `loadDeploymentLogs`
  * re-reads the rest through here).
  */
 
 /**
- * Level words as every mainstream logger spells them, folded onto deplo's five.
+ * Level words as every mainstream logger spells them, folded onto Deplo's five.
  */
 const LEVEL_WORDS: Record<string, LogLevel> = {
   trc: "debug",

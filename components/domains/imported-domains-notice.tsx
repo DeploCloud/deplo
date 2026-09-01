@@ -48,7 +48,7 @@ export function ImportedDomainsNotice({
         <p className="text-muted-foreground">
           The
           {domains.length === 1 ? " address " : " addresses "}
-          this app used before could not come across, so deplo gave it
+          this app used before could not come across, so Deplo gave it
           {domains.length === 1 ? " one " : " ones "}
           of its own with the same routes.
         </p>

@@ -151,7 +151,7 @@ test("the options name THIS panel, and nothing else", async () => {
 });
 
 /**
- * The guard deplo adds on top of the plugin, which hardcodes
+ * The guard Deplo adds on top of the plugin, which hardcodes
  * `requireUserVerification: false`. Without it a key that never asked for a PIN
  * would satisfy a team's two-factor mandate as a single factor.
  */
@@ -506,7 +506,7 @@ test("a second device registers alongside the first", async () => {
 /* 4. What the plugin alone does NOT do                                */
 /* ------------------------------------------------------------------ */
 
-test("a row the plugin writes on its own is not usable until deplo stamps it", async () => {
+test("a row the plugin writes on its own is not usable until Deplo stamps it", async () => {
   // `enrol()` drives the endpoints directly, which is everything the plugin knows how
   // to do - and it does not know about rpIDs.
   await enrol();
@@ -514,10 +514,10 @@ test("a row the plugin writes on its own is not usable until deplo stamps it", a
     .select({ rpId: passkeyTable.rpId })
     .from(passkeyTable)
     .where(eq(passkeyTable.userId, USER_1));
-  assert.equal(row?.rpId, null, "the plugin leaves it to deplo");
+  assert.equal(row?.rpId, null, "the plugin leaves it to Deplo");
   assert.equal(
     await userHasPasskey(USER_1),
     false,
-    "and until deplo fills it in, the credential counts for nothing",
+    "and until Deplo fills it in, the credential counts for nothing",
   );
 });

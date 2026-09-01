@@ -34,7 +34,7 @@ STATE_FILE="$DEPLO_DIR/.install-state"
 BACKUP_DIR="$DEPLO_DIR/backups"
 DEFAULT_ACME_EMAIL="admin@example.com"
 
-# ==== deplo terminal UI ===================================== KEEP IN SYNC ====
+# ==== Deplo terminal UI ===================================== KEEP IN SYNC ====
 # One renderer for install.sh, install-agent.sh and uninstall.sh. It degrades on
 # purpose: no TTY, NO_COLOR, TERM=dumb or a non-UTF-8 locale drops to plain ASCII
 # carrying the same words, because installer output is what people paste into a
@@ -96,7 +96,7 @@ ui_init() {
     UI_LOG=/dev/null
     exec 9>/dev/null
   fi
-  ui_log "=== deplo $UI_ACTION $(date -u '+%Y-%m-%dT%H:%M:%SZ') - args: $* ==="
+  ui_log "=== Deplo $UI_ACTION $(date -u '+%Y-%m-%dT%H:%M:%SZ') - args: $* ==="
   ui_log "=== $(uname -srm) - $(id -un)@$(hostname 2>/dev/null || echo '?') ==="
   [ "${UI_TRACE:-1}" = 1 ] && ui_log "=== every command is traced; grep -v '^+' for command output only ==="
   # No `date` in PS4: it would fork once per traced command. Elapsed seconds is
@@ -281,7 +281,7 @@ on_err() {
   note "Re-running this script picks up where it stopped."
   exit "$code"
 }
-# ==== end deplo terminal UI ==================================================
+# ==== end Deplo terminal UI ==================================================
 
 usage() {
   ui_title "Deplo Installer"
@@ -926,9 +926,9 @@ ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
 # The panel ALWAYS publishes :3000 on the host, domain or no domain, and this is
 # not an oversight to tidy up later: http://$SERVER_IP:3000 is the way back into
 # a panel whose domain stopped working - DNS moved, the certificate expired, the
-# proxy is down - and deplo cannot rewrite this file once it is running, so a
+# proxy is down - and Deplo cannot rewrite this file once it is running, so a
 # port left unpublished here can never be published from the panel afterwards.
-# The only way back would be an SSH session, which is the trip deplo exists to
+# The only way back would be an SSH session, which is the trip Deplo exists to
 # remove. Settings, Deplo shows it as the panel's IP address.
 DEPLO_EXPOSE="$(printf '    ports:\n      - "3000:3000"')"
 

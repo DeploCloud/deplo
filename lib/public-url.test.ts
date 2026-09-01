@@ -89,7 +89,7 @@ test("the relying party is the panel's own hostname, https only", () => {
 });
 
 test("plain http has no relying party, except on localhost", () => {
-  // The browser's rule, not deplo's: WebAuthn needs a secure context, and every
+  // The browser's rule, not Deplo's: WebAuthn needs a secure context, and every
   // browser grants loopback the one exception so local development works.
   setStoredPublicBaseUrl("http://198.51.100.7:3000");
   assert.equal(passkeyRelyingParty(), null);

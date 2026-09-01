@@ -22,7 +22,7 @@ export async function dispatchPushEvent(opts: {
   /** owner/name as the provider spells it. */
   repoFullName: string;
   event: GitPushEvent;
-  /** Who to credit in the deployment - a login on `provider`, not a deplo user. */
+  /** Who to credit in the deployment - a login on `provider`, not a Deplo user. */
   creator: string;
   /** The git host that login belongs to, so the build says whose account it was. */
   provider: string;

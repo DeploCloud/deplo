@@ -18,7 +18,7 @@ import type { AlertKey } from "../types";
  *
  * ponytail: per-process RAM. N control-plane instances = N copies of a repeated
  * alert, and a restart re-announces an ongoing outage once. Move the map into a
- * `notification_state` table if deplo is ever run horizontally scaled; a single
+ * `notification_state` table if Deplo is ever run horizontally scaled; a single
  * instance is the shipped topology.
  */
 

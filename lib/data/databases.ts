@@ -2032,7 +2032,7 @@ export function rotationExecCommand(
       ].join(" ");
       // MariaDB 11 dropped the `mysql*` compatibility symlinks its images used to
       // ship, so the client is only reachable under its own name there. 10.5+ has
-      // had `mariadb` for years, which is older than anything deplo offers.
+      // had `mariadb` for years, which is older than anything Deplo offers.
       const client = db.type === "mariadb" ? "mariadb" : "mysql";
       return `${client} -uroot -p${old} -e ${shellQuote(stmts)}`;
     }

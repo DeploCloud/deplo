@@ -11,7 +11,7 @@
 
 ## Context
 
-Every AI coding agent now speaks the Model Context Protocol, and deplo already has the API an agent
+Every AI coding agent now speaks the Model Context Protocol, and Deplo already has the API an agent
 needs - 306 GraphQL root fields behind bearer tokens with 45 fine-grained Capabilities. What it did
 not have was a way for an agent to _find_ them: every client had to hand-write GraphQL against a
 4,000-line schema.
@@ -43,7 +43,7 @@ non-expert bar, because copying one line is the whole product here.
 1. **The MCP server is a first-party route at `/api/mcp`, speaking protocol revision 2026-07-28.**
    That revision is stateless (no session, no `initialize` handshake, no `Mcp-Session-Id`), which
    is why it fits a Next route handler with nothing kept between calls. The official v2 SDK
-   (`@modelcontextprotocol/server`) owns every protocol mechanic; deplo writes no JSON-RPC.
+   (`@modelcontextprotocol/server`) owns every protocol mechanic; Deplo writes no JSON-RPC.
 
 2. **A tool is data, and the data layer is still the only boundary.** Each of the 76 tools is a
    row in `lib/mcp/tools.ts`: a name, a zod schema and a GraphQL document. `lib/mcp/execute.ts`
@@ -64,12 +64,12 @@ non-expert bar, because copying one line is the whole product here.
 
 4. **`reveal*` is never a tool, whatever the token holds.** This is the single deliberate exception
    to "the Capability decides", and it is not a hedge: a secret that reaches a model's context
-   window has left deplo for a third party's logs, and nobody can revoke it from there. Masked
+   window has left Deplo for a third party's logs, and nobody can revoke it from there. Masked
    reads (`list_env`) are the whole story. A test enforces it rather than trusting the table.
    `execConsole` is excluded on the same footing - it is arbitrary code execution in a live
    container, which the token preset's own threat model calls "RCE by another name".
 
-5. **One team switch, one new Capability, and no gate of deplo's own.** `teams.mcp_enabled`,
+5. **One team switch, one new Capability, and no gate of Deplo's own.** `teams.mcp_enabled`,
    defaulting to **true**, governed by the new fine-grained Capability `manage_mcp` (migration 0099
    seeds it wherever `manage_tokens` already is: deciding whether an agent may drive the team is
    the same class of decision as minting the token that lets it in). That switch answers a question

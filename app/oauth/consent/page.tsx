@@ -13,7 +13,7 @@ import { ConsentForm } from "@/components/oauth/consent-form";
 import { ConsentRefusal } from "@/components/oauth/consent-refusal";
 
 /**
- * The OAuth consent screen - deplo's half of connecting an AI client. It is a
+ * The OAuth consent screen - Deplo's half of connecting an AI client. It is a
  * token-minting form, because approving it mints a real API token.
  */
 export default async function OAuthConsentPage(props: {
@@ -47,7 +47,7 @@ export default async function OAuthConsentPage(props: {
     return (
       <ConsentRefusal
         title="That app isn't registered"
-        detail="The connection request didn't name an app deplo knows. Start the connection again from the app you were using."
+        detail="The connection request didn't name an app Deplo knows. Start the connection again from the app you were using."
       />
     );
 

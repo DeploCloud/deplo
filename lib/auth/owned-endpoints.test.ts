@@ -9,7 +9,7 @@ import { isDeploOwnedAuthPath } from "./better-auth";
  * and what must stay open.
  */
 
-test("the account surface deplo drives itself is shut", () => {
+test("the account surface Deplo drives itself is shut", () => {
   for (const path of [
     "/sign-in/email",
     "/sign-in/social",

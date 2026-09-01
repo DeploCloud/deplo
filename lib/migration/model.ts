@@ -12,7 +12,7 @@ import type { SharedRef } from "./map";
 /* Row shapes - only the fields the import actually maps               */
 /* ------------------------------------------------------------------ */
 
-/** Dokploy's build packs. `heroku_buildpacks`/`paketo_buildpacks` have no deplo twin. */
+/** Dokploy's build packs. `heroku_buildpacks`/`paketo_buildpacks` have no Deplo twin. */
 export type SourceBuildType =
   | "dockerfile"
   | "heroku_buildpacks"
@@ -164,7 +164,7 @@ export interface SourceApplication {
    * deploy key. Absent means it cloned anonymously, which Deplo can do too.
    */
   gitNeedsCredential?: boolean | null;
-  // preview deployments (deplo has the same feature)
+  // preview deployments (Deplo has the same feature)
   isPreviewDeploymentsActive?: boolean | null;
   previewPort?: number | null;
   previewLimit?: number | null;

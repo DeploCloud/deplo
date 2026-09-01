@@ -769,7 +769,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // Apps we've already joined to the network, so a service routed on two
   // hosts/ports is only network-wired once.
   const wired = new Set<string>();
-  // Join a service to the deplo network (on top of its own networks) so Traefik can
+  // Join a service to the Deplo network (on top of its own networks) so Traefik can
   // reach it and inter-service DNS keeps working.
   const wireApp = (service: string): boolean => {
     const target = services[service] as App | undefined;

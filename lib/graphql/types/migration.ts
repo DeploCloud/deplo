@@ -42,7 +42,7 @@ import {
 } from "@/lib/data/migration-runner";
 
 /**
- * Migration - read another platform's panel over its API and create the deplo
+ * Migration - read another platform's panel over its API and create the Deplo
  * equivalents in the ACTIVE team.
  */
 

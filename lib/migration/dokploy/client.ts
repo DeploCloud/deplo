@@ -232,7 +232,7 @@ function composeOrNull(body: string): string | null {
 
 /**
  * The compose file Dokploy would actually deploy, for a stack whose YAML lives in
- * a git repo rather than in the database. deplo holds compose YAML inline, so a
+ * a git repo rather than in the database. Deplo holds compose YAML inline, so a
  * repo-backed stack has nothing to import without this.
  */
 export async function getConvertedCompose(

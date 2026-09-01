@@ -60,7 +60,7 @@ export default async function AppStorageSettingsPage(
           canMountHostVolumes={mayBind}
           canManageFiles={mayEditFiles}
           // "Path inside the app" is the field a non-expert cannot guess. For
-          // anything deplo builds, the answer is a fact (the generated Dockerfile's
+          // anything Deplo builds, the answer is a fact (the generated Dockerfile's
           // WORKDIR), so the editor states it instead of leaving a blank box.
           containerWorkdir={containerWorkdir(
             project.source,

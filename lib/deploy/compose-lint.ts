@@ -439,7 +439,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
           diags.push({
             severity: "warning",
             rule: "bind-mount-absolute",
-            message: `\`${name}\` bind-mounts host path \`${src}\` - it must exist on the deploy host and isn't isolated per project. Prefer a Volume (storage deplo creates and keeps).`,
+            message: `\`${name}\` bind-mounts host path \`${src}\` - it must exist on the deploy host and isn't isolated per project. Prefer a Volume (storage Deplo creates and keeps).`,
             line: volLine,
           });
         }
@@ -1544,7 +1544,7 @@ export function composeBuildReachesHost(composeYaml: string): boolean {
  * the dangerous keys they pull in (`privileged`, host binds, published ports,
  * even `traefik.*` labels via `label_file`, past {@link buildComposeStack}'s
  * label strip) never appear in the authored YAML the gate, or a deploy-time
- * re-lint of it - parses. They cannot be denylisted key-by-key, so deplo refuses
+ * re-lint of it - parses. They cannot be denylisted key-by-key, so Deplo refuses
  * them: it owns the render, and an author who needs the merged config inlines it.
  *
  *  - a service `extends:` with a `file:` (a same-file `extends: {service: x}` is
@@ -1730,7 +1730,7 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
     if (key === "logging") {
       // A non-default logging driver makes DOCKERD itself dial an address (or a
       // host socket/path) the author chose, from outside the container's sandbox.
-      // `json-file`/`local` with no options is what deplo's own logs read from.
+      // `json-file`/`local` with no options is what Deplo's own logs read from.
       if (typeof v !== "object" || Array.isArray(v)) continue;
       const log = v as Record<string, unknown>;
       const driver =

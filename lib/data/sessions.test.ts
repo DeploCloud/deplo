@@ -254,7 +254,7 @@ test("a real sign-in stamps the device onto the session row", async () => {
 });
 
 test("the client address survives a Cloudflare-in-front-of-Traefik chain", async () => {
-  // deplo's real shape. `cf-connecting-ip` is single-valued and is why the address
+  // Deplo's real shape. `cf-connecting-ip` is single-valued and is why the address
   // still resolves; it is listed first for that reason.
   const row = await signInWith(
     authRequestHeaders(

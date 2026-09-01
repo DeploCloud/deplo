@@ -86,7 +86,7 @@ const SET_VOLUMES = /* GraphQL */ `
   }
 `;
 
-/** How long a path edit rests before deplo reads that file. */
+/** How long a path edit rests before Deplo reads that file. */
 const READ_DEBOUNCE_MS = 300;
 
 interface StorageFileResult {
@@ -369,7 +369,7 @@ export function StorageSettingsForm({
           <CardTitle className="flex w-fit items-center gap-2 text-base">
             Mounted storage
             <InfoTip
-              content="Storage the app keeps across deploys. A Volume is disk space deplo creates for it, a File is a config file you write here, and a Bind shares a folder that already exists on the server."
+              content="Storage the app keeps across deploys. A Volume is disk space Deplo creates for it, a File is a config file you write here, and a Bind shares a folder that already exists on the server."
               docs="storage.overview"
             />
           </CardTitle>

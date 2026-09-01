@@ -234,7 +234,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   manage_tokens: {
     label: "Manage API tokens",
     description:
-      "Mint and revoke the bearer tokens that drive deplo's API from outside the dashboard.",
+      "Mint and revoke the bearer tokens that drive Deplo's API from outside the dashboard.",
     keywords: "api access token bearer cli automation",
     sensitive: true,
   },
@@ -382,7 +382,7 @@ export const CAPABILITY_CATEGORIES: {
   {
     key: "integrations",
     label: "Integrations & API",
-    description: "Everything deplo talks to on the team's behalf.",
+    description: "Everything Deplo talks to on the team's behalf.",
     caps: [
       "manage_registries",
       "manage_git",

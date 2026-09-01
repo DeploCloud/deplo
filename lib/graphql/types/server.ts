@@ -376,7 +376,7 @@ const ServerRemovalRef = builder
     fields: (t) => ({
       uninstallCommand: t.exposeString("uninstallCommand", {
         description:
-          "Paste-on-the-server command that removes the agent, Traefik and the deplo network from the host. Deplo cannot do this remotely: revoking trust is precisely what ends its right to command that agent.",
+          "Paste-on-the-server command that removes the agent, Traefik and the Deplo network from the host. Deplo cannot do this remotely: revoking trust is precisely what ends its right to command that agent.",
       }),
       warning: t.exposeString("warning", {
         nullable: true,
@@ -753,7 +753,7 @@ builder.mutationFields((t) => ({
     type: ServerRemovalRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host (the agent, Traefik and the deplo network keep running there), so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.",
+      "Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host (the agent, Traefik and the Deplo network keep running there), so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => removeServer(id),
   }),

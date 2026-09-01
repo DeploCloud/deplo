@@ -475,7 +475,7 @@ export function DomainRow({
             <SimpleTooltip
               content={
                 reserved
-                  ? `“${service}” is a name deplo's own network uses, so nothing serves this domain. Rename the container in the compose file, or point this domain at another one.`
+                  ? `“${service}” is a name Deplo's own network uses, so nothing serves this domain. Rename the container in the compose file, or point this domain at another one.`
                   : missing
                     ? `This app's compose file has no container “${service}” any more, so nothing serves this domain. Edit the domain to pick one.`
                     : "This domain doesn't name a container, so nothing serves it. Edit the domain to pick one."

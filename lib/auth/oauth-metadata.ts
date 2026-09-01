@@ -72,7 +72,7 @@ export function protectedResourceMetadata(): ProtectedResourceMetadata | null {
     // decide nothing here: what an agent may do is its token's Capabilities.
     scopes_supported: ["openid", "profile", "email", "offline_access"],
     bearer_methods_supported: ["header"],
-    resource_name: "deplo MCP server",
+    resource_name: "Deplo MCP server",
     resource_documentation: `${base}/settings/mcp`,
   };
 }

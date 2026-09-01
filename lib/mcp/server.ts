@@ -100,10 +100,10 @@ function failure(message: string) {
 }
 
 /**
- * Sent once at `initialize`. The tool table says what deplo can DO; this says
- * what deplo IS, so an agent uses deplo's own words and knows where to read more.
+ * Sent once at `initialize`. The tool table says what Deplo can DO; this says
+ * what Deplo IS, so an agent uses Deplo's own words and knows where to read more.
  */
-const INSTRUCTIONS = `deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
+const INSTRUCTIONS = `Deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
 
 Its vocabulary, which the tools use literally:
 - App: the deployable unit. Never call it a service or a project.
@@ -133,18 +133,18 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         title: tool.title,
         description: tool.description,
         // Every tool takes the team as an optional argument. Added centrally so
-        // the rows stay a table of what deplo can do, with nothing about
+        // the rows stay a table of what Deplo can do, with nothing about
         // tenancy repeated in each of them.
         // Unknown keys are kept, not stripped, so the handler below can REFUSE
         // them by name. Advertising `additionalProperties: false` instead would
-        // make a client's own validator answer, and never in deplo's words.
+        // make a client's own validator answer, and never in Deplo's words.
         inputSchema: tool.input.extend({ team: TEAM_ARG }).passthrough(),
         annotations: {
           title: tool.title,
           readOnlyHint: tool.readOnly ?? false,
           destructiveHint: tool.destructive ?? false,
           idempotentHint: tool.idempotent ?? false,
-          // Every tool acts on this deplo instance and nothing else.
+          // Every tool acts on this Deplo instance and nothing else.
           openWorldHint: false,
         },
       },
@@ -155,7 +155,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         try {
           // An argument this tool does not take is a REFUSAL that names it. Dropped
           // silently (zod's default), `container` instead of `service` reaches the
-          // resolver as "no container was given", and the model reads deplo's "pick
+          // resolver as "no container was given", and the model reads Deplo's "pick
           // one" as its own mistake and tries another spelling. `_`-prefixed keys
           // are protocol metadata some clients add, never the model's doing.
           const accepted = new Set([...Object.keys(tool.input.shape), "team"]);
@@ -167,7 +167,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
               `${tool.name} takes no argument "${unknown[0]}". It takes: ${[...accepted].join(", ")}.`,
             );
 
-          // `team` is deplo's, not the tool's: taken out before the arguments
+          // `team` is Deplo's, not the tool's: taken out before the arguments
           // become GraphQL variables, and resolved into a whole principal
           // rather than passed down as a value some resolver might trust.
           const { team, ...rest } = args as Record<string, unknown> & {
@@ -189,7 +189,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
             ? tool.variables(rest)
             : (rest as Record<string, unknown>);
           const { data, error } = await runGraphql(tool.query, variables, ctx);
-          // Surfaced verbatim: deplo's messages are written to be read by a person ("This
+          // Surfaced verbatim: Deplo's messages are written to be read by a person ("This
           // token is limited to specific projects and can't access …"), and that is exactly
           // the sentence the model needs in order to do something else instead.
           if (error) return failure(error);

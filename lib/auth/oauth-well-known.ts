@@ -35,7 +35,7 @@ export function protectedResourceResponse(): Response {
       {
         error: "server_error",
         error_description:
-          "This deplo instance has no public address set, so OAuth cannot work. Set one under Settings → General.",
+          "This Deplo instance has no public address set, so OAuth cannot work. Set one under Settings → General.",
       },
       503,
     );

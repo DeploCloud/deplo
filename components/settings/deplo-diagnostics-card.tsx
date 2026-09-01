@@ -43,9 +43,9 @@ export function DeploDiagnosticsCard({
   const report = React.useMemo(() => {
     const width = Math.max(4, ...hosts.map((h) => h.name.length));
     const lines = [
-      `deplo          ${version}`,
+      `Deplo          ${version}`,
       `panel          ${panelUrl} (${panelUrlSource})`,
-      `deplo host     ${deploHostName ?? "not added as a server"}`,
+      `Deplo host     ${deploHostName ?? "not added as a server"}`,
       `expected agent ${expectedAgentVersion}`,
       "",
       `servers        ${hosts.length}`,

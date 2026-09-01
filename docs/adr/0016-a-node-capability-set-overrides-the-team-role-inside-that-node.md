@@ -10,7 +10,7 @@
 
 ## Context
 
-deplo gates forty fine-grained capabilities, and until now a person's set in a
+Deplo gates forty fine-grained capabilities, and until now a person's set in a
 team came from exactly one place: the role on their membership. The only per-node
 dimension was `folder_grants`, and it could not GIVE anything - every read of it
 was intersected live with the grantee's team capabilities, so a grant could only

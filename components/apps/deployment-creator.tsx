@@ -22,7 +22,7 @@ export function DeploymentCreator({
     avatarColor: string;
     avatarUrl: string | null;
   } | null;
-  /** Set ⇒ `creator` is a login on this git host, not a deplo account. */
+  /** Set ⇒ `creator` is a login on this git host, not a Deplo account. */
   creatorProvider?: string | null;
   /** That account's profile, when it can be linked. */
   creatorUrl?: string | null;

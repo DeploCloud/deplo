@@ -27,12 +27,12 @@ Measured against the core mission it does not hold up _yet_:
 - **The catalog defaulted to a private host.** `DEPLO_PLUGIN_REPO_URL` fell back to
   `devrepo.pixelfederico.com`: an open-source control plane making an outbound call to a
   personal dev box on every page view, with no answer for who serves the catalog in general.
-- **The runtime is the wrong shape for where deplo is going.** It owns the Docker socket on the
+- **The runtime is the wrong shape for where Deplo is going.** It owns the Docker socket on the
   control-plane host (the sanctioned ADR-0006 exception). That means plugins can only ever run on
-  the Deplo host, which does not survive contact with a managed, multi-tenant deplo cloud.
+  the Deplo host, which does not survive contact with a managed, multi-tenant Deplo cloud.
 
 None of that says the feature is wrong - the plugin-sections research (trusted tier, injected
-App sections, plugin-owned state) is the most promising direction deplo has for extensibility.
+App sections, plugin-owned state) is the most promising direction Deplo has for extensibility.
 It says the feature is not _finished_, and an unfinished feature costs more visible than hidden.
 
 ## Decision

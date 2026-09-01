@@ -498,7 +498,7 @@ export function DomainConfigFields({
                 The proxy entrypoint this domain binds to:{" "}
                 <code className="font-mono">websecure</code> (:443) serves
                 HTTPS, <code className="font-mono">web</code> (:80) serves plain
-                HTTP. Leave it Automatic and deplo follows the certificate. Pick{" "}
+                HTTP. Leave it Automatic and Deplo follows the certificate. Pick{" "}
                 <code className="font-mono">web</code> only when something in
                 front already terminates TLS, e.g. Cloudflare in Flexible mode.
               </>

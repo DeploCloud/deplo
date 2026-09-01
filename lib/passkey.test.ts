@@ -773,7 +773,7 @@ test("renaming is scoped to your own passkeys", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* 8. The plugin's own view of deplo's hand-written table              */
+/* 8. The plugin's own view of Deplo's hand-written table              */
 /* ------------------------------------------------------------------ */
 
 test("the plugin's adapter can write, find and update a passkey row", async () => {
@@ -796,7 +796,7 @@ test("the plugin's adapter can write, find and update a passkey row", async () =
       aaguid: "aa-guid",
     },
   })) as { id: string };
-  assert.match(created.id, /^bas_/, "ids come from deplo's own generator");
+  assert.match(created.id, /^bas_/, "ids come from Deplo's own generator");
 
   const found = (await adapter.findOne({
     model: "passkey",

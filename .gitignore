@@ -39,7 +39,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# deplo dev build/upload staging dir (DEPLO_DATA_DIR; not a data store)
+# Deplo dev build/upload staging dir (DEPLO_DATA_DIR; not a data store)
 /.deplo/
 .claude
 

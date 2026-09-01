@@ -34,7 +34,7 @@ jobs:
           allowlist: "IdraDev,bot*,dependabot[bot]"
           create-file-commit-message: "chore(cla): create the signature file"
           signed-commit-message: "chore(cla): $contributorName signed the CLA"
-          custom-notsigned-prcomment: "Thanks for the pull request. deplo is AGPL-3.0-only and DeploCloud also offers it under commercial terms, so a contribution has to arrive with the right to do both. Please read the [CLA](https://github.com/DeploCloud/deplo/blob/main/CLA.md) - it is a license grant, not a copyright assignment, you keep what you wrote - then post the sentence below as a comment. Once per person, and it covers everything you have contributed before today too."
+          custom-notsigned-prcomment: "Thanks for the pull request. Deplo is AGPL-3.0-only and DeploCloud also offers it under commercial terms, so a contribution has to arrive with the right to do both. Please read the [CLA](https://github.com/DeploCloud/deplo/blob/main/CLA.md) - it is a license grant, not a copyright assignment, you keep what you wrote - then post the sentence below as a comment. Once per person, and it covers everything you have contributed before today too."
           custom-pr-sign-comment: "I have read the CLA Document and I hereby sign the CLA"
           custom-allsigned-prcomment: "All contributors have signed the CLA."
           lock-pullrequest-aftermerge: false

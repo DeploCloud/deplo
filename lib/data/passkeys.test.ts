@@ -347,7 +347,7 @@ test("removing a passkey is recorded in every team the person is in", async () =
     assert.equal(
       rows[0]!.actor,
       USER_1,
-      "attributed to the person, not to deplo",
+      "attributed to the person, not to Deplo",
     );
   }
 });

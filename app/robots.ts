@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 /**
- * The deplo control plane is a private operations panel: every page sits behind
+ * The Deplo control plane is a private operations panel: every page sits behind
  * auth and there is nothing here a search engine should ever surface.
  */
 export default function robots(): MetadataRoute.Robots {

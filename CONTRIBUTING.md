@@ -1,4 +1,4 @@
-# Contributing to deplo
+# Contributing to Deplo
 
 Thanks for being here. This page is short on purpose: everything below is something that
 will actually come up.
@@ -13,7 +13,7 @@ will actually come up.
 
 ## Running it locally
 
-deplo needs **Bun**, **Node 22+** and a **Postgres** you can write to.
+Deplo needs **Bun**, **Node 22+** and a **Postgres** you can write to.
 
 ```bash
 bun install
@@ -67,7 +67,7 @@ If something genuinely cannot be tested, say so in the pull request and why.
 
 ## Read these first
 
-deplo has strong opinions and they are written down. Before changing anything structural:
+Deplo has strong opinions and they are written down. Before changing anything structural:
 
 - **[AGENTS.md](AGENTS.md)** - the architecture, the two planes, and the rules that hold
   them apart.
@@ -103,7 +103,7 @@ becomes a link to it.
 
 ## Licensing your contribution
 
-deplo is **AGPL-3.0-only**, and DeploCloud also offers it under commercial terms. For that
+Deplo is **AGPL-3.0-only**, and DeploCloud also offers it under commercial terms. For that
 to keep working, every contribution has to arrive with the right to do both.
 
 That right is the **[CLA](CLA.md)**, and a bot asks for it on your first pull request. You
@@ -126,7 +126,7 @@ If your employer owns your work, get their sign-off before signing.
 
 The CLA says what we may do with your contribution. This says what we will not.
 
-**The core of deplo stays AGPL-3.0-only, and it keeps getting the main features.** Not a
+**The core of Deplo stays AGPL-3.0-only, and it keeps getting the main features.** Not a
 hollowed-out edition with the good parts held back for a paid one.
 
 **The only proprietary parts will be the ones that only make sense on DeploCloud's own
@@ -134,13 +134,13 @@ infrastructure.** Nothing that works on a machine you own will move behind a pay
 
 ## The name is not part of the license
 
-The **code** is AGPL-3.0-only. The **name "deplo" and the logo are not**: the license
+The **code** is AGPL-3.0-only. The **name "Deplo" and the logo are not**: the license
 covers copyright, not trademarks.
 
 You may fork the code, run it, modify it and redistribute it under the AGPL. What you may
-not do is present the result as deplo, or use the name and logo in a way that suggests
-DeploCloud published or endorsed it. **Rename your fork.** Saying "based on deplo" or "a
-fork of deplo" is fine and welcome.
+not do is present the result as Deplo, or use the name and logo in a way that suggests
+DeploCloud published or endorsed it. **Rename your fork.** Saying "based on Deplo" or "a
+fork of Deplo" is fine and welcome.
 
 Want to use the name for something else, an integration, a talk, a hosting template? Ask
 first at `hello@deplo.build`. The answer is usually yes.

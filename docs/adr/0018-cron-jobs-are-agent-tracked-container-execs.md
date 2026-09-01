@@ -12,9 +12,9 @@ three additive RPCs. Reuses the capability model of
 
 ## Context
 
-deplo could not run anything on a recurring basis. The two ways a user had were to open the
+Deplo could not run anything on a recurring basis. The two ways a user had were to open the
 Console and type the command by hand, or to bake a crontab into the image - that is, exactly
-the "drop to a shell" the core mission exists to remove. Every platform deplo measures itself
+the "drop to a shell" the core mission exists to remove. Every platform Deplo measures itself
 against ships a cron manager in the dashboard, and so does every open-source competitor.
 
 The obvious implementation was already in the tree and is wrong. `Exec` (the console's RPC)

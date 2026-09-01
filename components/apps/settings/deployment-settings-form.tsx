@@ -979,7 +979,7 @@ export function DeploymentSettingsForm({
 
         {/* Advanced settings - the deploy controls that are nobody's first-run
             business: the build cache, and the hook that lets something outside
-            deplo trigger a deployment. */}
+            Deplo trigger a deployment. */}
         <Card>
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">

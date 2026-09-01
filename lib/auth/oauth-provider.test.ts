@@ -26,7 +26,7 @@ import {
 } from "./oauth-test-helpers";
 
 /**
- * deplo as an OAuth 2.1 authorization server. Everything here is driven over HTTP
+ * Deplo as an OAuth 2.1 authorization server. Everything here is driven over HTTP
  * through Better Auth's own handler, the way `lib/data/two-factor.test.ts` does,
  * because the risk this file covers is a REMOTE one.
  */
@@ -205,7 +205,7 @@ test("dropping the repeated keys is what broke it", async () => {
   assert.notEqual(approved.status, 200, "a mangled query was accepted");
 });
 
-test("a token cannot be requested for a resource deplo does not serve", async () => {
+test("a token cannot be requested for a resource Deplo does not serve", async () => {
   // GHSA-p2fr-6hmx-4528: the plugin validates `resource` but does not bind it to the
   // grant, so more than one valid audience lets a client aim a token at a resource
   // server it was not authorised for.
@@ -319,7 +319,7 @@ test("the discovery documents agree on one issuer, and it resolves", async () =>
     as.issuer,
   );
 
-  // A grant deplo will not honour must not be advertised: `client_credentials`
+  // A grant Deplo will not honour must not be advertised: `client_credentials`
   // has no user, so it could never resolve to a connection.
   assert.deepEqual(as.grant_types_supported.sort(), [
     "authorization_code",
@@ -587,7 +587,7 @@ test("a freshly registered client reaches nothing until someone approves it", as
 /* ------------------------------------------------------------------ */
 
 test("/sign-in/email is refused over HTTP, and the session it would mint never exists", async () => {
-  // The plugin's own sign-in skips every lock deplo's does: the per-ACCOUNT rate
+  // The plugin's own sign-in skips every lock Deplo's does: the per-ACCOUNT rate
   // limit, the `failed_logins` alert, and the suspended-account refusal.
   const before = (await pg.query(`select id from session`)).rows.length;
   const res = await requireAuth().handler(

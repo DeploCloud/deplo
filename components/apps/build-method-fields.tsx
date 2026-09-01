@@ -330,7 +330,7 @@ function FrameworkField({
       <FieldLabel
         info={
           <>
-            deplo reads your source on every deploy and names the framework
+            Deplo reads your source on every deploy and names the framework
             itself. Change it only when it got that wrong - the pick sticks
             through later deploys and sets the container port that
             framework&apos;s server binds.
@@ -384,12 +384,12 @@ function FrameworkField({
         {overridden ? (
           detectedDef ? (
             <>
-              Your choice, kept through every deploy - deplo detected{" "}
+              Your choice, kept through every deploy - Deplo detected{" "}
               {detectedDef.name}.
             </>
           ) : (
             <>
-              Your choice, kept through every deploy - deplo didn&apos;t
+              Your choice, kept through every deploy - Deplo didn&apos;t
               recognise a framework.
             </>
           )

@@ -59,7 +59,7 @@ export function passkeyBlockedReason(
   rpId: string | null,
 ): string | null {
   if (!panelUrl)
-    return "Set this instance's address in Settings -> deplo before adding a passkey.";
+    return "Set this instance's address in Settings -> Deplo before adding a passkey.";
   if (!rpId) return `Passkeys need https. This panel answers on ${panelUrl}.`;
   return null;
 }

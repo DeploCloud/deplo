@@ -87,7 +87,7 @@ test("addDomain: a Cloudflare-proxied host is born cloudflare + ssl", async () =
   assert.equal(d.ssl, true);
   // Cloudflare already serves this host over HTTPS, so the certificate provider
   // follows the detection instead of leaving the row on the cert-less default,
-  // no trip into Advanced settings to make deplo agree with the proxy.
+  // no trip into Advanced settings to make Deplo agree with the proxy.
   assert.equal(d.certProvider, "cloudflare");
   const [row] = await db.select().from(domainsTable);
   assert.equal(row.certProvider, "cloudflare", "the choice must be persisted");
@@ -275,7 +275,7 @@ test("rename onto a proxied host respects a certificate the user DID change", as
 });
 
 test("rename of the generated nip.io domain checks the new host, not its provenance", async () => {
-  // The row a fresh app starts with: deplo's own nip.io host, born valid.
+  // The row a fresh app starts with: Deplo's own nip.io host, born valid.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   await ensureAutoDomain("prj_1", {
     slug: "app",

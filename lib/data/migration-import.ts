@@ -246,7 +246,7 @@ export interface PlanMember {
   name: string;
   /** The role they held on Dokploy, for the admin to act on. Not imported. */
   sourceRole: string;
-  /** Already has a deplo account (matched on email). */
+  /** Already has a Deplo account (matched on email). */
   hasAccount: boolean;
   /** Their picture and monogram colour, for the ones who do. Null for a stranger:
    *  an imported address is not sent to Gravatar. */
@@ -459,7 +459,7 @@ export async function handOverMigrationSources(
 }
 
 /**
- * Turn the typed address + key into a credential, refusing an address deplo must
+ * Turn the typed address + key into a credential, refusing an address Deplo must
  * not dial. Same shape as `connectGitProvider`: the private-address escape hatch
  * asserts instance admin AT the decision, never inherits it from a caller.
  */
@@ -886,7 +886,7 @@ function composeAdvice(compose: string): string[] {
 }
 
 /**
- * Which of deplo's compose gates this file would trip, as sentences. Deliberately
+ * Which of Deplo's compose gates this file would trip, as sentences. Deliberately
  * the SAME predicates `createApp` runs (`lib/deploy/compose-lint.ts`), because the
  * preview has no business disagreeing with the write path.
  */
@@ -1862,7 +1862,7 @@ export interface ImportProjectInput extends ConnectInput {
   runId: string;
   /** The Dokploy `projectId` to import. */
   projectId: string;
-  /** Dokploy server id (or "") → deplo server id. Unmapped falls back to default. */
+  /** Dokploy server id (or "") → Deplo server id. Unmapped falls back to default. */
   servers?: ServerChoice[];
   /**
    * The source service ids to import, out of the project's own. Absent imports
@@ -2234,7 +2234,7 @@ function tally(items: ImportItemDTO[]): {
   };
 }
 
-/** Dokploy server id (or "") → a deplo server this team can actually deploy to. */
+/** Dokploy server id (or "") → a Deplo server this team can actually deploy to. */
 async function resolveServers(
   teamId: string,
   choices: ServerChoice[],
@@ -2384,7 +2384,7 @@ async function ensureProject(
 }
 
 /**
- * The deplo Environment for a Dokploy one.
+ * The Deplo Environment for a Dokploy one.
  */
 async function ensureEnvironment(
   projectId: string,
@@ -2415,7 +2415,7 @@ async function ensureEnvironment(
     });
     return created.id;
   } catch (e) {
-    // A name deplo reserves (`pr-<n>`) or a duplicate: fall back to the project's
+    // A name Deplo reserves (`pr-<n>`) or a duplicate: fall back to the project's
     // default environment so the services still land somewhere sensible.
     const fallback = await defaultEnvironmentFor(projectId);
     await report.add({
@@ -2471,7 +2471,7 @@ async function levelRefused(
 /* ---- applications and compose stacks -------------------------------- */
 
 /**
- * One Dokploy application or compose stack → one deplo App, with its env vars,
+ * One Dokploy application or compose stack → one Deplo App, with its env vars,
  * config files, primary domain, extra domains, volumes, resource limits,
  * basic-auth users and crons.
  */
@@ -2579,7 +2579,7 @@ async function importAppService(
       .limit(1)
   )[0];
 
-  // Env: the service's own blob, plus its build args, which deplo passes to the
+  // Env: the service's own blob, plus its build args, which Deplo passes to the
   // build as ordinary variables (agent >= 1.9.0) rather than as a second channel.
   const envEntries = parseEnvBlob(detail.env);
   const argEntries = parseEnvBlob(
@@ -2854,7 +2854,7 @@ async function importAppService(
       dockerImage = mapped.value.image;
     } else {
       // Nothing deployable came across (an uploaded archive, an image reference
-      // deplo will not take). The app is still worth creating: its variables,
+      // Deplo will not take). The app is still worth creating: its variables,
       // domains, mounts and limits are the part that takes an afternoon to retype.
       source = "upload";
       const watched = (app.watchPaths ?? []).filter((p) => p.trim());
@@ -2874,7 +2874,7 @@ async function importAppService(
     notes.push(...unsupportedNotes(app));
   }
 
-  // Routing port: Dokploy keeps it on the domain, deplo on the build config (a
+  // Routing port: Dokploy keeps it on the domain, Deplo on the build config (a
   // domain may still override it). Taking the primary domain's port keeps the two
   // consistent from the start; a platform that records the port on the app itself
   // answers when there is no domain to read it off.
@@ -3444,7 +3444,7 @@ function renamedService(
   return renames.get(trimmed.toLowerCase()) ?? trimmed;
 }
 
-/** Dokploy's schedules for one service → deplo cron jobs. */
+/** Dokploy's schedules for one service → Deplo cron jobs. */
 async function importCrons(
   c: SourceCredential,
   scheduleType: "application" | "compose",
@@ -3479,7 +3479,7 @@ async function importCrons(
 /* ---- databases ------------------------------------------------------- */
 
 /**
- * One Dokploy database → one deplo Database.
+ * One Dokploy database → one Deplo Database.
  */
 async function importDatabaseService(
   c: SourceCredential,
@@ -3540,7 +3540,7 @@ async function importDatabaseService(
 
   // The password is carried over on purpose (see mapDatabase), and as a GENERATED
   // credential: another platform's random token is not something a person chose, so
-  // deplo's account policy does not apply to it.
+  // Deplo's account policy does not apply to it.
   const base = {
     name: spec.name,
     type: spec.type,
@@ -3713,7 +3713,7 @@ async function importDatabaseService(
 /* ---- project / environment level variables --------------------------- */
 
 /**
- * A Dokploy project's or environment's own env blob → a deplo shared variable per
+ * A Dokploy project's or environment's own env blob → a Deplo shared variable per
  * key, scoped there AND linked to the apps that were in it.
  */
 /**
@@ -3913,7 +3913,7 @@ async function importSharedVars(
 /**
  * Bring the Dokploy organization's people over. Passwords are not migratable in
  * either direction: Dokploy's API never exposes them and its hashes are not
- * deplo's.
+ * Deplo's.
  */
 export async function importMigrationMembers(
   input: ConnectInput & { runId: string },

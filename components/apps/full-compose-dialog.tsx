@@ -16,7 +16,7 @@ import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * Shows the full Deplo-generated compose stack - the augmented YAML that `docker
- * compose` actually runs (Traefik + deplo labels, the injected `deplo` network,
+ * compose` actually runs (Traefik + Deplo labels, the injected `deplo` network,
  * absolute mount paths), as opposed to the clean source the user authors in the
  */
 export function FullComposeDialog({ appId }: { appId: string }) {
@@ -57,7 +57,7 @@ export function FullComposeDialog({ appId }: { appId: string }) {
           <DialogTitle>Full compose</DialogTitle>
           <DialogDescription>
             The stack Deplo generates and runs - your compose augmented with
-            Traefik routing labels, the <code className="font-mono">deplo</code>{" "}
+            Traefik routing labels, the <code className="font-mono">Deplo</code>{" "}
             network and absolute mount paths. Read-only; regenerated on every
             deploy.
           </DialogDescription>

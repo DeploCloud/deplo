@@ -230,17 +230,17 @@ test("every owned page names its owner and has a unique id", () => {
   assert.ok(OWNED.length > 0);
   assert.ok(
     OWNED.every((e) => e.owner),
-    "a page with no owner would render as one of deplo's own",
+    "a page with no owner would render as one of Deplo's own",
   );
   const ids = OWNED.map((e) => e.id);
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("two words reach one app's page: 'deplo variables'", () => {
+test("two words reach one app's page: 'Deplo variables'", () => {
   // nav-config calls that page "Environment" and nobody types that, so the
   // match has to read its description too. This is the case that motivated it.
   assert.deepEqual(
-    matchOwnedPages(OWNED, "deplo variables").map((e) => [
+    matchOwnedPages(OWNED, "Deplo variables").map((e) => [
       e.owner?.name,
       e.label,
       e.run.kind === "href" ? e.run.href : "",
@@ -295,7 +295,7 @@ test("the cap counts, and the total behind it is knowable", () => {
 });
 
 test("a resource's own tab outranks the same name inside its settings", () => {
-  const hits = matchOwnedPages(OWNED, "deplo deployments");
+  const hits = matchOwnedPages(OWNED, "Deplo deployments");
   assert.deepEqual(
     hits.map((e) => (e.run.kind === "href" ? e.run.href : "")),
     ["/apps/deplo-web/deployments", "/apps/deplo-web/settings/deployments"],
@@ -303,7 +303,7 @@ test("a resource's own tab outranks the same name inside its settings", () => {
 });
 
 test("a word naming neither the owner nor the page rules the row out", () => {
-  assert.deepEqual(matchOwnedPages(OWNED, "deplo domains xyzzy"), []);
+  assert.deepEqual(matchOwnedPages(OWNED, "Deplo domains xyzzy"), []);
 });
 
 test("databases answer the same way", () => {

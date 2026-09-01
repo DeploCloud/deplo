@@ -114,7 +114,7 @@ curl -fsSL https://<your-deplo>/uninstall.sh | sudo bash            # see what w
 curl -fsSL https://<your-deplo>/uninstall.sh | sudo bash -s -- --yes
 ```
 
-That takes the control plane, the agent, Traefik and every container deplo deployed off
+That takes the control plane, the agent, Traefik and every container Deplo deployed off
 the machine, and leaves your data alone: volumes, built images and `/opt/deplo` survive
 unless you add `--purge-data`, and backups need `--purge-backups` on top of that. Docker
 Engine is never touched. Use `--agent-only` on a server you are taking out of the fleet -
@@ -293,7 +293,7 @@ on a machine you own will move behind a paywall. Contributions arrive under a
 [CLA](CLA.md), and what we promise in return is in
 [CONTRIBUTING.md](CONTRIBUTING.md#what-we-will-not-do).
 
-The **code** is AGPL. The **name "deplo" and the logo are not** - the license covers
+The **code** is AGPL. The **name "Deplo" and the logo are not** - the license covers
 copyright, not trademarks. Fork it freely and please rename your fork. Details in
 [CONTRIBUTING.md](CONTRIBUTING.md#the-name-is-not-part-of-the-license).
 

@@ -43,7 +43,7 @@ NAMED_CONTAINERS=(deplo-traefik deplo-ssh-gateway deplo-ssh-gateway-proxy)
 # file somebody deleted first.
 CP_CONTAINERS=(deplo-deplo-1 deplo-postgres-1 traefik-deplo-socket-proxy-1)
 
-# ==== deplo terminal UI ===================================== KEEP IN SYNC ====
+# ==== Deplo terminal UI ===================================== KEEP IN SYNC ====
 # One renderer for install.sh, install-agent.sh and uninstall.sh. It degrades on
 # purpose: no TTY, NO_COLOR, TERM=dumb or a non-UTF-8 locale drops to plain ASCII
 # carrying the same words, because installer output is what people paste into a
@@ -105,7 +105,7 @@ ui_init() {
     UI_LOG=/dev/null
     exec 9>/dev/null
   fi
-  ui_log "=== deplo $UI_ACTION $(date -u '+%Y-%m-%dT%H:%M:%SZ') - args: $* ==="
+  ui_log "=== Deplo $UI_ACTION $(date -u '+%Y-%m-%dT%H:%M:%SZ') - args: $* ==="
   ui_log "=== $(uname -srm) - $(id -un)@$(hostname 2>/dev/null || echo '?') ==="
   [ "${UI_TRACE:-1}" = 1 ] && ui_log "=== every command is traced; grep -v '^+' for command output only ==="
   # No `date` in PS4: it would fork once per traced command. Elapsed seconds is
@@ -290,7 +290,7 @@ on_err() {
   note "Re-running this script picks up where it stopped."
   exit "$code"
 }
-# ==== end deplo terminal UI ==================================================
+# ==== end Deplo terminal UI ==================================================
 
 APPLY=false
 PURGE=false
@@ -406,7 +406,7 @@ if [ "$HAVE_DOCKER" = true ]; then
   MANAGED_N="$(docker ps -aq --filter label=deplo.managed=true 2>/dev/null | wc -l | tr -d ' ' || true)"
   VOL_N="$(docker volume ls -q 2>/dev/null | grep -cE '^deplo' || true)"
   if [ "${MANAGED_N:-0}" -gt 0 ]; then ok "$MANAGED_N container(s) Deplo deployed here"; else skip "No containers Deplo deployed here"; fi
-  if [ "${VOL_N:-0}" -gt 0 ]; then ok "$VOL_N deplo volume(s)" "your apps' and databases' data"; fi
+  if [ "${VOL_N:-0}" -gt 0 ]; then ok "$VOL_N Deplo volume(s)" "your apps' and databases' data"; fi
 else
   skip "Docker is not installed on this host"
 fi
@@ -586,7 +586,7 @@ if [ "$PURGE" = true ]; then
       VOLS="$(docker volume ls -q 2>/dev/null | grep -E '^deplo' || true)"
     fi
     if [ -n "$VOLS" ]; then
-      step "Removing $(printf '%s\n' "$VOLS" | wc -l | tr -d ' ') deplo volume(s)"
+      step "Removing $(printf '%s\n' "$VOLS" | wc -l | tr -d ' ') Deplo volume(s)"
       # shellcheck disable=SC2086
       run docker volume rm $VOLS
     fi

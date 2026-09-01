@@ -252,7 +252,7 @@ const APPLICATIONS: Record<string, unknown> = {
     applicationId: "dok-app-web",
     name: "blink-web",
     appName: "blink-web-abc",
-    // Dokploy stores an icon inline, exactly as deplo does - a template's logo
+    // Dokploy stores an icon inline, exactly as Deplo does - a template's logo
     // is downloaded and base64'd on ITS side when the service is created.
     icon: DOKPLOY_ICON,
     sourceType: "github",
@@ -1097,7 +1097,7 @@ test("an app keeps the icon it had, and one without stays iconless", async () =>
   await importProject(runId, "dok-prj-blink");
 
   const apps = await db.select().from(appsTable);
-  // Carried verbatim: Dokploy already stores the inline form deplo stores, so
+  // Carried verbatim: Dokploy already stores the inline form Deplo stores, so
   // there is nothing to fetch and nothing to re-encode.
   assert.equal(apps.find((a) => a.name === "blink-web")!.logo, DOKPLOY_ICON);
   // The other app has no icon over there, so it lands with none here rather than
@@ -1105,7 +1105,7 @@ test("an app keeps the icon it had, and one without stays iconless", async () =>
   assert.equal(apps.find((a) => a.name === "blink-api")!.logo, null);
 });
 
-test("an icon deplo would refuse is dropped, and the app still lands", async () => {
+test("an icon Deplo would refuse is dropped, and the app still lands", async () => {
   fixtures = defaultFixtures();
   const web = { ...(APPLICATIONS["dok-app-web"] as Record<string, unknown>) };
   // A remote URL: the shape the dashboard's CSP refuses to load at all.

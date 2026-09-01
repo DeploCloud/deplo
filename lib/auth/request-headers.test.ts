@@ -101,7 +101,7 @@ test("a name already present is never duplicated", () => {
 });
 
 test("cookies that are not Better Auth's are left exactly as they are", () => {
-  // `deplo_team` and `theme` are deplo's own and are read by their one name;
+  // `deplo_team` and `theme` are Deplo's own and are read by their one name;
   // twinning them would be noise in every request.
   const out = authRequestHeaders(null, "deplo_team=team_a; theme=dark");
   assert.equal(out.get("cookie"), "deplo_team=team_a; theme=dark");

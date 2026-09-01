@@ -148,7 +148,7 @@ export function DatabaseConfigFiles({
       <CardHeader>
         <CardTitle className="text-base">Config files</CardTitle>
         <CardDescription>
-          Files deplo writes next to the database and mounts into its container.
+          Files Deplo writes next to the database and mounts into its container.
           Saving applies them: the container is{" "}
           <strong className="font-medium text-foreground">recreated</strong>.
         </CardDescription>
@@ -204,7 +204,7 @@ export function DatabaseConfigFiles({
               <div className="space-y-1.5">
                 <FieldLabel
                   className="text-xs"
-                  info="What deplo writes into the file."
+                  info="What Deplo writes into the file."
                   docs="databases.settings"
                 >
                   What&apos;s in the file

@@ -163,7 +163,7 @@ test("the derived path follows the app's root directory, like the workdir does",
   );
 });
 
-test("nothing is derived when deplo does not know the working directory", () => {
+test("nothing is derived when Deplo does not know the working directory", () => {
   // A prebuilt image or a compose service chose its own, and a mount at an invented
   // path fails silently: the app writes where it always did, the disk stays empty,
   // the data is gone at the next deploy.
@@ -202,7 +202,7 @@ test("nothing is derived from a source that is still empty", () => {
   );
 });
 
-test("what the user typed always wins over what deplo would derive", () => {
+test("what the user typed always wins over what Deplo would derive", () => {
   assert.equal(
     effectiveMountPath(
       vol({ name: "uploads", mountPath: "/var/lib/data" }),
@@ -332,9 +332,9 @@ test("a Volume name must be docker-shaped and short", () => {
   assert.equal(volumeProblem(vol({ name: "Uploads" })), null);
 });
 
-test("the path inside the app is not required when deplo can derive one", () => {
+test("the path inside the app is not required when Deplo can derive one", () => {
   // The point of the whole derivation: an entry is complete once you have said
-  // WHAT to keep. Where it goes is deplo's job unless you want it elsewhere.
+  // WHAT to keep. Where it goes is Deplo's job unless you want it elsewhere.
   assert.equal(
     volumeProblem(vol({ name: "uploads", mountPath: "" }), "/app"),
     null,
@@ -567,11 +567,11 @@ test("read-only is stated in the readout, not left to the switch alone", () => {
 });
 
 test("the readout states the derived path, because that is what will happen", () => {
-  // A path deplo chose and a path the user typed are the same thing at deploy,
+  // A path Deplo chose and a path the user typed are the same thing at deploy,
   // so the sentence reads the same either way.
   assert.match(
     volumeReadout(vol({ name: "uploads", mountPath: "" }), "shop", "/app"),
-    /Keeps \/app\/uploads on a disk deplo manages/,
+    /Keeps \/app\/uploads on a disk Deplo manages/,
   );
   assert.match(
     volumeReadout(
@@ -640,7 +640,7 @@ test("switching kind keeps the path inside the app and the read-only flag", () =
 
 /* ---- container workdir hint ---------------------------------------- */
 
-test("containerWorkdir is /app for anything deplo builds", () => {
+test("containerWorkdir is /app for anything Deplo builds", () => {
   for (const source of ["github", "git", "upload"]) {
     assert.equal(containerWorkdir(source, ""), "/app");
     assert.equal(containerWorkdir(source, null), "/app");
@@ -655,7 +655,7 @@ test("containerWorkdir follows a root directory, exactly like the Dockerfile", (
 });
 
 test("containerWorkdir is null when the image chose its own", () => {
-  // A prebuilt image or a compose stack: deplo has no idea, so it must not guess.
+  // A prebuilt image or a compose stack: Deplo has no idea, so it must not guess.
   assert.equal(containerWorkdir("docker-image", ""), null);
   assert.equal(containerWorkdir("compose", "whatever"), null);
 });

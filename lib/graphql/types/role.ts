@@ -61,7 +61,7 @@ export const TeamRoleRef = builder
       memberCount: t.exposeInt("memberCount"),
       modified: t.exposeBoolean("modified", {
         description:
-          "A default role edited away from what deplo ships - it can be reset.",
+          "A default role edited away from what Deplo ships - it can be reset.",
       }),
       locked: t.exposeBoolean("locked", {
         description:
@@ -194,7 +194,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "manage_roles" },
     description:
-      "Restore a default role to exactly what deplo ships, for its members too. Returns true.",
+      "Restore a default role to exactly what Deplo ships, for its members too. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await resetRole(id);

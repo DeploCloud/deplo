@@ -32,7 +32,7 @@ import type { GitProviderId } from "../types";
 const CERT_WARN_DAYS = 21;
 
 export async function runMaintenanceSweep(): Promise<void> {
-  await settle("deplo update", checkDeploUpdate);
+  await settle("Deplo update", checkDeploUpdate);
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);
   await settle("git tokens", checkGitConnections);

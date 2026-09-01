@@ -5,7 +5,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
 /**
- * App-wide toast host. sonner's `richColors` palette is rebranded to deplo's
+ * App-wide toast host. sonner's `richColors` palette is rebranded to Deplo's
  * tokens by overriding its custom properties INLINE on the toaster element: an
  * inline declaration beats its stylesheet rule regardless of injection order.
  */

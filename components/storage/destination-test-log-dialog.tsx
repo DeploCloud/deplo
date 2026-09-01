@@ -120,7 +120,7 @@ export function DestinationTestLogDialog({
         <DialogHeader>
           <DialogTitle>Connection log</DialogTitle>
           <DialogDescription>
-            Everything deplo checked on {destinationName}, in order, with the
+            Everything Deplo checked on {destinationName}, in order, with the
             answer it got back.
           </DialogDescription>
         </DialogHeader>
@@ -151,7 +151,7 @@ export function DestinationTestLogDialog({
               </Section>
               <Section
                 title="Reproduce this check"
-                hint="deplo runs it inside the server's agent - these are the same calls for a shell"
+                hint="Deplo runs it inside the server's agent - these are the same calls for a shell"
               >
                 <CodeBlock code={report.command} />
               </Section>
@@ -231,7 +231,7 @@ const STEP_CLASS = {
 /** The probe sequence, so "where did it break" is answerable at a glance. */
 function Steps({ steps }: { steps: S3TestReportView["steps"] }) {
   return (
-    <Section title="What deplo checked">
+    <Section title="What Deplo checked">
       <ol className="space-y-2">
         {steps.map((s) => {
           const Icon = STEP_ICON[s.status];

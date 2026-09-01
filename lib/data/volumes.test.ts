@@ -447,7 +447,7 @@ test("project bind: rejects spaces or a colon in the projectPath", () => {
 
 /* ------------------------------------------------------------------ */
 /* Compose stacks: the service a volume mounts into                    */
-/* (a compose app configures storage in deplo, not by editing YAML)    */
+/* (a compose app configures storage in Deplo, not by editing YAML)    */
 /* ------------------------------------------------------------------ */
 
 test("compose: keeps a service the compose declares", () => {

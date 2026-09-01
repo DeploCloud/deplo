@@ -13,7 +13,7 @@ function notConfigured() {
 }
 
 /**
- * `/oauth2/register` is the only UNAUTHENTICATED write endpoint deplo exposes, and
+ * `/oauth2/register` is the only UNAUTHENTICATED write endpoint Deplo exposes, and
  * it has to be open: claude.ai and ChatGPT cannot pre-register (RFC 7591). Keyed
  * on IP because there is no principal yet.
  */

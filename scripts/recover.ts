@@ -19,7 +19,7 @@ import {
 import { hashPassword } from "../lib/crypto";
 
 const USAGE = `
-deplo recover - break-glass account recovery (run on the Deplo host)
+Deplo recover - break-glass account recovery (run on the Deplo host)
 
   bun run recover list
       Every account: username, email, and whether it is admin / owner / suspended.

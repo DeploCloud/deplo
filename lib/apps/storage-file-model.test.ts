@@ -211,7 +211,7 @@ test("the whole write-then-name flow: nothing is saved until the entry is comple
   assert.equal(volumeProblem(named, null)?.field, "mountPath");
 });
 
-test("what deplo could not read or cannot edit, it does not touch", () => {
+test("what Deplo could not read or cannot edit, it does not touch", () => {
   assert.equal(
     pendingFileWrite(loadingFileDraft("config.toml"), "config.toml"),
     null,

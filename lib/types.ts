@@ -731,7 +731,7 @@ export const MAX_PUBLISHED_PORTS = 20;
 
 /**
  * One host port an app publishes: `published:target/protocol`, the compose
- * `ports:` entry deplo writes for an app that does not speak HTTP.
+ * `ports:` entry Deplo writes for an app that does not speak HTTP.
  */
 export interface PublishedPort {
   /** Stable id (server: newId("prt"); client draft rows: prt_<shortId>). */
@@ -1035,7 +1035,7 @@ export interface Deployment {
   creator: string;
   /**
    * The account behind {@link creator}, when there is one. NULL for a webhook push
-   * (whose creator is a GitHub login, not a deplo account) and for every row
+   * (whose creator is a GitHub login, not a Deplo account) and for every row
    * written before it existed - both of which render the bare string.
    */
   creatorUserId: ID | null;

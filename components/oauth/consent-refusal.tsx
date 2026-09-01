@@ -7,7 +7,7 @@ import { ConsentShell } from "@/components/oauth/consent-shell";
 /**
  * Why a connection cannot be approved, in one line. Never a bare redirect: the
  * person is mid-flow inside someone else's product, and a silent bounce reads
- * as deplo being broken.
+ * as Deplo being broken.
  */
 export function ConsentRefusal({
   clientName,
@@ -32,7 +32,7 @@ export function ConsentRefusal({
             <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
           </div>
           <Button asChild variant="outline" className="w-full">
-            <Link href="/">Back to deplo</Link>
+            <Link href="/">Back to Deplo</Link>
           </Button>
         </div>
       </Card>

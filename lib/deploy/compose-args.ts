@@ -1,6 +1,6 @@
 /**
  * The app's own extra `docker compose up` flags. Here the operator adds only the
- * part that is theirs, deplo keeps owning the rest, and both sides - control plane
+ * part that is theirs, Deplo keeps owning the rest, and both sides - control plane
  * and agent - refuse the flags that would take that ownership away.
  */
 
@@ -10,7 +10,7 @@ export const COMPOSE_UP_ARGS_MAX_TOKENS = 24;
 export const COMPOSE_UP_ARGS_MAX_TOKEN_LENGTH = 128;
 
 /**
- * The flags that decide WHICH stack is coming up. They are deplo's to set, so
+ * The flags that decide WHICH stack is coming up. They are Deplo's to set, so
  * they can never be overridden here - mirrored by `composeArgDenied` in the
  * agent, which drops the whole set if one arrives anyway.
  */
@@ -37,7 +37,7 @@ export function parseComposeUpArgs(raw: string | null | undefined): string[] {
 /**
  * Why this set of flags can't be used, or null when it is fine. One message,
  * naming the token at fault - the field is advanced, but "invalid input" would
- * still leave the operator guessing which of six flags deplo objected to.
+ * still leave the operator guessing which of six flags Deplo objected to.
  */
 export function validateComposeUpArgs(raw: string): string | null {
   const tokens = parseComposeUpArgs(raw);

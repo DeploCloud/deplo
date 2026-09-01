@@ -2,7 +2,7 @@
 
 ## Core mission (north star)
 
-**deplo makes self-hosting exhaustively simple. The user must NEVER be required to know Docker or
+**Deplo makes self-hosting exhaustively simple. The user must NEVER be required to know Docker or
 SSH** - that non-requirement is the whole differentiator vs. the other self-hosted platforms. The
 experience to match is the one the big clouds give, on the user's own infrastructure, and the
 audience is everyone who wants it - people leaving a cloud over the bill, teams that never
@@ -26,7 +26,7 @@ Also binding:
   simpler than competing self-hosted platforms, not matching their feature list. First launch must
   sell the **pricing difference vs. the clouds**, not force a tour of tons of settings with
   advanced options exposed by default.
-- **Build everything so it could become a managed service.** deplo plans its own proprietary cloud
+- **Build everything so it could become a managed service.** Deplo plans its own proprietary cloud
   later (idea still rough): keep things multi-tenant-safe and free of "operator == end user"
   assumptions, while self-hosted + open source stay first-class and never get starved for it.
 - **Flag a mission conflict once, then build it.** A request (yours or the user's) that collides

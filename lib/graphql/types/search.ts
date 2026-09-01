@@ -251,7 +251,7 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "Find anything by name, slug or id across EVERY team the caller can " +
-      "reach - the one read in deplo that is not scoped to the active team. " +
+      "reach - the one read in Deplo that is not scoped to the active team. " +
       "Each hit says which team it is in. Separators and case are ignored, so " +
       '"better auth" finds `better-auth-docs`. Hits from the active team come ' +
       "first, then the closest match. Teams the caller cannot enter right now " +

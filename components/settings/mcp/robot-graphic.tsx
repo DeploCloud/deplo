@@ -2,7 +2,7 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 
-/** The connect wizard's illustration: a robot, a cable, and deplo. */
+/** The connect wizard's illustration: a robot, a cable, and Deplo. */
 
 export function RobotMark({ className }: { className?: string }) {
   return (
@@ -77,7 +77,7 @@ export function RobotGraphic({
       style={ink}
       className={cn("h-32 w-auto", className)}
     >
-      {/* ---- deplo, on the right. Recessive: it is already there, and the
+      {/* ---- Deplo, on the right. Recessive: it is already there, and the
               robot arriving is the subject. ---- */}
       <rect
         x="118"

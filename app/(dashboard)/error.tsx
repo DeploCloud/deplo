@@ -14,7 +14,7 @@ export default function DashboardError({
   // that failed.
   retry: () => void;
 }) {
-  // A tab left open across a deplo update asks for chunk files that build
+  // A tab left open across a Deplo update asks for chunk files that build
   // replaced. Nothing is wrong with the page - reloading renders it.
   const stale = isStaleBuildError(error);
 

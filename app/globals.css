@@ -2959,7 +2959,7 @@ label:hover .deplo-gear,
 
 /* Reaching: the cable draws most of the way to the port, stops short, and
    retreats. Stopping SHORT is the whole message - the config is copied and
-   deplo has not heard from the agent yet, and a cable that completed the trip
+   Deplo has not heard from the agent yet, and a cable that completed the trip
    would say the opposite of what the step is waiting for. 44 is the path's
    length; 12 is the gap it never closes. */
 @keyframes deplo-robot-cable {

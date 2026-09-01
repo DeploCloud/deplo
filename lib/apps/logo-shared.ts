@@ -21,7 +21,7 @@ export const LOGO_ACCEPT_ATTR = LOGO_IMAGE_TYPES.join(",");
 
 /**
  * Max size of the RAW image file (bytes). It is 2 MB because that is what the
- * platforms deplo imports from accept, and an icon that arrives with a migrated
+ * platforms Deplo imports from accept, and an icon that arrives with a migrated
  * app must not be the one thing that does not survive it.
  */
 export const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2 MiB raw

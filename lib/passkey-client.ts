@@ -57,7 +57,7 @@ export function passkeyError(e: unknown, panelUrl?: string | null): string {
         return "That device already has a passkey for this account.";
       case "ERROR_AUTHENTICATOR_MISSING_USER_VERIFICATION_SUPPORT":
       case "ERROR_AUTHENTICATOR_MISSING_DISCOVERABLE_CREDENTIAL_SUPPORT":
-        return "That device can't hold a passkey deplo can use. Try your phone, or a security key with a PIN.";
+        return "That device can't hold a passkey Deplo can use. Try your phone, or a security key with a PIN.";
       case "ERROR_AUTHENTICATOR_NO_SUPPORTED_PUBKEYCREDPARAMS_ALG":
       case "ERROR_AUTHENTICATOR_GENERAL_ERROR":
         return "Your device refused to create the passkey. Try a different one.";

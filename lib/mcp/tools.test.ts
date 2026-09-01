@@ -56,7 +56,7 @@ test("tool names are unique, snake_case, and unprefixed", () => {
 
 /**
  * Rule 1 of `lib/mcp/tools.ts`, enforced rather than trusted. A secret that
- * reaches a model's context window has left deplo for a third party's logs and
+ * reaches a model's context window has left Deplo for a third party's logs and
  * cannot be revoked from there, so no capability may unlock one over MCP.
  */
 test("no tool can reveal a secret", () => {

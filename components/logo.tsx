@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * The deplo wordmark traced as one monochrome path, from `public/logo.svg`.
+ * The Deplo wordmark traced as one monochrome path, from `public/logo.svg`.
  * Drawn with `currentColor` so it follows `--foreground` in both themes.
  */
 export const LOGO_PATH =

@@ -467,8 +467,8 @@ export function RoleEditor({
             title={`Reset ${role!.name} to its default?`}
             description={
               role!.memberCount > 0
-                ? `Its name and permissions go back to what deplo ships, for the ${role!.memberCount} member${role!.memberCount === 1 ? "" : "s"} who hold it too.`
-                : "Its name and permissions go back to what deplo ships."
+                ? `Its name and permissions go back to what Deplo ships, for the ${role!.memberCount} member${role!.memberCount === 1 ? "" : "s"} who hold it too.`
+                : "Its name and permissions go back to what Deplo ships."
             }
             confirmLabel="Reset"
             variant="default"

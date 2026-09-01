@@ -85,11 +85,11 @@ async function postConsent(body: {
         error:
           json.error_description ||
           json.message ||
-          `deplo could not finish the connection (${res.status})`,
+          `Deplo could not finish the connection (${res.status})`,
       };
     return { url: json.url };
   } catch {
-    return { error: "deplo could not reach its own sign-in service" };
+    return { error: "Deplo could not reach its own sign-in service" };
   }
 }
 
@@ -116,7 +116,7 @@ export function ConsentForm({
    * The teams the mint would accept, ticked to begin with.
    */
   connectableTeamIds: string[];
-  /** The origin deplo publishes, which the consent POST must come from. */
+  /** The origin Deplo publishes, which the consent POST must come from. */
   publicOrigin: string | null;
   /** Whose account the minted token will act as - worth saying before the click. */
   username: string;
@@ -141,7 +141,7 @@ export function ConsentForm({
   // ticked. Not a control any more - the picker is the only one.
   const connectingTeam = tree.find((t) => t.id === activeTeamId);
 
-  // Better Auth refuses a cookie-carrying POST whose Origin is not the address deplo
+  // Better Auth refuses a cookie-carrying POST whose Origin is not the address Deplo
   // publishes - the CSRF defence the consent posts through.
   const wrongOrigin =
     typeof window !== "undefined" &&
@@ -171,7 +171,7 @@ export function ConsentForm({
   const accessLabel = scoped
     ? scopeLabel({ scoped: true, ...selection }, teamNames)
     : { text: connectingTeam?.name ?? "This team", empty: false };
-  // A team wears its initials everywhere else in deplo (the team switcher), so it
+  // A team wears its initials everywhere else in Deplo (the team switcher), so it
   // wears them here too - the reach of a connection is the one place a name in plain
   // text is easiest to skim past.
   const accessTeams = (
@@ -195,7 +195,7 @@ export function ConsentForm({
     });
     if (!done.url) {
       setPending(false);
-      toast.error(done.error || "deplo could not finish the connection");
+      toast.error(done.error || "Deplo could not finish the connection");
       return;
     }
     const minted = await gqlAction(AUTHORIZE, {
@@ -211,7 +211,7 @@ export function ConsentForm({
     });
     if (!minted.ok) {
       setPending(false);
-      toast.error(minted.error || "deplo refused the connection");
+      toast.error(minted.error || "Deplo refused the connection");
       return;
     }
     // A full-page navigation, not router.push: the destination is the client's
@@ -247,8 +247,8 @@ export function ConsentForm({
         <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-muted-foreground">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
           <span>
-            You opened deplo at a different address from the one it publishes (
-            {publicOrigin}). Approving will be refused. Open deplo at that
+            You opened Deplo at a different address from the one it publishes (
+            {publicOrigin}). Approving will be refused. Open Deplo at that
             address and start the connection again.
           </span>
         </p>
@@ -271,14 +271,14 @@ export function ConsentForm({
             </Avatar>
             <div>
               <h1 className="text-lg font-semibold tracking-tight">
-                Connect {client.name} to deplo
+                Connect {client.name} to Deplo
               </h1>
               {client.redirectOrigin ? (
                 <p className="mt-1 flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
                   <Globe className="size-3.5 shrink-0" />
                   <span className="truncate">{client.redirectOrigin}</span>
                   <InfoTip
-                    content="Where deplo sends it back after you approve. It is the one thing this app cannot make up about itself."
+                    content="Where Deplo sends it back after you approve. It is the one thing this app cannot make up about itself."
                     docs="tokens.oauth"
                   />
                 </p>

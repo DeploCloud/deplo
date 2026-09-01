@@ -61,7 +61,7 @@ const twoFactorGate = createAuthMiddleware(async (ctx) => {
   if (!ctx.path.startsWith("/two-factor/") || !ctx.request) return;
   throw new APIError("FORBIDDEN", {
     message:
-      "Two-factor settings are changed through deplo, which asks for a code first.",
+      "Two-factor settings are changed through Deplo, which asks for a code first.",
     code: "TWO_FACTOR_STEP_UP_REQUIRED",
   });
 });
@@ -74,13 +74,13 @@ const passkeyGate = createAuthMiddleware(async (ctx) => {
   if (!ctx.path.startsWith("/passkey/") || !ctx.request) return;
   throw new APIError("FORBIDDEN", {
     message:
-      "Passkeys are managed through deplo, which asks for your password first.",
+      "Passkeys are managed through Deplo, which asks for your password first.",
     code: "PASSKEY_STEP_UP_REQUIRED",
   });
 });
 
 /**
- * Endpoints Better Auth exposes that deplo drives ITSELF, and that must not be a
+ * Endpoints Better Auth exposes that Deplo drives ITSELF, and that must not be a
  * second way in off the network. `app/api/auth/[...all]/route.ts` mounts the
  * plugin whole, because the OAuth surface has to be reachable.
  */
@@ -101,7 +101,7 @@ const DEPLO_OWNED_AUTH_PATHS = [
   "/request-password-reset",
 ] as const;
 
-/** Whether Better Auth's own endpoint at `path` is one deplo drives itself.
+/** Whether Better Auth's own endpoint at `path` is one Deplo drives itself.
  *  Exported so the list is exercised without standing up an auth instance. */
 export function isDeploOwnedAuthPath(path: string): boolean {
   return DEPLO_OWNED_AUTH_PATHS.some((p) => path.startsWith(p));
@@ -112,14 +112,14 @@ const deploOwnedGate = createAuthMiddleware(async (ctx) => {
   if (!isDeploOwnedAuthPath(ctx.path)) return;
   throw new APIError("FORBIDDEN", {
     message:
-      "Accounts are managed through deplo, which rate-limits sign-ins per account and records failed attempts. Use the dashboard.",
+      "Accounts are managed through Deplo, which rate-limits sign-ins per account and records failed attempts. Use the dashboard.",
     code: "DEPLO_OWNED_ENDPOINT",
   });
 });
 
 /**
  * Refuse a ceremony the authenticator did not verify was a PERSON. For an ordinary
- * passkey that would be a shrug; here it is not, because in deplo a passkey
+ * passkey that would be a shrug; here it is not, because in Deplo a passkey
  * SATISFIES a team's two-factor mandate.
  */
 const requireUserVerified = ({
@@ -151,7 +151,7 @@ const silentAuthorizeGate = createAuthMiddleware(async (ctx) => {
   throw new APIError("BAD_REQUEST", {
     error: "interaction_required",
     error_description:
-      "deplo always asks the person before connecting an app. Retry without prompt=none.",
+      "Deplo always asks the person before connecting an app. Retry without prompt=none.",
   });
 });
 
@@ -179,7 +179,7 @@ function oauthProviderOptions() {
     // An agent always acts FOR A PERSON.
     grantTypes: ["authorization_code" as const, "refresh_token" as const],
 
-    // deplo has no UI for managing OAuth clients and never intended to expose one.
+    // Deplo has no UI for managing OAuth clients and never intended to expose one.
     clientPrivileges: () => false,
 
     // RFC 8707 resource indicators.
@@ -188,7 +188,7 @@ function oauthProviderOptions() {
     // Every client that self-registers is linked to that one resource.
     clientRegistrationDefaultResources: [`${base}${MCP_RESOURCE_PATH}`],
 
-    // Opaque tokens, hashed with the SAME digest `api_tokens.token_hash` uses. deplo is
+    // Opaque tokens, hashed with the SAME digest `api_tokens.token_hash` uses. Deplo is
     // both the authorization server and the only resource server, in one process on one
     // database, so a JWT would save nothing: the `api_tokens` row has to be read on
     // every request anyway for capabilities, scope and the live creator clamp.
@@ -291,14 +291,14 @@ function createAuth(db: DrizzleClient) {
       // Breach check on the Better Auth endpoints themselves: `/api/auth/*` is mounted
       // whole (app/api/auth/[...all]/route.ts), so `/change-password` and
       // `/reset-password` are reachable over the network even though the dashboard never
-      // uses them. deplo's own writes do not pass through here - they call
+      // uses them. Deplo's own writes do not pass through here - they call
       // `assertPasswordNotPwned` in lib/pwned-password.ts, which is where the same check
       // lives for setup, the registration link, the account settings, the admin reset,
       // basic auth and database passwords.
       haveIBeenPwned({
         customPasswordCompromisedMessage: PWNED_PASSWORD_MESSAGE,
       }),
-      // deplo as an OAuth 2.1 authorization server, so a web AI client can reach
+      // Deplo as an OAuth 2.1 authorization server, so a web AI client can reach
       // `/api/mcp`. See the docblock above `oauthProviderOptions`.
       oauthProvider(oauthProviderOptions()),
       // WebAuthn: a sign-in method AND the thing that satisfies a team's

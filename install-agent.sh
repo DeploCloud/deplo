@@ -69,7 +69,7 @@ BUILD_ONLY="${DEPLO_BUILD_ONLY:-0}"
 # Set by the import wizard, which prefixes the command with DEPLO_IMPORT_ONLY=1.
 IMPORT_ONLY="${DEPLO_IMPORT_ONLY:-0}"
 
-# ==== deplo terminal UI ===================================== KEEP IN SYNC ====
+# ==== Deplo terminal UI ===================================== KEEP IN SYNC ====
 # One renderer for install.sh, install-agent.sh and uninstall.sh. It degrades on
 # purpose: no TTY, NO_COLOR, TERM=dumb or a non-UTF-8 locale drops to plain ASCII
 # carrying the same words, because installer output is what people paste into a
@@ -131,7 +131,7 @@ ui_init() {
     UI_LOG=/dev/null
     exec 9>/dev/null
   fi
-  ui_log "=== deplo $UI_ACTION $(date -u '+%Y-%m-%dT%H:%M:%SZ') - args: $* ==="
+  ui_log "=== Deplo $UI_ACTION $(date -u '+%Y-%m-%dT%H:%M:%SZ') - args: $* ==="
   ui_log "=== $(uname -srm) - $(id -un)@$(hostname 2>/dev/null || echo '?') ==="
   [ "${UI_TRACE:-1}" = 1 ] && ui_log "=== every command is traced; grep -v '^+' for command output only ==="
   # No `date` in PS4: it would fork once per traced command. Elapsed seconds is
@@ -316,7 +316,7 @@ on_err() {
   note "Re-running this script picks up where it stopped."
   exit "$code"
 }
-# ==== end deplo terminal UI ==================================================
+# ==== end Deplo terminal UI ==================================================
 
 # --- args ---------------------------------------------------------------------
 # Flags are filtered out so the three positionals keep their places: the panel

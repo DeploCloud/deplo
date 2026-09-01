@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Agent-facing guide for **deplo** - a self-hosted deploy platform that turns repos and
+Agent-facing guide for **Deplo** - a self-hosted deploy platform that turns repos and
 templates into Docker stacks fronted by Traefik. Read this before writing code, then lean on
 the deeper docs it links (this file points; it does not restate them).
 
@@ -14,9 +14,9 @@ the deeper docs it links (this file points; it does not restate them).
 
 ## Core mission - the north star every feature answers to
 
-**deplo exists to make self-hosting exhaustively simple.** The experience to match is the one the
+**Deplo exists to make self-hosting exhaustively simple.** The experience to match is the one the
 big cloud platforms give: push, and it is live, with the platform doing the operations. The user
-must **never be required to know Docker or SSH** to get full value out of deplo - that
+must **never be required to know Docker or SSH** to get full value out of Deplo - that
 non-requirement is the whole differentiator from the other self-hosted platforms, which assume the
 operator lives in a shell.
 
@@ -42,12 +42,12 @@ Consequences that bind every design and review decision:
   configuration) or it is **for the expert** (_advanced mode_: opt-in, behind an "Advanced"
   affordance, never on the first-run path). If you can't say which of the two a feature is for,
   it isn't designed yet.
-- **Design for a team, not a lone operator.** deplo's users are teams and companies as much as the
+- **Design for a team, not a lone operator.** Deplo's users are teams and companies as much as the
   solo developer. Assume several people with different Capabilities share one instance, and that
   whoever takes an action is not the instance owner. A flow that only works when you own the
-  instance, or that expects someone to fix it by hand out of band, is broken for the audience deplo
+  instance, or that expects someone to fix it by hand out of band, is broken for the audience Deplo
   wants. This axis is orthogonal to non-expert/expert: every feature answers both.
-- **Don't build what nobody will realistically use.** Losing focus on deplo's principles looks
+- **Don't build what nobody will realistically use.** Losing focus on Deplo's principles looks
   exactly like a stream of individually-defensible features that, long-term, almost no one turns
   on. Breadth is not the goal - being _far simpler than every competing self-hosted platform_ is.
   "another platform has that setting too" is an argument _against_ shipping it, not for.
@@ -67,7 +67,7 @@ run is a tax on the one thing that makes the switch worth it.
 ### Teams and companies are first-class, not an afterthought
 
 The other self-hosted platforms are shaped around one operator on one box, with sharing bolted on
-afterwards; the clouds deplo measures itself against are not. deplo aims at the collaboration case
+afterwards; the clouds Deplo measures itself against are not. Deplo aims at the collaboration case
 from the start: a team, up to a whole company, working in the same instance under least privilege.
 Concretely:
 
@@ -87,8 +87,8 @@ so anything only a company needs obeys the first-run rule above and stays out of
 
 ### Everything must be easy to turn into a managed service
 
-Beyond self-hosted, where deplo aims at enterprise-grade, more scalable features than the
-competition - the intent is to eventually run **deplo's own proprietary cloud**. The idea is still
+Beyond self-hosted, where Deplo aims at enterprise-grade, more scalable features than the
+competition - the intent is to eventually run **Deplo's own proprietary cloud**. The idea is still
 rough, but the constraint it puts on today's code is concrete: **whatever we build should one day be
 easy to offer as a managed service.** In practice that means multi-tenant-safe by construction, no
 assumption that the operator and the end user are the same person, and no dependence on the user
@@ -450,11 +450,11 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   account creation, change-password, the admin reset, basic auth, the Traefik panel and a
   database's engine password - the last three only since the audit that found the doc claiming it
   and the code doing only half. The one carve-out is a GENERATED credential: a database password
-  deplo mints itself is `randomToken(24)`, which is base64url and would fail "at least 1 special
+  Deplo mints itself is `randomToken(24)`, which is base64url and would fail "at least 1 special
   character" about a third of the time, so the policy bounds only a password a person typed.
   Better Auth's own `/api/auth/*` endpoints are covered by the
-  `haveIBeenPwned` plugin instead - deplo's writes never reach them. External credentials
-  (registry, SMTP, S3, git tokens) are deliberately NOT checked: deplo cannot rotate them, so a hit
+  `haveIBeenPwned` plugin instead - Deplo's writes never reach them. External credentials
+  (registry, SMTP, S3, git tokens) are deliberately NOT checked: Deplo cannot rotate them, so a hit
   would only break a working integration.
 - **htpasswd credentials are bcrypt** (`htpasswdLine`, async like `hashPassword` and for the same
   reason). Traefik's `go-htpasswd` also reads the Apache MD5 (`$apr1$`) this used to emit; the hash
@@ -474,20 +474,20 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   counting). `sweepRateLimits` runs in the maintenance sweep.
 - **Better Auth is the live auth path** (ADR-0014, migration 0055): session cookie
   `deplo.session_token` (a real `session` row, `__Secure-` prefixed over https), configured in
-  `lib/auth/better-auth.ts`. `deplo_team` still carries the active team and stays deplo's own.
+  `lib/auth/better-auth.ts`. `deplo_team` still carries the active team and stays Deplo's own.
   Three settings are load-bearing: `user: { modelName: "users" }` (its `user` model IS the
-  control-plane table, never stand up a second one), `password: {hash, verify}` wired to deplo's
+  control-plane table, never stand up a second one), `password: {hash, verify}` wired to Deplo's
   scrypt (change it and every credential dies), and `disableSignUp: true` (Better Auth must never
   INSERT into `users`, which has NOT NULL columns it knows nothing about). The credential lives on
   `account.password`; `users.password_hash` is GONE and `token_version` is dead - revoking sessions
   is `revokeAllSessions(userId)`. `lib/auth.ts` keeps its exported surface; only its internals moved.
 - **The Better Auth route is mounted WHOLE, so its account surface is gated shut.** `/api/auth/*`
   has to exist for OAuth, and that also publishes a complete second account API. Three middlewares
-  in `lib/auth/better-auth.ts` close what deplo drives itself - `twoFactorGate`, `passkeyGate` and
+  in `lib/auth/better-auth.ts` close what Deplo drives itself - `twoFactorGate`, `passkeyGate` and
   `deploOwnedGate` (`isDeploOwnedAuthPath`: sign-in/sign-up, change/set password, change email,
   update/delete user, the session list and the password-reset pair). All three discriminate on
   `ctx.request`, which exists only for a real HTTP call, so `auth.api.*({ body, headers })` from
-  `lib/auth.ts` and `lib/data/*` is untouched. The reason is always the same: deplo's own sign-in is
+  `lib/auth.ts` and `lib/data/*` is untouched. The reason is always the same: Deplo's own sign-in is
   the ONLY path that limits per ACCOUNT, raises `failed_logins` and refuses a suspended account -
   the plugin's endpoint has an in-memory limiter keyed on a caller-writable IP header and nothing
   else. **Adding a Better Auth endpoint means deciding which side of that list it is on.**
@@ -608,6 +608,16 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 
 ## Vocabulary discipline
 
+**The product is written `Deplo`, with a capital D - always, everywhere prose is read.** Docs,
+comments, commit messages, UI copy, error strings, issue templates, log-facing sentences: capital D,
+no exceptions. Lowercase `deplo` survives only where it is a MACHINE token that something matches on
+
+- the npm package name, the `deplo` Docker network and compose key, the `deplo-agent` binary, the
+  `deplo_` id prefix and `deplo.*` labels, the `deplo` Postgres role, `deplo.build`, `DeploCloud/deplo`,
+  the `[deplo]` log prefix, the WebAuthn `rpName` / TOTP issuer, and paths like `/opt/deplo`. If
+  changing the case would change what a program does, it stays lowercase; if a person reads it as a
+  sentence, it is `Deplo`.
+
 Use **CONTEXT.md's exact terms**; avoid its banned synonyms. **App** (the deployable unit, never
 "service"/"project"; a bare compose "service" is a different thing) · **Project** (the
 container-folder, never container/group/folder) · **Capability** (never permission/scope/grant) ·
@@ -642,16 +652,16 @@ language - reconsider, or note the gap.
   (`// https://deplo.build/docs/guides/data/backups-and-restore`). Cite an ADR in one line when it is
   the reason; pragmas, `@ts-expect-error`, `eslint-disable` and its paired `eslint-enable`,
   `/* GraphQL */` and `ponytail:` markers are code and stay untouched.
-- **Never name a competitor in source.** Not in a comment, not in a string, not in UI copy: deplo
+- **Never name a competitor in source.** Not in a comment, not in a string, not in UI copy: Deplo
   does not say who it learned from. The only names that stay are functional - a build tool
   (`nixpacks`, `railpack`), an image ref, and the source system of the migration importer, which
   the user has to recognise to use it.
 - **Never bump the version on your own initiative.** A finished task is a commit, not a release:
-  no `chore(release):` commit and no tag unless the owner explicitly asks for one. deplo is in
+  no `chore(release):` commit and no tag unless the owner explicitly asks for one. Deplo is in
   beta, so a release is `0.x.y` - **minor** when the user notices (feature, changed behaviour, DB
   migration, needs a newer agent), **patch** for everything else, and `1.0.0` is the launch, which
   is the owner's call. One command does the whole thing and makes tag/file drift impossible:
-  `bun pm version minor --message "chore(release): deplo %s"` then `git push --follow-tags`. Full
+  `bun pm version minor --message "chore(release): Deplo %s"` then `git push --follow-tags`. Full
   procedure in `docs/agents/releasing.md`. `deplo-agent` versions on its own clock (also `0.x`
   since 24 Aug 2026) and the fleet only ever moves forward (`docs/agents/fleet-rollout.md`).
 - **Stop what you start, including :3000.** Any build or server you launch to work a task (dev

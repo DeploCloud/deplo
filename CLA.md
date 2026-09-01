@@ -1,9 +1,9 @@
-# deplo Contributor License Agreement
+# Deplo Contributor License Agreement
 
 **Version 1.1**
 
 This agreement is between you (the person or entity submitting a Contribution, "You") and
-DeploCloud, the maintainer of deplo.
+DeploCloud, the maintainer of Deplo.
 
 It is **not a copyright assignment.** You keep the copyright to everything you write. What
 you give us is permission: the right to ship your Contribution both in the open source
@@ -18,16 +18,16 @@ What we commit to in return is written down too, in
 ## 1. Definitions
 
 **"DeploCloud"**, "we" and "us" mean **Kevin Paratore**, domiciled in Italy, who maintains
-the deplo project under the name DeploCloud, together with any person or legal entity that
-Kevin Paratore later forms to operate the project, or to which the deplo project and this
+the Deplo project under the name DeploCloud, together with any person or legal entity that
+Kevin Paratore later forms to operate the project, or to which the Deplo project and this
 agreement are otherwise transferred, including by succession. The rights you grant below pass
 with the project, and no further agreement from you is needed for that to happen.
 
-**"deplo"** means the project of that name maintained by DeploCloud, in the repositories
+**"Deplo"** means the project of that name maintained by DeploCloud, in the repositories
 listed in section 7.
 
 **"Contribution"** means any work of authorship you intentionally submit to us for inclusion
-in, or documentation of, deplo: source code, documentation, configuration, designs, or
+in, or documentation of, Deplo: source code, documentation, configuration, designs, or
 anything else. "Submitted" means any form of electronic or written communication sent to us
 or our representatives, including a pull request, an issue, a discussion, or an email, but
 excluding anything you clearly mark in writing as "Not a Contribution".

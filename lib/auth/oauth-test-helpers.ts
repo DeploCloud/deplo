@@ -65,7 +65,7 @@ export async function registerClient(
 
 /**
  * Mint the session cookie a signed-in browser would then send. IN-PROCESS, not
- * over HTTP, because that is what deplo itself does: the browser signs in through
+ * over HTTP, because that is what Deplo itself does: the browser signs in through
  * the GraphQL `login` mutation, which calls `signInEmail` exactly like this.
  */
 export async function signIn(email: string, password: string): Promise<string> {

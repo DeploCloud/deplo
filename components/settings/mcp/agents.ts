@@ -1,5 +1,5 @@
 /**
- * The AI agents deplo knows how to connect, and the exact configuration each one
+ * The AI agents Deplo knows how to connect, and the exact configuration each one
  * wants. The wizard branches on `kind` and never shows one audience the other's
  * instructions. `docsUrl` is on every entry because these formats move.
  */
@@ -134,7 +134,7 @@ export const AGENTS: AgentDef[] = [
     hint: "Run it once in your terminal. Add --scope user to reuse it in every project.",
     docsUrl: "https://code.claude.com/docs/en/mcp",
     snippet: ({ url, token }) =>
-      `claude mcp add --transport http deplo ${url} --header "Authorization: Bearer ${token}"`,
+      `claude mcp add --transport http Deplo ${url} --header "Authorization: Bearer ${token}"`,
   },
   {
     id: "cursor",

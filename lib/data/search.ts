@@ -30,7 +30,7 @@ import { listServers } from "./servers";
 import { listMyTeams } from "./teams";
 
 /**
- * Find anything in deplo by name, slug or id, across every team the caller can
+ * Find anything in Deplo by name, slug or id, across every team the caller can
  * reach. Backs the command palette and the MCP `find` tool.
  */
 

@@ -17,7 +17,7 @@ import {
 import { buildMcpServer, type McpPrincipal } from "@/lib/mcp/server";
 
 /**
- * The deplo MCP server - protocol revision **2026-07-28**. There is no
+ * The Deplo MCP server - protocol revision **2026-07-28**. There is no
  * MCP-specific credential and there must never be one - "how do I take this access
  * away" has to keep having one answer, and that answer is "revoke the token".
  */
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
   if (!raw)
     return refuse(
       request,
-      "Authenticate first. A web AI client should follow the OAuth challenge on this response; a terminal agent sends a deplo API token as `Authorization: Bearer deplo_…`, created under Settings → API tokens.",
+      "Authenticate first. A web AI client should follow the OAuth challenge on this response; a terminal agent sends a Deplo API token as `Authorization: Bearer deplo_…`, created under Settings → API tokens.",
     );
 
   let identity;
@@ -220,7 +220,7 @@ export async function POST(request: Request) {
       clientId: identity.token!.id,
       scopes: [],
       // The SDK passes this straight through to the factory; it never inspects
-      // it. This is the seam that carries deplo's principal into the tools.
+      // it. This is the seam that carries Deplo's principal into the tools.
       extra: { principal: prepared.principal },
     },
   });
@@ -235,7 +235,7 @@ export async function GET() {
     {
       error: "Method not allowed",
       detail:
-        "This is deplo's MCP endpoint. Paste this URL into a web AI client and sign in when asked, or point a terminal agent at it over POST with `Authorization: Bearer deplo_…`.",
+        "This is Deplo's MCP endpoint. Paste this URL into a web AI client and sign in when asked, or point a terminal agent at it over POST with `Authorization: Bearer deplo_…`.",
       protocolVersion: "2026-07-28",
     },
     { status: 405, headers: { ...OAUTH_CORS_HEADERS, allow: "POST" } },

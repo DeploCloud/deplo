@@ -6,6 +6,14 @@ and docs use; it is not a spec.
 
 ## Language
 
+**Deplo**:
+The product, spelled with a capital D in every sentence a person reads - docs, comments, commit
+messages, UI copy, error strings. Lowercase `deplo` is only ever a machine token something matches
+on: the package name, the `deplo` network and compose key, `deplo-agent`, the `deplo_` id prefix,
+`deplo.*` labels, the `deplo` Postgres role, `deplo.build`, `/opt/deplo` and the `[deplo]` log
+prefix.
+_Avoid_: deplo, DEPLO, Deplo Cloud (the company is **DeploCloud**).
+
 ### Tenancy
 
 **Team**:
@@ -56,7 +64,7 @@ code and prose, but the UI and this glossary say primary owner), team admin.
 A named capability set **owned by a team** (`team_roles`, id prefix `role_`) and assigned
 to its members from Settings → Team → Members. Every team has three **default** roles -
 Owner, Member, Viewer (`builtin_key`), which it may rename and re-scope and then reset to
-what deplo ships, plus any number it authors itself. **Owner is locked at full access**:
+what Deplo ships, plus any number it authors itself. **Owner is locked at full access**:
 the founder's rank is immutable by rule, so a team can never edit its way out of
 administering itself. A role IS its members' capabilities: editing one rewrites them for
 everyone holding it in the same transaction, and no edit may leave the team with zero
@@ -164,7 +172,7 @@ its team with `X-Deplo-Team`) or minted by approving a **connected client**'s OA
 app, which picks its team on the consent screen). The protocol is stateless, so one endpoint serves
 one team, chosen when the agent is connected. One team switch governs it - whether agents are allowed at
 all - behind the `manage_mcp` **Capability**. What an agent may DO is decided by its token's
-Capabilities and by nothing on top; deplo adds no confirmation step of its own, and destructive
+Capabilities and by nothing on top; Deplo adds no confirmation step of its own, and destructive
 tools are flagged so the MCP client can ask its own user. No tool can reveal a secret, whatever
 the token holds (ADR-0021).
 _Avoid_: MCP plugin (the withdrawn container relay, ADR-0013), MCP token / `MCP_BEARER` (there
@@ -172,14 +180,14 @@ is no such credential), connector.
 
 **Connected client**:
 A web AI app (Claude, ChatGPT) that a member has authorised to drive a team over the **MCP
-server**, listed and revocable under Settings → MCP Server. It registers itself with deplo (deplo is
+server**, listed and revocable under Settings → MCP Server. It registers itself with Deplo (Deplo is
 an OAuth 2.1 authorization server for exactly this), and approving its consent screen **mints an
 ordinary API token**: the access token it goes on to present is only a pointer at that row, so
 revoking the token stops it, and it appears in Settings → API tokens too, marked. What it may do is
 that token's **Capabilities**; the OAuth _scopes_ it holds decide nothing (ADR-0022). A client that
 has registered but has never been approved holds nothing and reaches nothing.
 _Avoid_: connector, OAuth app, integration, MCP client (that is the software talking the protocol,
-not the thing deplo has a row for), "connected app".
+not the thing Deplo has a row for), "connected app".
 
 ### Plugins
 
@@ -385,7 +393,7 @@ code in its own repo (**DeploCloud/deplo-agent**), contract in
 [`proto/agent.proto`](../proto/agent.proto), control-plane side in [`lib/agent/`](../lib/agent/) +
 [`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)_
 _Avoid_: agent (ambiguous - say "server agent"), node, worker, runner (CI term), daemon
-(reserve for the Docker daemon it drives), deplo agent on the remote being a "second Deplo".
+(reserve for the Docker daemon it drives), Deplo agent on the remote being a "second Deplo".
 
 **Server health**:
 A server's **status** is an OBSERVATION, not a lifecycle the control plane drives: the outcome of
@@ -632,7 +640,7 @@ over a failing bucket. See
 _Avoid_: "S3 destination" for the concept (it is one kind of destination now); bucket (an S3
 destination is bucket + endpoint + region + creds + verdict); "folder" for the app-grouping
 sense in the same sentence (a destination's folder is a path on a disk); "connection
-verified" for anything but a passed probe; calling the reproduce block "the command deplo
+verified" for anything but a passed probe; calling the reproduce block "the command Deplo
 ran" (the agent does it in-process with minio-go, no shell).
 
 **Recovery key**:
@@ -886,7 +894,7 @@ unresolvable `www` would sink that host's cert order). `source: "redirect"` mark
 companion Deplo generated, and is what makes un-pairing safe to delete the row while a
 hostname the user typed is only un-redirected. `primary` always follows the half that
 serves.
-_Avoid_: alias, CNAME (a DNS record type, not a deplo concept), URL forwarding.
+_Avoid_: alias, CNAME (a DNS record type, not a Deplo concept), URL forwarding.
 
 **Port**:
 An app has **one** container port, the image-baked `build.port` (`preview` reuses it),
@@ -895,7 +903,7 @@ choke point, kept through the collapse of the old per-target axis). A hostname's
 _effective port_ - its per-domain override (single-image apps only) folded onto the
 default - comes from `effectivePortFor` in the same module.
 A **published port** is a different thing and additive to it: a `<host>:<container>`
-pair deplo writes into the stack's `ports:` so the app answers on a port of the SERVER,
+pair Deplo writes into the stack's `ports:` so the app answers on a port of the SERVER,
 for what Traefik cannot route (a game server, an SMTP relay, a cache). One per row in
 `app_ports`, set in **Settings → Advanced → Published ports**, behind the
 `canExposePorts` grant, refused on a compose stack (its YAML publishes its own) and
@@ -912,13 +920,13 @@ Nobody has to hand-write `volumes:` into their YAML to keep data. Stored on the 
 `{ type, name, service, mountPath, readOnly }`. Three kinds - **UI name / stored `type`**,
 and the UI name is what every screen, tooltip and doc says:
 
-- **Volume** (`named`): disk space deplo creates and keeps. The default.
+- **Volume** (`named`): disk space Deplo creates and keeps. The default.
 - **File** (`app`): a file or folder from the app's own isolated files directory.
   Its CONTENT is written from the Storage editor too (`appStorageFile` / `writeAppFile`,
   over the agent) (not a copy in the database, the file itself on the host), so an
   entry never points at a path with nothing behind it. Files are written **before** the
   rows, because Docker answers a missing bind source by inventing an empty _directory_.
-- **Bind** (`host`): a folder that already exists on the server: outside deplo and shared
+- **Bind** (`host`): a folder that already exists on the server: outside Deplo and shared
   with everything else on the machine, so it needs the `canMountHostVolumes` grant. A Bind
   is also the only kind with a **propagation** (`rslave` / `rshared`, absent ⇒ docker's
   `rprivate`): without it the container keeps a SNAPSHOT of the submounts that existed when
@@ -930,7 +938,7 @@ and the UI name is what every screen, tooltip and doc says:
   `derivedMountPath`: the storage lands in the app's own working directory under the name its
   source gives (`uploads` → `/app/uploads`, a File `conf/app.toml` → `/app/conf/app.toml`,
   `/srv/media` → `/app/media`), and the editor sends that path explicitly, so the row stores
-  what it previewed. Offered ONLY where `containerWorkdir` is a fact (anything deplo builds);
+  what it previewed. Offered ONLY where `containerWorkdir` is a fact (anything Deplo builds);
   a prebuilt image or a compose service picked its own, and mounting at an invented path is
   the silent failure, the app writes where it always did and the disk stays empty, so there
   the field stays required.

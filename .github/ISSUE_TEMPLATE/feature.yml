@@ -1,11 +1,11 @@
 name: Feature request
-description: Something deplo should be able to do and cannot
+description: Something Deplo should be able to do and cannot
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        deplo's goal is to be **far simpler** than every other self-hosted platform, not to
+        Deplo's goal is to be **far simpler** than every other self-hosted platform, not to
         match a feature list. "another platform has this setting" is an argument against
         shipping something, not for it. The questions below are how we tell the difference.
 
@@ -25,7 +25,7 @@ body:
     attributes:
       label: Who is this for?
       description: >
-        deplo has exactly two audiences. Something that cannot say which one it serves is
+        Deplo has exactly two audiences. Something that cannot say which one it serves is
         not designed yet.
       options:
         - Everyone. It should be on by default and need no configuration.
@@ -37,7 +37,7 @@ body:
     id: today
     attributes:
       label: How do you work around it today?
-      description: If the workaround is a shell on the server, say so. That is exactly what deplo is meant to remove.
+      description: If the workaround is a shell on the server, say so. That is exactly what Deplo is meant to remove.
     validations:
       required: true
 

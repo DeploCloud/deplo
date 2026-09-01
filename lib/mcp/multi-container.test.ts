@@ -395,7 +395,7 @@ test("a single-image app refuses a container argument instead of ignoring it", a
   assert.deepEqual(await domainRows(), []);
 });
 
-test("a container named after deplo's own infrastructure is refused", async () => {
+test("a container named after Deplo's own infrastructure is refused", async () => {
   // `postgres`, `traefik` and `deplo` are the names the platform answers to on
   // the shared network. A domain pointed at one used to be stored, and every
   // later render of that stack - reroute AND deploy - threw on it.
@@ -519,7 +519,7 @@ test("an argument the tool does not take is refused, not silently dropped", asyn
   assert.equal(res.error, true, res.text);
   // Refused for the ARGUMENT, not for the missing container: a silent drop would
   // fail with "select the container" and read as the model's own mistake.
-  // deplo's own words, and it lists what the tool DOES take, so the next call is
+  // Deplo's own words, and it lists what the tool DOES take, so the next call is
   // the right one instead of another spelling.
   assert.match(res.text, /takes no argument "container"/);
   assert.match(res.text, /service/, "the refusal must list the real arguments");
@@ -561,7 +561,7 @@ test("a domain can be moved onto another container without being deleted", async
   );
 });
 
-test("a domain cannot be moved onto deplo's own network names either", async () => {
+test("a domain cannot be moved onto Deplo's own network names either", async () => {
   const { raw } = await mintToken();
   const added = await callTool(raw, "add_domain", {
     appId: "prj_analytics",

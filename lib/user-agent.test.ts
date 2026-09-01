@@ -117,7 +117,7 @@ test("an iPad claiming to be a Mac is still an iPad", () => {
 test("non-browser clients are named, not filed under Unknown", () => {
   assert.equal(describeUserAgent(UA.curl).label, "curl");
   assert.equal(describeUserAgent(UA.node).label, "Node");
-  assert.equal(describeUserAgent("deplo-cli/1.2.0").label, "deplo CLI");
+  assert.equal(describeUserAgent("deplo-cli/1.2.0").label, "Deplo CLI");
 });
 
 test("a missing or unparseable agent degrades to a plain label, never throws", () => {

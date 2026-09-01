@@ -571,7 +571,7 @@ test("oom_score_adj is a privilege only when NEGATIVE; group_add and a foreign l
     ),
     true,
   );
-  // json-file's own size knobs are what deplo's logs read from - free.
+  // json-file's own size knobs are what Deplo's logs read from - free.
   assert.equal(
     svc(
       `    logging:\n      driver: json-file\n      options:\n        max-size: 10m`,

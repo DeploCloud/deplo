@@ -11,7 +11,7 @@
 
 ## Context
 
-deplo's MCP server works with every terminal and IDE agent, because all of them let you paste
+Deplo's MCP server works with every terminal and IDE agent, because all of them let you paste
 `Authorization: Bearer deplo_…`. It does not work from **claude.ai** or **chatgpt.com**, which have
 no such field: a web connector discovers its server, registers itself, and sends the user through
 an OAuth 2.1 authorization flow. The MCP spec requires that of a protected server - Protected
@@ -23,7 +23,7 @@ is a whole subsystem", and noted the 401 already carried a `WWW-Authenticate` ch
 discovery flow could be added without breaking a single existing client. Both halves proved true:
 the subsystem is real, and nothing that worked before changed.
 
-The subsystem is not ours. `@better-auth/oauth-provider` is the same project as the auth deplo
+The subsystem is not ours. `@better-auth/oauth-provider` is the same project as the auth Deplo
 already runs, its peer dependencies were already installed at the exact pinned versions, and it
 brings zero new transitive packages.
 
@@ -75,7 +75,7 @@ brings zero new transitive packages.
 
 5. **Registration is open, bounded, and swept.** RFC 7591 registration must be unauthenticated:
    claude.ai cannot pre-register. Registering buys nothing - a client with no consent holds no
-   token, reaches no team and appears nowhere, so the exposure is row creation, bounded by deplo's
+   token, reaches no team and appears nowhere, so the exposure is row creation, bounded by Deplo's
    Postgres rate limiter (5/min per IP; the plugin's own limiter is in-memory and forgets on
    restart) and by a maintenance sweep that drops clients with no consent after seven days.
 
@@ -91,10 +91,10 @@ brings zero new transitive packages.
    capabilities to click Authorize and mint a live API token for a client they had never heard of.
    The page therefore posts the consent FIRST - that endpoint verifies the provider's signature over
    the authorization query before recording anything, and `mintMcpConnection` requires that record,
-   fresh within five minutes. The proof is a row rather than a signature deplo re-derives: the
+   fresh within five minutes. The proof is a row rather than a signature Deplo re-derives: the
    database already knows what the library verified.
 
-7. **Opaque tokens, hashed with deplo's own `sha256Hex`.** deplo is the authorization server and the
+7. **Opaque tokens, hashed with Deplo's own `sha256Hex`.** Deplo is the authorization server and the
    only resource server, in one process on one database, so a JWT would save nothing - the
    `api_tokens` row is read on every request regardless, for capabilities, scope and the live
    creator clamp. Opaque instead gives instant revocation by construction, no JWKS table, and no
@@ -103,7 +103,7 @@ brings zero new transitive packages.
 
 8. **Scopes are not permissions.** The OAuth scopes stay the standard four
    (`openid`/`profile`/`email`/`offline_access`) and decide nothing. What an agent may do is the
-   token's Capabilities. **Capability** is deplo's word and **scope** is OAuth's; they must never
+   token's Capabilities. **Capability** is Deplo's word and **scope** is OAuth's; they must never
    share a variable.
 
 ## Considered options
@@ -111,7 +111,7 @@ brings zero new transitive packages.
 - **Better Auth's built-in `mcp()` plugin**: rejected. It already serves Protected Resource Metadata
   and the right challenge, and it is installed, but it wraps `oidc-provider`, which Better Auth has
   deprecated with the warning silenced, so the migration cost is paid either way. Its helpers
-  (`withMcpAuth`, `getMcpSession`) also bypass deplo's identity resolution entirely, never read
+  (`withMcpAuth`, `getMcpSession`) also bypass Deplo's identity resolution entirely, never read
   `client.disabled`, and return the row including the refresh token. A test asserts they are
   imported nowhere.
 - **One connection per team, several connectors**: rejected. It gives the same one-team-per-request
@@ -149,7 +149,7 @@ brings zero new transitive packages.
   someone mid-flow inside a third-party product.
 - The consent page lives at `app/oauth/consent`, **not** under `app/(auth)` - that layout redirects
   a signed-in user to the dashboard, which is everyone who reaches consent.
-- **deplo mints; the BROWSER posts the consent.** Not a preference: `POST /oauth2/consent` funnels
+- **Deplo mints; the BROWSER posts the consent.** Not a preference: `POST /oauth2/consent` funnels
   into the provider's `authorizeEndpoint`, which opens with
   `if (!ctx.request) throw UNAUTHORIZED("request not found")`, and an in-process
   `auth.api.*({ body, headers })` call has no `ctx.request` by construction. Calling it from a
@@ -160,12 +160,12 @@ brings zero new transitive packages.
   call in production's own order. Anything that reaches `auth.api` from `lib/data/*` on this path is
   the same bug returning.
 - **The issuer carries a path, and every document has to say so.** Better Auth builds its issuer as
-  `<origin><basePath>`, so deplo's is `https://host/api/auth` and not the bare origin. RFC 8414 §3.3
+  `<origin><basePath>`, so Deplo's is `https://host/api/auth` and not the bare origin. RFC 8414 §3.3
   makes a client check the `issuer` it reads back against the identifier it built the discovery URL
   from, so advertising the origin made a conformant client refuse outright while a lenient one
   connected by luck. An issuer with a path also moves its metadata (§3.1 inserts the path after the
   well-known segment), which is why `/.well-known/oauth-authorization-server/api/auth` exists beside
-  the root copy. `grant_types_supported` is narrowed to what deplo honours: `client_credentials` has
+  the root copy. `grant_types_supported` is narrowed to what Deplo honours: `client_credentials` has
   no user, so it could never resolve to a connection.
 - **`/api/mcp` rate-limits requests that never authenticate.** The per-token limit could not: it is
   keyed on a token, and discovery now tells the whole internet the endpoint is there. Registration
@@ -174,7 +174,7 @@ brings zero new transitive packages.
 - **Better Auth's client-management surface is closed.** `clientPrivileges: () => false` - the hook
   is skipped for unauthenticated registration, which is the path a web client actually uses, so open
   DCR keeps working while `/oauth2/create-client` and friends stop answering to any signed-in
-  session. deplo has no UI for them and never intended to expose one.
+  session. Deplo has no UI for them and never intended to expose one.
 - **A trap worth knowing beyond this feature:** the Better Auth tables use plain `timestamp` WITHOUT
   a time zone (the one exemption `AGENTS.md` grants), and on a naive column the two writers disagree -
   a value the DRIVER writes round-trips as the same instant, while one SQL `now()` writes comes
@@ -188,7 +188,7 @@ brings zero new transitive packages.
   inline in the page so a test can reach it, with a control asserting the mangled form IS refused.
 - `app/api/mcp/route.ts` is now genuinely an OAuth resource server: its 401 carries
   `resource_metadata`, and it answers CORS preflights so a browser client can read the challenge.
-  Its comment claiming deplo "is not an OAuth resource server" is gone.
+  Its comment claiming Deplo "is not an OAuth resource server" is gone.
 - The route gained its first end-to-end tests. `lib/mcp/protocol.test.ts` started from a hand-built
   principal, so the kill switch, the rate limiter, the two-factor catch and the 401 body had never
   been asserted; `lib/mcp/route.test.ts` covers them and doubles as the regression net proving the

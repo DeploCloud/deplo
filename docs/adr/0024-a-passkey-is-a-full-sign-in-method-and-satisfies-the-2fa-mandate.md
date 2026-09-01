@@ -40,7 +40,7 @@ from being a lockout, and there is no account-recovery flow to fall back to inst
 user that was minted for THIS panel's address (§4). This is the point of the feature: a team can
 require two factors without requiring an app.
 
-It is only honest because deplo enforces user verification. The plugin hardcodes
+It is only honest because Deplo enforces user verification. The plugin hardcodes
 `requireUserVerification: false` in both verifiers, and `authenticatorSelection.userVerification:
 "required"` is a request the authenticator may ignore, so `requireUserVerified` (an
 `afterVerification` guard in `lib/auth/better-auth.ts`) refuses a ceremony the authenticator did
@@ -130,7 +130,7 @@ does for `/two-factor/*`. All seven endpoints share that prefix - the client's `
 a browser-side composite, not a route - so one matcher closes the whole plugin.
 
 Management is closed because the plugin registers a permanent credential on a **session alone**,
-which is a notch below the bar `lib/data/two-factor.ts` holds for the same class of change: deplo
+which is a notch below the bar `lib/data/two-factor.ts` holds for the same class of change: Deplo
 asks for the password first. Login is closed because `verify-authentication` skips
 `users.suspended`, skips the rate limiter and records no failed attempt - all three live in the
 GraphQL resolvers with every other sign-in path, and a second front door with none of the locks is
@@ -177,7 +177,7 @@ member whose only device is gone reads as protected and cannot be told to enrol 
 - `bun` had to move `better-auth` 1.6.27 → 1.6.29 (the plugin is the separate package
   `@better-auth/passkey` and peers that version), and `@better-auth/oauth-provider` with it.
 - A hardware key with no PIN set is refused at registration. That is the price of §2.
-- The card shows "Added", not "last used": the plugin does not track it, and writing a deplo column
+- The card shows "Added", not "last used": the plugin does not track it, and writing a Deplo column
   onto a library-owned table to get it is not worth the coupling.
 
 ## Alternatives rejected
@@ -185,7 +185,7 @@ member whose only device is gone reads as protected and cannot be told to enrol 
 - **Passkeys as a second factor only** (password, then a WebAuthn challenge instead of a code).
   Safe, and it saves nobody anything: the password is still typed every time, which is the part
   worth removing.
-- **Passkey-only accounts** (drop the password once a passkey exists). deplo has no account
+- **Passkey-only accounts** (drop the password once a passkey exists). Deplo has no account
   recovery, so losing every device would mean losing the account with no path back that is not a
   database prompt - the exact "drop to a shell" the product exists to avoid.
 - **A per-team switch for whether passkeys count as two factors.** One more knob on a first-run

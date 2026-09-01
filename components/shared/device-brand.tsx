@@ -149,8 +149,8 @@ export const BROWSER_BRAND: Record<string, DeviceBrand> = {
   curl: { label: "curl", bg: "#073551", fg: "#FFFFFF", icon: Terminal },
   Wget: { label: "Wget", bg: "#3F3F46", fg: "#FFFFFF", icon: Terminal },
   Insomnia: { label: "Insomnia", bg: "#4000BF", fg: "#FFFFFF", icon: Terminal },
-  "deplo CLI": {
-    label: "deplo CLI",
+  "Deplo CLI": {
+    label: "Deplo CLI",
     bg: "#3F3F46",
     fg: "#FFFFFF",
     icon: Terminal,

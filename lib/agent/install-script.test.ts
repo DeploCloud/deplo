@@ -257,7 +257,7 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
     );
     assert.ok(
       firstNetwork > 0,
-      "install-agent.sh no longer creates the deplo network?",
+      "install-agent.sh no longer creates the Deplo network?",
     );
     assert.ok(
       configured < firstNetwork,
@@ -273,11 +273,11 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
     );
     assert.ok(
       hostNetwork > 0,
-      "install.sh no longer creates the deplo network?",
+      "install.sh no longer creates the Deplo network?",
     );
     assert.ok(
       hostConfigured < hostNetwork,
-      "install.sh configures pools AFTER creating the deplo network - the step is a no-op",
+      "install.sh configures pools AFTER creating the Deplo network - the step is a no-op",
     );
   } finally {
     restore();

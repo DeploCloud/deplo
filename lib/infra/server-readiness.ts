@@ -179,7 +179,7 @@ export const READINESS_DETAILS = {
   // image and name, which the agent's own comment says "covers the deplo-traefik
   // instance and a bring-your-own proxy alike".
   traefikOk:
-    'A container whose image or name contains "traefik" is running on this host - consistent with a proxy that can route apps to their domains. Deplo cannot verify from here that it is the one it installed, or that it is on the deplo network.',
+    'A container whose image or name contains "traefik" is running on this host - consistent with a proxy that can route apps to their domains. Deplo cannot verify from here that it is the one it installed, or that it is on the Deplo network.',
   portHeldWithTraefik: (port: number) =>
     `Port ${port} is held by a listener on the host, and a Traefik container is running - consistent with Traefik serving it.`,
   portHeldNoTraefik: (port: number) =>

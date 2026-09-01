@@ -1,5 +1,5 @@
 /**
- * The header set deplo hands to Better Auth's server API. Pure (no `next/headers`)
+ * The header set Deplo hands to Better Auth's server API. Pure (no `next/headers`)
  * so the selection can be tested, and it needs to be, because BOTH directions of
  * this list are load-bearing and both fail silently.
  */
@@ -37,7 +37,7 @@ const SECURE_PREFIX = "__Secure-";
 
 /**
  * Offer every Better Auth cookie under BOTH the plain and the `__Secure-` name. A
- * deplo answers on two addresses at once: its panel address, usually https, and
+ * Deplo answers on two addresses at once: its panel address, usually https, and
  * its server's own `http://<ip>:3000`, the way back in when the domain breaks.
  */
 export function withBothCookieNames(cookie: string): string {

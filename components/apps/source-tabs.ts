@@ -58,7 +58,7 @@ export const SOURCE_TABS: SourceTab[] = [
     label: "Upload",
     icon: Upload,
     blurb: "Send a zip or tarball of your code.",
-    // No vendor behind an archive: deplo's own violet, so the tile still reads
+    // No vendor behind an archive: Deplo's own violet, so the tile still reads
     // as one of the five rather than the odd grey one out.
     brand: { bg: "#8B5CF6", fg: "#FFFFFF" },
     veil: { hue: 293 },

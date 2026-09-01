@@ -12,7 +12,7 @@ team has. Their `slug`, however, is unique across the WHOLE INSTANCE - so the
 second one is minted `b5-wiki-1`, and a migration that brings both across says so
 in its report.
 
-Everything else deplo owns is scoped to the active team, which makes an
+Everything else Deplo owns is scoped to the active team, which makes an
 instance-wide unique index look like an oversight, and one worth settling before
 the managed service exists.
 
@@ -25,7 +25,7 @@ deploy key.** It is what names, on the HOST:
 - every named volume (`deplo-<slug>-<alias>`),
 - the stack's directory and its files dir.
 
-Docker's names are global **per host**, and a server in deplo is the one resource
+Docker's names are global **per host**, and a server in Deplo is the one resource
 shared across every team (`servers.all_teams` defaults to true). Two teams whose
 apps landed on the same machine with the same slug would collide at `compose up` -
 after the create, on someone else's deploy.

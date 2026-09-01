@@ -20,14 +20,14 @@ const OPTIONAL = ALL_CAPABILITIES.filter((c) => c !== "view");
 
 /**
  * The permission list shared by the role editor and the API-token editor: every
- * capability deplo enforces, one checkbox each, grouped into categories only so
+ * capability Deplo enforces, one checkbox each, grouped into categories only so
  * they can be FOUND - there is no category-level grant, because a permission you
  */
 export function PermissionPicker({
   capabilities,
   onChange,
   disabled = false,
-  hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do - search by what you want it to reach.",
+  hint = "Every action Deplo can gate, one permission each. Tick exactly what this role should be able to do - search by what you want it to reach.",
   muted,
   scroll = false,
 }: {

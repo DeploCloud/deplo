@@ -692,7 +692,7 @@ test("rotationExecCommand: a hostile password never escapes its quotes", () => {
 // MariaDB 11 removed the `mysql*` compatibility symlinks its images used to
 // ship, so the client only answers to its own name there. Emitting `mysql` meant
 // password rotation on a MariaDB 11 failed with "executable file not found",
-// which reads like the container is broken rather than like deplo typed the
+// which reads like the container is broken rather than like Deplo typed the
 // wrong program name.
 test("rotationExecCommand: mariadb is driven by the mariadb client, mysql by mysql", () => {
   const base = { username: "app", dbName: "db_x" };

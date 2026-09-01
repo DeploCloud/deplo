@@ -1,6 +1,6 @@
 # Releasing the control plane
 
-How the deplo version number moves, and who is allowed to move it. The server agent is a different
+How the Deplo version number moves, and who is allowed to move it. The server agent is a different
 thing on a different clock: it has its own runbook in `docs/agents/fleet-rollout.md`.
 
 ## The one rule for agents
@@ -16,7 +16,7 @@ produces a merge conflict on the one line where a conflict is worst.
 ### When the owner asks for one number on both repos
 
 The owner sometimes wants the control plane and the agent to carry the **same** version, including
-re-cutting a number that already has a tag and a release behind it. **While deplo is still on
+re-cutting a number that already has a tag and a release behind it. **While Deplo is still on
 `0.1.0`, do it and do not ask a second time.** Nothing downstream has pinned a number yet, and
 `releases/latest` is the only thing that decides what the fleet installs - so moving a tag costs
 nothing but the minute it takes. Say what moved, do not open a question about it.
@@ -28,7 +28,7 @@ answer is a new number, and the two repos go back to moving on their own clocks.
 
 ## Which digit
 
-deplo is in **beta**, so every release is `0.x.y` and there are exactly two buckets.
+Deplo is in **beta**, so every release is `0.x.y` and there are exactly two buckets.
 
 | Bump              | When                                                                                                              | Example                         |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------- |
@@ -47,13 +47,13 @@ empty forever.
 Two commands, and the first one is what keeps the number honest:
 
 ```bash
-bun pm version minor --message "chore(release): deplo %s"   # or: patch
+bun pm version minor --message "chore(release): Deplo %s"   # or: patch
 git push --follow-tags
 ```
 
 `bun pm version` writes `package.json`, commits only that line, and derives the tag **from the file
 it just wrote**. That matters: the drift it makes impossible has already happened once here.
-`chore(release): deplo 1.2.0` bumped the file, the tag and the image while a hand-written constant
+`chore(release): Deplo 1.2.0` bumped the file, the tag and the image while a hand-written constant
 in `lib/version.ts` stayed at `1.1.0`, so every fully updated instance announced a phantom update
 forever. The constant is now read from `package.json` (`lib/version.ts:18`) and the tag is derived
 too, so there is exactly one place a version can be wrong, and no script of ours in between.

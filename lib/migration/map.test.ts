@@ -71,7 +71,7 @@ function app(over: Partial<SourceApplication> = {}): SourceApplication {
 
 /* ---- env blobs ------------------------------------------------------ */
 
-test("parseEnvBlob follows the .env grammar deplo already uses", () => {
+test("parseEnvBlob follows the .env grammar Deplo already uses", () => {
   const entries = parseEnvBlob(
     [
       "# a comment",
@@ -340,15 +340,15 @@ test("adaptComposeForDeplo declares a long-form volume, never a long-form bind",
 
 /* ---- build settings ------------------------------------------------- */
 
-test("mapBuildSettings maps each build pack deplo has", () => {
-  for (const [dokploy, deplo] of [
+test("mapBuildSettings maps each build pack Deplo has", () => {
+  for (const [dokploy, Deplo] of [
     ["dockerfile", "dockerfile"],
     ["nixpacks", "nixpacks"],
     ["railpack", "railpack"],
     ["static", "static"],
   ] as const) {
     const { value, notes } = mapBuildSettings(app({ buildType: dokploy }));
-    assert.equal(value.buildMethod, deplo);
+    assert.equal(value.buildMethod, Deplo);
     assert.deepEqual(notes, []);
   }
 });
@@ -416,7 +416,7 @@ test("mapBuildSettings ignores the settings the chosen builder never reads", () 
   );
 });
 
-test("mapBuildSettings notes replicas, which deplo does not scale", () => {
+test("mapBuildSettings notes replicas, which Deplo does not scale", () => {
   const { notes } = mapBuildSettings(app({ replicas: 3 }));
   assert.equal(notes.length, 1);
   assert.match(notes[0], /3 replicas/);
@@ -612,7 +612,7 @@ test("mapSource carries the git deploy options", () => {
   assert.equal(value.repo.submodules, true);
 });
 
-test("mapSource takes a docker image and refuses one deplo would interpolate", () => {
+test("mapSource takes a docker image and refuses one Deplo would interpolate", () => {
   const ok = mapSource(
     app({ sourceType: "docker", dockerImage: "ghcr.io/acme/api:1.2" }),
   );
@@ -855,13 +855,13 @@ test("mapDomains routes plain http to the web entrypoint", () => {
 
 /* ---- mounts --------------------------------------------------------- */
 
-test("volumeLabel produces the lowercase-kebab deplo requires", () => {
+test("volumeLabel produces the lowercase-kebab Deplo requires", () => {
   assert.equal(volumeLabel("PG Data", "x"), "pg-data");
   assert.equal(volumeLabel("acme-app_data", "x"), "acme-app-data");
   assert.equal(volumeLabel("///", "fallback"), "fallback");
 });
 
-test("mapMounts splits the three Dokploy kinds into deplo's two writers", () => {
+test("mapMounts splits the three Dokploy kinds into Deplo's two writers", () => {
   const { value, notes } = mapMounts(
     [
       {
@@ -1050,7 +1050,7 @@ test("imageTag reads the tag and ignores a registry port", () => {
   assert.equal(imageTag("postgres"), null);
 });
 
-test("mapDatabase maps each engine deplo has and refuses libsql", () => {
+test("mapDatabase maps each engine Deplo has and refuses libsql", () => {
   assert.equal(mapDatabase("postgres", db()).value?.type, "postgres");
   assert.equal(
     mapDatabase("mongo", db({ dockerImage: "mongo:7" })).value?.type,
@@ -1138,16 +1138,16 @@ test("mapDatabase carries the external port and reports what a database cannot t
     }),
   );
   assert.equal(value?.exposedPort, 5432);
-  // The start command COMES ACROSS (deplo stores one too), instead of becoming a
+  // The start command COMES ACROSS (Deplo stores one too), instead of becoming a
   // sentence asking someone to retype it.
   assert.equal(value?.command, "postgres -c max_connections=200");
   assert.doesNotMatch(notes.join(" "), /start command/);
-  // A BIND has nowhere to go on a deplo database, so it is named, not dropped in
+  // A BIND has nowhere to go on a Deplo database, so it is named, not dropped in
   // silence.
   assert.match(notes.join(" "), /bind-mounts/);
 });
 
-// The engine's configuration is exactly what deplo now keeps itself, so it comes
+// The engine's configuration is exactly what Deplo now keeps itself, so it comes
 // across instead of turning into a to-do note. Dokploy leaves `filePath` null on
 // a database's file mount just as it does on an application's.
 test("mapDatabase imports the engine's config files", () => {
@@ -1519,7 +1519,7 @@ test("pairVolumes says why a standalone Mongo's configdb has no twin", () => {
   assert.match(notes[0], /sharded cluster/);
 });
 
-// mysql/mariadb carry two credentials on Dokploy and deplo models one, using it for
+// mysql/mariadb carry two credentials on Dokploy and Deplo models one, using it for
 // BOTH the connection string and its own root-only operations (the backup dump, the
 // console, rotation).
 test("mapDatabase imports mysql as root, because that is who Deplo acts as", () => {
@@ -1808,7 +1808,7 @@ test("mapLogo carries a Dokploy icon across untouched", () => {
   assert.equal(mapLogo(`  ${png}  `), png);
 });
 
-test("mapLogo drops what deplo would not store, and never throws", () => {
+test("mapLogo drops what Deplo would not store, and never throws", () => {
   assert.equal(mapLogo(null), null);
   assert.equal(mapLogo(undefined), null);
   assert.equal(mapLogo(""), null);
@@ -1818,10 +1818,10 @@ test("mapLogo drops what deplo would not store, and never throws", () => {
     mapLogo("https://templates.dokploy.com/blueprints/n8n/logo.png"),
     null,
   );
-  // An image type outside deplo's allowlist, and a non-image data URI.
+  // An image type outside Deplo's allowlist, and a non-image data URI.
   assert.equal(mapLogo("data:image/avif;base64,AAAA"), null);
   assert.equal(mapLogo("data:text/html;base64,PHNjcmlwdD4="), null);
-  // Over the cap: Dokploy accepts up to 2MB of raw image, deplo stores the
+  // Over the cap: Dokploy accepts up to 2MB of raw image, Deplo stores the
   // inflated string, so the ceiling is the string length either way.
   const huge = `data:image/png;base64,${"A".repeat(MAX_LOGO_STRING_LEN)}`;
   assert.equal(mapLogo(huge), null);
@@ -1864,7 +1864,7 @@ services:
       dockerBuildStage: "runner",
     },
   );
-  // "." is deplo's own default - never written back as if somebody chose it.
+  // "." is Deplo's own default - never written back as if somebody chose it.
   assert.equal(
     composeAsRepoApp("services:\n  a:\n    build:\n      context: .\n")
       ?.dockerContextPath,
@@ -2214,7 +2214,7 @@ test("a host bind written in the compose is seen on both sides", () => {
   );
 });
 
-test("a Swarm health check becomes deplo's own", () => {
+test("a Swarm health check becomes Deplo's own", () => {
   const hc = swarmHealthCheck({
     Test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
     Interval: 30_000_000_000,
@@ -2243,7 +2243,7 @@ test("a Swarm health check becomes deplo's own", () => {
   assert.equal(swarmHealthCheck(null), null);
 });
 
-// And a check that came across is not ALSO reported as a setting deplo dropped.
+// And a check that came across is not ALSO reported as a setting Deplo dropped.
 test("an imported health check is not listed as unsupported", () => {
   const spec = { Test: ["CMD-SHELL", "curl -f localhost || exit 1"] };
   assert.deepEqual(unsupportedNotes({ healthCheckSwarm: spec } as never), []);

@@ -9,7 +9,7 @@
 
 ## Context
 
-deplo had **no second factor anywhere**. A stolen password was total account compromise: apps,
+Deplo had **no second factor anywhere**. A stolen password was total account compromise: apps,
 databases, secrets, servers. For a platform whose whole promise is that a non-expert can run
 production infrastructure without a shell, "your password is the only lock" is not a defensible
 posture, and a team lead who wants to _mandate_ 2FA for their team had nothing to mandate.
@@ -45,7 +45,7 @@ reconcile, and no id to translate. The empty `user` table is dropped and `sessio
 
 Three settings hold this together and must not drift:
 
-- **`password: { hash, verify }`** wired to deplo's own scrypt pair (`lib/crypto.ts`). Every
+- **`password: { hash, verify }`** wired to Deplo's own scrypt pair (`lib/crypto.ts`). Every
   `scrypt$salt$hash` written before the migration still verifies, so **nobody reset a password**.
 - **`disableSignUp: true`.** `users` has NOT NULL columns Better Auth knows nothing about
   (`username`, `role`, `avatar_color`), so it must never INSERT there. `createAccountWithTeam`
@@ -61,7 +61,7 @@ Revocation stops being a version bump and becomes "delete the user's session row
 user is signed out once when this lands. And `DEPLO_SECRET` now also seals the stored TOTP secrets
 (via `deriveKey("better-auth")`), widening what rotating it destroys.
 
-**What stays deplo's:** teams, memberships, capabilities, the `deplo_team` active-team cookie, and
+**What stays Deplo's:** teams, memberships, capabilities, the `deplo_team` active-team cookie, and
 the `deplo_*` bearer tokens. Better Auth's `organization` plugin is **not** adopted - the
 authorization model is the product, and handing it to a library would be the tail wagging the dog.
 

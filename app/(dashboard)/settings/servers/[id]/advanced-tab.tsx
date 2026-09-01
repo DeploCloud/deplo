@@ -1176,7 +1176,7 @@ function DangerZone({ server }: { server: ServerSummary }) {
             <DialogDescription>
               This revokes the agent&rsquo;s trust and forgets the server.{" "}
               <strong>It does not uninstall anything on the host</strong> - the
-              Deplo agent, Traefik on :80/:443 and the <code>deplo</code>{" "}
+              Deplo agent, Traefik on :80/:443 and the <code>Deplo</code>{" "}
               network all keep running there. We&rsquo;ll give you the command
               to remove them as soon as it&rsquo;s gone. You can&rsquo;t remove
               a server while apps or databases still live on it - move or delete
@@ -1229,7 +1229,7 @@ function DangerZone({ server }: { server: ServerSummary }) {
               Removes the deplo-agent service and binary,{" "}
               <code>/var/lib/deplo-agent</code> (its certificates and
               Traefik&rsquo;s issued TLS certs), the <code>deplo-traefik</code>{" "}
-              container and the <code>deplo</code> Docker network. It leaves
+              container and the <code>Deplo</code> Docker network. It leaves
               Docker itself alone, and it does <strong>not</strong> delete your
               data - app and database volumes, built images and{" "}
               <code>/data</code> survive. Add <code>--purge-data</code> to

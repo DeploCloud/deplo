@@ -3149,7 +3149,7 @@ type Mutation {
   removeMember(userId: String!): Boolean
 
   """
-  Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host (the agent, Traefik and the deplo network keep running there), so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.
+  Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host (the agent, Traefik and the Deplo network keep running there), so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.
   """
   removeServer(id: String!): ServerRemoval
 
@@ -3207,7 +3207,7 @@ type Mutation {
   reorderProjects(projectIds: [ID!]!): Boolean
 
   """
-  Restore a default role to exactly what deplo ships, for its members too. Returns true.
+  Restore a default role to exactly what Deplo ships, for its members too. Returns true.
   """
   resetRole(id: String!): Boolean
 
@@ -4272,7 +4272,7 @@ type Query {
   registries: [Registry!]
 
   """
-  Find anything by name, slug or id across EVERY team the caller can reach - the one read in deplo that is not scoped to the active team. Each hit says which team it is in. Separators and case are ignored, so "better auth" finds `better-auth-docs`. Hits from the active team come first, then the closest match. Teams the caller cannot enter right now (an unmet two-factor policy, a narrowed token) contribute nothing rather than failing the search.
+  Find anything by name, slug or id across EVERY team the caller can reach - the one read in Deplo that is not scoped to the active team. Each hit says which team it is in. Separators and case are ignored, so "better auth" finds `better-auth-docs`. Hits from the active team come first, then the closest match. Teams the caller cannot enter right now (an unmet two-factor policy, a narrowed token) contribute nothing rather than failing the search.
   """
   search(
     """
@@ -5087,7 +5087,7 @@ The result of removing a server. Removal revokes the agent's trust and forgets t
 """
 type ServerRemoval {
   """
-  Paste-on-the-server command that removes the agent, Traefik and the deplo network from the host. Deplo cannot do this remotely: revoking trust is precisely what ends its right to command that agent.
+  Paste-on-the-server command that removes the agent, Traefik and the Deplo network from the host. Deplo cannot do this remotely: revoking trust is precisely what ends its right to command that agent.
   """
   uninstallCommand: String
 
@@ -5324,7 +5324,7 @@ type TeamRole {
   locked: Boolean
   memberCount: Int
 
-  """A default role edited away from what deplo ships - it can be reset."""
+  """A default role edited away from what Deplo ships - it can be reset."""
   modified: Boolean
   name: String
 

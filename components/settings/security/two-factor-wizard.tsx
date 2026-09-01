@@ -214,7 +214,7 @@ export function TwoFactorWizard({
   function downloadCodes() {
     const blob = new Blob(
       [
-        "deplo recovery codes\n\n",
+        "Deplo recovery codes\n\n",
         "Each code works once. Keep them somewhere you can reach without this account.\n\n",
         backupCodes.join("\n"),
         "\n",

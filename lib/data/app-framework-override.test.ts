@@ -85,7 +85,7 @@ test("the correction wins, and a later deploy's detection does not undo it", asy
   assert.equal(effectiveFramework(afterDeploy), "vite");
 });
 
-test("clearing the correction goes back to what deplo detects", async () => {
+test("clearing the correction goes back to what Deplo detects", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await detect("prj_1", "nextjs");
   await asUser1(() => setAppFramework("prj_1", "vite"));

@@ -1,7 +1,7 @@
 import type { DestinationKind, LogLevel, S3Provider } from "../types";
 
 /**
- * The "Test connection" report for a backup destination: what deplo probed, in
+ * The "Test connection" report for a backup destination: what Deplo probed, in
  * order, and what came back - the debug output behind the badge.
  */
 
@@ -73,7 +73,7 @@ export interface S3TestTarget {
   /**
    * `server` kind: the folder on that host, resolved by the last check or as
    * configured. Empty until the first check on a managed root - the agent picks
-   * that path, so deplo genuinely does not know it yet and must not invent one.
+   * that path, so Deplo genuinely does not know it yet and must not invent one.
    */
   path: string;
 }
@@ -171,7 +171,7 @@ export function buildS3TestReport(opts: {
   const isServer = target.kind === "server";
   // The folder, for prose; empty until a check resolves a managed root, and the
   // probe-file details fall back to the bare filename rather than reading
-  // "the folder deplo manages/.deplo-store-check".
+  // "the folder Deplo manages/.deplo-store-check".
   const folder = target.path || "deplo's own backup folder on that server";
   const probeFile = target.path
     ? `${target.path}/${STORE_PROBE_FILE}`
@@ -209,7 +209,7 @@ export function buildS3TestReport(opts: {
     client: `${secure ? "https" : "http"}://${host} · region ${target.region} · ${style} addressing`,
     bucket: `HeadBucket ${target.bucket}`,
     root: target.path
-      ? `${target.path} (created and marked for deplo if missing)`
+      ? `${target.path} (created and marked for Deplo if missing)`
       : "deplo's own backup folder on that server (created on the first test)",
     write: isServer
       ? `${probeFile} (2 bytes) - a read-only disk fails here`
@@ -322,13 +322,13 @@ export function reproduceCommand(target: S3TestTarget): string {
   const common = `--endpoint-url ${shellQuote(url)} --region ${shellQuote(target.region || "auto")}`;
   const bucket = shellQuote(target.bucket);
   const styleNote = pathStyle(target.provider)
-    ? `\n# ${target.provider} needs path-style addressing (deplo sets it for you):\naws configure set default.s3.addressing_style path`
+    ? `\n# ${target.provider} needs path-style addressing (Deplo sets it for you):\naws configure set default.s3.addressing_style path`
     : "";
   return [
-    `# deplo runs this check inside the server's agent (Go, minio-go) - no CLI needed.`,
+    `# Deplo runs this check inside the server's agent (Go, minio-go) - no CLI needed.`,
     `# These are the same three calls, to reproduce the provider's answer by hand.`,
     ``,
-    `export AWS_ACCESS_KEY_ID='<access key>'      # deplo never reveals a stored secret`,
+    `export AWS_ACCESS_KEY_ID='<access key>'      # Deplo never reveals a stored secret`,
     `export AWS_SECRET_ACCESS_KEY='<secret key>'`,
     `export AWS_EC2_METADATA_DISABLED=true${styleNote}`,
     ``,
@@ -347,20 +347,20 @@ export function reproduceCommand(target: S3TestTarget): string {
 function reproduceStoreCommand(target: S3TestTarget): string {
   const known = target.path !== "";
   return [
-    `# deplo runs this check inside the server's agent (Go) - nothing runs on a shell.`,
+    `# Deplo runs this check inside the server's agent (Go) - nothing runs on a shell.`,
     `# These are the same operations, to see the disk's answer for yourself.`,
     ``,
     known
       ? `FOLDER=${shellQuote(target.path)}`
-      : `FOLDER=            # run the test once - deplo then shows the folder on the card`,
+      : `FOLDER=            # run the test once - Deplo then shows the folder on the card`,
     ``,
-    `# 1. the folder is there, and deplo has marked it as its own`,
+    `# 1. the folder is there, and Deplo has marked it as its own`,
     `ls -la "$FOLDER" "$FOLDER/.deplo-backups"`,
     ``,
     `# 2. it is writable (a read-only mount or a full disk fails here)`,
     `touch "$FOLDER/${STORE_PROBE_FILE}" && rm -f "$FOLDER/${STORE_PROBE_FILE}"`,
     ``,
-    `# 3. the headroom deplo shows on the card`,
+    `# 3. the headroom Deplo shows on the card`,
     `df -h "$FOLDER"`,
   ].join("\n");
 }

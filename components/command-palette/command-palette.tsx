@@ -38,8 +38,6 @@ import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { canSee } from "@/components/layout/nav-config";
 import {
-  appFrameEntries,
-  dbFrameEntries,
   countOwnedPages,
   matchEntries,
   matchOwnedPages,
@@ -49,7 +47,6 @@ import {
   type Entry,
   type EntryOwner,
 } from "@/lib/command-palette/entries";
-import { copyText } from "@/lib/clipboard";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { SEARCH_QUERY } from "@/lib/command-palette/search-query";
 import { DOCS_BASE } from "@/lib/docs";
@@ -91,7 +88,6 @@ interface SearchData {
       name: string;
       slug: string;
       logo: string | null;
-      productionUrl: string | null;
       team: HitTeam;
     }[];
     databases: {
@@ -147,8 +143,6 @@ interface Hit {
   group: string;
   href: string;
   team: HitTeam | null;
-  /** Choosing this opens its own menu instead of navigating. */
-  frame?: Exclude<Frame, { kind: "root" }>;
   logo?:
     | { kind: "app"; logo: string | null }
     | { kind: "database"; logo: string | null; type: DatabaseType }
@@ -167,14 +161,6 @@ function toHits(data: SearchData): Hit[] {
       group: "Apps",
       href: `/apps/${a.slug}`,
       team: a.team,
-      frame: {
-        kind: "app" as const,
-        id: a.id,
-        slug: a.slug,
-        name: a.name,
-        logo: a.logo,
-        productionUrl: a.productionUrl,
-      },
       logo: { kind: "app" as const, logo: a.logo },
     })),
     ...s.databases.map((d) => ({
@@ -184,13 +170,6 @@ function toHits(data: SearchData): Hit[] {
       group: "Databases",
       href: `/storage/databases/${d.id}`,
       team: d.team,
-      frame: {
-        kind: "database" as const,
-        id: d.id,
-        name: d.name,
-        logo: d.logo,
-        type: d.type,
-      },
       logo: { kind: "database" as const, logo: d.logo, type: d.type },
     })),
     ...s.servers.map((v) => ({
@@ -280,30 +259,6 @@ function toHits(data: SearchData): Hit[] {
     })),
   ];
 }
-
-/* ------------------------------------------------------------------ */
-/* Frames                                                              */
-/* ------------------------------------------------------------------ */
-
-type Frame =
-  | { kind: "root" }
-  | {
-      kind: "app";
-      id: string;
-      slug: string;
-      name: string;
-      logo: string | null;
-      productionUrl: string | null;
-    }
-  | {
-      kind: "database";
-      id: string;
-      name: string;
-      logo: string | null;
-      type: DatabaseType;
-    };
-
-const ROOT: Frame = { kind: "root" };
 
 /** The always-last row, named because the highlight logic has to know it. */
 const DOCS_ROW = "docs:search";
@@ -398,7 +353,6 @@ function PaletteBody({
   isAdmin,
 }: CommandPaletteProps) {
   const router = useRouter();
-  const [stack, setStack] = React.useState<Frame[]>([ROOT]);
   const [query, setQuery] = React.useState("");
   // One piece of state, carrying the query it answered: "still in flight" and
   // "that one failed" are then derived, so nothing has to be reset by hand.
@@ -409,40 +363,25 @@ function PaletteBody({
   const [failedQuery, setFailedQuery] = React.useState<string | null>(null);
   const { recents, remember } = useRecents(userId, team.id);
 
-  const frame = stack[stack.length - 1] ?? ROOT;
   const caps = React.useMemo(() => new Set(capabilities), [capabilities]);
-
-  const push = (next: Frame) => {
-    setStack((s) => [...s, next]);
-    setQuery("");
-  };
-  const pop = () => {
-    setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
-    setQuery("");
-  };
 
   /* -- the static half, matched in the bundle -- */
 
-  const catalogue = React.useMemo(() => {
-    const all =
-      frame.kind === "app"
-        ? appFrameEntries(frame)
-        : frame.kind === "database"
-          ? dbFrameEntries(frame)
-          : staticEntries();
-    return all.filter((e) => canSee(e, caps, isAdmin));
-  }, [frame, caps, isAdmin]);
+  const catalogue = React.useMemo(
+    () => staticEntries().filter((e) => canSee(e, caps, isAdmin)),
+    [caps, isAdmin],
+  );
 
   const matched = React.useMemo(
     () => matchEntries(catalogue, query),
     [catalogue, query],
   );
 
-  // "deployments" reaches every app's own Deployments page, and "deplo
+  // "deployments" reaches every app's own Deployments page, and "Deplo
   // variables" narrows to one - without stepping into the app first. Built off
   // the breadcrumb snapshot, so no extra request, and only once something has
   // been typed, since this is a dozen rows per app.
-  const typing = frame.kind === "root" && Boolean(foldQuery(query));
+  const typing = Boolean(foldQuery(query));
   const owned = React.useMemo(
     () =>
       typing ? ownedPageEntries(breadcrumb.apps, breadcrumb.databases) : [],
@@ -452,7 +391,7 @@ function PaletteBody({
     () => owned.filter((e) => canSee(e, caps, isAdmin)),
     [owned, caps, isAdmin],
   );
-  // Reset with the query and with the frame, exactly like the highlight.
+  // Reset with the query, exactly like the highlight.
   const [expandedPages, setExpandedPages] = React.useState<string | null>(null);
   const pagesExpanded = expandedPages === query;
   const ownedTotal = React.useMemo(
@@ -490,12 +429,8 @@ function PaletteBody({
 
   /* -- the server half, debounced -- */
 
-  // A frame is about one resource: searching the fleet from inside it would walk
-  // you out of the thing you just opened.
-  const searching = frame.kind === "root" && Boolean(foldQuery(query));
-
   React.useEffect(() => {
-    if (!searching) return;
+    if (!typing) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
@@ -518,78 +453,44 @@ function PaletteBody({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, searching]);
+  }, [query, typing]);
 
   const answered = result?.q === query;
   const failed = failedQuery === query;
   // The previous query's rows stay while the next one is in flight: they are for
   // a prefix of what is being typed, and swapping them for skeletons on every
   // keystroke makes the list strobe.
-  const loading = searching && !answered && !failed;
+  const loading = typing && !answered && !failed;
 
   const [here, elsewhere] = React.useMemo(() => {
-    const rows = searching ? (result?.rows ?? []) : [];
+    const rows = typing ? (result?.rows ?? []) : [];
     return [
       rows.filter((h) => !h.team || h.team.id === team.id),
       rows.filter((h) => h.team && h.team.id !== team.id),
     ];
-  }, [result, searching, team.id]);
+  }, [result, typing, team.id]);
 
   /* -- choosing a row -- */
 
-  async function runEntry(entry: Entry) {
-    if (entry.team && entry.run.kind === "href") {
-      closePalette();
-      await switchTeamAndGo(entry.team, entry.run.href);
+  function runEntry(entry: Entry) {
+    closePalette();
+    if (entry.team) {
+      void switchTeamAndGo(entry.team, entry.href);
       return;
     }
-    if (entry.run.kind === "href") {
-      remember({
-        id: entry.id,
-        // A page of an app is remembered WITH the app: "Environment" on its own
-        // says nothing about whose it was.
-        label: entry.owner
-          ? `${entry.owner.name} / ${entry.label}`
-          : entry.label,
-        href: entry.run.href,
-        kind: "nav",
-      });
-    }
-    closePalette();
-    switch (entry.run.kind) {
-      case "href":
-        if (entry.run.newTab) window.open(entry.run.href, "_blank", "noopener");
-        else router.push(entry.run.href);
-        return;
-      case "copy":
-        if (await copyText(entry.run.text)) toast.success("Copied");
-        return;
-      case "mutation": {
-        const res = await gqlAction(entry.run.query, entry.run.variables);
-        if (res.ok) {
-          toast.success(entry.run.success);
-          router.refresh();
-        } else {
-          toast.error(res.error);
-        }
-        return;
-      }
-    }
+    remember({
+      id: entry.id,
+      // A page of an app is remembered WITH the app: "Environment" on its own
+      // says nothing about whose it was.
+      label: entry.owner ? `${entry.owner.name} / ${entry.label}` : entry.label,
+      href: entry.href,
+    });
+    router.push(entry.href);
   }
 
   function openHit(hit: Hit) {
-    if (hit.frame && (!hit.team || hit.team.id === team.id)) {
-      // Entering a resource is using it.
-      remember({
-        id: hit.id,
-        label: hit.label,
-        href: hit.href,
-        kind: hit.frame.kind,
-      });
-      push(hit.frame);
-      return;
-    }
     closePalette();
+    remember({ id: hit.id, label: hit.label, href: hit.href });
     if (!hit.team || hit.team.id === team.id) {
       router.push(hit.href);
       return;
@@ -618,7 +519,7 @@ function PaletteBody({
 
   /* -- rendering -- */
 
-  const showRecents = frame.kind === "root" && !query && recents.length > 0;
+  const showRecents = !query && recents.length > 0;
   const showDocs = typing;
   const nothing =
     otherTeamPages.length === 0 &&
@@ -680,33 +581,10 @@ function PaletteBody({
     >
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
         <Search className="size-4 shrink-0 text-muted-foreground" />
-        {frame.kind !== "root" && (
-          <span className="flex h-6 shrink-0 items-center gap-1.5 rounded-md bg-secondary px-2 text-xs text-secondary-foreground">
-            {frame.kind === "app" ? (
-              <AppLogo logo={frame.logo} size={14} />
-            ) : (
-              <DatabaseLogo type={frame.type} logo={frame.logo} size={14} />
-            )}
-            <span className="max-w-32 truncate">{frame.name}</span>
-          </span>
-        )}
         <CommandPrimitive.Input
           value={query}
           onValueChange={setQuery}
           onKeyDown={(e) => {
-            if (e.key === "Backspace" && query === "" && stack.length > 1) {
-              e.preventDefault();
-              pop();
-              return;
-            }
-            // Escape rises one frame before it closes anything; stopped here so
-            // Radix never sees the ones that are not a close.
-            if (e.key === "Escape" && stack.length > 1) {
-              e.preventDefault();
-              e.stopPropagation();
-              pop();
-              return;
-            }
             if (
               e.key === "ArrowDown" ||
               e.key === "ArrowUp" ||
@@ -716,20 +594,14 @@ function PaletteBody({
               userMoved.current = true;
             }
           }}
-          placeholder={
-            frame.kind === "root" ? "Search" : `Search in ${frame.name}`
-          }
+          placeholder="Search"
           // 16px, because iOS Safari zooms a focused field under it and this
           // opens full screen there.
           className="h-14 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
         />
       </div>
 
-      {/* Keyed on the depth: a frame swap remounts the LIST, so cmdk's item
-          registry does not carry rows across it - and not the input, which
-          would lose focus the moment you stepped into an app. */}
       <CommandList
-        key={stack.length}
         onMouseMove={() => {
           userMoved.current = true;
         }}
@@ -858,7 +730,6 @@ function PaletteBody({
         className="flex h-11 shrink-0 items-center gap-4 border-t border-border bg-muted/30 px-4 text-xs text-muted-foreground max-sm:hidden"
       >
         <Hint chord="↵" label="Select" />
-        {stack.length > 1 && <Hint chord="⌫" label="Back" />}
         <span className="ml-auto flex items-center gap-1.5">
           <PaletteKbd />
           Close
@@ -879,15 +750,6 @@ function groupBy<T extends { group: string }>(rows: T[]): [string, T[]][] {
   return [...out];
 }
 
-/** Only the verbs that act on a running container are coloured; red stays for
- *  a failure, never for a control. */
-const TONE = {
-  info: "text-[var(--info)]",
-  success: "text-[var(--success)]",
-  warning: "text-[var(--warning)]",
-  violet: "text-[var(--violet)]",
-} as const;
-
 function EntryRow({
   entry,
   onChoose,
@@ -905,12 +767,7 @@ function EntryRow({
           <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
         </BadgedMark>
       ) : (
-        <entry.icon
-          className={cn(
-            "size-4 shrink-0",
-            entry.tone ? TONE[entry.tone] : "text-muted-foreground",
-          )}
-        />
+        <entry.icon className="size-4 shrink-0 text-muted-foreground" />
       )}
       <span className="truncate">
         {owner && (
@@ -931,7 +788,7 @@ function EntryRow({
 
 /**
  * The resource's own logo, badged with the page's glyph: at a glance this is
- * deplo-web's Environment page, not deplo's own.
+ * deplo-web's Environment page, not Deplo's own.
  */
 function OwnedIcon({
   owner,

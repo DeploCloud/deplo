@@ -7,7 +7,7 @@
 
 ## Context
 
-deplo gates forty fine-grained capabilities for people - `deploy_apps` is not
+Deplo gates forty fine-grained capabilities for people - `deploy_apps` is not
 `configure_apps`, `delete_apps` is its own permission, `reveal_secrets` is
 separate from `manage_env`, and then handed out a bearer credential that held
 every one of them. `authenticateToken` resolved a `deplo_` token to

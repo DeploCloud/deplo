@@ -251,14 +251,14 @@ export interface DeploymentRow {
   createdAt: string;
   creator: string;
   /** The account behind `creator`, when there is one. Null for a webhook push
-   *  (a GitHub login, not a deplo user) - that row keeps the bare name. */
+   *  (a GitHub login, not a Deplo user) - that row keeps the bare name. */
   creatorUser?: {
     name: string;
     username: string;
     avatarColor: string;
     avatarUrl: string | null;
   } | null;
-  /** Set ⇒ `creator` is a login on this git host, not a deplo account. */
+  /** Set ⇒ `creator` is a login on this git host, not a Deplo account. */
   creatorProvider?: string | null;
   /** That account's profile on the host, when it can be linked. */
   creatorUrl?: string | null;
@@ -269,6 +269,9 @@ export interface DeploymentRow {
   /** This deployment WAS a rollback: it re-ran an older build's image rather than
    *  producing one. Shown as a badge so the history says what happened. */
   rollbackOf?: string | null;
+  /** A migration is still writing this row's app. The row stays readable and does
+   *  nothing else: the server refuses every action on it until the run ends. */
+  appMigrating?: boolean;
 }
 
 /**
@@ -474,7 +477,10 @@ export function DeploymentsTable({
   }, [hasMore, shown]);
 
   const selectableIds = React.useMemo(
-    () => visible.filter((d) => !IN_PROGRESS.has(d.status)).map((d) => d.id),
+    () =>
+      visible
+        .filter((d) => !IN_PROGRESS.has(d.status) && !d.appMigrating)
+        .map((d) => d.id),
     [visible],
   );
   // In-progress (queued/building) deployments in the visible scope - the "Stop all
@@ -980,15 +986,17 @@ export function DeploymentsTable({
                       <TableCell data-no-row-nav>
                         <SimpleTooltip
                           content={
-                            inProgress
-                              ? "Cancel this build before it can be deleted"
-                              : "Select for deletion"
+                            d.appMigrating
+                              ? "This app is still being brought over by a migration"
+                              : inProgress
+                                ? "Cancel this build before it can be deleted"
+                                : "Select for deletion"
                           }
                         >
                           <span className="inline-flex">
                             <Checkbox
                               checked={checked}
-                              disabled={inProgress}
+                              disabled={inProgress || d.appMigrating}
                               onCheckedChange={(v) =>
                                 toggleRow(d.id, v === true)
                               }
@@ -1131,9 +1139,9 @@ export function DeploymentsTable({
                         url={d.url}
                         status={d.status}
                         pullRequestUrl={d.pullRequestUrl}
-                        canDelete={canManage}
-                        canDeploy={canManage}
-                        canRollback={d.canRollback}
+                        canDelete={canManage && !d.appMigrating}
+                        canDeploy={canManage && !d.appMigrating}
+                        canRollback={d.canRollback && !d.appMigrating}
                         canRollbackApps={canRollbackApps}
                         commitSha={d.commitSha}
                         commitMessage={d.commitMessage}

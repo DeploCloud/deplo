@@ -66,7 +66,7 @@ const KIND_ICON: Record<VolumeKind, LucideIcon> = {
 };
 
 /**
- * The sentinel the Service dropdown uses for "let deplo pick" - the ABSENCE of a
+ * The sentinel the Service dropdown uses for "let Deplo pick" - the ABSENCE of a
  * choice, stored as `""`/absent. Radix forbids an empty item value, which is why a
  * row could never return to the default once a service had been picked.
  */
@@ -100,7 +100,7 @@ export function VolumeFields({
    */
   canMountHostVolumes?: boolean;
   /**
-   * Where this app's code runs inside its container ("/app" for anything deplo
+   * Where this app's code runs inside its container ("/app" for anything Deplo
    * builds), so the hardest field can say what `./uploads` in the user's code is
    * called here.
    */
@@ -408,17 +408,17 @@ function MountRow({
             />
             <Field
               label="Path inside the app"
-              // Optional exactly when deplo has something to derive it from,
+              // Optional exactly when Deplo has something to derive it from,
               // never a promise it can't keep. See `derivedMountPath`.
               optional={derived !== ""}
               info={
                 containerWorkdir
                   ? kind === "app"
-                    ? `Where the file appears inside the app. Leave it empty and deplo puts it in ${containerWorkdir}, the folder your code runs in, so a file your code opens as ./config.toml needs nothing here. Fill it in when the app wants it elsewhere, like /etc/nginx/nginx.conf.`
-                    : `Where the app finds this storage. Leave it empty and deplo puts it in ${containerWorkdir}, the folder your code runs in, so a folder your code writes to as ./uploads needs nothing here. Fill it in when the app keeps its data elsewhere, like /var/lib/postgresql/data.`
+                    ? `Where the file appears inside the app. Leave it empty and Deplo puts it in ${containerWorkdir}, the folder your code runs in, so a file your code opens as ./config.toml needs nothing here. Fill it in when the app wants it elsewhere, like /etc/nginx/nginx.conf.`
+                    : `Where the app finds this storage. Leave it empty and Deplo puts it in ${containerWorkdir}, the folder your code runs in, so a folder your code writes to as ./uploads needs nothing here. Fill it in when the app keeps its data elsewhere, like /var/lib/postgresql/data.`
                   : kind === "app"
-                    ? "Where the file appears inside the app, file name included, like /etc/nginx/nginx.conf. deplo can't fill this in for a prebuilt image, the image chose its own working directory, so use the path the app's documentation asks for."
-                    : "Where the app finds this storage, as an absolute path like /data. deplo can't fill this in for a prebuilt image, the image chose its own working directory, so use the path its documentation gives for the data you want to keep."
+                    ? "Where the file appears inside the app, file name included, like /etc/nginx/nginx.conf. Deplo can't fill this in for a prebuilt image, the image chose its own working directory, so use the path the app's documentation asks for."
+                    : "Where the app finds this storage, as an absolute path like /data. Deplo can't fill this in for a prebuilt image, the image chose its own working directory, so use the path its documentation gives for the data you want to keep."
               }
               docs="storage.mountPath"
               value={mount.mountPath}
@@ -571,7 +571,7 @@ function MountRow({
                       <span>(name taken from the path)</span>
                     )}
                     <InfoTip
-                      content="The name deplo gives this storage on the server. It belongs to this app alone, so nothing else can read it or overwrite it. It is included in this app's backups."
+                      content="The name Deplo gives this storage on the server. It belongs to this app alone, so nothing else can read it or overwrite it. It is included in this app's backups."
                       docs="storage.source"
                     />
                   </p>

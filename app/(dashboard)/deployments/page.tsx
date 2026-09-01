@@ -70,6 +70,7 @@ export default async function DeploymentsPage() {
             url: d.url,
             canRollback: d.canRollback,
             rollbackOf: d.rollbackOf,
+            appMigrating: d.appMigrating,
           }))}
         />
       )}

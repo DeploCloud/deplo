@@ -25,7 +25,7 @@ export const session = pgTable("session", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   /**
-   * deplo's own column, invisible to Better Auth: WHAT this session presented.
+   * Deplo's own column, invisible to Better Auth: WHAT this session presented.
    * NULL is everything else, password sign-ins included, and is never treated as a
    * second factor.
    */
@@ -55,7 +55,7 @@ export const account = pgTable("account", {
   idToken: text("id_token"),
   /** The credential provider's password. Since 0055 this is the ONLY stored copy -
    *  `users.password_hash` was dropped. Format is unchanged (`scrypt$salt$hash`),
-   *  because Better Auth is configured with deplo's own hash/verify pair. */
+   *  because Better Auth is configured with Deplo's own hash/verify pair. */
   password: text("password"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -107,7 +107,7 @@ export const twoFactor = pgTable(
  * whole list.
  *
  * `name` is nullable because the plugin writes `undefined` when the client sent
- * no label; deplo always sends one, but the column has to allow the shape.
+ * no label; Deplo always sends one, but the column has to allow the shape.
  *
  * ponytail: `counter` is `integer` (2^31) while WebAuthn defines a uint32. It
  * matches what the Drizzle adapter hands over (a JS `number`) and the ceiling is
@@ -134,7 +134,7 @@ export const passkey = pgTable(
     createdAt: timestamp("created_at"),
     aaguid: text("aaguid"),
     /**
-     * deplo's own column, invisible to the plugin: the rpID this credential was
+     * Deplo's own column, invisible to the plugin: the rpID this credential was
      * minted for, stamped right after registration.
      */
     rpId: text("rp_id"),
@@ -143,7 +143,7 @@ export const passkey = pgTable(
 );
 
 /**
- * The `@better-auth/oauth-provider` plugin's four tables - deplo as an OAuth 2.1
+ * The `@better-auth/oauth-provider` plugin's four tables - Deplo as an OAuth 2.1
  * authorization server, so claude.ai and ChatGPT can connect to `/api/mcp` (they
  * cannot be handed a bearer token by hand the way a terminal agent can).
  */
@@ -157,7 +157,7 @@ export const oauthClient = pgTable(
      *  `token_endpoint_auth_method: "none"` by the plugin. */
     clientSecret: text("client_secret"),
     disabled: boolean("disabled").default(false),
-    /** Never set by deplo. A consent screen that mints a credential is the
+    /** Never set by Deplo. A consent screen that mints a credential is the
      *  security decision; there is nothing to skip. */
     skipConsent: boolean("skip_consent"),
     enableEndSession: boolean("enable_end_session"),
@@ -190,12 +190,12 @@ export const oauthClient = pgTable(
     grantTypes: text("grant_types").array(),
     responseTypes: text("response_types").array(),
     requirePKCE: boolean("require_pkce"),
-    /** Client-supplied JWKS for `private_key_jwt`. deplo registers no such
+    /** Client-supplied JWKS for `private_key_jwt`. Deplo registers no such
      *  client; the columns exist because the adapter resolves every field the
      *  plugin declares. */
     jwks: text("jwks"),
     jwksUri: text("jwks_uri"),
-    /** Where the AS posts an OIDC back-channel logout. Never set: deplo issues
+    /** Where the AS posts an OIDC back-channel logout. Never set: Deplo issues
      *  opaque tokens against its own `api_tokens` rows, so ending a session is
      *  already the whole revocation. */
     backchannelLogoutUri: text("backchannel_logout_uri"),
@@ -204,7 +204,7 @@ export const oauthClient = pgTable(
     ),
     /**
      * Machine-to-machine scope authority, and it DENIES by construction: missing,
-     * NULL and empty all refuse `client_credentials`. deplo does not advertise
+     * NULL and empty all refuse `client_credentials`. Deplo does not advertise
      * that grant at all (`grantTypes` in ../../auth/better-auth.ts lists
      * authorization_code + refresh_token), so the empty default is the intended
      * resting state and nothing should ever write here - an agent always acts for
@@ -214,9 +214,9 @@ export const oauthClient = pgTable(
       .array()
       .default([]),
     /** Provenance when a client was resolved through a discovery (CIMD). NULL for
-     *  everything deplo has: plain RFC 7591 registration writes no discovery id. */
+     *  everything Deplo has: plain RFC 7591 registration writes no discovery id. */
     clientDiscoveryId: text("client_discovery_id"),
-    /** RFC 9449 sender-constrained tokens. Off: deplo's access token is a pointer
+    /** RFC 9449 sender-constrained tokens. Off: Deplo's access token is a pointer
      *  at an `api_tokens` row that is read and re-authorized on every request. */
     dpopBoundAccessTokens: boolean("dpop_bound_access_tokens").default(false),
     referenceId: text("reference_id"),
@@ -338,7 +338,7 @@ export const oauthConsent = pgTable(
 /**
  * A protected resource the authorization server issues access tokens FOR - RFC
  * 8707's `resource` parameter, promoted in 1.7.0 from a config array
- * (`validAudiences`) to a persisted row with its own token policy. deplo seeds
+ * (`validAudiences`) to a persisted row with its own token policy. Deplo seeds
  * exactly ONE: `<public base>/api/mcp`.
  */
 export const oauthResource = pgTable("oauth_resource", {
@@ -364,7 +364,7 @@ export const oauthResource = pgTable("oauth_resource", {
 
 /**
  * Which clients may request which resources - `enforcePerClientResources` is ON
- * (1.7.0's default), so a client with no row here can request nothing. deplo's
+ * (1.7.0's default), so a client with no row here can request nothing. Deplo's
  * registration is open by necessity (claude.ai and ChatGPT cannot pre-register),
  * so every client that self-registers is linked to the one MCP resource
  * automatically via `clientRegistrationDefaultResources`.

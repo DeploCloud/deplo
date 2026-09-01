@@ -67,9 +67,9 @@ export const users = pgTable(
     // still finds the schema it expects; dropping it is its own migration.
     tokenVersion: integer("token_version").notNull().default(0),
     /** True when the account has a verified TOTP factor. Written ONLY by Better
-     *  Auth's twoFactor plugin; read by deplo's policy gate (lib/membership.ts). */
+     *  Auth's twoFactor plugin; read by Deplo's policy gate (lib/membership.ts). */
     twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
-    // Better Auth's `user` model requires these three. deplo has no email verification
+    // Better Auth's `user` model requires these three. Deplo has no email verification
     // flow, so `email_verified` is true for everyone; `updated_at` exists to satisfy
     // the model.
     emailVerified: boolean("email_verified").notNull().default(true),
@@ -1099,7 +1099,7 @@ export const deployments = pgTable(
     // re-ran.
     rollbackOf: text("rollback_of"),
     creator: text("creator").notNull(),
-    // WHO `creator` names, when it names somebody with a deplo account. `creator` stays
+    // WHO `creator` names, when it names somebody with a Deplo account. `creator` stays
     // free text because it also carries a GitHub login for a webhook push, which
     // belongs to no account here.
     creatorUserId: text("creator_user_id").references(() => users.id, {

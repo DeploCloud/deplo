@@ -806,7 +806,7 @@ export async function verifyPasskeyLogin(
     await markSessionAuthMethod(res.session.id, res.user.id, "passkey");
   } catch (e) {
     // The plugin's own copy is the useful one here ("Passkey not found",
-    // "Authentication failed", or the user-verification refusal deplo adds) - but ONLY
+    // "Authentication failed", or the user-verification refusal Deplo adds) - but ONLY
     // its copy.
     const fromAuth = Boolean(
       (e as { body?: { code?: string } } | null)?.body?.code,

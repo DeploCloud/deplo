@@ -77,7 +77,7 @@ test("an engine with no column of its own is read off the image", () => {
 });
 
 // Redis keeps its password in the resource's variables and in no column at all,
-// so deplo minted a new one: 300 keys arrived intact and every app that talked to
+// so Deplo minted a new one: 300 keys arrived intact and every app that talked to
 // it stopped working.
 test("a credential kept only in the variables still comes across", () => {
   const redis = coolifyDatabase(

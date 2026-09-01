@@ -84,7 +84,7 @@ export function TokenEditor({
   canEdit?: boolean;
   /** Only an instance admin may hand out instance administration. */
   canGrantInstanceAdmin: boolean;
-  /** This deplo's public URL, for the copy-paste curl after minting. */
+  /** This Deplo's public URL, for the copy-paste curl after minting. */
   publicUrl: string;
 }) {
   const router = useRouter();
@@ -208,7 +208,7 @@ export function TokenEditor({
   }
 
   // The secret takes over the page rather than opening a dialog: a modal is
-  // dismissible by Escape and by clicking away, and this is the one screen in deplo
+  // dismissible by Escape and by clicking away, and this is the one screen in Deplo
   // that must not be dismissible by accident.
   if (created)
     return (
@@ -347,7 +347,7 @@ export function TokenEditor({
               capabilities={caps}
               onChange={setCaps}
               disabled={readOnly}
-              hint="Every action deplo can gate, one permission each. Tick exactly what this token should be able to do - search by what you want it to reach."
+              hint="Every action Deplo can gate, one permission each. Tick exactly what this token should be able to do - search by what you want it to reach."
             />
           </CardContent>
         </Card>

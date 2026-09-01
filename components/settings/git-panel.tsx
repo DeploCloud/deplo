@@ -528,7 +528,7 @@ function ConnectionCard({
 
 /**
  * The provider is already chosen, it was picked in the Connect menu, so this
- * dialog only asks for what deplo cannot know: the address and the token.
+ * dialog only asks for what Deplo cannot know: the address and the token.
  */
 function ConnectDialog({
   provider,

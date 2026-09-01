@@ -311,7 +311,7 @@ The three real options:
   materials) - it is not the in-place path, and it needs shell access to the host.
 
 **This is a known fleet-operations gap**, and it is a mission-level one: the second option requires
-SSH, which is exactly what deplo promises the operator never needs (`AGENTS.md` → Core mission). The
+SSH, which is exactly what Deplo promises the operator never needs (`AGENTS.md` → Core mission). The
 honest mitigation today is that a bad agent is _caught on the canary_, not on 66 Apps, which is why
 §4's ordering is not optional. A real fix (a pinnable target version through the whole path) belongs
 in the issue tracker, not in a runbook workaround.

@@ -1348,7 +1348,7 @@ export async function updateAppBuild(
  * so that build reads nothing from the cache and rewrites what it replaces.
  *
  * There is deliberately nothing to delete here. The BuildKit cache lives on the
- * SERVER and is shared by every app on it (and, on a managed deplo, by other
+ * SERVER and is shared by every app on it (and, on a managed Deplo, by other
  * tenants), so pruning it from one app's settings page would quietly slow down
  * everyone else's next deploy - an app can only clear its OWN cache by refusing
  * to read it once. Reclaiming disk stays the server-wide Docker cleanup's job.
@@ -2011,7 +2011,7 @@ export async function setAppPorts(
     );
   // A host port is a singleton on the machine, and the machine is shared: the
   // row that would collide can belong to another team.
-  // ponytail: rows only, no agent probe - a port something OUTSIDE deplo holds
+  // ponytail: rows only, no agent probe - a port something OUTSIDE Deplo holds
   // surfaces as docker's own refusal on the deploy, like a compose stack's does.
   for (const p of validated)
     if (await hostPortClaimed(app.serverId, p.published, { appId: id }))
@@ -2035,7 +2035,7 @@ export async function setAppPorts(
  * Replace an app's volumes (full set) - docker-managed named volumes, binds into
  * the app's files dir, and (for privileged users) host bind mounts. Works for
  * EVERY source, compose stacks included: requiring the user to hand-write
- * `volumes:` into their YAML is exactly the Docker knowledge deplo exists to not
+ * `volumes:` into their YAML is exactly the Docker knowledge Deplo exists to not
  * demand. For a compose stack each row also carries the service it mounts into
  * (blank ⇒ the stack's default service), validated here against the compose so a
  * stale name can never surface as a deploy failure. An empty set is stored as
@@ -2384,7 +2384,7 @@ function noIconFoundMessage(
   app: Parameters<typeof detectAppFavicon>[0],
 ): string {
   if (faviconSourceKind(app) === "app-files") {
-    return "No icon found. deplo looked in this app's files and asked the running app for its favicon - check that the app is running and serves one.";
+    return "No icon found. Deplo looked in this app's files and asked the running app for its favicon - check that the app is running and serves one.";
   }
   return "No file named favicon (SVG, PNG or ICO) found in this app's files";
 }
@@ -2426,7 +2426,7 @@ export async function redetectAppLogo(id: string): Promise<string> {
     (e) => {
       if (e instanceof AgentUnreachableError) {
         throw new Error(
-          "The server that runs this app didn't answer, so deplo couldn't read its files. It may be offline.",
+          "The server that runs this app didn't answer, so Deplo couldn't read its files. It may be offline.",
           { cause: e },
         );
       }
@@ -2529,7 +2529,7 @@ export async function setAppFramework(
     "app",
     value
       ? `Set framework to ${frameworkById(value)?.name ?? value}`
-      : `Reset framework to what deplo detects`,
+      : `Reset framework to what Deplo detects`,
     user.name,
     id,
   );

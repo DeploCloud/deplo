@@ -51,7 +51,7 @@ export interface PasskeyDTO {
   /** Null only for a row written before the plugin started stamping it. */
   createdAt: string | null;
   /**
-   * False for a credential minted for a DIFFERENT panel address (or before deplo
+   * False for a credential minted for a DIFFERENT panel address (or before Deplo
    * recorded which).
    */
   usableHere: boolean;
@@ -80,7 +80,7 @@ export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
     .orderBy(sql`${passkeyTable.createdAt} desc nulls last`);
   return rows.map((r) => ({
     id: r.id,
-    // The column is nullable because the library can write `undefined`; deplo
+    // The column is nullable because the library can write `undefined`; Deplo
     // always sends a label, so this only covers a row it did not create.
     name: r.name?.trim() || "Passkey",
     createdAt: r.createdAt ? r.createdAt.toISOString() : null,

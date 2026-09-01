@@ -215,8 +215,8 @@ export function BuildOutputCard({
             title="Run"
             hint={
               showStartCommand
-                ? "How the container comes up, and the port deplo routes traffic to."
-                : "The port deplo routes traffic to inside the container."
+                ? "How the container comes up, and the port Deplo routes traffic to."
+                : "The port Deplo routes traffic to inside the container."
             }
             last={!showAutoDeploy}
           >

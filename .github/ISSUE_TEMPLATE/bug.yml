@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in deplo does not work the way it should
+description: Something in Deplo does not work the way it should
 labels: ["bug"]
 body:
   - type: markdown
@@ -16,7 +16,7 @@ body:
     id: what-happens
     attributes:
       label: What happens
-      description: What you did, and what deplo did instead of what you expected.
+      description: What you did, and what Deplo did instead of what you expected.
       placeholder: |
         I clicked Deploy on an app built from a GitHub repository.
         The deployment sits at "Building" forever and no logs appear.
@@ -45,7 +45,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: deplo version
+      label: Deplo version
       description: Shown in the dashboard under Settings. Include it even if it is `latest`.
       placeholder: "0.1.0"
     validations:
@@ -63,7 +63,7 @@ body:
   - type: dropdown
     id: install
     attributes:
-      label: How did you install deplo?
+      label: How did you install Deplo?
       options:
         - install.sh
         - The prebuilt image (ghcr.io/deplocloud/deplo)

@@ -88,7 +88,7 @@ export function DomainDnsAutoCheck({
             toast.success(`${d.name} verified - routing is live`);
           else if (status === "cloudflare")
             toast.warning(
-              `${d.name} is proxied through Cloudflare - routed, but deplo can’t confirm it reaches this app`,
+              `${d.name} is proxied through Cloudflare - routed, but Deplo can’t confirm it reaches this app`,
             );
         }
       }
@@ -154,7 +154,7 @@ export function DomainDnsAutoCheck({
             )
           ) : (
             <>
-              While you’re on this page deplo re-checks DNS every 30 seconds and
+              While you’re on this page Deplo re-checks DNS every 30 seconds and
               starts routing the moment the record resolves, no manual step
               needed. Verify forces an immediate check.
             </>

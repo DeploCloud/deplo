@@ -52,14 +52,14 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
   named: {
     kind: "named",
     label: "Volume",
-    summary: "Disk space deplo creates and keeps for this app",
+    summary: "Disk space Deplo creates and keeps for this app",
     examples: "Good for uploads, a database's files, or a cache.",
     tooltip:
-      "Empty disk space deplo creates and looks after. Your app writes into it and everything is still there after the next deploy. Best for uploads, database files or a cache.",
+      "Empty disk space Deplo creates and looks after. Your app writes into it and everything is still there after the next deploy. Best for uploads, database files or a cache.",
     sourceLabel: "Name",
     sourcePlaceholder: "uploads",
     sourceTooltip:
-      "A short name for this disk, so you can recognise it later. deplo derives one from the path if you leave it empty.",
+      "A short name for this disk, so you can recognise it later. Deplo derives one from the path if you leave it empty.",
     needsPermission: false,
     chip: "secondary",
     targetLabel: "Stored on the server as",
@@ -70,11 +70,11 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
     summary: "A file you write here, put inside the app",
     examples: "Good for a config file, like config.toml or nginx.conf.",
     tooltip:
-      "Write the file's contents here and deplo keeps it in this app's Files, then puts it inside the app. Edit it any time - the app picks it up on the next deploy. Best for config files.",
+      "Write the file's contents here and Deplo keeps it in this app's Files, then puts it inside the app. Edit it any time - the app picks it up on the next deploy. Best for config files.",
     sourceLabel: "Path in Files",
     sourcePlaceholder: "config.toml",
     sourceTooltip:
-      "Where deplo keeps the file under this app's Files, for example config.toml or conf/nginx.conf. Relative, never starting with a slash. deplo creates it for you when it isn't there yet.",
+      "Where Deplo keeps the file under this app's Files, for example config.toml or conf/nginx.conf. Relative, never starting with a slash. Deplo creates it for you when it isn't there yet.",
     needsPermission: false,
     chip: "outline",
     targetLabel: null,
@@ -84,13 +84,13 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
     label: "Bind",
     summary: "A folder that already exists on the server",
     examples:
-      "Only when the data is already on that machine, or something outside deplo uses it too.",
+      "Only when the data is already on that machine, or something outside Deplo uses it too.",
     tooltip:
-      'Shares a folder from the server\'s own filesystem, outside deplo and visible to everything else on that machine. Only for data that is already there. Saving one needs the "Bind server folders" permission.',
+      'Shares a folder from the server\'s own filesystem, outside Deplo and visible to everything else on that machine. Only for data that is already there. Saving one needs the "Bind server folders" permission.',
     sourceLabel: "Path on the server",
     sourcePlaceholder: "/srv/media",
     sourceTooltip:
-      "An absolute path on the server that runs this app, for example /srv/media. It is not managed by deplo and is shared with everything else on the machine.",
+      "An absolute path on the server that runs this app, for example /srv/media. It is not managed by Deplo and is shared with everything else on the machine.",
     needsPermission: true,
     chip: "warning",
     targetLabel: null,
@@ -459,7 +459,7 @@ export function volumeReadout(
     if (!from || !at) return "Keeps a file you write here in this app's Files.";
     return `Keeps ${from} in this app's Files and puts it at ${at} inside the app.${ro}`;
   }
-  if (!at) return "deplo creates the disk once you give it a name or a path.";
+  if (!at) return "Deplo creates the disk once you give it a name or a path.";
   const name = ((v.name ?? "").trim() || deriveVolumeName(at)).toLowerCase();
-  return `Keeps ${at} on a disk deplo manages (${hostVolumeName(slug, name)}). It survives every deploy.${ro}`;
+  return `Keeps ${at} on a disk Deplo manages (${hostVolumeName(slug, name)}). It survives every deploy.${ro}`;
 }
