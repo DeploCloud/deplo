@@ -12,6 +12,7 @@ import {
   Server as ServerIcon,
   Rocket,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import {
@@ -91,6 +92,7 @@ import type {
 import { deploySourceEnumName } from "@/lib/types";
 import { cn, serverLabel, usesComposeStack } from "@/lib/utils";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Collapse } from "@/components/shared/collapse";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
@@ -353,6 +355,24 @@ export function DeploymentSettingsForm({
   // materialise a tree: a compose stack builds its own images and a prebuilt Docker
   // image has no tree to root into.
   const rootCardVisible = buildCardVisible && repoConfigVisible;
+
+  // Moving an app between servers copies its data, so the warning is a real
+  // consequence and not a hint. Withheld while a GitHub app has no repo picked:
+  // that save cannot go through anyway.
+  const serverMoveWarned =
+    serverId !== initialServerId && !(usesGithubApp && !ghSelection);
+
+  const closedSummary = [
+    servers.find((s) => s.id === serverId)?.name,
+    rootCardVisible &&
+    build.rootDirectory &&
+    build.rootDirectory !== "./" &&
+    build.rootDirectory !== "."
+      ? `Root: ${build.rootDirectory}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   // Deploy-on-push is real wherever a provider delivers pushes to Deplo: the GitHub
   // App, or a git connection whose provider has an API to register a webhook with.
@@ -725,162 +745,163 @@ export function DeploymentSettingsForm({
               </UnderlineTabsList>
             </Tabs>
 
-            {usesGithubApp && (
-              // Always render the picker - it owns the account switcher (with a
-              // Manage-connected-apps affordance) and its own connect empty state,
-              // so the layout stays put whether or not an App is connected yet.
-              <GithubRepoPicker
-                installations={installations}
-                manageHref="/settings/git"
-                onUsePublicUrl={() => setSource("git")}
-                initial={
-                  initialSource === "github" && initialRepo
-                    ? {
-                        installationId: initialRepo.installationId,
-                        fullName: initialRepo.repo,
-                        branch: initialRepo.branch,
-                      }
-                    : undefined
-                }
-                onChange={setGhSelection}
-              />
-            )}
+            {/* The tabs swap whole blocks, so the card's height jumps. Same
+                AnimatedHeight the dialogs use, and it also eases a notice or a
+                drawer arriving WITHIN one tab. */}
+            <AnimatedHeight className="space-y-4" scroll={false}>
+              {usesGithubApp && (
+                // Always render the picker - it owns the account switcher (with a
+                // Manage-connected-apps affordance) and its own connect empty state,
+                // so the layout stays put whether or not an App is connected yet.
+                <GithubRepoPicker
+                  installations={installations}
+                  manageHref="/settings/git"
+                  onUsePublicUrl={() => setSource("git")}
+                  initial={
+                    initialSource === "github" && initialRepo
+                      ? {
+                          installationId: initialRepo.installationId,
+                          fullName: initialRepo.repo,
+                          branch: initialRepo.branch,
+                        }
+                      : undefined
+                  }
+                  onChange={setGhSelection}
+                />
+              )}
 
-            {usesGitUrl && (
-              <GitSourcePicker
-                connections={connections}
-                providers={providers}
-                isInstanceAdmin={isInstanceAdmin}
-                initial={
-                  initialSource === "git" && initialRepo
-                    ? {
-                        connectionId: initialRepo.connectionId,
-                        url: initialRepo.url,
-                        repo: initialRepo.repo,
-                        branch: initialRepo.branch,
-                      }
-                    : undefined
-                }
-                onChange={setGitValue}
-              />
-            )}
+              {usesGitUrl && (
+                <GitSourcePicker
+                  connections={connections}
+                  providers={providers}
+                  isInstanceAdmin={isInstanceAdmin}
+                  initial={
+                    initialSource === "git" && initialRepo
+                      ? {
+                          connectionId: initialRepo.connectionId,
+                          url: initialRepo.url,
+                          repo: initialRepo.repo,
+                          branch: initialRepo.branch,
+                        }
+                      : undefined
+                  }
+                  onChange={setGitValue}
+                />
+              )}
 
-            {/* Named before a deploy discovers it in a build log. Both describe
-                the SAVED source, so they step aside while another tab is open. */}
-            {usesGithubApp && repoAccess && repoAccess.missing.length > 0 && (
-              <GitAccessNotice
-                heading="Deplo is missing access on GitHub"
-                items={repoAccess.missing}
-                fix={
-                  canManageGit
-                    ? {
-                        href: repoAccess.settingsUrl,
-                        label: "Update on GitHub",
-                      }
-                    : null
-                }
-              />
-            )}
-            {(usesGithubApp || usesGitUrl) && cloneRefusal && (
-              <GitAccessNotice
-                heading="This repository will not clone"
-                note={cloneRefusal}
-              />
-            )}
+              {/* Named before a deploy discovers it in a build log. Both describe
+                  the SAVED source, so they step aside while another tab is open. */}
+              {usesGithubApp && repoAccess && repoAccess.missing.length > 0 && (
+                <GitAccessNotice
+                  heading="Deplo is missing access on GitHub"
+                  items={repoAccess.missing}
+                  fix={
+                    canManageGit
+                      ? {
+                          href: repoAccess.settingsUrl,
+                          label: "Update on GitHub",
+                        }
+                      : null
+                  }
+                />
+              )}
+              {(usesGithubApp || usesGitUrl) && cloneRefusal && (
+                <GitAccessNotice
+                  heading="This repository will not clone"
+                  note={cloneRefusal}
+                />
+              )}
 
-            {/* The one case auto-registration cannot cover: a token without the
-                webhook scope. Rather than leaving auto-deploy quietly dead, show
-                the address to paste, the provider's own reason, and what the
-                token needs - none of these hosts reports its own scopes, so the
-                checklist waits for a real refusal rather than nagging. */}
-            {usesGitUrl && webhook?.applicable && !webhook.installed && (
-              <div className="rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
-                <p className="text-xs font-medium">
-                  Deplo could not add the push webhook
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {webhook.error ||
-                    "Add it in your repository's webhook settings so a push deploys."}
-                </p>
-                {connectionAccess.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {connectionAccess.map((r) => (
-                      <li key={r.key} className="text-xs">
-                        <span className="font-medium">{r.label}</span>
-                        <span className="text-muted-foreground">
-                          {" "}
-                          - {r.unlocks}
+              {/* The one case auto-registration cannot cover: a token without the
+                  webhook scope. Rather than leaving auto-deploy quietly dead, show
+                  the address to paste, the provider's own reason, and what the
+                  token needs - none of these hosts reports its own scopes, so the
+                  checklist waits for a real refusal rather than nagging. */}
+              {usesGitUrl && webhook?.applicable && !webhook.installed && (
+                <div className="rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+                  <p className="text-xs font-medium">
+                    Deplo could not add the push webhook
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {webhook.error ||
+                      "Add it in your repository's webhook settings so a push deploys."}
+                  </p>
+                  {connectionAccess.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {connectionAccess.map((r) => (
+                        <li key={r.key} className="text-xs">
+                          <span className="font-medium">{r.label}</span>
+                          <span className="text-muted-foreground">
+                            {" "}
+                            - {r.unlocks}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {webhook.url && (
+                    <div className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+                      <code className="min-w-0 flex-1 font-mono text-xs leading-relaxed break-all">
+                        {webhook.url}
+                      </code>
+                      <CopyButton
+                        value={webhook.url}
+                        className="shrink-0"
+                        label="Copy webhook URL"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/**
+               * Git deploy options (trigger type, watch paths, submodules) - for the GitHub App
+               * repo picker (once connected) and the plain Git URL.
+               */}
+              {repoConfigVisible && (
+                <div className="rounded-lg border border-border">
+                  <button
+                    type="button"
+                    onClick={() => setTriggerOpen((v) => !v)}
+                    aria-expanded={triggerOpen}
+                    className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="font-medium">Deploy trigger</span>
+                      {!triggerOpen && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {gitOptions.triggerType === "tag"
+                            ? "On new tag"
+                            : "On push to branch"}
+                          {watchPathsToArray(gitOptions.watchPaths).length >
+                            0 && " · path-filtered"}
+                          {gitOptions.submodules && " · submodules"}
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {webhook.url && (
-                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
-                    <code className="min-w-0 flex-1 font-mono text-xs leading-relaxed break-all">
-                      {webhook.url}
-                    </code>
-                    <CopyButton
-                      value={webhook.url}
-                      className="shrink-0"
-                      label="Copy webhook URL"
+                      )}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-muted-foreground transition-transform",
+                        triggerOpen && "rotate-180",
+                      )}
                     />
-                  </div>
-                )}
-              </div>
-            )}
+                  </button>
+                  <Collapse
+                    open={triggerOpen}
+                    className="border-t border-border p-4"
+                  >
+                    <GitDeployOptions
+                      value={gitOptions}
+                      onChange={setGitOptions}
+                      disabled={pending}
+                    />
+                  </Collapse>
+                </div>
+              )}
 
-            {/**
-             * Git deploy options (trigger type, watch paths, submodules) - for the GitHub App
-             * repo picker (once connected) and the plain Git URL.
-             */}
-            {repoConfigVisible && (
-              <div className="rounded-lg border border-border">
-                <button
-                  type="button"
-                  onClick={() => setTriggerOpen((v) => !v)}
-                  aria-expanded={triggerOpen}
-                  className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="font-medium">Deploy trigger</span>
-                    {!triggerOpen && (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {gitOptions.triggerType === "tag"
-                          ? "On new tag"
-                          : "On push to branch"}
-                        {watchPathsToArray(gitOptions.watchPaths).length > 0 &&
-                          " · path-filtered"}
-                        {gitOptions.submodules && " · submodules"}
-                      </span>
-                    )}
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "size-4 shrink-0 text-muted-foreground transition-transform",
-                      triggerOpen && "rotate-180",
-                    )}
-                  />
-                </button>
-                <Collapse
-                  open={triggerOpen}
-                  className="border-t border-border p-4"
-                >
-                  <GitDeployOptions
-                    value={gitOptions}
-                    onChange={setGitOptions}
-                    disabled={pending}
-                  />
-                </Collapse>
-              </div>
-            )}
-
-            {/**
-             * Additional options (Root Directory) - advanced, rarely changed for a
-             * single-folder repo, so collapsed by default with the current root shown in the
-             * closed header.
-             */}
-            {rootCardVisible && (
+              {/* Always here, because the Server picker is: every source runs
+                  somewhere, while the root directory and the build server only
+                  apply to a repo Deplo compiles. */}
               <div className="rounded-lg border border-border">
                 <button
                   type="button"
@@ -892,11 +913,7 @@ export function DeploymentSettingsForm({
                     <span className="font-medium">Additional options</span>
                     {!advancedOpen && (
                       <span className="truncate text-xs text-muted-foreground">
-                        {build.rootDirectory &&
-                        build.rootDirectory !== "./" &&
-                        build.rootDirectory !== "."
-                          ? `Root: ${build.rootDirectory}`
-                          : "Root directory"}
+                        {closedSummary}
                       </span>
                     )}
                   </span>
@@ -909,97 +926,134 @@ export function DeploymentSettingsForm({
                 </button>
                 <Collapse
                   open={advancedOpen}
-                  className="border-t border-border p-4"
+                  className="space-y-4 border-t border-border p-4"
                 >
-                  <RootDirectoryFields
-                    build={build}
-                    onBuildChange={setBuild}
-                    disabled={pending}
-                  />
+                  {/* Root and Server side by side on a wide screen: two short
+                      fields that read as one row rather than a stack. */}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {rootCardVisible && (
+                      <RootDirectoryFields
+                        build={build}
+                        onBuildChange={setBuild}
+                        disabled={pending}
+                      />
+                    )}
+                    <div className="space-y-2">
+                      <FieldLabel
+                        className="flex items-center gap-1.5"
+                        info="The server (host machine) that builds and runs this app."
+                        docs="servers.overview"
+                      >
+                        <ServerIcon className="size-3.5" />
+                        Server
+                      </FieldLabel>
+                      {/* No gap between the two: the warning is squared off at
+                          the top and sits flush under the Select, so it reads as
+                          that control's own rather than a note after it. */}
+                      <div>
+                        <Select value={serverId} onValueChange={setServerId}>
+                          <SelectTrigger
+                            className={cn(
+                              "w-full",
+                              serverMoveWarned && "rounded-b-none",
+                            )}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {servers.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>
+                                <span className="flex items-center gap-2">
+                                  <ServerIcon className="size-4 text-muted-foreground" />
+                                  {serverLabel(s)}
+                                  <ServerRoleHint isDeploHost={s.isDeploHost} />
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Collapse open={serverMoveWarned}>
+                          <div className="flex items-start gap-2 rounded-md rounded-t-none border border-t-0 border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                            <span>
+                              Saving redeploys this app on the new server and
+                              copies its data (volumes and files) across.
+                              It&apos;s briefly offline during the copy; if the
+                              copy fails the old server is left intact.
+                            </span>
+                          </div>
+                        </Collapse>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Same gate as the build cache: only an app Deplo BUILDS can
+                      build somewhere else. */}
+                  {buildCardVisible && (
+                    <BuildServerPanel
+                      appId={appId}
+                      serverId={serverId}
+                      serverName={
+                        servers.find((s) => s.id === serverId)?.name ??
+                        "its own server"
+                      }
+                      serverArch={
+                        buildServerChoices.find((c) => c.id === serverId)
+                          ?.hostArch ?? ""
+                      }
+                      buildServerId={buildServerId}
+                      buildFallbackLocal={buildFallbackLocal}
+                      choices={buildServerChoices}
+                    />
+                  )}
                 </Collapse>
               </div>
-            )}
 
-            {source === "docker-image" && (
-              <div className="space-y-2">
-                <FieldLabel
-                  info={
-                    <>
-                      Start typing to search registries; add{" "}
-                      <code className="font-mono">:</code> to pick a tag. A
-                      green check confirms the image exists.
-                    </>
-                  }
-                  docs="deploy.dockerImage"
-                >
-                  Docker image
-                </FieldLabel>
-                <ImageInput value={dockerImage} onChange={setDockerImage} />
-              </div>
-            )}
-
-            {source === "upload" && (
-              <UploadInput appId={appId} current={initialUpload} />
-            )}
-
-            {source === "compose" && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
+              {source === "docker-image" && (
+                <div className="space-y-2">
                   <FieldLabel
-                    className="flex items-center gap-1.5"
-                    info="The Compose file defining this stack's services. Deplo builds or pulls each service's image and deploys them together."
-                    docs="compose.overview"
+                    info={
+                      <>
+                        Start typing to search registries; add{" "}
+                        <code className="font-mono">:</code> to pick a tag. A
+                        green check confirms the image exists.
+                      </>
+                    }
+                    docs="deploy.dockerImage"
                   >
-                    <FileText className="size-3.5" />
-                    docker-compose.yml
+                    Docker image
                   </FieldLabel>
-                  <FullComposeDialog appId={appId} />
+                  <ImageInput value={dockerImage} onChange={setDockerImage} />
                 </div>
-                <ComposeEditor
-                  value={compose}
-                  onChange={setCompose}
-                  onDiagnostics={setComposeDiags}
-                  minHeight={340}
-                />
-                <ComposeLintSummary diagnostics={composeDiags} />
-              </div>
-            )}
+              )}
 
-            <div className="max-w-md space-y-2">
-              <FieldLabel
-                className="flex items-center gap-1.5"
-                info="The server (host machine) that builds and runs this app."
-                docs="servers.overview"
-              >
-                <ServerIcon className="size-3.5" />
-                Server
-              </FieldLabel>
-              <Select value={serverId} onValueChange={setServerId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {servers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-2">
-                        <ServerIcon className="size-4 text-muted-foreground" />
-                        {serverLabel(s)}
-                        <ServerRoleHint isDeploHost={s.isDeploHost} />
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {serverId !== initialServerId &&
-                !(usesGithubApp && !ghSelection) && (
-                  <p className="text-xs text-muted-foreground">
-                    Saving redeploys this app on the new server and copies its
-                    data (volumes and files) across. It&apos;s briefly offline
-                    during the copy; if the copy fails the old server is left
-                    intact.
-                  </p>
-                )}
-            </div>
+              {source === "upload" && (
+                <UploadInput appId={appId} current={initialUpload} />
+              )}
+
+              {source === "compose" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <FieldLabel
+                      className="flex items-center gap-1.5"
+                      info="The Compose file defining this stack's services. Deplo builds or pulls each service's image and deploys them together."
+                      docs="compose.overview"
+                    >
+                      <FileText className="size-3.5" />
+                      docker-compose.yml
+                    </FieldLabel>
+                    <FullComposeDialog appId={appId} />
+                  </div>
+                  <ComposeEditor
+                    value={compose}
+                    onChange={setCompose}
+                    onDiagnostics={setComposeDiags}
+                    minHeight={340}
+                  />
+                  <ComposeLintSummary diagnostics={composeDiags} />
+                </div>
+              )}
+            </AnimatedHeight>
           </CardContent>
           <CardFooter className="justify-between border-t border-border pt-4">
             {source === "upload" ? (
@@ -1082,26 +1136,6 @@ export function DeploymentSettingsForm({
                     buildCacheClearPending: next.clearPending,
                   }))
                 }
-              />
-            )}
-            {/* Same gate as the build cache above: only an app Deplo BUILDS can
-                build somewhere else. A compose stack has no single image to move,
-                and a prebuilt image is not built at all. */}
-            {buildCardVisible && (
-              <BuildServerPanel
-                appId={appId}
-                serverId={serverId}
-                serverName={
-                  servers.find((s) => s.id === serverId)?.name ??
-                  "its own server"
-                }
-                serverArch={
-                  buildServerChoices.find((c) => c.id === serverId)?.hostArch ??
-                  ""
-                }
-                buildServerId={buildServerId}
-                buildFallbackLocal={buildFallbackLocal}
-                choices={buildServerChoices}
               />
             )}
             <ComposeArgsPanel

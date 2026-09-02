@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   ChevronsUpDown,
   Check,
-  GitBranch,
   Plus,
   ShieldCheck,
   SlidersHorizontal,
@@ -356,16 +355,10 @@ export function GitSourcePicker({
               />
             </div>
           </div>
-          {active ? (
+          {active && (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="size-3.5 shrink-0" />
               Cloned with the {active.label} credentials.
-            </p>
-          ) : (
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <GitBranch className="size-3.5 shrink-0" />
-              Public repositories only. Connect a provider to deploy a private
-              one and get auto-deploy on push.
             </p>
           )}
         </>

@@ -3,7 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Upload, FileArchive, Loader2, CheckCircle2 } from "lucide-react";
+import { FileArchive, Loader2, CheckCircle2 } from "lucide-react";
+import { UploadGraphic } from "@/components/apps/upload-graphic";
 import { cn, formatBytes, timeAgo } from "@/lib/utils";
 import { MAX_UPLOAD_BYTES, ACCEPT_ATTR } from "@/lib/deploy/upload-shared";
 import { validateArchive, uploadArchive } from "@/lib/deploy/upload-client";
@@ -135,16 +136,16 @@ export function UploadInput({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "flex cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-border p-6 text-center transition-colors",
+          "group flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border p-8 text-center transition-colors",
           dragging && "border-primary bg-primary/5",
           uploading && "cursor-default opacity-80",
         )}
       >
         {uploading ? (
           <>
-            <Loader2 className="mb-2 size-6 animate-spin text-muted-foreground" />
+            <Loader2 className="mb-3 size-7 animate-spin text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              Uploading… {progress}%
+              Uploading {progress}%
             </p>
             <div className="mt-3 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-muted">
               <div
@@ -155,7 +156,7 @@ export function UploadInput({
           </>
         ) : (
           <>
-            <Upload className="mb-2 size-6 text-muted-foreground" />
+            <UploadGraphic className="mb-3" />
             <p className="text-sm font-medium">
               {shown
                 ? "Replace with a new archive"
