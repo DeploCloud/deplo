@@ -298,13 +298,14 @@ The three real options:
 - **Move `releases/latest` backwards by DELETING the newer releases.** Always-latest cuts both
   ways: the resolver has no opinion about direction, and neither does the agent (`SelfUpdate` in
   `internal/server/selfupdate.go` verifies the sha256 and swaps, it never compares versions). Delete
-  the bad releases, run **Check for updates** so `refreshAgentRelease()` drops the in-process memo,
-  and the ordinary "Update agent" button now installs the older artifact on every host - in place,
-  over the existing pinned mTLS channel, **with no SSH**. This is exactly how the fleet was moved to
-  `0.1.0` on 24 Aug 2026. The catch: the panel's own outdated check compares versions, so once every
-  host reports the lower number nothing looks outdated and the button goes quiet until you publish
-  something higher. Deleting a release is irreversible, so this is for a bad release you want gone
-  anyway, not for a temporary pin.
+  the bad releases and run **Check for updates** so `refreshAgentRelease()` drops the in-process
+  memo. **The "Update agent" button will NOT take a host backwards**: `agentUpdateAvailable`
+  (lib/version.ts) offers an update only when the release is NEWER than what the host reports, so a
+  host already ahead of `latest` is not outdated and is offered nothing. That is deliberate - a
+  moved or deleted tag used to advertise a downgrade as an update - and it means this option now
+  only helps hosts that never took the bad release. For the ones that did, use the patch release or
+  the by-hand pin below. Deleting a release is irreversible, so this is for a bad release you want
+  gone anyway, not for a temporary pin.
 - **Pin by hand on the affected host**: take the rendered `install-agent.sh`, replace
   `AGENT_VERSION` / `AGENT_URL_*` / `AGENT_SHA256_*` with the values from the older release's
   `checksums.txt` and asset URLs, and run it there. This re-bootstraps (fresh token, new mTLS
