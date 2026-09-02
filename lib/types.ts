@@ -1944,6 +1944,18 @@ export interface GithubInstallation {
  */
 export type GitProviderId = "gitlab" | "bitbucket" | "gitea" | "git";
 
+/** One connectable host as the Connect dialog needs it: the static catalogue
+ *  entry, built server-side by `gitProviderChoices`. */
+export interface GitProviderChoice {
+  id: GitProviderId;
+  label: string;
+  defaultBaseUrl: string | null;
+  defaultUsername: string;
+  tokenScopes: string;
+  hasApi: boolean;
+  tokenHelpUrl: string;
+}
+
 /**
  * A team's credentials for one git host, created once in Settings → Git and reused
  * by every App deploying from that host - the counterpart of a {@link

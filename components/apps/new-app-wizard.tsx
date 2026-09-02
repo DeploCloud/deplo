@@ -88,7 +88,7 @@ import {
 import { uploadArchive } from "@/lib/deploy/upload-client";
 import { buildConfigFor } from "@/lib/frameworks";
 import { archiveExt } from "@/lib/deploy/upload-shared";
-import type { BuildConfig, DeploySource } from "@/lib/types";
+import type { BuildConfig, DeploySource, GitProviderChoice } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 import { serverLabel } from "@/lib/utils";
@@ -194,6 +194,8 @@ export function NewAppWizard({
   presetSource,
   installations,
   connections,
+  providers,
+  isInstanceAdmin,
   placement,
   exitHref,
 }: {
@@ -209,6 +211,10 @@ export function NewAppWizard({
   presetSource?: DeploySource | null;
   installations: GithubInstallationDTO[];
   connections: GitConnectionDTO[];
+  /** The connectable git hosts, so one is added from the picker itself. */
+  providers: GitProviderChoice[];
+  /** Gates the connect dialog's "on my own network" option. */
+  isInstanceAdmin: boolean;
   placement?: WizardPlacement | null;
   /** Where Cancel goes - the Overview drill-in, or the template catalog. */
   exitHref: string;
@@ -873,6 +879,8 @@ export function NewAppWizard({
             {source === "git" && (
               <GitSourcePicker
                 connections={connections}
+                providers={providers}
+                isInstanceAdmin={isInstanceAdmin}
                 initial={{
                   url: gitValue.url,
                   repo: gitValue.repo,

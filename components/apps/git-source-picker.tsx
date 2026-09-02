@@ -8,6 +8,7 @@ import {
   GitBranch,
   Plus,
   ShieldCheck,
+  SlidersHorizontal,
   TriangleAlert,
 } from "lucide-react";
 
@@ -19,6 +20,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -27,7 +31,9 @@ import {
   type RepoSelection,
 } from "@/components/apps/repo-browser";
 import { GitProviderMark } from "@/components/shared/brand-icons";
+import { ConnectGitProviderDialog } from "@/components/settings/git-connect-dialog";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
+import type { GitProviderChoice } from "@/lib/types";
 
 /** What the Git source resolves to, ready to become a `GitRepoInput`. */
 export interface GitSourceValue {
@@ -63,11 +69,17 @@ function providerFromUrl(url: string): string {
  */
 export function GitSourcePicker({
   connections,
+  providers,
+  isInstanceAdmin,
   initial,
   onChange,
   manageHref = "/settings/git",
 }: {
   connections: GitConnectionDTO[];
+  /** The connectable hosts, so a provider is added from here rather than in Settings. */
+  providers: GitProviderChoice[];
+  /** Gates the dialog's one advanced option: an address inside the network. */
+  isInstanceAdmin: boolean;
   initial?: {
     connectionId?: string | null;
     url?: string;
@@ -88,6 +100,9 @@ export function GitSourcePicker({
   );
   const [url, setUrl] = React.useState(initial?.url ?? "");
   const [branch, setBranch] = React.useState(initial?.branch ?? "");
+  const [connecting, setConnecting] = React.useState<GitProviderChoice | null>(
+    null,
+  );
 
   const active = connections.find((c) => c.id === connectionId) ?? null;
 
@@ -151,6 +166,14 @@ export function GitSourcePicker({
 
   return (
     <div className="space-y-3">
+      {connecting && (
+        <ConnectGitProviderDialog
+          provider={connecting}
+          isInstanceAdmin={isInstanceAdmin}
+          onClose={() => setConnecting(null)}
+          onConnected={pick}
+        />
+      )}
       <div className="space-y-1.5">
         <FieldLabel
           className="text-sm font-medium"
@@ -234,10 +257,30 @@ export function GitSourcePicker({
               </>
             )}
             <DropdownMenuSeparator />
+            {/* Connected here, in the dialog Settings uses: a provider you are
+                missing is not a reason to leave the app you are creating. */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <Plus className="size-4" />
+                Connect a git provider
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-52">
+                {providers.map((p) => (
+                  <DropdownMenuItem
+                    key={p.id}
+                    onSelect={() => setConnecting(p)}
+                    className="gap-2"
+                  >
+                    <GitProviderMark provider={p.id} className="size-5" />
+                    {p.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             {/**
-             * Carries where we are, so connecting a provider hands the user back to this page -
-             * with the new connection in the list - instead of leaving them in Settings to find
-             * their way back.
+             * Carries where we are, so the Settings detour hands the user back to this
+             * page - with the new connection in the list - instead of leaving them there
+             * to find their way back.
              */}
             <DropdownMenuItem
               className="gap-2"
@@ -249,8 +292,8 @@ export function GitSourcePicker({
                 )
               }
             >
-              <Plus className="size-4" />
-              Connect a git provider
+              <SlidersHorizontal className="size-4" />
+              Manage git providers
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

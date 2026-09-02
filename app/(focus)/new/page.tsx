@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Lock, CloudOff, X } from "lucide-react";
 
-import { hasCapability } from "@/lib/membership";
+import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { DeploLogo } from "@/components/logo";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { getTemplateBlueprint } from "@/lib/templates-blueprint";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
+import { gitProviderChoices } from "@/lib/git/provider-choices";
 import { listSharedVars } from "@/lib/data/shared-vars";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { instanceHost, productionDomain } from "@/lib/deploy/domains";
@@ -134,16 +135,23 @@ export default async function NewAppPage(props: PageProps<"/new">) {
     ? await templateLogoDataUri(template.variant.logo)
     : null;
 
-  const [servers, buildServers, installations, connections, sharedVars] =
-    await Promise.all([
-      listServerChoices(),
-      listBuildServerChoices(),
-      listGithubInstallations(),
-      listGitConnections(),
-      // Team-wide and `manage_env`-gated: someone who may create an app but not
-      // manage variables simply gets no Shared tab, never a refused page.
-      listSharedVars().catch(() => []),
-    ]);
+  const [
+    servers,
+    buildServers,
+    installations,
+    connections,
+    sharedVars,
+    instanceAdmin,
+  ] = await Promise.all([
+    listServerChoices(),
+    listBuildServerChoices(),
+    listGithubInstallations(),
+    listGitConnections(),
+    // Team-wide and `manage_env`-gated: someone who may create an app but not
+    // manage variables simply gets no Shared tab, never a refused page.
+    listSharedVars().catch(() => []),
+    isInstanceAdmin(),
+  ]);
 
   return (
     <FocusFrame exitHref={exitHref}>
@@ -158,6 +166,8 @@ export default async function NewAppPage(props: PageProps<"/new">) {
         }))}
         installations={installations}
         connections={connections}
+        providers={gitProviderChoices()}
+        isInstanceAdmin={instanceAdmin}
         template={
           template
             ? {

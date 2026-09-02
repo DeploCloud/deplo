@@ -9,9 +9,10 @@ import {
   listGitConnections,
 } from "@/lib/data/git-connections";
 import { providerFor } from "@/lib/git/providers";
+import { gitProviderChoices } from "@/lib/git/provider-choices";
 import { requiredAccess } from "@/lib/git/provider-access";
 import { repoCloneRefusal } from "@/lib/git/repo-access";
-import { hasCapability } from "@/lib/membership";
+import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
 import { RollbackSettingsForm } from "@/components/apps/settings/rollback-settings-form";
@@ -101,6 +102,8 @@ export default async function AppDeploymentSettingsPage(
           servers={servers}
           installations={installations}
           connections={connections}
+          providers={gitProviderChoices()}
+          isInstanceAdmin={await isInstanceAdmin()}
           webhook={webhook}
           repoAccess={repoAccess}
           cloneRefusal={cloneRefusal}

@@ -78,7 +78,12 @@ import type {
   GitConnectionDTO,
   GitWebhookStatus,
 } from "@/lib/data/git-connections";
-import type { BuildConfig, DeploySource, GitRepo } from "@/lib/types";
+import type {
+  BuildConfig,
+  DeploySource,
+  GitProviderChoice,
+  GitRepo,
+} from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { cn, serverLabel, usesComposeStack } from "@/lib/utils";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
@@ -168,6 +173,8 @@ export function DeploymentSettingsForm({
   servers,
   installations,
   connections,
+  providers,
+  isInstanceAdmin,
   webhook,
   repoAccess,
   cloneRefusal,
@@ -205,6 +212,10 @@ export function DeploymentSettingsForm({
   installations: GithubInstallationDTO[];
   /** The team's git connections (GitLab, Bitbucket, Gitea, plain git). */
   connections: GitConnectionDTO[];
+  /** The connectable git hosts, so one is added from the picker itself. */
+  providers: GitProviderChoice[];
+  /** Gates the connect dialog's "on my own network" option. */
+  isInstanceAdmin: boolean;
   /** Live push-webhook state for a connection-backed repo, or null when the
    *  question doesn't apply (GitHub, a bare URL, auto-deploy off). */
   webhook: GitWebhookStatus | null;
@@ -737,6 +748,8 @@ export function DeploymentSettingsForm({
             {usesGitUrl && (
               <GitSourcePicker
                 connections={connections}
+                providers={providers}
+                isInstanceAdmin={isInstanceAdmin}
                 initial={
                   initialSource === "git" && initialRepo
                     ? {
