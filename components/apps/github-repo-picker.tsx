@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ChevronsUpDown,
   Check,
+  GitBranch,
   Plus,
   SlidersHorizontal,
   Building2,
@@ -83,7 +84,7 @@ function AccountAvatar({
 }
 
 /** The connect-your-first-App empty state, shown when no App is connected yet. */
-function ConnectPanel() {
+function ConnectPanel({ onUsePublicUrl }: { onUsePublicUrl?: () => void }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
       <GitHubIcon className="size-6 text-muted-foreground" />
@@ -94,7 +95,15 @@ function ConnectPanel() {
           you pick which repositories it can access.
         </p>
       </div>
-      <GithubConnectButton size="sm" />
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <GithubConnectButton size="sm" />
+        {onUsePublicUrl && (
+          <Button variant="ghost" size="sm" onClick={onUsePublicUrl}>
+            <GitBranch className="size-4" />
+            Use a repository URL
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -108,6 +117,7 @@ export function GithubRepoPicker({
   initial,
   onChange,
   manageHref,
+  onUsePublicUrl,
 }: {
   installations: GithubInstallationDTO[];
   /**
@@ -121,6 +131,9 @@ export function GithubRepoPicker({
   onChange: (value: GithubSelection | null) => void;
   /** When set, show a "Manage connected apps" link pointing here (e.g. /settings/git). */
   manageHref?: string;
+  /** The way out of the App: hands the caller back to the Git source, whose
+   *  default arm clones a public repository with no credentials. */
+  onUsePublicUrl?: () => void;
 }) {
   // The same owner choice Settings → Git offers: an App created from here can
   // belong to an organization too, which is where a team's repositories live.
@@ -209,6 +222,15 @@ export function GithubRepoPicker({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-64">
+              {onUsePublicUrl && (
+                <>
+                  <DropdownMenuItem onSelect={onUsePublicUrl} className="gap-2">
+                    <GitBranch className="size-4" />
+                    Repository URL
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               {hasInstallations && (
                 <>
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
@@ -275,7 +297,7 @@ export function GithubRepoPicker({
       )}
 
       {!hasInstallations ? (
-        <ConnectPanel />
+        <ConnectPanel onUsePublicUrl={onUsePublicUrl} />
       ) : (
         <RepoBrowser
           kind="github"

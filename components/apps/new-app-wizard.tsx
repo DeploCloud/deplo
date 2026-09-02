@@ -13,7 +13,6 @@ import {
   Variable,
 } from "lucide-react";
 
-import { GitHubIcon } from "@/components/shared/brand-icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -46,7 +45,6 @@ import {
   GitSourcePicker,
   type GitSourceValue,
 } from "@/components/apps/git-source-picker";
-import { GithubConnectButton } from "@/components/apps/github-connect-button";
 import {
   GitDeployOptions,
   watchPathsToArray,
@@ -861,30 +859,16 @@ export function NewAppWizard({
             nextDisabled={nextDisabled}
             pending={pending}
           >
-            {source === "github" &&
-              (installations.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
-                  <GitHubIcon className="size-6 text-muted-foreground" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      Connect GitHub to import a repo
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Deplo creates a GitHub App with only the permissions it
-                      needs, then you pick which repositories it can access.
-                    </p>
-                  </div>
-                  <GithubConnectButton size="sm" />
-                </div>
-              ) : (
-                <GithubRepoPicker
-                  installations={installations}
-                  onChange={(sel) => {
-                    setGhSelection(sel);
-                    if (sel) suggestName(sel.fullName.split("/")[1] ?? "");
-                  }}
-                />
-              ))}
+            {source === "github" && (
+              <GithubRepoPicker
+                installations={installations}
+                onUsePublicUrl={() => setSource("git")}
+                onChange={(sel) => {
+                  setGhSelection(sel);
+                  if (sel) suggestName(sel.fullName.split("/")[1] ?? "");
+                }}
+              />
+            )}
 
             {source === "git" && (
               <GitSourcePicker

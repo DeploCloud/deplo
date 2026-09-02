@@ -720,6 +720,7 @@ export function DeploymentSettingsForm({
               <GithubRepoPicker
                 installations={installations}
                 manageHref="/settings/git"
+                onUsePublicUrl={() => setSource("git")}
                 initial={
                   initialSource === "github" && initialRepo
                     ? {
