@@ -28,6 +28,7 @@ import { imageCompletionSource } from "@/components/apps/compose-image-complete"
 import {
   deploSyntaxHighlighting,
   deploTheme,
+  EDITOR_MAX_HEIGHT,
   yamlExtensions,
 } from "@/components/apps/editor-theme";
 
@@ -75,6 +76,7 @@ export interface ComposeEditorProps {
   onDiagnostics?: (diagnostics: LintDiagnostic[]) => void;
   placeholder?: string;
   minHeight?: number;
+  maxHeight?: string;
 }
 
 export function ComposeEditor({
@@ -83,6 +85,7 @@ export function ComposeEditor({
   onDiagnostics,
   placeholder = 'services:\n  app:\n    image: nginx:1.27\n    ports:\n      - "8080:80"',
   minHeight = 360,
+  maxHeight = EDITOR_MAX_HEIGHT,
 }: ComposeEditorProps) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const viewRef = React.useRef<EditorView | null>(null);
@@ -136,7 +139,8 @@ export function ComposeEditor({
         ]),
         heightComp.of(
           EditorView.theme({
-            ".cm-scroller": { minHeight: `${minHeight}px` },
+            "&": { maxHeight },
+            ".cm-scroller": { minHeight: `${minHeight}px`, overflow: "auto" },
           }),
         ),
         deploTheme,

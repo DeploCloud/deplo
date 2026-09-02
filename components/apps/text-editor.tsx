@@ -20,6 +20,7 @@ import type { EditorLanguage } from "@/components/apps/editor-language";
 import {
   deploSyntaxHighlighting,
   deploTheme,
+  EDITOR_MAX_HEIGHT,
   yamlExtensions,
 } from "@/components/apps/editor-theme";
 
@@ -32,7 +33,7 @@ export function TextEditor({
   onChange,
   readOnly = false,
   minHeight = 360,
-  maxHeight,
+  maxHeight = EDITOR_MAX_HEIGHT,
   language = null,
 }: {
   value: string;
@@ -69,10 +70,8 @@ export function TextEditor({
         deploSyntaxHighlighting,
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         EditorView.theme({
-          ".cm-scroller": {
-            minHeight: `${minHeight}px`,
-            ...(maxHeight ? { maxHeight } : {}),
-          },
+          "&": { maxHeight },
+          ".cm-scroller": { minHeight: `${minHeight}px`, overflow: "auto" },
         }),
         deploTheme,
         EditorView.lineWrapping,

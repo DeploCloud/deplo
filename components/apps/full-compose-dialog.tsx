@@ -94,7 +94,6 @@ export function FullComposeDialog({ appId }: { appId: string }) {
               readOnly
               language="yaml"
               minHeight={200}
-              maxHeight="60vh"
             />
           </div>
         ) : (

@@ -39,6 +39,13 @@ const INFO_MARKER =
   '<path fill="#000" d="M17.9 17.5h4.2v12h-4.2z"/>';
 
 /**
+ * Editors stop growing here and scroll inside, so a long file never stretches
+ * the page. Must sit on the editor, not the scroller: a cap on the scroller
+ * alone leaves the bordered box at full document height.
+ */
+export const EDITOR_MAX_HEIGHT = "60vh";
+
+/**
  * Shared CodeMirror chrome for the dashboard's editors: Deplo tokens for the
  * frame, VSCode Dark+/Light+ tokens (--code-*) for the syntax.
  */
