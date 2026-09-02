@@ -658,11 +658,17 @@ ours_holds_port() {
 }
 
 # A takeover already in flight keeps the ports it chose; a fresh one asks first.
-# `done` is not "still a takeover": the ports are Deplo's and this is an update.
+# Past the cutover the ports are already Deplo's and nothing below moves them,
+# but the other platform is still on the disk and removing it is a re-run away.
 TAKEOVER=""
+TAKEOVER_PAST=0
 TAKEOVER_STATE="$(state_get takeover || true)"
 case "$TAKEOVER_STATE" in
   pending | ready) TAKEOVER="$(state_get takeover_platform || true)" ;;
+  done | removing)
+    TAKEOVER="$(state_get takeover_platform || true)"
+    TAKEOVER_PAST=1
+    ;;
 esac
 
 if [ -z "$TAKEOVER" ] && [ "$MODE" = install ]; then
@@ -709,6 +715,7 @@ fi
 PANEL_PORT=3000
 HTTP_PORT=80
 HTTPS_PORT=443
+PROXY_BIND=""
 
 # A port this install already chose, when it is still free or already ours - so a
 # re-run does not walk the panel down the list every time it is called.
@@ -720,8 +727,11 @@ kept_port() {
   printf '%s' "$kept"
 }
 
-if [ -n "$TAKEOVER" ]; then
-  # The other panel keeps what it has; Deplo waits its turn somewhere free.
+if [ -n "$TAKEOVER" ] && [ "$TAKEOVER_PAST" = 0 ]; then
+  # The other panel keeps what it has; Deplo waits its turn somewhere free, on
+  # LOOPBACK: an account-creation page on a certificate Deplo signed itself has
+  # no business on the open internet, and a published port bypasses ufw.
+  PROXY_BIND="127.0.0.1:"
   PANEL_PORT="$(kept_port takeover_panel_port || first_free_port 3000 3001 3002 3003)"
   HTTP_PORT="$(kept_port takeover_http_port || first_free_port 8080 8081 8090)"
   HTTPS_PORT="$(kept_port takeover_https_port || first_free_port 8443 8444 9443)"
@@ -1239,8 +1249,8 @@ $TRAEFIK_FILE_PROVIDER
       - --certificatesresolvers.letsencrypt.acme.email=\${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
     ports:
-      - "$HTTP_PORT:80"
-      - "$HTTPS_PORT:443"
+      - "$PROXY_BIND$HTTP_PORT:80"
+      - "$PROXY_BIND$HTTPS_PORT:443"
     volumes:
       - /opt/deplo/acme:/acme
     networks:
@@ -1590,10 +1600,9 @@ takeover_side_door_remove() {
 # Every way into the panel, in the order they cost the operator something.
 takeover_unreachable_advice() {
   blank
-  warn "Nothing has opened $PUBLIC_URL yet."
-  note "Until the ports move, Deplo answers on $HTTPS_PORT with a certificate it signed"
-  note "itself, so the browser warns once. If that port will not load at all, it is"
-  note "probably closed by your provider's firewall. Two ways in that do not need it:"
+  warn "Nothing has opened Deplo yet."
+  note "Until the ports move its proxy is bound to loopback on purpose, so there is"
+  note "no login page of Deplo's on the internet yet. Two ways in:"
   note "  1. Through $FOREIGN_LABEL's own proxy on port 80:"
   note "     $(takeover_side_door)"
   note "  2. From your own machine, over SSH:"
@@ -1615,10 +1624,10 @@ foreign_services() {
 }
 
 # Stop it for good: `--restart=no` FIRST, or the docker restart below brings the
-# whole platform back up underneath Deplo. Replica counts are written down so a
-# rollback puts them back the way they were.
+# whole platform back up underneath Deplo. Its APPS go down with it - they hold
+# the ports Deplo's proxy is about to take, and two copies of one app would run.
 foreign_stop() {
-  local names svc n
+  local names svc n c pol saved=""
   for svc in $(foreign_services); do
     n="$(docker service inspect "$svc" --format '{{.Spec.Mode.Replicated.Replicas}}' 2>/dev/null || true)"
     state_set "foreign_replicas_$svc" "${n:-1}"
@@ -1626,26 +1635,34 @@ foreign_stop() {
     # database is already at zero never will.
     docker service update --detach --replicas 0 "$svc" >&9 2>&9 || true
   done
-  names="$(foreign_containers)"
+  names="$(printf '%s\n%s\n' "$(foreign_containers)" "$(foreign_workloads)" \
+    | grep -v '^$' | sort -u || true)"
   [ -n "$names" ] || return 0
+  # What each RUNNING one had, so the rollback restores the policy it found
+  # instead of inventing one. A container already down stays down.
+  for c in $names; do
+    pol="$(docker inspect "$c" --format '{{if .State.Running}}{{or .HostConfig.RestartPolicy.Name "no"}}{{end}}' 2>/dev/null || true)"
+    [ -n "$pol" ] && saved="$saved $c:$pol"
+  done
+  state_set foreign_restart "${saved# }"
   # shellcheck disable=SC2086
   docker update --restart=no $names >&9 2>&9 || true
   # shellcheck disable=SC2086
   docker stop $names >&9 2>&9 || true
 }
 
+# The way back: every container foreign_stop took down, on the policy it had.
 foreign_start() {
-  local names svc n
+  local svc n pair c pol
   for svc in $(foreign_services); do
     n="$(state_get "foreign_replicas_$svc" || true)"
     docker service update --detach --replicas "${n:-1}" "$svc" >&9 2>&9 || true
   done
-  names="$(foreign_containers)"
-  [ -n "$names" ] || return 0
-  # shellcheck disable=SC2086
-  docker update --restart=unless-stopped $names >&9 2>&9 || true
-  # shellcheck disable=SC2086
-  docker start $names >&9 2>&9 || true
+  for pair in $(state_get foreign_restart || true); do
+    c="${pair%:*}"; pol="${pair##*:}"
+    docker update --restart="${pol:-no}" "$c" >&9 2>&9 || true
+    docker start "$c" >&9 2>&9 || true
+  done
 }
 
 # The certificates the domains pointing here already have. Best effort by design:
@@ -1711,6 +1728,8 @@ takeover_apply_ports() {
   PANEL_PORT="$1"
   HTTP_PORT="$2"
   HTTPS_PORT="$3"
+  # The real 80/443 are public; a rollback to the interim ones goes back to loopback.
+  case "$2" in 80) PROXY_BIND="" ;; *) PROXY_BIND="127.0.0.1:" ;; esac
   # `panel_url` covers both cases: with a domain, the address still has to carry
   # the temporary HTTPS port until the real one comes free.
   PUBLIC_URL="$(panel_url)"
@@ -1789,7 +1808,7 @@ takeover_cutover() {
     sleep 1
     waited=$((waited + 1))
   done
-  spin_ok "$FOREIGN_LABEL stopped" "nothing of it was removed"
+  spin_ok "$FOREIGN_LABEL and its apps stopped" "nothing of it was removed"
 
   inherit_acme
 
@@ -1991,9 +2010,12 @@ takeover_wait() {
   local waited=0 said_unreachable=0 mute=0 said_mute=0 body state
   blank
   printf ' %bNext%b\n' "$C_B" "$C_OFF"
-  printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
-  printf '   2  Bring your projects over from %s.\n' "$FOREIGN_LABEL"
-  printf '   3  Leave this window open - it takes the ports when you say so.\n\n'
+  printf '   1  From your own machine:  %bssh -L %s:localhost:%s root@%s%b\n' "$C_ACC" "$PANEL_PORT" "$PANEL_PORT" "$SERVER_IP" "$C_OFF"
+  printf '   2  Open %bhttp://localhost:%s%b and create your account.\n' "$C_ACC" "$PANEL_PORT" "$C_OFF"
+  printf '   3  Bring your projects over from %s.\n' "$FOREIGN_LABEL"
+  printf '   4  Leave this window open - it takes the ports when you say so.\n\n'
+  note "Deplo answers on loopback only until it takes 80 and 443."
+  note "No certificate can issue until then, so the browser warns once."
   note "Closing this window is safe: re-run $DEPLO_DIR/install.sh to pick it back up."
 
   spin_start "Waiting for the migration"
@@ -2075,15 +2097,33 @@ card_kv "Proxy" "Traefik, ports $HTTP_PORT/$HTTPS_PORT, automatic HTTPS"
 [ "$HOST_ENROLLED" = true ] && card_kv "Server" "${HOST_NAME:-$SERVER_IP}, this machine"
 card_close
 
+# The DNS, certificate and callback notes. A takeover gets them too: on a machine
+# whose ports have just changed hands they matter more, not less.
+closing_notes() {
+  if [ "$USE_DOMAIN" = true ]; then
+    note "Point $DEPLO_DOMAIN at $TARGET_IP; the certificate issues on the first request."
+    note "$FALLBACK_HOST answers too, so the panel stays reachable while its DNS moves."
+  else
+    note "$FALLBACK_HOST already resolves to this server, so there is no DNS to set up."
+    note "The browser warns about the certificate: no authority issues one for a nip.io"
+    note "address. To use your own domain, re-run with --domain <your domain>."
+  fi
+  note "Locked out? ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP, then open http://localhost:$PANEL_PORT"
+  note "GitHub must be able to reach $PUBLIC_URL for callbacks and webhooks."
+}
+
 # A takeover writes its own "Next" - the ordinary one would tell somebody to go
-# and deploy an app on a machine whose ports still belong to another panel.
+# and deploy an app on a machine whose ports still belong to another panel. Past
+# the cutover it waits on the dashboard's "Remove" button, which is the one thing
+# left that only root on this host can do.
 if [ -n "$TAKEOVER" ]; then
   FOREIGN_LABEL="$(platform_label "$TAKEOVER")"
   case "$TAKEOVER_STATE" in
     ready)
-      if takeover_cutover; then takeover_after_cutover; fi
+      if takeover_cutover; then takeover_after_cutover; closing_notes; fi
       ;;
-    *) takeover_wait || true ;;
+    done | removing) takeover_after_cutover; closing_notes ;;
+    *) if takeover_wait; then closing_notes; fi ;;
   esac
   [ "$UI_LOG" = /dev/null ] || note "Transcript: $UI_LOG"
   printf '\n'
@@ -2099,15 +2139,6 @@ else
   printf '   Open %b%s%b - your apps kept running throughout.\n\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
 fi
 
-if [ "$USE_DOMAIN" = true ]; then
-  note "Point $DEPLO_DOMAIN at $TARGET_IP; the certificate issues on the first request."
-  note "$FALLBACK_HOST answers too, so the panel stays reachable while its DNS moves."
-else
-  note "$FALLBACK_HOST already resolves to this server, so there is no DNS to set up."
-  note "The browser warns about the certificate: no authority issues one for a nip.io"
-  note "address. To use your own domain, re-run with --domain <your domain>."
-fi
-note "Locked out? ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP, then open http://localhost:$PANEL_PORT"
-note "GitHub must be able to reach $PUBLIC_URL for callbacks and webhooks."
+closing_notes
 [ "$UI_LOG" = /dev/null ] || note "Transcript: $UI_LOG"
 printf '\n'

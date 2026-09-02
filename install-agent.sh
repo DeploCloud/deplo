@@ -450,9 +450,28 @@ ui_log "  reach $URL/api/health -> ${CP_CODE:-none}"
 case "${CP_CODE:-000}" in
   2*) spin_ok "Control plane reachable at $URL" ;;
   "" | 000)
-    spin_kill
-    pf_fail "Cannot reach $URL from this host." \
-      "The agent provisions itself by calling out to that address. Check DNS, egress and any firewall."
+    # A panel on a certificate it signed itself (every panel mid-takeover) answers
+    # 000 to a verifying curl, which is a different problem from an address that
+    # is not there. The agent pins the fingerprint this command carries instead.
+    CP_CODE="$(curl -sSk -o /dev/null -w '%{http_code}' --max-time 10 "$URL/api/health" </dev/null 2>&9 || true)"
+    ui_log "  reach -k $URL/api/health -> ${CP_CODE:-none}"
+    case "${CP_CODE:-000}" in
+      2*)
+        spin_ok "Control plane reachable at $URL" "its certificate does not verify"
+        if [ -n "$FINGERPRINT" ]; then
+          note "Deplo signed that certificate itself. The agent pins the fingerprint in"
+          note "this command, so it provisions anyway."
+        else
+          pf_warn "Its certificate does not verify and this command carries no fingerprint." \
+            "Copy the command again from Settings > Servers - the dashboard adds one."
+        fi
+        ;;
+      *)
+        spin_kill
+        pf_fail "Cannot reach $URL from this host." \
+          "The agent provisions itself by calling out to that address. Check DNS, egress and any firewall."
+        ;;
+    esac
     ;;
   *)
     spin_kill
@@ -489,7 +508,9 @@ FIREWALL_FIX="$(firewall_fix_command || true)"
 if [ -n "$FIREWALL_FIX" ]; then
   pf_warn "This host's firewall is blocking TCP $AGENT_PORT, which Deplo dials." "Open it with:  $FIREWALL_FIX"
 else
-  ok "TCP $AGENT_PORT is not blocked by this host's firewall"
+  # No ufw and no firewalld is not evidence: a provider's own firewall, a security
+  # group or a CDN in front of this host all sit somewhere this cannot see.
+  ok "No ufw or firewalld rule blocks TCP $AGENT_PORT" "a provider firewall is not visible from here"
 fi
 
 blank
@@ -1022,7 +1043,10 @@ elif [ -n "$FIREWALL_FIX" ]; then
   note "Provisioning finishes either way, but the server stays offline until you run:"
   note "$FIREWALL_FIX"
 elif [ "$PROVISIONED" = true ]; then
-  ok "This server is online in the dashboard."
+  # Provisioning is OUTBOUND: it proves the agent reached the panel, never that
+  # the panel can dial back. Only Deplo, from outside, can say "online".
+  ok "The agent enrolled with $URL."
+  note "Deplo shows this server online once it can reach TCP $AGENT_PORT from outside."
 else
   note "The agent is still calling home to $URL. Watch the dashboard - it will"
   note "switch to 'online' shortly, or say why in journalctl -u deplo-agent."
