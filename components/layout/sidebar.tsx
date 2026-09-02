@@ -9,7 +9,7 @@ import {
   PanelLeftOpen,
   Settings,
 } from "lucide-react";
-import { DeploLogo, DeploMark } from "@/components/logo";
+import { DeploLogo } from "@/components/logo";
 import { sidebarMenuFor } from "@/components/layout/nav-config";
 import { SidebarNav } from "./sidebar-nav";
 import { SidebarTips } from "./sidebar-tips";
@@ -26,13 +26,13 @@ import { docsUrl } from "@/lib/docs";
 
 /**
  * Desktop sidebar. Collapsed flag and width come from SidebarProvider, which
- * persists them; the width transition is suppressed during a drag and on first
- * paint so neither animates unexpectedly.
+ * persists them; the transition is suppressed during a drag and on first paint
+ * so neither animates unexpectedly. Collapsing SLIDES the whole panel out: the
+ * content keeps its width and translates, so nothing reflows on the way.
  */
 /** The two rows in the sidebar's footer wear one shape. */
 const FOOTER_LINK =
   "group flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5";
-const FOOTER_LINK_COLLAPSED = "h-9 w-9 justify-center px-0";
 
 export function Sidebar({
   capabilities = [],
@@ -51,24 +51,29 @@ export function Sidebar({
   return (
     <aside
       data-collapsed={collapsed}
+      inert={collapsed}
       style={{ width: collapsed ? 0 : width }}
       className={cn(
-        "sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar md:flex",
+        "sticky top-0 hidden h-screen shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block",
         hydrated && !dragging && "transition-[width] duration-200 ease-out",
         collapsed && "border-r-0",
       )}
     >
       <div
+        style={{
+          width,
+          transform: collapsed ? `translateX(-${width}px)` : undefined,
+        }}
         className={cn(
-          "flex h-14 items-center",
-          collapsed ? "justify-center px-2" : "justify-between gap-2 pr-2 pl-5",
+          "flex h-full flex-col",
+          hydrated && !dragging && "transition-transform duration-200 ease-out",
         )}
       >
-        <Link href="/" className="cursor-pointer" aria-label="Deplo home">
-          {collapsed ? <DeploMark /> : <DeploLogo />}
-        </Link>
+        <div className="flex h-14 items-center justify-between gap-2 pr-2 pl-5">
+          <Link href="/" className="cursor-pointer" aria-label="Deplo home">
+            <DeploLogo />
+          </Link>
 
-        {!collapsed && (
           <Tooltip delayDuration={400}>
             <TooltipTrigger asChild>
               <Button
@@ -88,78 +93,68 @@ export function Sidebar({
               </kbd>
             </TooltipContent>
           </Tooltip>
-        )}
-      </div>
-
-      {/* Opens the command palette - the sidebar has no search of its own. */}
-      <div className="px-3 pb-1">
-        <SearchTrigger />
-      </div>
-
-      <div className="flex-1 overflow-x-hidden overflow-y-auto">
-        <SidebarNav
-          collapsed={collapsed}
-          capabilities={capabilities}
-          isAdmin={isAdmin}
-        />
-      </div>
-
-      {/* Nudges sit above the footer and only in the main menu: a drill-in's nav
-          is a place someone went on purpose, and the collapsed rail has no room
-          for prose. */}
-      {menu === "main" && !collapsed && (
-        <div className="px-3 pb-2">
-          <SidebarTips
-            hasSecondFactor={hasSecondFactor}
-            capabilities={capabilities}
-            isAdmin={isAdmin}
-          />
         </div>
-      )}
 
-      {/* Outside the scroller: the manual and the way into Settings are both
+        {/* Opens the command palette - the sidebar has no search of its own. */}
+        <div className="px-3 pb-1">
+          <SearchTrigger />
+        </div>
+
+        <div className="flex-1 overflow-x-hidden overflow-y-auto">
+          <SidebarNav capabilities={capabilities} isAdmin={isAdmin} />
+        </div>
+
+        {/* Nudges sit above the footer and only in the main menu: a drill-in's
+          nav is a place someone went on purpose. */}
+        {menu === "main" && (
+          <div className="px-3 pb-2">
+            <SidebarTips
+              hasSecondFactor={hasSecondFactor}
+              capabilities={capabilities}
+              isAdmin={isAdmin}
+            />
+          </div>
+        )}
+
+        {/* Outside the scroller: the manual and the way into Settings are both
           reachable from any page, however far down the nav has been scrolled.
           Settings sits here rather than in the workspace nav because it is a
           way OUT of the workspace, not a place in it - and for the same reason
           it is gone inside a drill-in, where the nav's own first row is the way
           back and a second exit underneath only competes with it. */}
-      {menu === "main" && (
-        <div
-          className={cn(
-            "space-y-0.5 border-t border-border p-2",
-            collapsed && "px-1.5",
-          )}
-        >
-          <Tooltip delayDuration={collapsed ? 0 : 400}>
-            <TooltipTrigger asChild>
-              <a
-                href={docsUrl("docs.home")}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Documentation"
-                className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
-              >
-                <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
-                {!collapsed && "Documentation"}
-              </a>
-            </TooltipTrigger>
-            <TooltipContent side="right">Documentation</TooltipContent>
-          </Tooltip>
-          <Tooltip delayDuration={collapsed ? 0 : 400}>
-            <TooltipTrigger asChild>
-              <Link
-                href="/settings"
-                aria-label="Settings"
-                className={cn(FOOTER_LINK, collapsed && FOOTER_LINK_COLLAPSED)}
-              >
-                <Settings className="size-4 shrink-0 group-hover:text-foreground" />
-                {!collapsed && "Settings"}
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent side="right">Settings</TooltipContent>
-          </Tooltip>
-        </div>
-      )}
+        {menu === "main" && (
+          <div className="space-y-0.5 border-t border-border p-2">
+            <Tooltip delayDuration={400}>
+              <TooltipTrigger asChild>
+                <a
+                  href={docsUrl("docs.home")}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Documentation"
+                  className={FOOTER_LINK}
+                >
+                  <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
+                  Documentation
+                </a>
+              </TooltipTrigger>
+              <TooltipContent side="right">Documentation</TooltipContent>
+            </Tooltip>
+            <Tooltip delayDuration={400}>
+              <TooltipTrigger asChild>
+                <Link
+                  href="/settings"
+                  aria-label="Settings"
+                  className={FOOTER_LINK}
+                >
+                  <Settings className="size-4 shrink-0 group-hover:text-foreground" />
+                  Settings
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">Settings</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+      </div>
 
       {/* Drag-to-resize handle on the right edge */}
       <div
