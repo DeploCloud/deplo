@@ -216,11 +216,16 @@ const SOURCE_LABEL: Record<InstanceSettings["panelUrlSource"], string> = {
   request: "Guessed from your browser",
 };
 
+/** An address without its scheme: the field edits the host, the prefix is fixed. */
+const hostPart = (url: string) => url.replace(/^https?:\/\//i, "");
+
 function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const router = useRouter();
-  const [value, setValue] = React.useState(
-    settings.storedPanelUrl ?? settings.panelUrl,
-  );
+  const current = settings.storedPanelUrl ?? settings.panelUrl;
+  // The scheme is the HTTPS setting's, not something to type here: it moves with
+  // the switch under Advanced and with nothing else.
+  const scheme = current.startsWith("http://") ? "http" : "https";
+  const [value, setValue] = React.useState(hostPart(current));
   const [confirming, setConfirming] = React.useState(false);
 
   // Adopt a fresh server render (a save ends in router.refresh()) as the new
@@ -228,11 +233,12 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const [seen, setSeen] = React.useState(settings);
   if (seen !== settings) {
     setSeen(settings);
-    setValue(settings.storedPanelUrl ?? settings.panelUrl);
+    setValue(hostPart(current));
   }
 
-  const target = value.trim();
-  const dirty = target !== (settings.storedPanelUrl ?? settings.panelUrl);
+  const host = value.trim();
+  const target = host ? `${scheme}://${host}` : "";
+  const dirty = target !== current;
 
   // What DNS says about the address the panel actually answers on. Read once on
   // open and again after a save, never while typing: the answer is about the
@@ -291,16 +297,25 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
             if (dirty && target) setConfirming(true);
           }}
         >
-          <Input
-            id="panel-url"
-            aria-label="Panel address"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="deplo.example.com"
-            autoComplete="off"
-            spellCheck={false}
-            className="w-full max-w-sm font-mono text-sm"
-          />
+          <div className="relative w-full max-w-sm">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-sm text-muted-foreground select-none">
+              {scheme}://
+            </span>
+            <Input
+              id="panel-url"
+              aria-label="Panel address"
+              value={value}
+              onChange={(e) => setValue(hostPart(e.target.value))}
+              placeholder="deplo.example.com"
+              autoComplete="off"
+              spellCheck={false}
+              className={`w-full font-mono text-sm ${
+                scheme === "https"
+                  ? "pl-[calc(0.75rem_+_8ch)]"
+                  : "pl-[calc(0.75rem_+_7ch)]"
+              }`}
+            />
+          </div>
           {/* Default size, not `sm`: it sits on a row with an h-9 Input. */}
           <Button type="submit" disabled={!dirty || !target}>
             Save
@@ -309,7 +324,6 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
 
         <PanelDnsBlock dns={dns} serverIp={settings.deploHostIp} />
 
-        <PanelServingRow />
         <PanelFallbackRow
           url={settings.panelFallbackUrl}
           panelUrl={settings.panelUrl}
@@ -443,7 +457,7 @@ function PanelFallbackRow({
           off.
         </p>
       </div>
-      <div className="flex w-full max-w-xs items-center gap-1">
+      <div className="flex w-full items-center gap-1">
         <RevealChip
           value={url}
           revealed={revealed}
@@ -469,8 +483,7 @@ function usePanelHttps(): {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    // Opening the page IS the read: same scoped exemption as the accounts below.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Opening the page IS the read, same as the certificate accounts below.
     void (async () => {
       const res = await gqlAction<{ panelHttps: PanelHttps }>(
         `mutation PanelHttps { panelHttps { ${PANEL_HTTPS_FIELDS} } }`,
@@ -484,12 +497,16 @@ function usePanelHttps(): {
 }
 
 /**
- * How the panel is served, on the card about the panel's own address. A fact,
- * not a switch: the one case for plain http lives under Advanced.
+ * How the panel is served: the certificate's own state, which the switch below it
+ * does not say. Reads the card's `cert` rather than its own, one query per tab.
  */
-function PanelServingRow() {
-  const { cert, loading } = usePanelHttps();
-
+function PanelServingRow({
+  cert,
+  loading,
+}: {
+  cert: PanelHttps | null;
+  loading: boolean;
+}) {
   // The real box, not a guessed height, so the row settles in place instead of
   // growing out of a bar that was never the same size as it.
   if (loading)
@@ -525,13 +542,12 @@ function PanelServingRow() {
         <p className="mt-1 text-sm text-muted-foreground">{cert.unavailable}</p>
       ) : !cert.enabled ? (
         <p className="mt-1 text-sm text-[var(--warning)]">
-          Anyone signing in sends their password unencrypted. Turn HTTPS back on
-          under Advanced.
+          Anyone signing in sends their password unencrypted.
         </p>
       ) : untrusted ? (
         <p className="mt-1 text-sm text-muted-foreground">
           The browser does not recognise this certificate. Set your own domain
-          above to get one it does.
+          under General to get one it does.
         </p>
       ) : (
         <p className="mt-1 text-sm text-muted-foreground">
@@ -580,7 +596,8 @@ function PanelHttpCard() {
         </CardDescription>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="space-y-4">
+        <PanelServingRow cert={cert} loading={loading} />
         <div className="flex items-center justify-between gap-4">
           <FieldLabel
             htmlFor="panel-http"
@@ -597,11 +614,6 @@ function PanelHttpCard() {
             aria-label="Serve the panel over plain HTTP"
           />
         </div>
-        {cert?.unavailable ? (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {cert.unavailable}
-          </p>
-        ) : null}
       </CardContent>
 
       {/**
