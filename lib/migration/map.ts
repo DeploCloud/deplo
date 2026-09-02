@@ -1151,6 +1151,14 @@ const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/;
  *  which is the only shape that may need a credential Deplo does not have. */
 const CONNECTED_PROVIDER = new Set(["github", "gitlab", "gitea", "bitbucket"]);
 
+/** The registry a reference names, or null for Docker Hub (a host has a dot,
+ *  a colon, or is `localhost`). */
+function namedRegistry(image: string): string | null {
+  const first = image.split("/")[0] ?? "";
+  if (image.split("/").length < 2) return null;
+  return /[.:]/.test(first) || first === "localhost" ? first : null;
+}
+
 /**
  * Where the app's code comes from.
  */
@@ -1174,6 +1182,13 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
     if (app.registryId || app.registry || app.username || app.registryUrl)
       notes.push(
         "From a private registry. Add it under Registries and reselect it - {panel} never exposes the password.",
+      );
+    // No credential on the row and a registry of its own: {panel} may have been
+    // pulling with a machine-wide `docker login` nothing here can see, and the
+    // deploy then fails on the image with nothing in the report to explain it.
+    else if (namedRegistry(image))
+      notes.push(
+        `${image} comes from ${namedRegistry(image)}. If that image is private, add the registry under Registries and reselect it.`,
       );
     // A registry running ON the source host. The reference is perfectly valid over
     // there and means nothing here, and the failure it produces later ("pull
@@ -1512,7 +1527,16 @@ export function mapMounts(
 
   for (const m of mounts ?? []) {
     const mountPath = m.mountPath?.trim();
-    if (m.type === "file") {
+    // A stack binds the path its YAML names, and that YAML came across as it was
+    // written. A config file beside it would leave the bind pointing at nothing,
+    // so the file's own bytes travel with the data, the way a bind mount does.
+    const stackBind =
+      m.type === "file" &&
+      opts.isCompose &&
+      (m.hostPath ?? "").startsWith("/") &&
+      isDataHostPath(m.hostPath!) &&
+      deploFilesPath(m.hostPath!) == null;
+    if (m.type === "file" && !stackBind) {
       // The machine's own clock, resolver and hosts file, which half the compose
       // files in the world bind read-only. A panel hands them over WITH their
       // content, and `/etc/localtime` is a binary TZif blob: written into a
@@ -1587,6 +1611,29 @@ export function mapMounts(
       notes.push(
         `Bind mount at ${mountPath} has no host path on {panel} - not imported.`,
       );
+      continue;
+    }
+    // The panel's OWN per-service files directory, which Deplo has its own place
+    // for. A host row here would recreate {panel}'s data path on this machine -
+    // and then win the data copy's pairing over the files dir the stack mounts.
+    const inFilesDir = deploFilesPath(hostPath);
+    if (inFilesDir != null) {
+      // The stack's own YAML already carries the rewritten `./x`.
+      if (opts.isCompose) continue;
+      const projectPath = inFilesDir.replace(/^\.\/?/, "");
+      if (!projectPath) {
+        notes.push(
+          `${mountPath} mounts the whole of this app's directory on {panel} - re-add what it needs under Storage.`,
+        );
+        continue;
+      }
+      volumes.push({
+        type: "app",
+        name: volumeLabel(mountPath, "files"),
+        projectPath,
+        mountPath,
+        readOnly: false,
+      });
       continue;
     }
     volumes.push({

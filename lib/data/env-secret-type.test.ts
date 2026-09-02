@@ -111,3 +111,31 @@ test("a name that announces itself as public is never typed secret", async () =>
   ])
     assert.equal(isSecretKey(key), true, key);
 });
+
+test("an import masks a credential and leaves everything else readable", async () => {
+  const { importedEnvType } = await import("./apps");
+  const secret = [
+    "DB_PASSWORD",
+    "MYSQL_ROOT_PASSWORD",
+    "APP_SECRET",
+    "GITEA__database__PASSWD",
+    "SERVICE_PASSWORD_ROOT",
+    "AWS_SECRET_ACCESS_KEY",
+    "API_KEY",
+    "STRIPE_TOKEN",
+    "PASSPHRASE",
+  ];
+  for (const key of secret) assert.equal(importedEnvType(key), "secret", key);
+  // Wider than this and a working app breaks: a secret cannot be edited, and a
+  // fork's preview drops it.
+  const plain = [
+    "NEXT_PUBLIC_API_URL",
+    "PUBLIC_BASE_URL",
+    "SITE_URL",
+    "DATABASE_URL",
+    "SORT_KEY",
+    "LOG_LEVEL",
+    "PORT",
+  ];
+  for (const key of plain) assert.equal(importedEnvType(key), "plain", key);
+});

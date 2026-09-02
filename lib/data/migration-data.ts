@@ -49,6 +49,7 @@ import {
 import type { HostMount, NamedVolume } from "../migration/model";
 import type { PairedHostMount } from "../migration/map";
 
+import { sourceAgentReachable } from "./agent-reach";
 import { requireAppCapability } from "./node-access";
 import {
   copyHostPathBetween,
@@ -84,23 +85,6 @@ const UNREACHABLE_SOURCE_HOST =
  * Its twin, for the machine that HAS an agent Deplo still cannot talk to.
  */
 const UNREACHABLE_SOURCE_AGENT = `Deplo cannot reach the agent on the machine this service's data is on, so nothing was stopped and no data was copied. Installing the agent is outbound and works behind any firewall; reading a volume is Deplo dialing that machine back, INBOUND. ${AGENT_PORT_NOTICE} Then check the machine's address under Servers and run the copy again.`;
-
-/**
- * Whether the agent holding this service's data answers US.
- */
-export async function sourceAgentReachable(serverId: string): Promise<boolean> {
-  try {
-    const conn = await connectAgent(serverId);
-    try {
-      await conn.hello();
-    } finally {
-      conn.close();
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Which of `names` that host actually HAS. `null` when it could not be asked at
@@ -433,6 +417,7 @@ async function landedFor(
       name: appVolumesTable.name,
       type: appVolumesTable.type,
       hostPath: appVolumesTable.hostPath,
+      projectPath: appVolumesTable.projectPath,
       mountPath: appVolumesTable.mountPath,
     })
     .from(appVolumesTable)
@@ -470,6 +455,14 @@ async function landedFor(
       // `./x` bind resolves into the stack's files dir, exactly where the render
       // points it (`rewriteMountSource`).
       ...composeHostMounts(hit.compose ?? "", stackFilesDir(hit.slug)),
+      // A directory the panel kept beside the app lands in Deplo's own files dir,
+      // and it is a directory: the config channel carries files, not folders.
+      ...managed
+        .filter((v) => v.type === "app" && (v.projectPath ?? "").trim())
+        .map((v) => ({
+          hostPath: `${stackFilesDir(hit.slug)}/${v.projectPath!.trim()}`,
+          mountPath: v.mountPath,
+        })),
     ],
     // A file mount lands as a project file, not a bind, and the panel handed over
     // its CONTENT with the configuration - so nothing here is missing it.
@@ -540,6 +533,13 @@ export async function planMigrationDataMove(
       singleData: landed.targetKind === "database",
     });
     const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
+    const owners = binds.length
+      ? await hostPathOwners(landed.targetServerId, landed.targetId)
+      : [];
+    const shared = binds.flatMap((b) => {
+      const clash = owners.find((o) => pathsOverlap(o.path, b.targetPath));
+      return clash ? [sharedPathNote(clash, b.targetPath)] : [];
+    });
     // Said HERE, before anything is stopped: a machine Deplo cannot read is a machine
     // whose data cannot move at all, and the review screen is where that has to be read
     // - not the cutover, with the old platform already down.
@@ -580,6 +580,7 @@ export async function planMigrationDataMove(
         ...state.notes,
         ...paired.notes,
         ...unfilledStackBinds(landed, binds),
+        ...shared,
         ...(reachable
           ? []
           : [
@@ -589,6 +590,59 @@ export async function planMigrationDataMove(
     });
   }
   return out;
+}
+
+/**
+ * Which OTHER app on one machine mounts a host path. Cross-team on purpose: a bind
+ * is a path on the box, and the copy WIPES its target before writing - two apps that
+ * both mount /opt/data is all it takes for the second migration to erase the first.
+ */
+async function hostPathOwners(
+  serverId: string | null | undefined,
+  exceptAppId: string,
+): Promise<{ appId: string; name: string; path: string }[]> {
+  if (!serverId) return [];
+  const rows = await getDb()
+    .select({
+      id: appsTable.id,
+      name: appsTable.name,
+      slug: appsTable.slug,
+      compose: appsTable.compose,
+    })
+    .from(appsTable)
+    .where(eq(appsTable.serverId, serverId));
+  const mine = rows.filter((r) => r.id !== exceptAppId);
+  if (mine.length === 0) return [];
+  const mounts = await getDb()
+    .select({
+      appId: appVolumesTable.appId,
+      hostPath: appVolumesTable.hostPath,
+    })
+    .from(appVolumesTable)
+    .where(eq(appVolumesTable.type, "host"));
+  const named = new Map(mine.map((r) => [r.id, r.name] as const));
+  const out: { appId: string; name: string; path: string }[] = [];
+  for (const m of mounts) {
+    const name = named.get(m.appId);
+    if (name && (m.hostPath ?? "").trim())
+      out.push({ appId: m.appId, name, path: normalizePath(m.hostPath!) });
+  }
+  for (const r of mine)
+    for (const h of composeHostMounts(r.compose ?? "", stackFilesDir(r.slug)))
+      out.push({ appId: r.id, name: r.name, path: normalizePath(h.hostPath) });
+  return out;
+}
+
+/** Equal, inside, or containing: any of the three and a wipe takes the other one out. */
+function pathsOverlap(a: string, b: string): boolean {
+  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+function sharedPathNote(
+  owner: { name: string; path: string },
+  targetPath: string,
+): string {
+  return `${targetPath} is also mounted by ${owner.name} on this machine (${owner.path}). Copying into it would erase what that app has there, so nothing was written - give one of them its own directory, then copy the data again.`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -833,6 +887,9 @@ async function runMoveMigrationServiceData(
   // A bind mount's bytes sit in a plain host directory, so copying one reads and
   // writes an arbitrary path on two machines.
   const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
+  const bindOwners = binds.length
+    ? await hostPathOwners(landed.targetServerId, landed.targetId)
+    : [];
   // One nothing here mounts. Silent, this read as a stack that came across whole,
   // with an empty directory inside it.
   for (const m of state.hostMounts)
@@ -1131,6 +1188,28 @@ async function runMoveMigrationServiceData(
           targetKind: landed.targetKind,
           targetId: landed.targetId,
           message: `${bind.sourcePath} is a host directory (mounted at ${bind.mountPath}). Copying one needs instance admin and the host-volumes permission, so its contents did not come over.`,
+        });
+        continue;
+      }
+      // Another app on this machine mounts that path. The copy wipes before it
+      // writes, so going ahead would erase a stranger's data and report a clean
+      // run - the one place Deplo was seen losing data without saying so.
+      const clash = bindOwners.find((o) =>
+        pathsOverlap(o.path, bind.targetPath),
+      );
+      if (clash) {
+        notCopied++;
+        const message = sharedPathNote(clash, bind.targetPath);
+        notes.push(message);
+        lost.push(`${bind.sourcePath} (${bind.mountPath}): ${message}`);
+        await appendRunItem(input.runId, panel, {
+          path,
+          sourceKind: "volume",
+          sourceName: bind.sourcePath,
+          outcome: "manual",
+          targetKind: landed.targetKind,
+          targetId: landed.targetId,
+          message,
         });
         continue;
       }

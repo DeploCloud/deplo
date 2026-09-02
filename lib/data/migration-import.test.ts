@@ -479,6 +479,54 @@ test("a Dokploy machine Deplo already manages is recognised by its address", asy
   );
 });
 
+test("a machine nothing has ever dialed is asked, not assumed", async () => {
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  // What a freshly enrolled agent looks like: green from its own call-home, which
+  // is OUTBOUND, with nothing having ever dialed it back.
+  await db
+    .update(serversTable)
+    .set({
+      ip: "dokploy.acme.test",
+      host: "dokploy.acme.test",
+      status: "online",
+      statusCheckedAt: null,
+    })
+    .where(eq(serversTable.id, SERVER_1));
+
+  const dialed: string[] = [];
+  const answer = (ok: boolean) =>
+    __setAgentConnectorForTest(async (id) => {
+      dialed.push(id);
+      if (!ok) throw new Error("14 UNAVAILABLE: No connection established");
+      return {
+        hello: async () => ({ contractVersion: 1, capabilities: [] }),
+        close: () => {},
+      } as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >;
+    });
+
+  answer(true);
+  const up = await asOwner(() => scanMigrationSource(CONNECT));
+  assert.equal(
+    up.servers.find((s) => s.sourceId === "")!.deploServerOnline,
+    true,
+  );
+  assert.deepEqual(dialed, [SERVER_1], "asked exactly once");
+
+  // The other direction: online on the row, and the port Deplo dials is shut.
+  dialed.length = 0;
+  answer(false);
+  const down = await asOwner(() => scanMigrationSource(CONNECT));
+  assert.equal(
+    down.servers.find((s) => s.sourceId === "")!.deploServerOnline,
+    false,
+  );
+
+  __setAgentConnectorForTest();
+});
+
 test("a machine already registered as a MIGRATION SOURCE is still recognised", async () => {
   // The regression that would break every volume copy in silence: the source machine
   // is excluded from every picker, so an over-eager filter here would stop matching
@@ -860,10 +908,13 @@ test("a project lands complete: project, environment, apps, variables", async ()
     "OLD_ADDRESS_URL",
     "QUEUE_DSN",
   ]);
-  for (const e of byKey.values()) assert.equal(e.type, "plain", e.key);
+  // A name that says it holds a credential is masked; everything else stays
+  // readable, `..._URL` and `..._DSN` included.
+  for (const e of byKey.values())
+    assert.equal(e.type, e.key === "LEGACY_TOKEN" ? "secret" : "plain", e.key);
   assert.ok(
-    !(await asOwner(() => getMigrationRun(runId)))!.items.some((i) =>
-      (i.message ?? "").includes("arrived as secrets"),
+    (await asOwner(() => getMigrationRun(runId)))!.items.some((i) =>
+      (i.message ?? "").includes("LEGACY_TOKEN came across masked"),
     ),
   );
 
@@ -1314,8 +1365,8 @@ test("a project's and an environment's own variables become shared variables", a
     "ENV_LEVEL",
     "SHARED_TOKEN",
   ]);
-  // The source panel has no secrets, so a shared variable stays readable too.
-  assert.equal(shared.find((s) => s.key === "SHARED_TOKEN")!.type, "plain");
+  // A shared variable is read the same way an app's own one is.
+  assert.equal(shared.find((s) => s.key === "SHARED_TOKEN")!.type, "secret");
   assert.equal(shared.find((s) => s.key === "ENV_LEVEL")!.type, "plain");
 });
 

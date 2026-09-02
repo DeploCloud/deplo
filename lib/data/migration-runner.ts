@@ -604,11 +604,14 @@ async function runConfigPhase(row: RunRow, c: RunCredential): Promise<void> {
   // of its creating in an earlier process, and a local count would call that
   // nothing.
   const [after] = await getDb()
-    .select({ created: runsTable.created })
+    .select({ created: runsTable.created, skipped: runsTable.skipped })
     .from(runsTable)
     .where(eq(runsTable.id, row.id))
     .limit(1);
-  if ((after?.created ?? 0) === 0)
+  // A skip is a service that is ALREADY here, which is what running the import a
+  // second time looks like - and that is the way to bring newer data across. Read
+  // as nothing, it reverted the run and took the agent off the source with it.
+  if ((after?.created ?? 0) === 0 && (after?.skipped ?? 0) === 0)
     throw new Error(
       "Nothing came across, so Deplo stopped before touching any data. The report says what refused.",
     );

@@ -32,7 +32,7 @@ const SOURCE = /* GraphQL */ `
 `;
 
 const PLAN = /* GraphQL */ `
-  query PlanRecopy($input: MigrationConnectInput!, $runId: String!) {
+  mutation PlanRecopy($input: MigrationSourceInput!, $runId: String!) {
     planMigrationDataMove(input: $input, runId: $runId) {
       sourceId
       sourceName
@@ -51,7 +51,7 @@ const PLAN = /* GraphQL */ `
 
 const MOVE = /* GraphQL */ `
   mutation MoveOneServiceData(
-    $input: MigrationConnectInput!
+    $input: MigrationSourceInput!
     $runId: String!
     $sourceKind: String!
     $sourceId: String!

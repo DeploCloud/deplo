@@ -290,7 +290,7 @@ test("coolifyMounts sends each storage down the channel that can carry it", () =
   });
 
   assert.deepEqual(
-    mounts.map((m) => [m.type, m.hostPath ?? m.filePath]),
+    mounts.map((m) => [m.type, m.type === "file" ? m.filePath : m.hostPath]),
     [
       ["file", "nginx.conf"],
       ["bind", "/srv/site/data"],
@@ -1013,4 +1013,19 @@ test("a member's role comes off the membership row Coolify sends with them", () 
   );
   // Nothing there is still nothing invented.
   assert.equal(coolifyMember({ id: 4, email: "b@acme.test" }).role, null);
+});
+
+test("a file storage says where it is on the host", () => {
+  const { mounts } = coolifyMounts({
+    file_storages: [
+      {
+        uuid: "f1",
+        fs_path: "/srv/mxb1/single.conf",
+        mount_path: "/srv/mxb1/single.conf",
+        content: "a = 1",
+      },
+    ],
+  });
+  assert.equal(mounts[0]!.type, "file");
+  assert.equal(mounts[0]!.hostPath, "/srv/mxb1/single.conf");
 });

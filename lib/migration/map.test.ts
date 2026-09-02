@@ -2720,3 +2720,66 @@ test("a key that merely ENDS in host is not a hostname", () => {
   );
   assert.match(out.compose, /GHOST: db/);
 });
+
+test("mapMounts keeps the panel's own files dir out of a stack's Storage", () => {
+  const compose = `services:\n  app:\n    image: nginx\n    volumes:\n      - ./content:/usr/share/nginx/html\n`;
+  const { value } = mapMounts(
+    [
+      {
+        mountId: "m1",
+        type: "bind",
+        hostPath: "/data/coolify/services/abc123/content",
+        mountPath: "/usr/share/nginx/html",
+      },
+    ],
+    { isCompose: true, compose },
+  );
+  assert.deepEqual(value.volumes, []);
+});
+
+test("mapMounts lands a panel files dir as an app file mount, not a host bind", () => {
+  const { value } = mapMounts(
+    [
+      {
+        mountId: "m1",
+        type: "bind",
+        hostPath: "/data/coolify/applications/abc123/content",
+        mountPath: "/app/content",
+      },
+      {
+        mountId: "m2",
+        type: "bind",
+        hostPath: "/srv/shared",
+        mountPath: "/app/shared",
+      },
+    ],
+    { isCompose: false },
+  );
+  assert.equal(value.volumes.length, 2);
+  assert.equal(value.volumes[0]!.type, "app");
+  assert.equal(value.volumes[0]!.projectPath, "content");
+  assert.equal(value.volumes[1]!.type, "host");
+  assert.equal(value.volumes[1]!.hostPath, "/srv/shared");
+});
+
+test("a stack's config file on a real host path travels as a bind", () => {
+  const compose = `services:\n  app:\n    image: nginx\n    volumes:\n      - /srv/mxb1/single.conf:/etc/app/single.conf\n`;
+  const file = {
+    mountId: "f1",
+    type: "file" as const,
+    hostPath: "/srv/mxb1/single.conf",
+    filePath: "single.conf",
+    content: "a = 1",
+    mountPath: "/etc/app/single.conf",
+  };
+  const stack = mapMounts([file], { isCompose: true, compose });
+  assert.deepEqual(stack.value.files, []);
+  assert.equal(stack.value.volumes[0]!.type, "host");
+  assert.equal(stack.value.volumes[0]!.hostPath, "/srv/mxb1/single.conf");
+
+  // An application is the other way round: Deplo writes the file into its own
+  // Files dir and mounts it from there.
+  const app = mapMounts([file], { isCompose: false });
+  assert.equal(app.value.files[0]!.filePath, "single.conf");
+  assert.equal(app.value.volumes[0]!.type, "app");
+});

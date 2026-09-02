@@ -438,6 +438,9 @@ export function coolifyMounts(
     mounts.push({
       mountId: f.uuid ?? `cool-file-${n++}`,
       type: "file",
+      // Where it really is on the host. A stack binds that path verbatim, so the
+      // config channel would leave the compose pointing at a path nothing filled.
+      hostPath,
       filePath: mountPath.split("/").pop() || null,
       content: f.content,
       mountPath,

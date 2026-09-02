@@ -1694,3 +1694,72 @@ test("the data phase never names a product (ADR-0026)", async () => {
   );
   assert.doesNotMatch(source, /Dokploy|Coolify/);
 });
+
+test("a bind another team's app also mounts is not wiped", async () => {
+  await seedMigrationHostServer();
+  // The same host directory, claimed by an app in ANOTHER team on the machine
+  // that receives the copy. Two migrations of two apps that both mount /opt/data
+  // is all it takes, and the copy wipes before it writes.
+  await seedApp(db, {
+    id: "prj_squatter",
+    teamId: TEAM_B,
+    slug: "squatter",
+  });
+  await db.execute(
+    "update apps set name = 'squatter' where id = 'prj_squatter'",
+  );
+  await db.insert(appVolumesTable).values({
+    appId: "prj_squatter",
+    position: 0,
+    volumeId: "vol_squat",
+    type: "host",
+    name: "config",
+    service: null,
+    projectPath: null,
+    hostPath: "/etc/dokploy/x",
+    mountPath: "/app/config.json",
+    readOnly: false,
+    propagation: null,
+  });
+  const runId = await openRun();
+
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
+  const web = plan.find((s) => s.sourceName === "blink-web");
+  assert.ok(
+    web!.notes.some((n) => n.includes("squatter")),
+    `the review screen has to say it first: ${web!.notes.join(" | ")}`,
+  );
+
+  agentCalls = [];
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.equal(
+    res.moved,
+    1,
+    "the named volume travels, the shared bind does not",
+  );
+  assert.equal(res.failed, 1, "and it counts as data that did not arrive");
+  assert.equal(
+    hostPaths[SERVER_1],
+    undefined,
+    "nothing on the host was written",
+  );
+  assert.ok(
+    !agentCalls.some((c) => c.startsWith(`${SERVER_1}:wipe-path`)),
+    agentCalls.join(" | "),
+  );
+  const items = await db.execute(
+    "select outcome, message from migration_run_items where message like '%squatter%'",
+  );
+  assert.ok(items.rows.length >= 1, "the report has to name the other app");
+  assert.ok(items.rows.every((r) => r.outcome === "manual"));
+});

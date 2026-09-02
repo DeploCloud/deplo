@@ -199,10 +199,25 @@ import { assertDataCopyIntact } from "./data-copy";
  *
  * For a variable somebody TYPES. Wrong-way-safe by design: a plain value marked
  * secret is only hidden, a secret marked plain is readable at the `view` floor.
- * A bulk import overrules it and writes everything plain (`CreateAppInput.env`
- * carries the type) - guessing at scale masks values whoever ran the migration
- * still has to check against the platform they came from.
+ * An import uses `importedEnvType` instead, which is narrower.
  */
+/**
+ * The same question for a BULK import, answered more narrowly.
+ *
+ * A credential the other platform held encrypted must not land readable at the
+ * `view` floor, and 27 of them did. `isSecretKey` is too wide for this: it also
+ * catches every `..._URL` and `..._API_...`, and a secret is immutable and is
+ * dropped from a fork's preview, so over-masking breaks working apps.
+ */
+export function importedEnvType(key: string): "plain" | "secret" {
+  if (!isSecretKey(key)) return "plain";
+  return /(pass(word|wd|phrase)?|secret|token|credentials?|salt|(^|[^a-z])(api|private|access|signing|encryption|licen[cs]e|secret)[^a-z]?key)([^a-z]|$)/i.test(
+    key,
+  )
+    ? "secret"
+    : "plain";
+}
+
 export function isSecretKey(key: string): boolean {
   // A name that announces itself as public is not a secret, whatever else it
   // says. These prefixes are the framework conventions for "this value is

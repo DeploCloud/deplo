@@ -10,6 +10,7 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { Sparkline } from "@/components/monitoring/sparkline";
 import type { ServerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { agentUpdateAvailable } from "@/lib/version";
 
 export interface FleetRow {
   serverId: string;
@@ -133,7 +134,7 @@ export function FleetList({
             const outdated = Boolean(
               row?.expectedAgentVersion &&
               row.agentVersion &&
-              row.agentVersion !== row.expectedAgentVersion,
+              agentUpdateAvailable(row.agentVersion, row.expectedAgentVersion),
             );
             return (
               <li

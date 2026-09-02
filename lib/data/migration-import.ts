@@ -33,6 +33,7 @@ import {
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { mapLimit } from "../utils";
+import { sourceAgentReachable } from "./agent-reach";
 import { getCurrentUser } from "../auth";
 import { avatarResolver } from "../avatar";
 import {
@@ -117,6 +118,7 @@ import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
 import {
   createApp,
+  importedEnvType,
   setAppPorts,
   setAppVolumes,
   updateAppHealthCheck,
@@ -861,7 +863,7 @@ export async function scanMigrationSource(
     sourceUrl: c.baseUrl,
     orgName,
     projects: planned,
-    servers: await planMachines(c, teamId, servers),
+    servers: await planMachines(c, teamId, servers, { probe: true }),
     members: await planMembers(c, teamId),
   };
 }
@@ -1072,11 +1074,15 @@ async function planMachines(
   c: SourceCredential,
   teamId: string,
   servers: { serverId: string; name: string; ipAddress?: string | null }[],
+  /** Dial the agents whose reachability nothing has ever measured. The wizard's
+   *  readiness needs it; a caller that only wants the id mapping does not. */
+  opts: { probe?: boolean } = {},
 ): Promise<PlanServer[]> {
   // Migration sources stay in this list on purpose: matching a machine to the
   // agent that can read its disks is the ONE lookup they exist for, and a second
   // pass of the same import has to find the one the first pass registered.
   const mine = (await listServersForTeam(teamId)).filter((s) => !s.storageOnly);
+  const byId = new Map(mine.map((s) => [s.id, s] as const));
   const self = deploHostSelfAddresses();
   const remembered = await rememberedAddresses(teamId, c.baseUrl);
   const at = (address: string | null) => {
@@ -1093,22 +1099,7 @@ async function planMachines(
       (isDeploHostServer({ ip: a, host: a }, self)
         ? mine.find((s) => isDeploHostServer(s, self))
         : undefined);
-    return hit
-      ? {
-          deploServerId: hit.id,
-          deploServerName: hit.name,
-          // The row is still MATCHED either way - that is what stops a second
-          // attempt registering the same address twice - but only an agent that
-          // answers means the machine is ready to be read.
-          //
-          // `status` alone is not that: it goes green on the agent's own CALL-HOME,
-          // which is outbound and proves nothing about the direction a copy needs.
-          // `statusCheckedAt` is only ever written by a probe that DIALED the agent,
-          // so the two together are the one honest reading of "Deplo can reach it".
-          deploServerOnline:
-            hit.status === "online" && Boolean(hit.statusCheckedAt),
-        }
-      : null;
+    return hit ? { deploServerId: hit.id, deploServerName: hit.name } : null;
   };
 
   let ownAddress: string | null = null;
@@ -1130,15 +1121,54 @@ async function planMachines(
       ipAddress: address,
       deploServerId: null as string | null,
       deploServerName: null as string | null,
-      deploServerOnline: false,
       ...(at(address) ?? at(derived) ?? {}),
     };
   };
 
-  return [
+  const rows = [
     machine("", `The ${sourceClient(c).displayName} host`, ownAddress),
     ...servers.map((s) => machine(s.serverId, s.name, s.ipAddress ?? null)),
   ];
+
+  // The row is MATCHED either way - that is what stops a second attempt
+  // registering the same address twice - but only an agent that ANSWERS means the
+  // machine is ready to be read.
+  //
+  // `status` alone is not that: it goes green on the agent's own CALL-HOME, which
+  // is outbound and proves nothing about the direction a copy needs - behind a CDN
+  // it read online while the port Deplo dials was never open. `statusCheckedAt` is
+  // written only by a probe that DIALED the agent, so where there is one, it is the
+  // answer. Where there is none - every freshly enrolled agent, which is every
+  // machine this wizard just installed on - nothing had ever asked, and the step
+  // sat on "not online" for a host that was answering fine. So ask, once.
+  const unproven = opts.probe
+    ? [
+        ...new Set(
+          rows
+            .filter(
+              (m) =>
+                m.deploServerId && !byId.get(m.deploServerId)?.statusCheckedAt,
+            )
+            .map((m) => m.deploServerId!),
+        ),
+      ]
+    : [];
+  const answered = new Map<string, boolean>();
+  await mapLimit(unproven, 4, async (id) => {
+    answered.set(id, await sourceAgentReachable(id));
+  });
+
+  return rows.map((m) => {
+    const hit = m.deploServerId ? byId.get(m.deploServerId) : null;
+    return {
+      ...m,
+      deploServerOnline: hit
+        ? hit.statusCheckedAt
+          ? hit.status === "online"
+          : (answered.get(hit.id) ?? false)
+        : false,
+    };
+  });
 }
 
 /** What to call an imported person. Dokploy's `name` column is their ACCOUNT - the
@@ -1389,7 +1419,10 @@ async function removeMigrationSources(
  */
 async function hasStrandedVolume(runId: string): Promise<boolean> {
   const failedVolume = await getDb()
-    .select({ id: itemsTable.id })
+    .select({
+      targetKind: itemsTable.targetKind,
+      targetId: itemsTable.targetId,
+    })
     .from(itemsTable)
     .where(
       and(
@@ -1397,9 +1430,7 @@ async function hasStrandedVolume(runId: string): Promise<boolean> {
         eq(itemsTable.sourceKind, "volume"),
         eq(itemsTable.outcome, "failed"),
       ),
-    )
-    .limit(1);
-  if (failedVolume.length > 0) return true;
+    );
 
   const rows = await getDb()
     .select({
@@ -1415,6 +1446,32 @@ async function hasStrandedVolume(runId: string): Promise<boolean> {
         .map((r) => r.targetId!),
     ),
   ];
+  // A report line is HISTORY. The marker on the resource is the current state, and
+  // a recopy clears it - read the line alone and one failure held the agent on the
+  // source machine for good, with no way in the UI to say the data had arrived.
+  const stillMarked = async (kind: string, ids: string[]): Promise<boolean> => {
+    if (ids.length === 0) return false;
+    const table = kind === "app" ? appsTable : databasesTable;
+    const hit = await getDb()
+      .select({ id: table.id })
+      .from(table)
+      .where(and(inArray(table.id, ids), ne(table.dataCopyError, "")))
+      .limit(1);
+    return hit.length > 0;
+  };
+  for (const kind of ["app", "database"]) {
+    const ids = [
+      ...new Set(
+        failedVolume
+          .filter((r) => r.targetKind === kind && r.targetId)
+          .map((r) => r.targetId!),
+      ),
+    ];
+    if (await stillMarked(kind, ids)) return true;
+  }
+  // A failed line that names no target at all: nothing can clear it, so it stands.
+  if (failedVolume.some((r) => !r.targetId)) return true;
+
   const appIds = idsOf("app");
   if (appIds.length > 0) {
     const hit = await getDb()
@@ -2610,7 +2667,15 @@ async function importAppService(
     rows,
     new Map([...home.shared].map(([k, v]) => [k, v.value] as const)),
   );
-  const env = rows.map((e) => ({ ...e, type: "plain" as const }));
+  // A credential the panel held encrypted must not land readable at the `view`
+  // floor. Narrow on purpose (`importedEnvType`): a secret cannot be edited and a
+  // fork's preview drops it, so a wrong guess breaks a working app.
+  const env = rows.map((e) => ({ ...e, type: importedEnvType(e.key) }));
+  const masked = env.filter((e) => e.type === "secret").map((e) => e.key);
+  if (masked.length > 0)
+    notes.push(
+      `${masked.join(", ")} came across masked, because the name says it holds a credential. Open one and press Make it plain if it does not.`,
+    );
   const aliased = refs.filter(
     (r) => r.whole && r.key !== r.sharedKey && home.shared.has(r.sharedKey),
   );
@@ -3823,7 +3888,7 @@ async function importSharedVars(
       const varId = await saveSharedVar({
         key,
         value,
-        type: "plain",
+        type: importedEnvType(key),
         teamIds: opts.teamWide ? [opts.teamId] : [],
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
