@@ -131,15 +131,16 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
   return {
     method: b.buildMethod,
     port: b.port ?? 0,
-    // The wire field is a proto3 string, so it cannot carry the difference
-    // between NULL ("work it out") and "" ("run nothing"). Both arrive as "",
-    // which the agent reads as "detect" - the safe direction: an agent that
-    // cannot be told to skip a step never skips one by accident. Carrying the
-    // distinction to nixpacks and railpack needs a field of its own.
+    // A proto3 string cannot carry the difference between NULL ("work it out")
+    // and "" ("run nothing"), so the two booleans below say it instead. The
+    // strings stay as they were: an agent without `build.skip_steps` reads "" as
+    // detect, which is the safe direction.
     installCommand: b.installCommand ?? "",
     buildCommand: b.buildCommand ?? "",
     startCommand: b.startCommand ?? "",
     outputDirectory: b.outputDirectory ?? "",
+    skipInstall: b.installCommand === "",
+    skipBuild: b.buildCommand === "",
     runtimeVersion,
     runtimeLanguage: runtimeVersion ? "node" : "",
     nixpacksPublishDirectory:
@@ -251,6 +252,23 @@ export async function runAgentDeploy(opts: {
       "This server's agent is too old to force a fresh container, if nothing about the " +
         "stack changed, the running container is kept. Update the agent (reissue the install " +
         "command from the server's actions menu).",
+    );
+  }
+  // Skipping a step is a deliberate instruction too, and an agent that drops it
+  // BUILDS instead - a working image, but not the one that was asked for.
+  const plannedBuild =
+    opts.plan.kind === "dockerfile" || opts.plan.kind === "git"
+      ? opts.plan.build
+      : null;
+  if (
+    (plannedBuild?.installCommand === "" ||
+      plannedBuild?.buildCommand === "") &&
+    !hello.capabilities.includes("build.skip_steps")
+  ) {
+    opts.sink.log(
+      "warn",
+      "This server's agent is too old to skip an install or build step - it is detecting " +
+        "one instead. Update the agent (reissue the install command from the server's actions menu).",
     );
   }
   // Same reasoning, louder: extra compose flags are a deliberate instruction, so

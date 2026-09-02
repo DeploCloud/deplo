@@ -570,6 +570,15 @@ export interface BuildSpec {
    * index.html) (methodSettings.staticSinglePageApp).
    */
   staticSinglePageApp: boolean;
+  /**
+   * Run NO install / build step, as opposed to letting the method detect one.
+   * The command strings above cannot carry this: "" already means "detect", so
+   * the control plane's NULL and its empty string would arrive identical.
+   * Advertised as the `build.skip_steps` capability in Hello; an agent without
+   * it detects, which is the safe direction.
+   */
+  skipInstall: boolean;
+  skipBuild: boolean;
 }
 
 /**
@@ -3305,6 +3314,8 @@ function createBaseBuildSpec(): BuildSpec {
     herokuVersion: "",
     railpackVersion: "",
     staticSinglePageApp: false,
+    skipInstall: false,
+    skipBuild: false,
   };
 }
 
@@ -3345,6 +3356,12 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     }
     if (message.staticSinglePageApp !== false) {
       writer.uint32(96).bool(message.staticSinglePageApp);
+    }
+    if (message.skipInstall !== false) {
+      writer.uint32(104).bool(message.skipInstall);
+    }
+    if (message.skipBuild !== false) {
+      writer.uint32(112).bool(message.skipBuild);
     }
     return writer;
   },
@@ -3452,6 +3469,22 @@ export const BuildSpec: MessageFns<BuildSpec> = {
           message.staticSinglePageApp = reader.bool();
           continue;
         }
+        case 13: {
+          if (tag !== 104) {
+            break;
+          }
+
+          message.skipInstall = reader.bool();
+          continue;
+        }
+        case 14: {
+          if (tag !== 112) {
+            break;
+          }
+
+          message.skipBuild = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3515,6 +3548,16 @@ export const BuildSpec: MessageFns<BuildSpec> = {
         : isSet(object.static_single_page_app)
         ? globalThis.Boolean(object.static_single_page_app)
         : false,
+      skipInstall: isSet(object.skipInstall)
+        ? globalThis.Boolean(object.skipInstall)
+        : isSet(object.skip_install)
+        ? globalThis.Boolean(object.skip_install)
+        : false,
+      skipBuild: isSet(object.skipBuild)
+        ? globalThis.Boolean(object.skipBuild)
+        : isSet(object.skip_build)
+        ? globalThis.Boolean(object.skip_build)
+        : false,
     };
   },
 
@@ -3556,6 +3599,12 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     if (message.staticSinglePageApp !== false) {
       obj.staticSinglePageApp = message.staticSinglePageApp;
     }
+    if (message.skipInstall !== false) {
+      obj.skipInstall = message.skipInstall;
+    }
+    if (message.skipBuild !== false) {
+      obj.skipBuild = message.skipBuild;
+    }
     return obj;
   },
 
@@ -3576,6 +3625,8 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     message.herokuVersion = object.herokuVersion ?? "";
     message.railpackVersion = object.railpackVersion ?? "";
     message.staticSinglePageApp = object.staticSinglePageApp ?? false;
+    message.skipInstall = object.skipInstall ?? false;
+    message.skipBuild = object.skipBuild ?? false;
     return message;
   },
 };
