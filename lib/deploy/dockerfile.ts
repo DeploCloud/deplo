@@ -17,6 +17,10 @@ export function generateDockerfile(
     (build.runtimeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
   const root = (build.rootDirectory || ".").replace(/^\.?\/?/, "") || ".";
   const workdir = root === "." || root === "" ? "/app" : `/app/${root}`;
+  // NULL is "work it out", an EMPTY STRING is "run nothing here" (migration 0147).
+  // A container has to start something, so an empty start command is the former.
+  const skipInstall = build.installCommand === "";
+  const skipBuild = build.buildCommand === "";
   const installOverride = build.installCommand?.trim();
   const buildCmd = build.buildCommand?.trim();
   const start = build.startCommand?.trim() || "node server.js";
@@ -33,19 +37,23 @@ export function generateDockerfile(
     lines.push(`ARG ${key}`, `ENV ${key}=$${key}`);
   }
 
-  if (installOverride) {
+  if (skipInstall) {
+    // Asked for no install at all: the image is whatever the repo already holds.
+    lines.push(`COPY . .`);
+    if (buildCmd && !skipBuild) lines.push(`RUN ${buildCmd}`);
+  } else if (installOverride) {
     // Custom install: it may reference source files, so keep the whole tree
     // available (copy-everything-first, as before). No cache-splitting and no
     // dev-dep forcing - the user owns this command verbatim.
     lines.push(`COPY . .`, `RUN ${installOverride}`);
-    if (buildCmd) lines.push(`RUN ${buildCmd}`);
+    if (buildCmd && !skipBuild) lines.push(`RUN ${buildCmd}`);
   } else {
     // Default path: manifests → install (cached across code changes) → source →
     // build. Only the dependency descriptors are copied before the install so
     // the install layer's cache key is the lockfile, not the whole repo.
     lines.push(`COPY ${MANIFEST_GLOBS} ./`, ...AUTO_INSTALL_RUN);
     lines.push(`COPY . .`);
-    if (buildCmd) lines.push(`RUN ${buildCmd}`);
+    if (buildCmd && !skipBuild) lines.push(`RUN ${buildCmd}`);
   }
 
   lines.push(`EXPOSE ${port}`, `CMD ${toExecForm(start)}`);

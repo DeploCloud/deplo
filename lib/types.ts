@@ -653,10 +653,16 @@ export interface BuildConfig {
    * cache-less exactly once).
    */
   buildCacheClearPending: boolean;
-  installCommand: string;
-  buildCommand: string;
-  outputDirectory: string;
-  startCommand: string;
+  /**
+   * The four overridable commands. NULL is "Deplo works it out" - the builder
+   * detects it. An EMPTY STRING is a deliberate "run nothing here". They were
+   * one value until migration 0147, so a `?? ""` anywhere below is how the
+   * distinction quietly dies.
+   */
+  installCommand: string | null;
+  buildCommand: string | null;
+  outputDirectory: string | null;
+  startCommand: string | null;
   /**
    * Pinned runtime version, interpreted per language by the builder; empty means
    * "use the builder's default".

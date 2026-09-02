@@ -13,9 +13,11 @@ function build(overrides: Partial<BuildConfig> = {}): BuildConfig {
     skipUnchangedDeployments: false,
     buildCache: true,
     buildCacheClearPending: false,
-    installCommand: "",
+    // null is "Deplo works it out". An empty string would mean "run nothing",
+    // which is a different test.
+    installCommand: null,
     buildCommand: "npm run build",
-    outputDirectory: "",
+    outputDirectory: null,
     startCommand: "node server.js",
     runtimeVersion: "",
     port: 3000,
@@ -66,7 +68,7 @@ test("dockerfileEnvKeys drops non-identifier names, dedupes and sorts", () => {
  * cached install layer instead of reinstalling from scratch - the fix for builds
  */
 test("default path installs from manifests BEFORE copying the source", () => {
-  const df = generateDockerfile(build({ installCommand: "" }));
+  const df = generateDockerfile(build({ installCommand: null }));
   const manifestCopy = df.indexOf("COPY package.json ");
   const installRun = df.indexOf("RUN if [ -f pnpm-lock.yaml ]");
   const sourceCopy = df.indexOf("COPY . .");
@@ -156,4 +158,49 @@ test("manifest COPY anchors on package.json with wildcard lockfiles", () => {
     df,
     /COPY package\.json package-lock\.json\* npm-shrinkwrap\.json\* pnpm-lock\.yaml\* pnpm-workspace\.yaml\* \.npmrc\* \.\//,
   );
+});
+
+/* ------------------------------------------------------------------ *
+ * null works it out, "" runs nothing (migration 0147)
+ * ------------------------------------------------------------------ */
+
+test("a null build command leaves the builder to work it out", () => {
+  const df = generateDockerfile(build({ buildCommand: null }), []);
+  // The default install still runs; there is simply no build RUN of our own.
+  assert.match(df, /npm ci --include=dev/);
+  assert.doesNotMatch(df, /^RUN npm run build$/m);
+});
+
+test("an empty build command runs no build step at all", () => {
+  const df = generateDockerfile(build({ buildCommand: "" }), []);
+  assert.doesNotMatch(df, /RUN npm run build/);
+  // Dependencies are still installed: skipping the BUILD is not skipping the install.
+  assert.match(df, /npm ci --include=dev/);
+});
+
+test("an empty install command installs nothing, and still builds", () => {
+  const df = generateDockerfile(
+    build({ installCommand: "", buildCommand: "npm run build" }),
+    [],
+  );
+  assert.doesNotMatch(df, /npm ci --include=dev/);
+  assert.doesNotMatch(df, /COPY package.json/);
+  assert.match(df, /RUN npm run build/);
+});
+
+test("both empty leaves the repo exactly as it arrived", () => {
+  const df = generateDockerfile(
+    build({ installCommand: "", buildCommand: "" }),
+    [],
+  );
+  assert.doesNotMatch(df, /npm ci --include=dev/);
+  assert.doesNotMatch(df, /RUN npm run build/);
+  assert.match(df, /COPY \. \./);
+  // A container has to start something, so the start command is untouched.
+  assert.match(df, /CMD .*node server\.js/);
+});
+
+test("an empty start command is not a skip - a container must start something", () => {
+  const df = generateDockerfile(build({ startCommand: "" }), []);
+  assert.match(df, /CMD .*node server\.js/);
 });

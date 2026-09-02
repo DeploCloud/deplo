@@ -38,10 +38,12 @@ export function buildConfigFor(
     skipUnchangedDeployments: false,
     buildCache: true,
     buildCacheClearPending: false,
-    installCommand: "",
-    buildCommand: "",
-    outputDirectory: "",
-    startCommand: "",
+    // NULL, not "": a new app lets the builder work these out. An empty string
+    // would mean "run nothing", and every new app would skip its own install.
+    installCommand: null,
+    buildCommand: null,
+    outputDirectory: null,
+    startCommand: null,
     runtimeVersion: "",
     port: 3000,
     ...overrides,

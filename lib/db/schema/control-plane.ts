@@ -950,10 +950,12 @@ export const appBuild = pgTable("app_build", {
   buildCacheClearPending: boolean("build_cache_clear_pending")
     .notNull()
     .default(false),
-  installCommand: text("install_command").notNull(),
-  buildCommand: text("build_command").notNull(),
-  outputDirectory: text("output_directory").notNull(),
-  startCommand: text("start_command").notNull(),
+  // NULL is "Deplo works it out"; an empty string is "run nothing here". They
+  // were one value until migration 0147, and the deploy path reads both.
+  installCommand: text("install_command"),
+  buildCommand: text("build_command"),
+  outputDirectory: text("output_directory"),
+  startCommand: text("start_command"),
   runtimeVersion: text("runtime_version").notNull(),
   port: integer("port").notNull(),
 });

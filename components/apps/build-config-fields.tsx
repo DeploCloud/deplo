@@ -97,7 +97,7 @@ export function BuildConfigFields({
                 <Input
                   className="font-mono text-xs"
                   placeholder="(auto-detected)"
-                  value={build.buildCommand}
+                  value={build.buildCommand ?? ""}
                   onChange={(e) =>
                     setBuild((b) => ({ ...b, buildCommand: e.target.value }))
                   }
@@ -116,7 +116,7 @@ export function BuildConfigFields({
                 <Input
                   className="font-mono text-xs"
                   placeholder="(auto-detected)"
-                  value={build.startCommand}
+                  value={build.startCommand ?? ""}
                   onChange={(e) =>
                     setBuild((b) => ({ ...b, startCommand: e.target.value }))
                   }

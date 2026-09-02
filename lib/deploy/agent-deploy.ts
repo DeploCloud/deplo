@@ -131,6 +131,11 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
   return {
     method: b.buildMethod,
     port: b.port ?? 0,
+    // The wire field is a proto3 string, so it cannot carry the difference
+    // between NULL ("work it out") and "" ("run nothing"). Both arrive as "",
+    // which the agent reads as "detect" - the safe direction: an agent that
+    // cannot be told to skip a step never skips one by accident. Carrying the
+    // distinction to nixpacks and railpack needs a field of its own.
     installCommand: b.installCommand ?? "",
     buildCommand: b.buildCommand ?? "",
     startCommand: b.startCommand ?? "",
