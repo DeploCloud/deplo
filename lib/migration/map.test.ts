@@ -194,6 +194,43 @@ test("adaptComposeForDeplo removes Dokploy's network, declaration and every refe
   assert.equal("networks" in doc.services.worker, false);
 });
 
+test("adaptComposeForDeplo points a stack's storage at its own volumes", () => {
+  const source = [
+    "services:",
+    "  core:",
+    "    image: alpine",
+    "    volumes:",
+    "      - ext:/data/ext",
+    "      - dopts:/data/dopts",
+    "      - mine:/data/mine",
+    "volumes:",
+    "  ext:",
+    "    external: true",
+    "    name: r9-external-vol",
+    "  dopts:",
+    "    driver_opts:",
+    "      type: none",
+    "      device: /srv/r9-dopts",
+    "      o: bind",
+    "  mine:",
+  ].join("\n");
+
+  const { compose, changes } = adaptComposeForDeplo(source);
+  const doc = yaml.load(compose) as { volumes: Record<string, unknown> };
+  // Both pointed off the stack: at a volume by host name, and at a host path
+  // dressed as a volume. The copy writes THIS app's volume, so that is what the
+  // declaration has to be, or `compose up` fails on storage nobody wrote.
+  assert.equal(doc.volumes.ext, null);
+  assert.equal(doc.volumes.dopts, null);
+  // A volume the stack already owned is left exactly as it was.
+  assert.equal(doc.volumes.mine, null);
+  assert.equal(
+    changes.filter((c) => c.includes("outside this stack")).length,
+    2,
+  );
+  assert.ok(changes.some((c) => c.includes("/srv/r9-dopts on the server")));
+});
+
 test("adaptComposeForDeplo resolves the network by name, not by key", () => {
   const source = [
     "services:",

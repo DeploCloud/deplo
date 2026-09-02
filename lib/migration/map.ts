@@ -497,6 +497,7 @@ export function adaptComposeForDeplo(
     }
   }
 
+  localiseStackVolumes(root, changes);
   declareMissingVolumes(doc, root, mounted, changes);
 
   // The SAME `../files/x` rewrite, everywhere else a compose file can name a file
@@ -732,6 +733,39 @@ function trailingSlashOffVolume(source: string): string | null {
  * refused outright - "service X refers to undefined volume Y: invalid compose
  * project" - and the stack never starts.
  */
+/**
+ * A top-level volume that names storage OUTSIDE this stack - `external: true`, a
+ * pinned `name:`, or a `driver_opts` bind of a host path - is storage the
+ * destination does not have. The copy puts the bytes in the stack's OWN volume,
+ * so a declaration left pointing elsewhere fails `compose up` on a volume nobody
+ * ever wrote, with the data sitting one name away.
+ */
+function localiseStackVolumes(root: YAMLMap, changes: string[]): void {
+  const declared = root.get("volumes", true);
+  if (!isMap(declared)) return;
+  for (const item of declared.items) {
+    const body = item.value;
+    if (!isMap(body)) continue;
+    const pinned = stringScalar(body, "name")?.value;
+    const opts = body.get("driver_opts", true);
+    const device = isMap(opts) ? stringScalar(opts, "device")?.value : null;
+    const external = body.get("external");
+    const outside =
+      external === true ||
+      isMap(external) ||
+      typeof pinned === "string" ||
+      typeof device === "string";
+    if (!outside) continue;
+    const key = String((item.key as Scalar).value);
+    item.value = null;
+    changes.push(
+      `${key} pointed at storage outside this stack${
+        typeof device === "string" ? ` (${device} on the server)` : ""
+      } - it is this app's own volume here, which is where its data was copied.`,
+    );
+  }
+}
+
 function declareMissingVolumes(
   doc: Document,
   root: YAMLMap,
