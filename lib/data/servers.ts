@@ -313,6 +313,24 @@ export interface AddServerResult {
 }
 
 /**
+ * Where the agent this command installs will call home to.
+ *
+ * On THIS host that is loopback, and it has to be: the panel is published on
+ * 127.0.0.1 only, and during a takeover so is its proxy - so its public address
+ * answers nothing and no certificate can be read for it. That refused every
+ * install command at the one moment recovering from the panel was the only way
+ * out. The installer bootstraps agent 0 over exactly this address.
+ */
+async function bootstrapBaseUrl(server: {
+  ip?: string;
+  host?: string;
+}): Promise<string> {
+  if (!isDeploHostServer(server)) return instancePublicBaseUrl();
+  const port = Number(process.env.DEPLO_PANEL_PORT?.trim());
+  return `http://127.0.0.1:${Number.isInteger(port) && port > 0 ? port : 3000}`;
+}
+
+/**
  * Register a remote server (PLAN Part B, P1). No SSH-in: the control plane never
  * holds the server's root credential.
  */
@@ -325,7 +343,7 @@ export async function addServer(
   const host = input.host.trim();
 
   const { rawToken, stored } = mintBootstrap();
-  const baseUrl = await instancePublicBaseUrl();
+  const baseUrl = await bootstrapBaseUrl({ ip: host, host });
   // Best-effort: read the control plane's own TLS fingerprint to pin in the
   // command (P3). Empty over plain HTTP - the agent then uses the HMAC path.
   const { fingerprint, insecure } = await controlPlaneCert(baseUrl);
@@ -503,7 +521,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   if (!server) throw new Error("Server not found");
 
   const { rawToken, stored } = mintBootstrap();
-  const baseUrl = await instancePublicBaseUrl();
+  const baseUrl = await bootstrapBaseUrl(server);
   const { fingerprint, insecure } = await controlPlaneCert(baseUrl);
   await getDb()
     .update(serversTable)
