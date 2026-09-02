@@ -88,7 +88,7 @@ export function RollbackSettingsForm({
           >
             {/* The unit rides inside the field: "3" alone gives no clue what it
                 counts, and this number is easy to read as days. */}
-            <div className="relative w-40">
+            <div className="relative w-full">
               <Input
                 id="rollback-keep"
                 type="number"

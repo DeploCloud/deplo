@@ -11,6 +11,7 @@ import type { DocsTopic } from "@/lib/docs";
  */
 export function SettingRow({
   label,
+  icon: Icon,
   info,
   docs,
   htmlFor,
@@ -19,6 +20,8 @@ export function SettingRow({
   children,
 }: {
   label: React.ReactNode;
+  /** A mark for the setting, held back so the label stays the thing you read. */
+  icon?: React.ComponentType<{ className?: string }>;
   /** The constraint or the reason, in the label's tooltip. */
   info?: React.ReactNode;
   docs?: DocsTopic;
@@ -42,9 +45,16 @@ export function SettingRow({
         docs={docs}
         className={align === "start" ? "pt-2" : undefined}
       >
+        {Icon && <Icon aria-hidden className="size-3.5 shrink-0 opacity-50" />}
         {label}
       </FieldLabel>
-      {children}
+      {/* One control column for every row, so a page of rows lines up by
+          construction instead of each caller picking its own max-width. A
+          control that wants the whole column asks with `w-full`; a switch stays
+          right-aligned in it. */}
+      <div className="flex min-w-0 shrink-0 basis-72 justify-end">
+        {children}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Save } from "lucide-react";
+import {
+  Braces,
+  FolderOutput,
+  Hammer,
+  Package,
+  Play,
+  Plug,
+  Save,
+} from "lucide-react";
 import {
   Card,
   CardContent,
@@ -13,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SettingRow } from "@/components/shared/setting-row";
-import { OverrideRow } from "@/components/shared/override-row";
 import { BuildMethodFields } from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
@@ -31,11 +38,18 @@ import type {
  */
 
 /**
- * The stored empty string means "Deplo works it out", so it is the OFF state of
- * an override, not a value. See ADR/plan: null and "" become distinct later.
+ * What each builder runs when the field is left empty, for the placeholder. Only
+ * the generated Dockerfile's own defaults are literal - nixpacks and railpack
+ * decide inside the agent, and printing a guess there would read as a promise.
  */
-function overrideOf(stored: string | null | undefined): string | null {
-  return stored && stored.length > 0 ? stored : null;
+function defaultsFor(method: string) {
+  return method === "dockerfile"
+    ? { install: "npm ci", build: "(none)", start: "node server.js" }
+    : {
+        install: "Auto-detected",
+        build: "Auto-detected",
+        start: "Auto-detected",
+      };
 }
 export function BuildOutputCard({
   build,
@@ -70,7 +84,6 @@ export function BuildOutputCard({
   // there is no process to start - dockerfile: none - the repo's Dockerfile owns
   // install/build/run
   const method = build.buildMethod;
-  const methodName = method.charAt(0).toUpperCase() + method.slice(1);
   const showBuildCommand =
     method === "nixpacks" || method === "railpack" || method === "static";
   const showStartCommand = method === "nixpacks" || method === "railpack";
@@ -81,12 +94,13 @@ export function BuildOutputCard({
   const showInstallCommand = showBuildCommand;
   const showOutputDirectory = method === "static";
 
-  // nixpacks and railpack settle their own phases inside the agent, and the wire
-  // cannot yet tell "run nothing" from "work it out" - so an emptied override
-  // there is detected, not skipped. Say so rather than promise otherwise.
-  const skipReachesBuilder = method !== "nixpacks" && method !== "railpack";
-  const emptyMeansDetect = (v: string | null) =>
-    !skipReachesBuilder && v === "";
+  /** Empty is "work it out" (null), never the empty string that skips a step. */
+  function setCommand(
+    key: "installCommand" | "buildCommand" | "startCommand" | "outputDirectory",
+    value: string,
+  ) {
+    setBuild((b) => ({ ...b, [key]: value === "" ? null : value }));
+  }
 
   // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
@@ -151,106 +165,114 @@ export function BuildOutputCard({
         {/* Each command is shown as a decision - Deplo works it out, or you take
             it over. No detected value is printed: nixpacks and railpack settle
             these inside the agent, and a guess here would read as a promise. */}
+        {/* Plain fields, with what Deplo would run in the placeholder. Empty is
+            "work it out": a cleared field must never skip a step, so the skip
+            (an empty string) is reachable through the API, not from here. */}
         {showInstallCommand && (
-          <OverrideRow
+          <SettingRow
             label="Install command"
-            id="install-command"
+            icon={Package}
+            htmlFor="install-command"
             info="Overrides how dependencies are installed before the build."
             docs="build.fields"
-            note={
-              emptyMeansDetect(overrideOf(build.installCommand))
-                ? `${methodName} works out its own install step, so leaving this empty detects one rather than skipping it.`
-                : undefined
-            }
-            value={overrideOf(build.installCommand)}
-            onChange={(v) =>
-              setBuild((b) => ({ ...b, installCommand: v ?? "" }))
-            }
-            placeholder="npm ci"
-            disabled={pending}
-          />
+          >
+            <Input
+              id="install-command"
+              className="w-full font-mono text-xs"
+              placeholder={defaultsFor(method).install}
+              value={build.installCommand ?? ""}
+              disabled={pending}
+              onChange={(e) => setCommand("installCommand", e.target.value)}
+            />
+          </SettingRow>
         )}
 
         {showBuildCommand && (
-          <OverrideRow
+          <SettingRow
             label="Build command"
-            id="build-command"
+            icon={Hammer}
+            htmlFor="build-command"
             info="Overrides the command that builds your app."
             docs="build.fields"
-            note={
-              emptyMeansDetect(overrideOf(build.buildCommand))
-                ? `${methodName} works out its own build step, so leaving this empty detects one rather than skipping it.`
-                : undefined
-            }
-            value={overrideOf(build.buildCommand)}
-            onChange={(v) => setBuild((b) => ({ ...b, buildCommand: v ?? "" }))}
-            placeholder="npm run build"
-            disabled={pending}
-          />
+          >
+            <Input
+              id="build-command"
+              className="w-full font-mono text-xs"
+              placeholder={defaultsFor(method).build}
+              value={build.buildCommand ?? ""}
+              disabled={pending}
+              onChange={(e) => setCommand("buildCommand", e.target.value)}
+            />
+          </SettingRow>
         )}
 
         {showStartCommand && (
-          <OverrideRow
+          <SettingRow
             label="Start command"
-            id="start-command"
+            icon={Play}
+            htmlFor="start-command"
             info="Overrides the command that starts your app inside the container."
             docs="build.fields"
-            value={overrideOf(build.startCommand)}
-            onChange={(v) => setBuild((b) => ({ ...b, startCommand: v ?? "" }))}
-            placeholder="node server.js"
-            disabled={pending}
-          />
+          >
+            <Input
+              id="start-command"
+              className="w-full font-mono text-xs"
+              placeholder={defaultsFor(method).start}
+              value={build.startCommand ?? ""}
+              disabled={pending}
+              onChange={(e) => setCommand("startCommand", e.target.value)}
+            />
+          </SettingRow>
         )}
 
         {showOutputDirectory && (
-          <OverrideRow
+          <SettingRow
             label="Output directory"
-            id="output-directory"
+            icon={FolderOutput}
+            htmlFor="output-directory"
             info="The directory the build writes to, when it is not the builder's own."
             docs="build.fields"
-            value={overrideOf(build.outputDirectory)}
-            onChange={(v) =>
-              setBuild((b) => ({ ...b, outputDirectory: v ?? "" }))
-            }
-            placeholder="dist"
-            disabled={pending}
-          />
+          >
+            <Input
+              id="output-directory"
+              className="w-full font-mono text-xs"
+              placeholder="dist"
+              value={build.outputDirectory ?? ""}
+              disabled={pending}
+              onChange={(e) => setCommand("outputDirectory", e.target.value)}
+            />
+          </SettingRow>
         )}
 
         {showNodeVersion && (
-          <OverrideRow
+          <SettingRow
             label="Node.js version"
-            id="node-version"
+            icon={Braces}
+            htmlFor="node-version"
             info={
               usesDefaultNodeMajor(method)
-                ? `Pins the Node.js major. Off uses Node ${DEFAULT_NODE_MAJOR}.`
-                : "Pins the Node.js major. Off reads it from your project."
+                ? `Pins the Node.js major. Empty uses Node ${DEFAULT_NODE_MAJOR}.`
+                : "Pins the Node.js major. Empty reads it from your project."
             }
             docs="build.fields"
-            detectedLabel={
-              usesDefaultNodeMajor(method)
-                ? `Node ${DEFAULT_NODE_MAJOR}`
-                : "Read from your project"
-            }
-            value={overrideOf(build.runtimeVersion)}
-            onChange={(v) =>
-              setBuild((b) => ({ ...b, runtimeVersion: v ?? "" }))
-            }
-            mono={false}
-            disabled={pending}
-            control={({ value, onChange, id }) => (
-              <NodeVersionInput
-                id={id}
-                value={value}
-                onChange={onChange}
-                className="max-w-xs"
-              />
-            )}
-          />
+          >
+            <NodeVersionInput
+              id="node-version"
+              className="w-full"
+              value={build.runtimeVersion ?? ""}
+              onChange={(v) => setBuild((b) => ({ ...b, runtimeVersion: v }))}
+              placeholder={
+                usesDefaultNodeMajor(method)
+                  ? `Node ${DEFAULT_NODE_MAJOR}`
+                  : "Auto-detected"
+              }
+            />
+          </SettingRow>
         )}
 
         <SettingRow
           label="Container port"
+          icon={Plug}
           htmlFor="container-port"
           info="The port your app listens on inside the container (Traefik routes here)."
           docs="build.port"
@@ -259,7 +281,7 @@ export function BuildOutputCard({
             id="container-port"
             type="number"
             min={1}
-            className="max-w-32 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            className="w-full [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             value={portText}
             disabled={pending}
             onChange={(e) => onPortChange(e.target.value)}

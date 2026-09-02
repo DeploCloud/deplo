@@ -881,7 +881,7 @@ export function DeploymentSettingsForm({
                   {/* No gap between the two: the warning is squared off at
                           the top and sits flush under the Select, so it reads as
                           that control's own rather than a note after it. */}
-                  <div className="w-full max-w-xs">
+                  <div className="w-full">
                     <Select value={serverId} onValueChange={setServerId}>
                       <SelectTrigger
                         className={cn(
