@@ -26,6 +26,8 @@ export interface McpPrincipal {
   capabilities: Set<Capability>;
   /** Whether this TOKEN carries instance-admin (never inherited from the person). */
   instanceAdmin: boolean;
+  /** Whether this connection was granted more than one team. */
+  multiTeam: boolean;
   /**
    * Resolve the context for ANOTHER team this connection was granted. MUST THROW
    * for a team that was not granted.
@@ -34,17 +36,14 @@ export interface McpPrincipal {
 }
 
 /**
- * The team a call works in, when the connection was granted more than one.
- *
- * Optional on purpose: a connection granted one team, the common case, never
- * needs it, and a model that omits it gets the team the connection belongs to.
+ * The team a call works in, and ONLY for a connection granted more than one:
+ * on a single-team connection it was a fifth of the whole `tools/list` payload,
+ * repeated on every tool, for an argument that had one legal value.
  */
 const TEAM_ARG = z
   .string()
   .optional()
-  .describe(
-    "Which team to work in. Only teams this connection was granted; see list_teams. Omit for the connection's own team.",
-  );
+  .describe("Team id or slug; omit for this connection's own team.");
 
 function visible(tool: McpToolDef, principal: McpPrincipal): boolean {
   if (tool.requires === null) return true;
@@ -103,7 +102,9 @@ function failure(message: string) {
  * Sent once at `initialize`. The tool table says what Deplo can DO; this says
  * what Deplo IS, so an agent uses Deplo's own words and knows where to read more.
  */
-const INSTRUCTIONS = `Deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
+const instructions = (
+  multiTeam: boolean,
+) => `Deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
 
 Its vocabulary, which the tools use literally:
 - App: the deployable unit. Never call it a service or a project.
@@ -112,8 +113,7 @@ Its vocabulary, which the tools use literally:
 - Server: a machine in the fleet. Servers are shared; everything else belongs to one team.
 
 How to work here:
-- Every call runs in one team. \`find\` searches every granted team and says which team each hit is in; pass that as \`team\` on the next call.
-- What you may do is exactly the token's Capabilities. A refusal is an answer, not something to retry another way.
+${multiTeam ? "- Every call runs in one team. `find` searches every granted team and says which team each hit is in; pass that as `team` on the next call.\n" : "- Every call runs in this connection's one team; `whoami` names it.\n"}- What you may do is exactly the token's Capabilities. A refusal is an answer, not something to retry another way.
 - Secret variables are write-only: nothing reveals a secret's value, by design.
 
 The user manual is at ${DOCS_BASE} - read it there when you need to explain how something works.`;
@@ -121,7 +121,10 @@ The user manual is at ${DOCS_BASE} - read it there when you need to explain how 
 export function buildMcpServer(principal: McpPrincipal): McpServer {
   const server = new McpServer(
     { name: "deplo", version: DEPLO_VERSION },
-    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
+    {
+      capabilities: { tools: {} },
+      instructions: instructions(principal.multiTeam),
+    },
   );
 
   for (const tool of MCP_TOOLS) {
@@ -138,12 +141,16 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         // Unknown keys are kept, not stripped, so the handler below can REFUSE
         // them by name. Advertising `additionalProperties: false` instead would
         // make a client's own validator answer, and never in Deplo's words.
-        inputSchema: tool.input.extend({ team: TEAM_ARG }).passthrough(),
+        inputSchema: principal.multiTeam
+          ? tool.input.extend({ team: TEAM_ARG }).passthrough()
+          : tool.input.passthrough(),
+        // `readOnlyHint` and `idempotentHint` already default to false, so
+        // spelling them out bought nothing and cost a line on every tool. The
+        // other two default to TRUE and have to stay explicit.
         annotations: {
-          title: tool.title,
-          readOnlyHint: tool.readOnly ?? false,
+          ...(tool.readOnly ? { readOnlyHint: true } : {}),
+          ...(tool.idempotent ? { idempotentHint: true } : {}),
           destructiveHint: tool.destructive ?? false,
-          idempotentHint: tool.idempotent ?? false,
           // Every tool acts on this Deplo instance and nothing else.
           openWorldHint: false,
         },
@@ -158,13 +165,18 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
           // resolver as "no container was given", and the model reads Deplo's "pick
           // one" as its own mistake and tries another spelling. `_`-prefixed keys
           // are protocol metadata some clients add, never the model's doing.
+          // `team` is ACCEPTED always, even where it is not advertised: a
+          // single-team connection that names another team has to hear "no
+          // access to that team", not "no such argument".
           const accepted = new Set([...Object.keys(tool.input.shape), "team"]);
           const unknown = Object.keys(args).filter(
             (k) => !accepted.has(k) && !k.startsWith("_"),
           );
           if (unknown.length)
             return failure(
-              `${tool.name} takes no argument "${unknown[0]}". It takes: ${[...accepted].join(", ")}.`,
+              accepted.size === 1
+                ? `${tool.name} takes no argument "${unknown[0]}", and no arguments at all.`
+                : `${tool.name} takes no argument "${unknown[0]}". It takes: ${[...accepted].join(", ")}.`,
             );
 
           // `team` is Deplo's, not the tool's: taken out before the arguments
@@ -179,7 +191,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
           // `runGraphql` does it for every other tool, and `handler.fetch` runs OUTSIDE the
           // scope the route opened.
           if (tool.run) {
-            const go = () => tool.run!(rest);
+            const go = () => tool.run!(rest, ctx);
             return text(
               await (ctx.identity ? runWithIdentity(ctx.identity, go) : go()),
             );

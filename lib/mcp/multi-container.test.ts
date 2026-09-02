@@ -628,7 +628,7 @@ test("one hostname can serve two containers on different paths", async () => {
 test("a cron job can name the container it runs in", async () => {
   const { raw } = await mintToken(["view", "manage_domains", "manage_crons"]);
   const res = await callTool(raw, "create_cron_job", {
-    appId: "prj_analytics",
+    id: "prj_analytics",
     name: "nightly rollup",
     command: "npm run rollup",
     schedule: "0 3 * * *",
@@ -645,7 +645,7 @@ test("a cron job can name the container it runs in", async () => {
 test("a cron job cannot name a container the stack does not have", async () => {
   const { raw } = await mintToken(["view", "manage_domains", "manage_crons"]);
   const res = await callTool(raw, "create_cron_job", {
-    appId: "prj_analytics",
+    id: "prj_analytics",
     name: "nightly rollup",
     command: "npm run rollup",
     schedule: "0 3 * * *",
@@ -661,8 +661,9 @@ test("a cron job cannot name a container the stack does not have", async () => {
 
 test("logs can be asked for by compose service name", async () => {
   const { raw } = await mintToken(["view", "view_logs"]);
-  const res = await callTool(raw, "app_logs", {
-    appId: "prj_analytics",
+  const res = await callTool(raw, "logs", {
+    kind: "app",
+    id: "prj_analytics",
     container: "backend",
     lines: 50,
   });
@@ -674,8 +675,9 @@ test("logs can be asked for by compose service name", async () => {
 
 test("logs still take the container's own name, as the dashboard sends it", async () => {
   const { raw } = await mintToken(["view", "view_logs"]);
-  const res = await callTool(raw, "app_logs", {
-    appId: "prj_analytics",
+  const res = await callTool(raw, "logs", {
+    kind: "app",
+    id: "prj_analytics",
     container: "deplo-analytics-client-1",
   });
   assert.equal(res.error, false, res.text);
@@ -687,8 +689,9 @@ test("logs still take the container's own name, as the dashboard sends it", asyn
 
 test("a container that is not in the stack says so", async () => {
   const { raw } = await mintToken(["view", "view_logs"]);
-  const res = await callTool(raw, "app_logs", {
-    appId: "prj_analytics",
+  const res = await callTool(raw, "logs", {
+    kind: "app",
+    id: "prj_analytics",
     container: "worker",
   });
   assert.equal(res.error, true);

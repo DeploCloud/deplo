@@ -174,7 +174,10 @@ one team, chosen when the agent is connected. One team switch governs it - wheth
 all - behind the `manage_mcp` **Capability**. What an agent may DO is decided by its token's
 Capabilities and by nothing on top; Deplo adds no confirmation step of its own, and destructive
 tools are flagged so the MCP client can ask its own user. No tool can reveal a secret, whatever
-the token holds (ADR-0021).
+the token holds (ADR-0021). Beside the curated tools sit two **escape hatch** tools,
+`graphql_query` and `graphql_mutate`, which run a document the agent wrote against the same schema
+and the same gates, so the MCP surface covers the whole API; they refuse any root field that returns
+a credential or runs a command (ADR-0030).
 _Avoid_: MCP plugin (the withdrawn container relay, ADR-0013), MCP token / `MCP_BEARER` (there
 is no such credential), connector.
 

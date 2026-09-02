@@ -27,6 +27,7 @@ const PROTOCOL = "2026-07-28";
 function principal(
   capabilities: Capability[],
   instanceAdmin = false,
+  multiTeam = false,
 ): McpPrincipal {
   return {
     // Never called here: this file drives the SDK with a hand-built principal
@@ -44,6 +45,7 @@ function principal(
     settings: { enabled: true },
     capabilities: new Set(capabilities),
     instanceAdmin,
+    multiTeam,
   };
 }
 

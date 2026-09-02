@@ -1,9 +1,6 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { authenticateToken, stampMcpUse } from "@/lib/data/tokens";
-import {
-  runWithIdentity,
-  type RequestIdentity,
-} from "@/lib/auth/request-context";
+import { runWithIdentity } from "@/lib/auth/request-context";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveTeamId, reachableCapabilities } from "@/lib/membership";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
@@ -100,20 +97,20 @@ async function refuse(request: Request, message: string): Promise<Response> {
   return unauthorized(message);
 }
 
+type GrantedTeam = { id: string; slug: string };
+
 /**
- * The context for a team a tool named explicitly, or a refusal.
+ * The context for a team a tool named explicitly, or a refusal. `teams` is what
+ * this connection may reach, resolved once per request by the caller.
  */
 async function contextForTeam(
   raw: string,
-  base: RequestIdentity,
+  teams: GrantedTeam[],
   team: string,
 ): Promise<GraphQLContext> {
-  // Resolved against what this connection may reach BEFORE re-authenticating, so the
-  // hint below is guaranteed to land.
-  const teams = await runWithIdentity(base, () => listMyTeams());
   const match = teams.find((t) => t.id === team || t.slug === team);
   const refusal = new Error(
-    `This connection has no access to the team "${team}". Run list_teams to see the teams it was granted.`,
+    `This connection has no access to the team "${team}". Run whoami to see the teams it was granted.`,
   );
   if (!match) throw refusal;
 
@@ -170,10 +167,13 @@ export async function POST(request: Request) {
       const limited = await rateLimit(`mcp:${identity.token!.id}`, RATE);
       if (!limited.ok) return { blocked: false as const, limited };
 
-      const [viewer, teamId, capabilities] = await Promise.all([
+      const [viewer, teamId, capabilities, teams] = await Promise.all([
         getCurrentUser(),
         getActiveTeamId(),
         reachableCapabilities(),
+        // Resolved up front so `tools/list` knows whether a `team` argument is
+        // worth publishing at all, and so `forTeam` does not read it again.
+        listMyTeams(),
       ]);
       const principal: McpPrincipal = {
         gql: { viewer, teamId, capabilities, via: "token", identity },
@@ -182,7 +182,8 @@ export async function POST(request: Request) {
         // Instance-admin is opt-in per token and never inherited from an admin
         // creator, so this is the token's own flag, not the person's.
         instanceAdmin: identity.token?.instanceAdmin === true,
-        forTeam: (team) => contextForTeam(raw, identity, team),
+        multiTeam: teams.length > 1,
+        forTeam: (team) => contextForTeam(raw, teams, team),
       };
       return { blocked: false as const, principal };
     });

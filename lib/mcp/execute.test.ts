@@ -15,7 +15,8 @@ import { runWithIdentity } from "../auth/request-context";
 import { createToken, authenticateToken } from "../data/tokens";
 import { getCurrentUser } from "../auth";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
-import { runGraphql } from "./execute";
+import { admitPassthrough, deniedRootFields, runGraphql } from "./execute";
+import { schema } from "../graphql/schema";
 import { MCP_TOOLS } from "./tools";
 
 /**
@@ -110,4 +111,105 @@ test("the team hint decides which team a document resolves in", async () => {
     TEAM_A,
     "an unreachable hint falls back, never through",
   );
+});
+
+/* ------------------------------------------------------------------ *
+ * The escape hatch's door
+ * ------------------------------------------------------------------ */
+
+/**
+ * `tools.test.ts` enforces ADR-0021 rule 4 by scanning each row's `query`, and
+ * the passthrough's is empty - so the rule is only as real as these tests.
+ */
+
+const refusal = (query: string, kind: "query" | "mutation" = "query") => {
+  try {
+    admitPassthrough(query, kind);
+  } catch (e) {
+    return (e as Error).message;
+  }
+  return "";
+};
+
+test("the passthrough refuses every field that hands back a credential", () => {
+  for (const field of deniedRootFields()) {
+    const root =
+      schema.getMutationType()!.getFields()[field] ??
+      schema.getQueryType()!.getFields()[field];
+    assert.ok(root, `${field} is not a root field any more - stale entry`);
+    const kind = schema.getMutationType()!.getFields()[field]
+      ? "mutation"
+      : "query";
+    // The guard runs before validation, so a bare field name is enough and the
+    // assertion cannot pass on some unrelated complaint.
+    const message = refusal(`${kind} X { ${field} }`, kind);
+    assert.match(
+      message,
+      /cannot be run over MCP/,
+      `${field} was admitted: ${message || "no error"}`,
+    );
+  }
+});
+
+test("every reveal* root field is denied without being listed by hand", () => {
+  const reveals = [
+    ...Object.keys(schema.getQueryType()!.getFields()),
+    ...Object.keys(schema.getMutationType()!.getFields()),
+  ].filter((n) => /^reveal[A-Z]/.test(n));
+  assert.ok(reveals.length > 0, "the schema has no reveal* fields to derive");
+  for (const name of reveals)
+    assert.ok(deniedRootFields().has(name), `${name} is not denied`);
+});
+
+test("a denied field is refused from inside a fragment too", () => {
+  const message = refusal(
+    `mutation X { ...F } fragment F on Mutation { revealRegistrationLink }`,
+    "mutation",
+  );
+  assert.match(message, /cannot be run over MCP/);
+});
+
+test("a field that merely shares a denied name is not refused", () => {
+  // `login` is a denied root mutation. The guard reads the PARENT TYPE, so a
+  // field called `login` on some object would still be readable.
+  const guard = deniedRootFields();
+  assert.ok(guard.has("login"));
+  assert.equal(refusal(`query X { apps { id slug } }`), "");
+});
+
+test("graphql_query refuses a mutation, and graphql_mutate refuses a query", () => {
+  assert.match(
+    refusal(`mutation M { deleteApp(id: "x") }`, "query"),
+    /runs query operations only/,
+  );
+  assert.match(
+    refusal(`query Q { apps { id } }`, "mutation"),
+    /runs mutation operations only/,
+  );
+});
+
+test("a subscription is refused, whichever passthrough it arrives at", () => {
+  assert.match(
+    refusal(`subscription S { activeDeployments }`, "query"),
+    /Subscriptions cannot be run over MCP/,
+  );
+});
+
+test("a second operation cannot ride along behind the first", () => {
+  assert.match(
+    refusal(`query A { apps { id } } mutation B { deleteApp(id: "x") }`),
+    /runs query operations only/,
+  );
+});
+
+test("the passthrough carries /api/graphql's own depth limit", () => {
+  let q = "id";
+  for (let i = 0; i < 16; i++) q = `apps { ${q} }`;
+  assert.match(refusal(`query Deep { ${q} }`), /depth|Cannot query field/i);
+});
+
+test("an unknown field is a refusal, not a silently empty answer", () => {
+  // Unvalidated, graphql-js drops the field and answers `{"apps":[{}]}`, which
+  // reads to a model as "that field is empty" rather than "you misspelled it".
+  assert.match(refusal(`query X { apps { naem } }`), /Cannot query field/);
 });

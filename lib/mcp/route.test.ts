@@ -702,13 +702,13 @@ test("a deplo_ token still honours X-Deplo-Team", async () => {
 });
 
 test("a tool that runs outside GraphQL resolves the same identity", async () => {
-  // `app_logs` and `database_logs` are the only tools that are not a GraphQL
-  // document, so they are the only two that do not get `runGraphql`'s
+  // `logs` reads a snapshot rather than running a GraphQL document, so it does
+  // not get `runGraphql`'s
   // `runWithIdentity` for free, and the SDK handler runs OUTSIDE the scope this
   const conn = await connect(["view", "view_logs"]);
   const res = await mcp(conn.accessToken, {
-    tool: "app_logs",
-    toolArgs: { appId: "prj_missing" },
+    tool: "logs",
+    toolArgs: { kind: "app", id: "prj_missing" },
   });
   const body = JSON.stringify(res.body);
   assert.ok(!body.includes("No active team"), body);
