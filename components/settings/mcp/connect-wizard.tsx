@@ -868,7 +868,8 @@ function DoneStep({
 }) {
   return (
     <StepShell
-      title={`${agent.label} is connected!`}
+      mark={<AgentMark agent={agent} size="lg" />}
+      title="Connected successfully!"
       lead="It made its first call to Deplo. You can revoke its access at any time under Manage."
     >
       {/* Two ways on, because there are two things people do next: look at what
