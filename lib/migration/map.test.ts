@@ -22,6 +22,7 @@ import {
   mapDatabase,
   mapDomains,
   mapLogo,
+  composeRegistryNotes,
   mapMounts,
   mapResources,
   mapSource,
@@ -2789,4 +2790,17 @@ test("a stack's config file on a real host path travels as a bind", () => {
   const app = mapMounts([file], { isCompose: false });
   assert.equal(app.value.files[0]!.filePath, "single.conf");
   assert.equal(app.value.volumes[0]!.type, "app");
+});
+
+test("a stack says which registries it pulls from", () => {
+  const compose = `services:\n  api:\n    image: ghcr.io/acme/private:latest\n  web:\n    image: nginx:alpine\n  worker:\n    image: ghcr.io/acme/other:1\n`;
+  const notes = composeRegistryNotes(compose);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0]!, /pulls from ghcr\.io\./);
+  // Docker Hub needs no login to say so, and a stack with only those says nothing.
+  assert.deepEqual(
+    composeRegistryNotes(`services:\n  web:\n    image: nginx:alpine\n`),
+    [],
+  );
+  assert.deepEqual(composeRegistryNotes("not: yaml: at all: ["), []);
 });

@@ -90,6 +90,7 @@ import {
   type MappedDomain,
   type SourcePlatformShape,
   adaptComposeForDeplo,
+  composeRegistryNotes,
   cloneTarget,
   composeAsRepoApp,
   composeBuildServices,
@@ -2856,7 +2857,11 @@ async function importAppService(
       mounts.value.files.map((f) => f.filePath),
     );
     compose = retargeted.compose;
-    notes.push(...adapted.changes, ...retargeted.changes);
+    notes.push(
+      ...adapted.changes,
+      ...retargeted.changes,
+      ...composeRegistryNotes(compose),
+    );
     // Every stack in an Environment shares ONE network (ADR-0028), so two one-click
     // apps that both call their database `db` collide - and `createApp` refuses the
     // second one, which lost the whole app. The names are rewritten instead, here,

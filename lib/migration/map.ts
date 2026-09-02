@@ -1160,6 +1160,31 @@ function namedRegistry(image: string): string | null {
 }
 
 /**
+ * The registries a stack's images name. A compose stack never goes through
+ * `mapSource`, so an image behind a login was carried across in silence and the
+ * deploy failed on the pull with nothing in the report to explain it.
+ */
+export function composeRegistryNotes(compose: string): string[] {
+  const doc = readComposeDoc(compose);
+  const services = doc && toPlain((doc.contents as YAMLMap)?.get("services"));
+  if (!services || typeof services !== "object") return [];
+  const hosts = new Set<string>();
+  for (const svc of Object.values(services as Record<string, unknown>)) {
+    const image =
+      typeof (svc as { image?: unknown })?.image === "string"
+        ? ((svc as { image: string }).image ?? "").trim()
+        : "";
+    const host = image ? namedRegistry(image) : null;
+    if (host) hosts.add(host);
+  }
+  return hosts.size === 0
+    ? []
+    : [
+        `This stack pulls from ${[...hosts].sort().join(", ")}. If any of those images is private, add the registry under Registries - {panel} never exposes the password.`,
+      ];
+}
+
+/**
  * Where the app's code comes from.
  */
 export function mapSource(app: SourceApplication): Mapped<MappedSource> {
