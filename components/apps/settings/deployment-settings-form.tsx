@@ -8,6 +8,7 @@ import {
   GitBranch,
   Container,
   FileText,
+  Boxes,
   Upload,
   Server as ServerIcon,
   Rocket,
@@ -105,7 +106,7 @@ const SOURCE_TABS: {
   { id: "github", label: "GitHub", icon: GitHubIcon },
   { id: "git", label: "Git", icon: GitBranch },
   { id: "docker-image", label: "Docker Image", icon: Container },
-  { id: "compose", label: "Compose", icon: FileText },
+  { id: "compose", label: "Compose", icon: Boxes },
   { id: "upload", label: "Upload", icon: Upload },
 ];
 

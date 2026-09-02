@@ -1,4 +1,4 @@
-import { GitBranch, Container, Upload, FileText } from "lucide-react";
+import { GitBranch, Container, Upload, Boxes } from "lucide-react";
 import type * as React from "react";
 
 import { GitHubIcon } from "@/components/shared/brand-icons";
@@ -56,7 +56,7 @@ export const SOURCE_TABS: SourceTab[] = [
   {
     id: "compose",
     label: "Compose",
-    icon: FileText,
+    icon: Boxes,
     blurb: "Bring up a docker-compose stack as written.",
     brand: { bg: "#50E3C2", fg: "#0A0A0A" },
     veil: { hue: 175 },
