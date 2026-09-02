@@ -56,10 +56,13 @@ export function RobotGraphic({
   className?: string;
 }) {
   const live = state === "connected";
+  // An agent with a hue spends it on the success beat too: green next to orange
+  // reads as a second, unrelated colour.
   const ink =
     accent?.hue !== undefined
       ? ({
           "--deplo-robot-ink": `oklch(var(--deplo-robot-l) var(--deplo-robot-c) ${accent.hue})`,
+          "--deplo-robot-live": "var(--deplo-robot-ink)",
         } as React.CSSProperties)
       : undefined;
   return (
@@ -101,16 +104,16 @@ export function RobotGraphic({
         strokeLinecap="round"
       />
 
-      {/* The port the cable is aiming at. The one element that turns green, and
-          only on `connected` - the single success beat the sibling graphics
-          each spend their one `--success` on. */}
+      {/* The port the cable is aiming at. The one element that lights up, and
+          only on `connected` - the single success beat, drawn in the agent's own
+          colour when it has one. */}
       {live && (
         <circle
           cx="116"
           cy="72"
           r="10"
           className="deplo-robot-halo"
-          fill="var(--success)"
+          fill="var(--deplo-robot-live)"
         />
       )}
       <rect
@@ -120,7 +123,7 @@ export function RobotGraphic({
         height="10"
         rx="2"
         className={live ? undefined : "stroke-ring"}
-        fill={live ? "var(--success)" : "none"}
+        fill={live ? "var(--deplo-robot-live)" : "none"}
         strokeWidth="2.5"
       />
 
@@ -167,7 +170,9 @@ export function RobotGraphic({
         className={cn(
           state === "idle" && "deplo-robot-antenna",
           state === "key" && "deplo-robot-blip",
-          live ? "fill-[var(--success)]" : "fill-[var(--deplo-robot-ink)]",
+          live
+            ? "fill-[var(--deplo-robot-live)]"
+            : "fill-[var(--deplo-robot-ink)]",
         )}
       />
       <rect
@@ -182,7 +187,9 @@ export function RobotGraphic({
       <g
         className={cn(
           state === "idle" && "deplo-robot-eyes",
-          live ? "fill-[var(--success)]" : "fill-[var(--deplo-robot-ink)]",
+          live
+            ? "fill-[var(--deplo-robot-live)]"
+            : "fill-[var(--deplo-robot-ink)]",
         )}
       >
         <circle cx="36" cy="42" r="3.5" />

@@ -3232,6 +3232,7 @@ html body[data-scroll-locked] {
    sets the variable, so the robot keeps the theme's own ink. */
 :root {
   --deplo-robot-ink: var(--primary);
+  --deplo-robot-live: var(--success);
   --deplo-robot-l: 0.55;
   --deplo-robot-c: 0.15;
 }
