@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { SecretRow } from "@/components/env/secret-row";
@@ -106,77 +107,79 @@ function SharedVarEditForm({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <FieldLabel
-                info="The variable's name, exposed to every app it reaches. Renaming it takes effect on their next deploy."
-                docs="env.shared"
-              >
-                Key
-              </FieldLabel>
-              <Input
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                spellCheck={false}
-                aria-invalid={trimmedKey !== "" && !keyValid}
-                className={cn(
-                  "font-mono text-sm",
-                  trimmedKey !== "" &&
-                    !keyValid &&
-                    "border-destructive text-destructive focus-visible:ring-destructive",
-                )}
-              />
-              {trimmedKey !== "" && !keyValid && (
-                <p className="text-xs text-destructive">
-                  Names must start with a letter or underscore and contain only
-                  letters, digits and underscores.
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <FieldLabel
-                info={
-                  editing.masked
-                    ? "This value is a secret, so it is only ever shown masked. Leave the mask as it is to keep the stored value; type over it to replace it."
-                    : "The value every app this variable reaches receives during builds and at runtime."
-                }
-                docs="env.types"
-              >
-                Value
-              </FieldLabel>
-              {/* The key is disabled, so the value is the first thing to put the
-                  caret in, and it keeps the Dialog's initial focus off the info
-                  button next to the Key label. */}
-              <Textarea
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="Enter a new value"
-                rows={3}
-                autoFocus
-              />
-            </div>
-            <SecretRow secret={secret} onChange={setSecret} />
-
-            {/* The scope, shown but not editable: it is what tells you this save
-                leaves the variable reaching exactly what it reached before. */}
-            <div className="space-y-2 rounded-lg border border-border p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">Shared with</p>
-                {onChangeSharing && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onChangeSharing}
-                    disabled={pending}
-                  >
-                    <Share2 className="size-4" />
-                    Change sharing
-                  </Button>
+          <AnimatedHeight className="grid gap-4" scroll={false}>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <FieldLabel
+                  info="The variable's name, exposed to every app it reaches. Renaming it takes effect on their next deploy."
+                  docs="env.shared"
+                >
+                  Key
+                </FieldLabel>
+                <Input
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  spellCheck={false}
+                  aria-invalid={trimmedKey !== "" && !keyValid}
+                  className={cn(
+                    "font-mono text-sm",
+                    trimmedKey !== "" &&
+                      !keyValid &&
+                      "border-destructive text-destructive focus-visible:ring-destructive",
+                  )}
+                />
+                {trimmedKey !== "" && !keyValid && (
+                  <p className="text-xs text-destructive">
+                    Names must start with a letter or underscore and contain
+                    only letters, digits and underscores.
+                  </p>
                 )}
               </div>
-              <SharedWithChips v={editing} limit={Number.POSITIVE_INFINITY} />
+              <div className="space-y-2">
+                <FieldLabel
+                  info={
+                    editing.masked
+                      ? "This value is a secret, so it is only ever shown masked. Leave the mask as it is to keep the stored value; type over it to replace it."
+                      : "The value every app this variable reaches receives during builds and at runtime."
+                  }
+                  docs="env.types"
+                >
+                  Value
+                </FieldLabel>
+                {/* The key is disabled, so the value is the first thing to put the
+                  caret in, and it keeps the Dialog's initial focus off the info
+                  button next to the Key label. */}
+                <Textarea
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder="Enter a new value"
+                  rows={3}
+                  autoFocus
+                />
+              </div>
+              <SecretRow secret={secret} onChange={setSecret} />
+
+              {/* The scope, shown but not editable: it is what tells you this save
+                leaves the variable reaching exactly what it reached before. */}
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Shared with</p>
+                  {onChangeSharing && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onChangeSharing}
+                      disabled={pending}
+                    >
+                      <Share2 className="size-4" />
+                      Change sharing
+                    </Button>
+                  )}
+                </div>
+                <SharedWithChips v={editing} limit={Number.POSITIVE_INFINITY} />
+              </div>
             </div>
-          </div>
+          </AnimatedHeight>
           <DialogFooter>
             <Button
               variant="outline"

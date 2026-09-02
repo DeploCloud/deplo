@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
@@ -276,115 +277,119 @@ export function ServerReadinessDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* On a re-run the previous report stays below this banner: a probe that is
+        <AnimatedHeight
+          className="grid grid-cols-[minmax(0,1fr)] gap-4"
+          scroll={false}
+        >
+          {/* On a re-run the previous report stays below this banner: a probe that is
             still in flight has nothing better to show, and blanking the rows would
             throw away the answer the operator is comparing against. */}
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Checking {serverName}…
-          </div>
-        ) : null}
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Checking {serverName}…
+            </div>
+          ) : null}
 
-        {error ? (
-          <p className="py-6 text-sm text-destructive">{error}</p>
-        ) : null}
+          {error ? (
+            <p className="py-6 text-sm text-destructive">{error}</p>
+          ) : null}
 
-        {report && verdict && VerdictIcon ? (
-          <div className="space-y-4">
-            <div
-              className={cn(
-                "flex items-start gap-2 rounded-lg border p-3",
-                verdict.box,
-              )}
-            >
-              <VerdictIcon
-                className={cn("mt-0.5 size-4 shrink-0", verdict.tone)}
-                aria-hidden
-              />
-              <div className="min-w-0">
-                <p className={cn("text-sm font-medium", verdict.tone)}>
-                  {verdict.label}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {report.summary}
-                </p>
+          {report && verdict && VerdictIcon ? (
+            <div className="space-y-4">
+              <div
+                className={cn(
+                  "flex items-start gap-2 rounded-lg border p-3",
+                  verdict.box,
+                )}
+              >
+                <VerdictIcon
+                  className={cn("mt-0.5 size-4 shrink-0", verdict.tone)}
+                  aria-hidden
+                />
+                <div className="min-w-0">
+                  <p className={cn("text-sm font-medium", verdict.tone)}>
+                    {verdict.label}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {report.summary}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {COUNTS.map(({ severity, label, icon: Icon, tone }) => {
+                  const n = report.checks.filter(
+                    (c) => c.severity === severity,
+                  ).length;
+                  if (n === 0) return null;
+                  return (
+                    <span
+                      key={severity}
+                      className={cn(
+                        "flex items-center gap-1 text-xs font-medium",
+                        tone,
+                      )}
+                    >
+                      <Icon className="size-3.5" aria-hidden />
+                      {n} {label}
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-4">
+                {GROUP_ORDER.map((g) => {
+                  const rows = report.checks.filter((c) => c.group === g);
+                  if (rows.length === 0) return null;
+                  const info = GROUP_INFO[g];
+                  return (
+                    <div key={g} className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs font-medium text-muted-foreground">
+                          {GROUP_LABELS[g]}
+                        </h4>
+                        {info ? (
+                          <InfoTip content={info} docs="servers.readiness" />
+                        ) : null}
+                      </div>
+                      <ul className="space-y-1.5">
+                        {rows.map((c) => {
+                          const Icon = SEVERITY_META[c.severity].icon;
+                          return (
+                            <li
+                              key={c.id}
+                              className="flex items-start gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5"
+                            >
+                              <Icon
+                                className={cn(
+                                  "mt-0.5 size-4 shrink-0",
+                                  SEVERITY_META[c.severity].tone,
+                                )}
+                                aria-hidden
+                              />
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium">{c.label}</p>
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  {c.detail}
+                                </p>
+                                {c.hint ? (
+                                  <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+                                    {c.hint}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-
-            <div className="flex items-center gap-3">
-              {COUNTS.map(({ severity, label, icon: Icon, tone }) => {
-                const n = report.checks.filter(
-                  (c) => c.severity === severity,
-                ).length;
-                if (n === 0) return null;
-                return (
-                  <span
-                    key={severity}
-                    className={cn(
-                      "flex items-center gap-1 text-xs font-medium",
-                      tone,
-                    )}
-                  >
-                    <Icon className="size-3.5" aria-hidden />
-                    {n} {label}
-                  </span>
-                );
-              })}
-            </div>
-
-            <div className="space-y-4">
-              {GROUP_ORDER.map((g) => {
-                const rows = report.checks.filter((c) => c.group === g);
-                if (rows.length === 0) return null;
-                const info = GROUP_INFO[g];
-                return (
-                  <div key={g} className="space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <h4 className="text-xs font-medium text-muted-foreground">
-                        {GROUP_LABELS[g]}
-                      </h4>
-                      {info ? (
-                        <InfoTip content={info} docs="servers.readiness" />
-                      ) : null}
-                    </div>
-                    <ul className="space-y-1.5">
-                      {rows.map((c) => {
-                        const Icon = SEVERITY_META[c.severity].icon;
-                        return (
-                          <li
-                            key={c.id}
-                            className="flex items-start gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5"
-                          >
-                            <Icon
-                              className={cn(
-                                "mt-0.5 size-4 shrink-0",
-                                SEVERITY_META[c.severity].tone,
-                              )}
-                              aria-hidden
-                            />
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium">{c.label}</p>
-                              <p className="mt-1 text-[11px] text-muted-foreground">
-                                {c.detail}
-                              </p>
-                              {c.hint ? (
-                                <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-                                  {c.hint}
-                                </p>
-                              ) : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-
+          ) : null}
+        </AnimatedHeight>
         <DialogFooter>
           <Button variant="outline" onClick={() => run()} disabled={loading}>
             <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />

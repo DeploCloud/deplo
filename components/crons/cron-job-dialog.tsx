@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import {
   Select,
   SelectContent,
@@ -181,352 +182,353 @@ export function CronJobDialog({
         </DialogHeader>
 
         <form className="grid gap-4" onSubmit={submit}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="cron-name"
-                info="What this job is for, in a few words."
-                docs="cron.create"
-              >
-                Name
-              </FieldLabel>
-              <Input
-                id="cron-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Nightly invoices"
-                autoFocus
-              />
-            </div>
-            {/* A database is a single container, so there is nothing to pick. */}
-            {services.length > 1 && (
+          <AnimatedHeight className="grid gap-4" scroll={false}>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <FieldLabel
-                  htmlFor="cron-service"
-                  info="Which container of the stack the command runs in. The service, not the container name - a redeploy renames those."
+                  htmlFor="cron-name"
+                  info="What this job is for, in a few words."
                   docs="cron.create"
                 >
-                  Container
+                  Name
                 </FieldLabel>
-                <Select value={service} onValueChange={setService}>
-                  <SelectTrigger id="cron-service">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={SERVICE_INHERIT}>
-                      The app&apos;s own
-                    </SelectItem>
-                    {services.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          <SchedulePicker
-            docs="cron.create"
-            id="cron-schedule"
-            value={schedule}
-            onChange={setSchedule}
-            timezone={timezone}
-            trailing={
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="cron-timezone"
-                  info="The clock this schedule is read on. Defaults to yours, so 03:00 means 03:00 where you are."
-                  docs="cron.create"
-                >
-                  Timezone
-                </FieldLabel>
-                {/* The READER's clock, not a server's: the whole point of the
-                    field is "03:00 means 03:00 where you are". Safe to read at
-                    render because the dialog's content only mounts on open. */}
-                <TimezonePicker
-                  id="cron-timezone"
-                  value={timezone}
-                  onChange={setTimezone}
-                  now={pickerNow}
+                <Input
+                  id="cron-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nightly invoices"
+                  autoFocus
                 />
               </div>
-            }
-          />
-          {dstWarning && <p className="text-xs text-warning">{dstWarning}</p>}
-
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="cron-command"
-              info="Run exactly as typed by the chosen shell, so pipes and && work. It cannot see your terminal - anything interactive will hang until the timeout."
-              docs="cron.create"
-            >
-              Command
-            </FieldLabel>
-            <Textarea
-              id="cron-command"
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              placeholder="php artisan schedule:run"
-              rows={3}
-              className="font-mono text-sm"
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-            <FieldLabel
-              htmlFor="cron-enabled"
-              info="A disabled job keeps its settings and its history, and simply does not fire."
-              docs="cron.create"
-            >
-              Enabled
-            </FieldLabel>
-            <Switch
-              id="cron-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
-          </div>
-
-          <Accordion type="single" collapsible>
-            <AccordionItem value="advanced" className="border-none">
-              <AccordionTrigger className="py-2 text-sm">
-                Advanced
-              </AccordionTrigger>
-              <AccordionContent className="space-y-4 pt-2">
+              {/* A database is a single container, so there is nothing to pick. */}
+              {services.length > 1 && (
                 <div className="space-y-2">
                   <FieldLabel
-                    htmlFor="cron-description"
-                    info="A note for whoever reads this list next."
+                    htmlFor="cron-service"
+                    info="Which container of the stack the command runs in. The service, not the container name - a redeploy renames those."
                     docs="cron.create"
                   >
-                    Description
+                    Container
                   </FieldLabel>
-                  <Input
-                    id="cron-description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Sends yesterday's invoices"
-                  />
+                  <Select value={service} onValueChange={setService}>
+                    <SelectTrigger id="cron-service">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={SERVICE_INHERIT}>
+                        The app&apos;s own
+                      </SelectItem>
+                      {services.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              )}
+            </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="cron-shell"
-                      info="A container without the shell you pick fails the run rather than quietly using the other one - they disagree about pipefail and [[."
-                      docs="cron.create"
-                    >
-                      Shell
-                    </FieldLabel>
-                    <Select value={shell} onValueChange={setShell}>
-                      <SelectTrigger id="cron-shell">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sh">sh</SelectItem>
-                        <SelectItem value="bash">bash</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="cron-overlap"
-                      info="What happens when the previous run has not finished yet."
-                      docs="cron.create"
-                    >
-                      If it is still running
-                    </FieldLabel>
-                    <Select value={overlap} onValueChange={setOverlap}>
-                      <SelectTrigger id="cron-overlap">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="skip">Skip this run</SelectItem>
-                        <SelectItem value="allow">Run it anyway</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="cron-timeout"
-                      info="How long ONE attempt may take before it is stopped. Per attempt, not per run."
-                      docs="cron.create"
-                    >
-                      Timeout (minutes)
-                    </FieldLabel>
-                    <Input
-                      id="cron-timeout"
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={timeoutMinutes}
-                      onChange={(e) => setTimeoutMinutes(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="cron-attempts"
-                      info="Total launches per scheduled fire, a minute apart. 1 means no retry. Only the last attempt's output is kept."
-                      docs="cron.history"
-                    >
-                      Attempts
-                    </FieldLabel>
-                    <Input
-                      id="cron-attempts"
-                      type="number"
-                      min={1}
-                      max={4}
-                      value={maxAttempts}
-                      onChange={(e) => setMaxAttempts(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="cron-keep"
-                      info="How many past runs to keep in the history."
-                      docs="cron.history"
-                    >
-                      Runs kept
-                    </FieldLabel>
-                    <Input
-                      id="cron-keep"
-                      type="number"
-                      min={10}
-                      max={500}
-                      value={keepRuns}
-                      onChange={(e) => setKeepRuns(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="cron-workdir"
-                      info="Where the command starts. Empty ⇒ the image's own."
-                      docs="cron.create"
-                    >
-                      Working directory
-                    </FieldLabel>
-                    <Input
-                      id="cron-workdir"
-                      value={workdir}
-                      onChange={(e) => setWorkdir(e.target.value)}
-                      placeholder="/app"
-                      className="font-mono text-sm"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="cron-user"
-                      info="Who the command runs as. Empty ⇒ the image's own user."
-                      docs="cron.create"
-                    >
-                      User
-                    </FieldLabel>
-                    <Input
-                      id="cron-user"
-                      value={user}
-                      onChange={(e) => setUser(e.target.value)}
-                      placeholder="root"
-                      className="font-mono text-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* The two multiply, and the server refuses the product - better
-                    to say so while it can still be changed. */}
-                {attempts > 1 && (
-                  <p
-                    className={
-                      overBudget
-                        ? "text-xs text-destructive"
-                        : "text-xs text-muted-foreground"
-                    }
-                  >
-                    {attempts} attempts of {timeout} minutes could take up to{" "}
-                    {worstCaseHours % 1 === 0
-                      ? worstCaseHours
-                      : worstCaseHours.toFixed(1)}{" "}
-                    hours.
-                    {overBudget
-                      ? " Lower the timeout or the attempts to fit in 24."
-                      : ""}
-                  </p>
-                )}
-
+            <SchedulePicker
+              docs="cron.create"
+              id="cron-schedule"
+              value={schedule}
+              onChange={setSchedule}
+              timezone={timezone}
+              trailing={
                 <div className="space-y-2">
                   <FieldLabel
-                    info="Set only for this job, on top of the container's own. Values are write-only - they can be replaced, never read back."
-                    docs="env.overview"
+                    htmlFor="cron-timezone"
+                    info="The clock this schedule is read on. Defaults to yours, so 03:00 means 03:00 where you are."
+                    docs="cron.create"
                   >
-                    Variables
+                    Timezone
                   </FieldLabel>
-                  {env.map((row, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Input
-                        value={row.key}
-                        onChange={(e) => {
-                          setEnvTouched(true);
-                          setEnv((rows) =>
-                            rows.map((r, j) =>
-                              j === i ? { ...r, key: e.target.value } : r,
-                            ),
-                          );
-                        }}
-                        placeholder="API_KEY"
-                        className="font-mono text-sm"
-                      />
-                      <Input
-                        value={row.value}
-                        onChange={(e) => {
-                          setEnvTouched(true);
-                          setEnv((rows) =>
-                            rows.map((r, j) =>
-                              j === i ? { ...r, value: e.target.value } : r,
-                            ),
-                          );
-                        }}
-                        placeholder={job ? "Set a new value" : "value"}
-                        type="password"
-                        className="font-mono text-sm"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Remove ${row.key || "variable"}`}
-                        onClick={() => {
-                          setEnvTouched(true);
-                          setEnv((rows) => rows.filter((_, j) => j !== i));
-                        }}
+                  {/* The READER's clock, not a server's: the whole point of the
+                    field is "03:00 means 03:00 where you are". Safe to read at
+                    render because the dialog's content only mounts on open. */}
+                  <TimezonePicker
+                    id="cron-timezone"
+                    value={timezone}
+                    onChange={setTimezone}
+                    now={pickerNow}
+                  />
+                </div>
+              }
+            />
+            {dstWarning && <p className="text-xs text-warning">{dstWarning}</p>}
+
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="cron-command"
+                info="Run exactly as typed by the chosen shell, so pipes and && work. It cannot see your terminal - anything interactive will hang until the timeout."
+                docs="cron.create"
+              >
+                Command
+              </FieldLabel>
+              <Textarea
+                id="cron-command"
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                placeholder="php artisan schedule:run"
+                rows={3}
+                className="font-mono text-sm"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+              <FieldLabel
+                htmlFor="cron-enabled"
+                info="A disabled job keeps its settings and its history, and simply does not fire."
+                docs="cron.create"
+              >
+                Enabled
+              </FieldLabel>
+              <Switch
+                id="cron-enabled"
+                checked={enabled}
+                onCheckedChange={setEnabled}
+              />
+            </div>
+
+            <Accordion type="single" collapsible>
+              <AccordionItem value="advanced" className="border-none">
+                <AccordionTrigger className="py-2 text-sm">
+                  Advanced
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <FieldLabel
+                      htmlFor="cron-description"
+                      info="A note for whoever reads this list next."
+                      docs="cron.create"
+                    >
+                      Description
+                    </FieldLabel>
+                    <Input
+                      id="cron-description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Sends yesterday's invoices"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <FieldLabel
+                        htmlFor="cron-shell"
+                        info="A container without the shell you pick fails the run rather than quietly using the other one - they disagree about pipefail and [[."
+                        docs="cron.create"
                       >
-                        <Trash2 className="size-4" />
-                      </Button>
+                        Shell
+                      </FieldLabel>
+                      <Select value={shell} onValueChange={setShell}>
+                        <SelectTrigger id="cron-shell">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sh">sh</SelectItem>
+                          <SelectItem value="bash">bash</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setEnvTouched(true);
-                      setEnv((rows) => [...rows, { key: "", value: "" }]);
-                    }}
-                  >
-                    <Plus className="size-4" />
-                    Add variable
-                  </Button>
-                  {job && envTouched && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Saving replaces every variable on this job. A row left
-                      empty is saved as an empty value.
+                    <div className="space-y-2">
+                      <FieldLabel
+                        htmlFor="cron-overlap"
+                        info="What happens when the previous run has not finished yet."
+                        docs="cron.create"
+                      >
+                        If it is still running
+                      </FieldLabel>
+                      <Select value={overlap} onValueChange={setOverlap}>
+                        <SelectTrigger id="cron-overlap">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="skip">Skip this run</SelectItem>
+                          <SelectItem value="allow">Run it anyway</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel
+                        htmlFor="cron-timeout"
+                        info="How long ONE attempt may take before it is stopped. Per attempt, not per run."
+                        docs="cron.create"
+                      >
+                        Timeout (minutes)
+                      </FieldLabel>
+                      <Input
+                        id="cron-timeout"
+                        type="number"
+                        min={1}
+                        max={1440}
+                        value={timeoutMinutes}
+                        onChange={(e) => setTimeoutMinutes(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel
+                        htmlFor="cron-attempts"
+                        info="Total launches per scheduled fire, a minute apart. 1 means no retry. Only the last attempt's output is kept."
+                        docs="cron.history"
+                      >
+                        Attempts
+                      </FieldLabel>
+                      <Input
+                        id="cron-attempts"
+                        type="number"
+                        min={1}
+                        max={4}
+                        value={maxAttempts}
+                        onChange={(e) => setMaxAttempts(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel
+                        htmlFor="cron-keep"
+                        info="How many past runs to keep in the history."
+                        docs="cron.history"
+                      >
+                        Runs kept
+                      </FieldLabel>
+                      <Input
+                        id="cron-keep"
+                        type="number"
+                        min={10}
+                        max={500}
+                        value={keepRuns}
+                        onChange={(e) => setKeepRuns(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel
+                        htmlFor="cron-workdir"
+                        info="Where the command starts. Empty ⇒ the image's own."
+                        docs="cron.create"
+                      >
+                        Working directory
+                      </FieldLabel>
+                      <Input
+                        id="cron-workdir"
+                        value={workdir}
+                        onChange={(e) => setWorkdir(e.target.value)}
+                        placeholder="/app"
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel
+                        htmlFor="cron-user"
+                        info="Who the command runs as. Empty ⇒ the image's own user."
+                        docs="cron.create"
+                      >
+                        User
+                      </FieldLabel>
+                      <Input
+                        id="cron-user"
+                        value={user}
+                        onChange={(e) => setUser(e.target.value)}
+                        placeholder="root"
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* The two multiply, and the server refuses the product - better
+                    to say so while it can still be changed. */}
+                  {attempts > 1 && (
+                    <p
+                      className={
+                        overBudget
+                          ? "text-xs text-destructive"
+                          : "text-xs text-muted-foreground"
+                      }
+                    >
+                      {attempts} attempts of {timeout} minutes could take up to{" "}
+                      {worstCaseHours % 1 === 0
+                        ? worstCaseHours
+                        : worstCaseHours.toFixed(1)}{" "}
+                      hours.
+                      {overBudget
+                        ? " Lower the timeout or the attempts to fit in 24."
+                        : ""}
                     </p>
                   )}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
 
+                  <div className="space-y-2">
+                    <FieldLabel
+                      info="Set only for this job, on top of the container's own. Values are write-only - they can be replaced, never read back."
+                      docs="env.overview"
+                    >
+                      Variables
+                    </FieldLabel>
+                    {env.map((row, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Input
+                          value={row.key}
+                          onChange={(e) => {
+                            setEnvTouched(true);
+                            setEnv((rows) =>
+                              rows.map((r, j) =>
+                                j === i ? { ...r, key: e.target.value } : r,
+                              ),
+                            );
+                          }}
+                          placeholder="API_KEY"
+                          className="font-mono text-sm"
+                        />
+                        <Input
+                          value={row.value}
+                          onChange={(e) => {
+                            setEnvTouched(true);
+                            setEnv((rows) =>
+                              rows.map((r, j) =>
+                                j === i ? { ...r, value: e.target.value } : r,
+                              ),
+                            );
+                          }}
+                          placeholder={job ? "Set a new value" : "value"}
+                          type="password"
+                          className="font-mono text-sm"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Remove ${row.key || "variable"}`}
+                          onClick={() => {
+                            setEnvTouched(true);
+                            setEnv((rows) => rows.filter((_, j) => j !== i));
+                          }}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEnvTouched(true);
+                        setEnv((rows) => [...rows, { key: "", value: "" }]);
+                      }}
+                    >
+                      <Plus className="size-4" />
+                      Add variable
+                    </Button>
+                    {job && envTouched && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Saving replaces every variable on this job. A row left
+                        empty is saved as an empty value.
+                      </p>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </AnimatedHeight>
           <DialogFooter>
             <Button
               type="button"

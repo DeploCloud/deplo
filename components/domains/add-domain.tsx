@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import { Input } from "@/components/ui/input";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
   DomainConfigFields,
@@ -205,60 +206,62 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <FieldLabel
-                  htmlFor="domain-name"
-                  info={
-                    suggestedDomain ? (
-                      <>
-                        No domain? Generate a free{" "}
-                        <span className="font-mono">{suggestion}</span> that
-                        works with zero DNS setup. Click again for a different
-                        one.
-                      </>
-                    ) : (
-                      "The custom hostname to route to this app, e.g. app.example.com. Add its DNS record afterward to verify."
-                    )
-                  }
-                  docs="domains.noDomainYet"
-                >
-                  Domain
-                </FieldLabel>
-                {suggestedDomain ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs text-muted-foreground"
-                    onClick={() => {
-                      const next = regenerateNipDomain(suggestedDomain);
-                      setSuggestion(next);
-                      setName(next);
-                    }}
+          <AnimatedHeight className="grid gap-4" scroll={false}>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <FieldLabel
+                    htmlFor="domain-name"
+                    info={
+                      suggestedDomain ? (
+                        <>
+                          No domain? Generate a free{" "}
+                          <span className="font-mono">{suggestion}</span> that
+                          works with zero DNS setup. Click again for a different
+                          one.
+                        </>
+                      ) : (
+                        "The custom hostname to route to this app, e.g. app.example.com. Add its DNS record afterward to verify."
+                      )
+                    }
+                    docs="domains.noDomainYet"
                   >
-                    <Sparkles className="size-3.5" />
-                    Generate
-                  </Button>
-                ) : null}
+                    Domain
+                  </FieldLabel>
+                  {suggestedDomain ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-muted-foreground"
+                      onClick={() => {
+                        const next = regenerateNipDomain(suggestedDomain);
+                        setSuggestion(next);
+                        setName(next);
+                      }}
+                    >
+                      <Sparkles className="size-3.5" />
+                      Generate
+                    </Button>
+                  ) : null}
+                </div>
+                <Input
+                  id="domain-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="app.example.com"
+                  className="font-mono text-sm"
+                />
               </div>
-              <Input
-                id="domain-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="app.example.com"
-                className="font-mono text-sm"
+              <DomainConfigFields
+                state={config}
+                onChange={setConfig}
+                services={services}
+                idPrefix="add-domain"
+                hostname={name}
               />
             </div>
-            <DomainConfigFields
-              state={config}
-              onChange={setConfig}
-              services={services}
-              idPrefix="add-domain"
-              hostname={name}
-            />
-          </div>
+          </AnimatedHeight>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel

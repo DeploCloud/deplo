@@ -22,6 +22,7 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 import type { ActionResult } from "@/lib/result";
 import { cn } from "@/lib/utils";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 
 /**
  * The confirm in front of every move of the panel's own address. So the dialog
@@ -213,7 +214,10 @@ export function PanelAddressDialog({
             <PanelMoveGraphic />
           </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-5 p-6">
+          <AnimatedHeight
+            className="grid grid-cols-[minmax(0,1fr)] gap-5 p-6"
+            scroll={false}
+          >
             <DialogHeader className="space-y-2">
               <DialogTitle>{title}</DialogTitle>
               {/* The counts ARE the summary: how many things break, graded.
@@ -333,7 +337,7 @@ export function PanelAddressDialog({
                 </span>
               </Button>
             </DialogFooter>
-          </div>
+          </AnimatedHeight>
         </form>
       </DialogContent>
     </Dialog>

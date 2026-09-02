@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
@@ -147,87 +148,89 @@ export function AddServer({
         </DialogHeader>
 
         <form className="grid gap-4" onSubmit={onSubmit}>
-          {command ? (
-            <div className="space-y-2">
-              <Label>Install command (shown once)</Label>
-              <CommandLine command={command} />
-              <p className="text-xs text-muted-foreground">
-                The command embeds a single-use token that expires in about an
-                hour. It is shown only now; if you lose it, re-mint one from the
-                server&rsquo;s menu.
-              </p>
-              {/**
-               * Over plain http the installer AND its checksum travel on the same unauthenticated
-               * channel, so anyone on the network path between the two machines can replace what
-               * runs as root here.
-               */}
-              {command.includes("http://") ? (
-                <p className="text-xs text-warning">
-                  This panel is on an http address, so the installer is
-                  downloaded over an unencrypted connection. Give Deplo a domain
-                  with HTTPS before adding servers over an untrusted network.
+          <AnimatedHeight className="grid gap-4" scroll={false}>
+            {command ? (
+              <div className="space-y-2">
+                <Label>Install command (shown once)</Label>
+                <CommandLine command={command} />
+                <p className="text-xs text-muted-foreground">
+                  The command embeds a single-use token that expires in about an
+                  hour. It is shown only now; if you lose it, re-mint one from
+                  the server&rsquo;s menu.
                 </p>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="srv-name">Display name</Label>
-                <Input
-                  id="srv-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="eu-west-1"
-                />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="srv-host"
-                  info="The address this control plane will reach the agent at, and where deployed apps for this server will be routed."
-                  docs="servers.address"
-                >
-                  Host or IP
-                </FieldLabel>
-                <Input
-                  id="srv-host"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  placeholder="203.0.113.24"
-                  className="font-mono text-sm"
-                />
-              </div>
-              <ServerTeamAccess
-                value={access}
-                teams={teams}
-                onChange={setAccess}
-                disabled={pending}
-              />
-              {/**
-               * What the box is for.
-               */}
-              <div className="space-y-2">
-                <FieldLabel
-                  info="Changes what the install command sets up on the host. Most servers should do everything."
-                  docs="servers.role"
-                >
-                  What this server is for
-                </FieldLabel>
-                <ServerRoleOptions
-                  value={role}
-                  onChange={setRole}
-                  disabled={() => pending}
-                />
-                {role !== "everything" && (
-                  <p className="text-xs text-muted-foreground">
-                    {role === "build"
-                      ? "Skips the proxy. Nothing is deployed here, and it stays out of the deploy target list - apps on your other servers can build on it instead."
-                      : "Skips Docker and the proxy. Nothing is deployed here, and it stays out of the deploy target list."}
+                {/**
+                 * Over plain http the installer AND its checksum travel on the same unauthenticated
+                 * channel, so anyone on the network path between the two machines can replace what
+                 * runs as root here.
+                 */}
+                {command.includes("http://") ? (
+                  <p className="text-xs text-warning">
+                    This panel is on an http address, so the installer is
+                    downloaded over an unencrypted connection. Give Deplo a
+                    domain with HTTPS before adding servers over an untrusted
+                    network.
                   </p>
-                )}
+                ) : null}
               </div>
-            </div>
-          )}
-
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="srv-name">Display name</Label>
+                  <Input
+                    id="srv-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="eu-west-1"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor="srv-host"
+                    info="The address this control plane will reach the agent at, and where deployed apps for this server will be routed."
+                    docs="servers.address"
+                  >
+                    Host or IP
+                  </FieldLabel>
+                  <Input
+                    id="srv-host"
+                    value={host}
+                    onChange={(e) => setHost(e.target.value)}
+                    placeholder="203.0.113.24"
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <ServerTeamAccess
+                  value={access}
+                  teams={teams}
+                  onChange={setAccess}
+                  disabled={pending}
+                />
+                {/**
+                 * What the box is for.
+                 */}
+                <div className="space-y-2">
+                  <FieldLabel
+                    info="Changes what the install command sets up on the host. Most servers should do everything."
+                    docs="servers.role"
+                  >
+                    What this server is for
+                  </FieldLabel>
+                  <ServerRoleOptions
+                    value={role}
+                    onChange={setRole}
+                    disabled={() => pending}
+                  />
+                  {role !== "everything" && (
+                    <p className="text-xs text-muted-foreground">
+                      {role === "build"
+                        ? "Skips the proxy. Nothing is deployed here, and it stays out of the deploy target list - apps on your other servers can build on it instead."
+                        : "Skips Docker and the proxy. Nothing is deployed here, and it stays out of the deploy target list."}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </AnimatedHeight>
           {/* One footer per phase rather than a fragment inside one: a footer
               counts its own children to place them, and a fragment hides them. */}
           {command ? (

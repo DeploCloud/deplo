@@ -17,6 +17,7 @@ import {
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -319,245 +320,254 @@ export function ShareFolderDialog({
             Give other members access to this folder and the apps inside it.
           </DialogDescription>
         </DialogHeader>
-
-        {/* Current access */}
-        <div className="space-y-2">
-          <Label>People with access</Label>
-          {loading ? (
-            <div className="space-y-1" aria-hidden>
-              {[0, 1].map((i) => (
-                <div key={i} className="flex items-center gap-3 px-2 py-2">
-                  <Skeleton shimmer className="size-8 shrink-0 rounded-full" />
-                  <div className="flex flex-1 flex-col gap-1.5">
-                    <Skeleton shimmer className="h-3.5 w-28 rounded" />
-                    <Skeleton shimmer className="h-3 w-20 rounded" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {grants.map((g) => (
-                <div
-                  key={g.userId}
-                  className="flex items-center gap-3 rounded-lg border border-border px-2 py-2"
-                >
-                  <UserAvatar
-                    name={g.name}
-                    username={g.username}
-                    avatarUrl={g.avatarUrl}
-                    size="lg"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      @{g.username}
-                      {g.isOwner && (
-                        <span className="ml-2 text-xs font-normal text-muted-foreground">
-                          Owner
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {g.isOwner ? "Full access" : capSummary(g.capabilities)}
-                    </p>
-                  </div>
-                  {/* The owner row can't be revoked - ownership isn't a grant. */}
-                  {!g.isOwner && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Remove @${g.username}`}
-                      disabled={pending}
-                      onClick={() => removeGrant(g)}
-                    >
-                      <X className="size-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <form className="grid gap-4" onSubmit={onSubmit}>
-          {/* Add a person */}
-          <div className="space-y-3 border-t border-border pt-4">
-            {!picked ? (
-              <>
-                <Label>Add someone</Label>
-                <div className="relative">
-                  <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search by username"
-                    className="pl-9"
-                  />
-                </div>
-                <div className="focus-safe-scroll max-h-44 min-h-20 space-y-1 overflow-y-auto">
-                  {searching && (
-                    <div className="space-y-1" aria-hidden>
-                      {[0, 1].map((i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-3 px-2 py-2"
-                        >
-                          <Skeleton
-                            shimmer
-                            className="size-8 shrink-0 rounded-full"
-                          />
-                          <Skeleton shimmer className="h-3.5 w-28 rounded" />
-                        </div>
-                      ))}
+        <AnimatedHeight
+          className="grid grid-cols-[minmax(0,1fr)] gap-4"
+          scroll={false}
+        >
+          {/* Current access */}
+          <div className="space-y-2">
+            <Label>People with access</Label>
+            {loading ? (
+              <div className="space-y-1" aria-hidden>
+                {[0, 1].map((i) => (
+                  <div key={i} className="flex items-center gap-3 px-2 py-2">
+                    <Skeleton
+                      shimmer
+                      className="size-8 shrink-0 rounded-full"
+                    />
+                    <div className="flex flex-1 flex-col gap-1.5">
+                      <Skeleton shimmer className="h-3.5 w-28 rounded" />
+                      <Skeleton shimmer className="h-3 w-20 rounded" />
                     </div>
-                  )}
-                  {!searching && candidates.length === 0 && (
-                    <p className="px-1 py-2 text-sm text-muted-foreground">
-                      {query.trim()
-                        ? "No matching members."
-                        : "No members left to add."}
-                    </p>
-                  )}
-                  {candidates.map((c) => (
-                    <button
-                      type="button"
-                      key={c.userId}
-                      onClick={() => pickCandidate(c)}
-                      className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
-                    >
-                      <UserAvatar
-                        name={c.name}
-                        username={c.username}
-                        avatarUrl={c.avatarUrl}
-                        size="lg"
-                      />
-                      <span className="flex flex-col">
-                        <span className="text-sm font-medium">
-                          @{c.username}
-                        </span>
-                        {c.name && (
-                          <span className="text-xs text-muted-foreground">
-                            {c.name}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-lg border border-border p-3">
-                  <div className="flex items-center gap-3">
+              <div className="space-y-1">
+                {grants.map((g) => (
+                  <div
+                    key={g.userId}
+                    className="flex items-center gap-3 rounded-lg border border-border px-2 py-2"
+                  >
                     <UserAvatar
-                      name={picked.name}
-                      username={picked.username}
-                      avatarUrl={picked.avatarUrl}
+                      name={g.name}
+                      username={g.username}
+                      avatarUrl={g.avatarUrl}
                       size="lg"
                     />
-                    <div>
-                      <p className="text-sm font-medium">@{picked.username}</p>
-                      {picked.name && (
-                        <p className="text-xs text-muted-foreground">
-                          {picked.name}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPicked(null)}
-                  >
-                    Change
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  <FieldLabel
-                    info="You can only grant capabilities you hold yourself on this folder. View access is always included and can't be removed."
-                    docs="roles.folderGrant"
-                  >
-                    What can they do?
-                  </FieldLabel>
-                  {/* `view` is implied, always on - shown as a fixed, disabled row
-                      rather than a togglable box. */}
-                  <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
-                    <input
-                      type="checkbox"
-                      checked
-                      disabled
-                      className="mt-0.5 size-4 accent-primary"
-                    />
-                    <div className="space-y-0.5">
-                      <p className="text-sm leading-none font-medium">
-                        {CAPABILITY_META.view.label}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        @{g.username}
+                        {g.isOwner && (
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">
+                            Owner
+                          </span>
+                        )}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {CAPABILITY_META.view.description}
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {g.isOwner ? "Full access" : capSummary(g.capabilities)}
                       </p>
                     </div>
-                  </div>
-                  {togglableCaps.map((cap) => {
-                    const id = `sharecap-${folderId}-${cap}`;
-                    return (
-                      <label
-                        key={cap}
-                        htmlFor={id}
-                        className="flex cursor-pointer items-start gap-3 rounded-md px-1 py-1.5 hover:bg-accent"
+                    {/* The owner row can't be revoked - ownership isn't a grant. */}
+                    {!g.isOwner && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove @${g.username}`}
+                        disabled={pending}
+                        onClick={() => removeGrant(g)}
                       >
-                        <input
-                          id={id}
-                          type="checkbox"
-                          checked={caps.has(cap)}
-                          onChange={(e) => toggleCap(cap, e.target.checked)}
-                          className="mt-0.5 size-4 accent-primary"
-                        />
-                        <div className="space-y-0.5">
-                          <p className="text-sm leading-none font-medium">
-                            {CAPABILITY_META[cap].label}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {CAPABILITY_META[cap].description}
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
+                        <X className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={pending}
-            >
-              Close
-            </Button>
-            {/* Always mounted, disabled until there is someone to share with:
+          <form className="grid gap-4" onSubmit={onSubmit}>
+            {/* Add a person */}
+            <div className="space-y-3 border-t border-border pt-4">
+              {!picked ? (
+                <>
+                  <Label>Add someone</Label>
+                  <div className="relative">
+                    <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Search by username"
+                      className="pl-9"
+                    />
+                  </div>
+                  <div className="focus-safe-scroll max-h-44 min-h-20 space-y-1 overflow-y-auto">
+                    {searching && (
+                      <div className="space-y-1" aria-hidden>
+                        {[0, 1].map((i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-3 px-2 py-2"
+                          >
+                            <Skeleton
+                              shimmer
+                              className="size-8 shrink-0 rounded-full"
+                            />
+                            <Skeleton shimmer className="h-3.5 w-28 rounded" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!searching && candidates.length === 0 && (
+                      <p className="px-1 py-2 text-sm text-muted-foreground">
+                        {query.trim()
+                          ? "No matching members."
+                          : "No members left to add."}
+                      </p>
+                    )}
+                    {candidates.map((c) => (
+                      <button
+                        type="button"
+                        key={c.userId}
+                        onClick={() => pickCandidate(c)}
+                        className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
+                      >
+                        <UserAvatar
+                          name={c.name}
+                          username={c.username}
+                          avatarUrl={c.avatarUrl}
+                          size="lg"
+                        />
+                        <span className="flex flex-col">
+                          <span className="text-sm font-medium">
+                            @{c.username}
+                          </span>
+                          {c.name && (
+                            <span className="text-xs text-muted-foreground">
+                              {c.name}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar
+                        name={picked.name}
+                        username={picked.username}
+                        avatarUrl={picked.avatarUrl}
+                        size="lg"
+                      />
+                      <div>
+                        <p className="text-sm font-medium">
+                          @{picked.username}
+                        </p>
+                        {picked.name && (
+                          <p className="text-xs text-muted-foreground">
+                            {picked.name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPicked(null)}
+                    >
+                      Change
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <FieldLabel
+                      info="You can only grant capabilities you hold yourself on this folder. View access is always included and can't be removed."
+                      docs="roles.folderGrant"
+                    >
+                      What can they do?
+                    </FieldLabel>
+                    {/* `view` is implied, always on - shown as a fixed, disabled row
+                      rather than a togglable box. */}
+                    <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
+                      <input
+                        type="checkbox"
+                        checked
+                        disabled
+                        className="mt-0.5 size-4 accent-primary"
+                      />
+                      <div className="space-y-0.5">
+                        <p className="text-sm leading-none font-medium">
+                          {CAPABILITY_META.view.label}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {CAPABILITY_META.view.description}
+                        </p>
+                      </div>
+                    </div>
+                    {togglableCaps.map((cap) => {
+                      const id = `sharecap-${folderId}-${cap}`;
+                      return (
+                        <label
+                          key={cap}
+                          htmlFor={id}
+                          className="flex cursor-pointer items-start gap-3 rounded-md px-1 py-1.5 hover:bg-accent"
+                        >
+                          <input
+                            id={id}
+                            type="checkbox"
+                            checked={caps.has(cap)}
+                            onChange={(e) => toggleCap(cap, e.target.checked)}
+                            className="mt-0.5 size-4 accent-primary"
+                          />
+                          <div className="space-y-0.5">
+                            <p className="text-sm leading-none font-medium">
+                              {CAPABILITY_META[cap].label}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {CAPABILITY_META[cap].description}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={pending}
+              >
+                Close
+              </Button>
+              {/* Always mounted, disabled until there is someone to share with:
                 a button that appears on the pick would move Close across the
                 footer, and the disabled state says the action exists. */}
-            <Button type="submit" disabled={pending || !picked}>
-              <span className="grid place-items-center">
-                <span
-                  className={cn(
-                    "col-start-1 row-start-1 flex items-center gap-2",
-                    pending && "invisible",
+              <Button type="submit" disabled={pending || !picked}>
+                <span className="grid place-items-center">
+                  <span
+                    className={cn(
+                      "col-start-1 row-start-1 flex items-center gap-2",
+                      pending && "invisible",
+                    )}
+                  >
+                    <Check className="size-4" />
+                    Share
+                  </span>
+                  {pending && (
+                    <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
                   )}
-                >
-                  <Check className="size-4" />
-                  Share
                 </span>
-                {pending && (
-                  <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
-                )}
-              </span>
-            </Button>
-          </DialogFooter>
-        </form>
+              </Button>
+            </DialogFooter>
+          </form>
+        </AnimatedHeight>
       </DialogContent>
     </Dialog>
   );

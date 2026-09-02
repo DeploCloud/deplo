@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Label } from "@/components/ui/label";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
@@ -219,91 +220,98 @@ export function RecopyDataDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {source === null ? (
-          <p className="text-sm text-muted-foreground">
-            {name} did not come from a migration, so there is nothing to copy
-            again.
-          </p>
-        ) : null}
+        <AnimatedHeight
+          className="grid grid-cols-[minmax(0,1fr)] gap-4"
+          scroll={false}
+        >
+          {source === null ? (
+            <p className="text-sm text-muted-foreground">
+              {name} did not come from a migration, so there is nothing to copy
+              again.
+            </p>
+          ) : null}
 
-        {source && !plan ? (
-          <form className="grid gap-4" onSubmit={readPlan}>
-            <div className="space-y-2">
-              <Label htmlFor="recopy-key">{panel} API token</Label>
-              <Input
-                id="recopy-key"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                autoFocus
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Deplo wipes the token when a migration ends, so it needs it
-                again to read {source.sourceUrl}.
-              </p>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!apiKey.trim() || loading}>
-                {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-                Continue
-              </Button>
-            </DialogFooter>
-          </form>
-        ) : null}
-
-        {plan ? (
-          <div className="grid gap-4">
-            <div className="space-y-1 text-sm">
-              {plan.volumes.length === 0 ? (
-                <p className="text-muted-foreground">
-                  {panel} says {plan.sourceName} mounts nothing, so there is
-                  nothing to copy.
+          {source && !plan ? (
+            <form className="grid gap-4" onSubmit={readPlan}>
+              <div className="space-y-2">
+                <Label htmlFor="recopy-key">{panel} API token</Label>
+                <Input
+                  id="recopy-key"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  autoFocus
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Deplo wipes the token when a migration ends, so it needs it
+                  again to read {source.sourceUrl}.
                 </p>
-              ) : (
-                plan.volumes.map((v) => (
-                  <div
-                    key={`${v.sourceVolume}->${v.targetVolume}`}
-                    className="flex items-baseline justify-between gap-3 font-mono text-xs"
-                  >
-                    <span className="truncate">{v.sourceVolume}</span>
-                    <span className="shrink-0 text-muted-foreground">
-                      {v.mountPath}
-                    </span>
-                  </div>
-                ))
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!apiKey.trim() || loading}>
+                  {loading ? <Loader2 className="size-4 animate-spin" /> : null}
+                  Continue
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : null}
+
+          {plan ? (
+            <div className="grid gap-4">
+              <div className="space-y-1 text-sm">
+                {plan.volumes.length === 0 ? (
+                  <p className="text-muted-foreground">
+                    {panel} says {plan.sourceName} mounts nothing, so there is
+                    nothing to copy.
+                  </p>
+                ) : (
+                  plan.volumes.map((v) => (
+                    <div
+                      key={`${v.sourceVolume}->${v.targetVolume}`}
+                      className="flex items-baseline justify-between gap-3 font-mono text-xs"
+                    >
+                      <span className="truncate">{v.sourceVolume}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {v.mountPath}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+              {!plan.sourceReachable && (
+                <p className="flex items-start gap-2 text-sm text-[var(--warning)]">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                  Deplo cannot reach the machine this data is on, so the copy
+                  would not start. Check that server under Servers first.
+                </p>
               )}
+              {plan.notes.map((n) => (
+                <p key={n} className="text-xs text-muted-foreground">
+                  {n}
+                </p>
+              ))}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPlan(null)}>
+                  Back
+                </Button>
+                <Button
+                  onClick={copy}
+                  disabled={
+                    copying ||
+                    plan.volumes.length === 0 ||
+                    !plan.sourceReachable
+                  }
+                >
+                  {copying ? <Loader2 className="size-4 animate-spin" /> : null}
+                  Copy
+                </Button>
+              </DialogFooter>
             </div>
-            {!plan.sourceReachable && (
-              <p className="flex items-start gap-2 text-sm text-[var(--warning)]">
-                <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                Deplo cannot reach the machine this data is on, so the copy
-                would not start. Check that server under Servers first.
-              </p>
-            )}
-            {plan.notes.map((n) => (
-              <p key={n} className="text-xs text-muted-foreground">
-                {n}
-              </p>
-            ))}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setPlan(null)}>
-                Back
-              </Button>
-              <Button
-                onClick={copy}
-                disabled={
-                  copying || plan.volumes.length === 0 || !plan.sourceReachable
-                }
-              >
-                {copying ? <Loader2 className="size-4 animate-spin" /> : null}
-                Copy
-              </Button>
-            </DialogFooter>
-          </div>
-        ) : null}
+          ) : null}
+        </AnimatedHeight>
       </DialogContent>
     </Dialog>
   );
