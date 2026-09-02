@@ -133,6 +133,7 @@
     "@codemirror/view": "$@codemirror/view",
     "@codemirror/language": "$@codemirror/language",
     "esbuild": "^0.28.2",
-    "postcss": "^8.5.26"
+    "postcss": "^8.5.26",
+    "browserslist": "^4.28.7"
   }
 }

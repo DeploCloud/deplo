@@ -105,6 +105,9 @@ export function AvatarPicker({
   React.useEffect(() => {
     if (!preload || !seed || !letters) return;
     const rolled = rollPreviewSeeds(seed);
+    // Rolled once on mount and kept: a memo would re-roll whenever React
+    // discards it, and the faces would change under the person picking one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreviews(rolled);
     // Fetched now, not on the click: the dialog would otherwise open onto empty
     // circles and fill them in one by one.

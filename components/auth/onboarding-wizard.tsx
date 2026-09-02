@@ -55,7 +55,7 @@ const STEPS = [
   { id: "team", label: "Your team" },
 ];
 
-export function OnboardingWizard({}: {}) {
+export function OnboardingWizard() {
   const router = useRouter();
   const { phase, markSeen } = useLogoIntro(INTRO_SEEN);
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
