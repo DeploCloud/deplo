@@ -58,7 +58,11 @@ export function InfoTip({
       <TooltipContent side={side} className="max-w-xs leading-relaxed">
         {content}
         {docs && (
-          <DocsLink topic={docs} label={docsLabel} className="mt-1.5 block" />
+          <DocsLink
+            topic={docs}
+            label={docsLabel}
+            className="mt-1.5 block w-fit"
+          />
         )}
       </TooltipContent>
     </Tooltip>
