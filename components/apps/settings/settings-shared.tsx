@@ -1,4 +1,6 @@
 import * as React from "react";
+import { AlertCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { DocsLink } from "@/components/ui/docs-link";
 import type { DocsTopic } from "@/lib/docs";
@@ -45,24 +47,20 @@ export function SettingsSection({
 }
 
 /**
- * A muted "unsaved changes" cue shown on the left of a card footer while that
- * section has pending edits (paired with its Save button, which is disabled until
- * then).
+ * The "unsaved changes" cue on a card footer, beside the Save button it belongs
+ * to. A warning chip rather than a muted line: work that would be lost on the
+ * next navigation has to be seen without being looked for.
  */
 export function DirtyHint({ dirty }: { dirty: boolean }) {
   // Always render the span so it's a stable ARIA live region (its text is announced
   // when a section becomes dirty).
   return (
-    <span
-      role="status"
-      aria-live="polite"
-      className="flex items-center gap-1.5 text-xs text-muted-foreground"
-    >
+    <span role="status" aria-live="polite" className="flex items-center">
       {dirty && (
-        <>
-          <span aria-hidden className="size-1.5 rounded-full bg-warning" />
+        <Badge variant="warning" className="gap-1.5 border-warning/40">
+          <AlertCircle aria-hidden className="size-3.5" />
           Unsaved changes
-        </>
+        </Badge>
       )}
     </span>
   );

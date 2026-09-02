@@ -2,8 +2,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * The picture on the archive drop area: a zipped archive above an open tray.
- * It moves only on hover of the drop zone, which is the affordance - the
- * archive dips toward the tray and the tray opens to take it.
+ * It moves when the drop zone is hovered OR has a file over it, so the same
+ * gesture answers both - the archive dips and the tray opens to take it.
  */
 export function UploadGraphic({ className }: { className?: string }) {
   return (
@@ -21,16 +21,16 @@ export function UploadGraphic({ className }: { className?: string }) {
             transform-box, which is not worth pinning for two flaps. */}
         <path
           d="M22 82 38 72"
-          className="transition-transform duration-300 ease-out group-hover:-translate-x-[3px] group-hover:-translate-y-[3px] motion-reduce:transition-none"
+          className="transition-transform duration-300 ease-out group-hover:-translate-x-[3px] group-hover:-translate-y-[3px] group-data-[active]:-translate-x-[3px] group-data-[active]:-translate-y-[3px] motion-reduce:transition-none"
         />
         <path
           d="M98 82 82 72"
-          className="transition-transform duration-300 ease-out group-hover:translate-x-[3px] group-hover:-translate-y-[3px] motion-reduce:transition-none"
+          className="transition-transform duration-300 ease-out group-hover:translate-x-[3px] group-hover:-translate-y-[3px] group-data-[active]:translate-x-[3px] group-data-[active]:-translate-y-[3px] motion-reduce:transition-none"
         />
       </g>
 
       {/* The archive is the subject, and the piece that travels. */}
-      <g className="transition-transform duration-300 ease-out group-hover:translate-y-[7px] motion-reduce:transition-none">
+      <g className="transition-transform duration-300 ease-out group-hover:translate-y-[7px] group-data-[active]:translate-y-[7px] motion-reduce:transition-none">
         <rect
           x="41"
           y="16"
@@ -61,7 +61,7 @@ export function UploadGraphic({ className }: { className?: string }) {
           archive by a beat. */}
       <path
         d="M52 74 60 82 68 74"
-        className="stroke-muted-foreground opacity-0 transition-all duration-300 ease-out group-hover:translate-y-1 group-hover:opacity-100 motion-reduce:transition-none"
+        className="stroke-muted-foreground opacity-0 transition-all duration-300 ease-out group-hover:translate-y-1 group-hover:opacity-100 group-data-[active]:translate-y-1 group-data-[active]:opacity-100 motion-reduce:transition-none"
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
