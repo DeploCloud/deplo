@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
+import { envNameLooksSensitive } from "@/lib/env-secret-name";
 import { KEY_RE } from "@/components/env/env-parse";
 import {
   EnvRowsEditor,
@@ -423,6 +424,11 @@ function StandaloneTab({
 
   const filled = filledRows(rows);
   const invalid = invalidRows(rows);
+  // Only worth saying while the Secret switch could still take it: one row, off.
+  const looksSecret =
+    !secret &&
+    filled.length === 1 &&
+    envNameLooksSensitive(filled[0].key.trim());
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -490,6 +496,16 @@ function StandaloneTab({
         className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
       >
         <EnvRowsEditor rows={rows} onChange={setRows} />
+
+        {looksSecret && (
+          <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
+            <Info className="mt-px size-3.5 shrink-0" />
+            <span>
+              “{filled[0].key.trim()}” reads like a credential. Turn on Secret
+              below to store it write-only.
+            </span>
+          </p>
+        )}
 
         {filled.length > 1 ? (
           <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">

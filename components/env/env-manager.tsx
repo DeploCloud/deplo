@@ -43,6 +43,7 @@ import {
   updatedFacet,
 } from "@/components/env/env-filters";
 import { gqlAction } from "@/lib/graphql-client";
+import { envNameLooksSensitive } from "@/lib/env-secret-name";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
@@ -239,7 +240,13 @@ export function EnvManager({
                 row.kind === "standalone" ? (
                   <TableRow key={rowKey(row)}>
                     <TableCell className="font-mono text-xs font-medium">
-                      {row.key}
+                      <div className="flex items-center gap-2">
+                        {row.key}
+                        {row.type === "plain" &&
+                          envNameLooksSensitive(row.key) && (
+                            <LooksLikeSecretBadge />
+                          )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <EnvValueCell value={row.value} masked={row.masked} />
@@ -315,6 +322,12 @@ export function EnvManager({
                             </Badge>
                           </SimpleTooltip>
                         )}
+                        {row.type === "plain" &&
+                          row.linked &&
+                          detailsById.get(row.id)?.editable !== false &&
+                          envNameLooksSensitive(row.key) && (
+                            <LooksLikeSecretBadge />
+                          )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -487,5 +500,21 @@ function SharedRowActions({
         </Button>
       </SimpleTooltip>
     </div>
+  );
+}
+
+/**
+ * A plain variable whose NAME reads like a credential (Docker's own rule).
+ */
+function LooksLikeSecretBadge() {
+  return (
+    <SimpleTooltip content="This name usually holds a credential. Edit it and turn on Secret: the value is then write-only and nothing shows it again.">
+      <Badge
+        variant="outline"
+        className="text-[10px] font-normal whitespace-nowrap"
+      >
+        Looks like a secret
+      </Badge>
+    </SimpleTooltip>
   );
 }
