@@ -236,3 +236,68 @@ test("a volume that is not on that host is told apart from an empty one", async 
   assert.equal(empty.missing, undefined);
   assert.deepEqual(to.calls, [], "neither one may wipe the destination");
 });
+
+/**
+ * The agent counts links and specials apart but names them in ONE list, so a
+ * parenthesis after the last kind labelled a symlink a block device. With two
+ * kinds the names stand on their own.
+ */
+function droppingDest(dropped: {
+  links: number;
+  special: number;
+  names: string[];
+}): AgentConnection {
+  return {
+    async hello() {
+      return { capabilities: ["volume-copy.drop-report"] };
+    },
+    async importVolume(
+      _name: string,
+      _wipeFirst: boolean,
+      chunks: AsyncIterable<Buffer>,
+    ) {
+      const parts: Buffer[] = [];
+      for await (const c of chunks) parts.push(c);
+      const body = Buffer.concat(parts);
+      return {
+        ok: true,
+        error: "",
+        bytesWritten: body.length,
+        sha256: createHash("sha256").update(body).digest("hex"),
+        dropped,
+      };
+    },
+  } as unknown as AgentConnection;
+}
+
+test("the dropped entries are not filed under the last kind named", async () => {
+  const from = source({ data: REAL });
+  const res = await copyVolumeBetween(
+    from.conn,
+    droppingDest({
+      links: 1,
+      special: 3,
+      names: ["./a-fifo", "./deep/rel-link", "./a-blockdev"],
+    }),
+    "data",
+    "target",
+  );
+  assert.match(
+    res.dropped ?? "",
+    /4 entries did not come across: 1 link pointing outside it and 3 devices, sockets or pipes, among them \.\/a-fifo, \.\/deep\/rel-link, \.\/a-blockdev\./,
+  );
+});
+
+test("one kind still names its own entries in brackets", async () => {
+  const from = source({ data: REAL });
+  const res = await copyVolumeBetween(
+    from.conn,
+    droppingDest({ links: 0, special: 1, names: ["./pipe"] }),
+    "data",
+    "target",
+  );
+  assert.match(
+    res.dropped ?? "",
+    /1 entry did not come across: 1 device, socket or pipe \(\.\/pipe\)\./,
+  );
+});

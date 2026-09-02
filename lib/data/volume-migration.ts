@@ -167,8 +167,15 @@ async function droppedNote(
     dropped.special > 0 &&
       `${dropped.special} device${dropped.special === 1 ? "" : "s"}, socket${dropped.special === 1 ? "" : "s"} or pipe${dropped.special === 1 ? "" : "s"}`,
   ].filter((x): x is string => Boolean(x));
+  // The agent reports ONE list of names for both kinds, so a parenthesis after the
+  // last kind labels a symlink a device. With two kinds the names go on their own.
   const named = dropped.names.slice(0, 3).join(", ");
-  return `${total} entr${total === 1 ? "y" : "ies"} did not come across: ${kinds.join(" and ")}${named ? ` (${named})` : ""}. Deplo does not copy those - re-create them by hand if the app needs them.`;
+  const which = !named
+    ? ""
+    : kinds.length === 1
+      ? ` (${named})`
+      : `, among them ${named}`;
+  return `${total} entr${total === 1 ? "y" : "ies"} did not come across: ${kinds.join(" and ")}${which}. Deplo does not copy those - re-create them by hand if the app needs them.`;
 }
 
 /**
