@@ -1,11 +1,9 @@
 import { version as packageVersion } from "../package.json";
 
-import { FALLBACK_AGENT_VERSION } from "./agent/release";
-
 /**
- * Current Deplo (control plane / website) version and upstream repository. Both
- * readers (`lib/data/updates.ts`, `lib/data/instance-settings.ts`) are
- * server-only, so the JSON import never reaches a client bundle.
+ * Current Deplo (control plane / website) version and upstream repository. This
+ * module is client-reachable (the fleet list compares agent versions in it), so
+ * nothing server-only may be imported here.
  */
 export const DEPLO_VERSION: string = packageVersion;
 export const DEPLO_REPO = "DeploCloud/deplo";
@@ -13,8 +11,10 @@ export const DEPLO_REPO = "DeploCloud/deplo";
 /**
  * The agent version we expect every server to be running. This constant is the
  * OFFLINE FALLBACK used only when GitHub can't be reached, and it is what "Update
- * agent" would install then.
+ * agent" would install then. It lives HERE, not beside the release reader, so the
+ * fleet list can compare two versions without pulling a server-only module.
  */
+export const FALLBACK_AGENT_VERSION = "0.1.0";
 export const EXPECTED_AGENT_VERSION = FALLBACK_AGENT_VERSION;
 
 /** Parse a `[v]MAJOR.MINOR.PATCH[...]` string into a numeric triple, or null. */
@@ -60,14 +60,4 @@ export function reportedAgentVersion(server: {
   agent?: { version: string };
 }): string | null {
   return server.agent?.version || null;
-}
-
-/**
- * Resolve the agent version every server should be running - the latest agent
- * GitHub release (DeploCloud/deplo-agent), cached.
- */
-export async function resolveExpectedAgentVersion(): Promise<string> {
-  const { resolveLatestAgentRelease } = await import("./agent/release");
-  const release = await resolveLatestAgentRelease();
-  return release?.version || EXPECTED_AGENT_VERSION;
 }

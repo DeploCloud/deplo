@@ -26,7 +26,7 @@ import {
   toContainerSample,
 } from "../data/container-metrics";
 import { reconcileAppStatusFromTelemetry } from "../data/app-status-reconcile";
-import { resolveExpectedAgentVersion } from "../version";
+import { resolveExpectedAgentVersion } from "../agent/release";
 import type { ServerMetrics } from "../data/monitoring";
 import type {
   ContainerStat,

@@ -48,10 +48,8 @@ import {
 } from "@/lib/deploy/domains";
 import { refreshAgentVersion } from "@/lib/data/updates";
 import { checkServerReadiness } from "@/lib/data/server-readiness";
-import {
-  reportedAgentVersion,
-  resolveExpectedAgentVersion,
-} from "@/lib/version";
+import { reportedAgentVersion } from "@/lib/version";
+import { resolveExpectedAgentVersion } from "@/lib/agent/release";
 // (resolveExpectedAgentVersion is awaited per-request; it is cached so the agent
 // fields below don't each hit GitHub.)
 import type {

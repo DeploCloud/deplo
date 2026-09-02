@@ -1,5 +1,7 @@
 import "server-only";
 
+import { FALLBACK_AGENT_VERSION } from "../version";
+
 /**
  * The agent binary is no longer built inside this repo - it lives in its own
  * repository (AGENT_REPO) and ships as GitHub Release assets. Policy: ALWAYS
@@ -9,11 +11,7 @@ import "server-only";
 /** The repo that builds + releases the agent binary. */
 export const AGENT_REPO = "DeploCloud/deplo-agent";
 
-/**
- * Fallback agent version reported as "expected" when GitHub can't be reached
- * (offline, rate-limited, no releases yet).
- */
-export const FALLBACK_AGENT_VERSION = "0.1.0";
+export { FALLBACK_AGENT_VERSION } from "../version";
 
 /** The asset basename the install script downloads, per Linux architecture. */
 function assetName(arch: "amd64" | "arm64"): string {
@@ -172,4 +170,15 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
 export function __resetReleaseCacheForTests(): void {
   cacheCell.value = null;
   cacheCell.lastGood = null;
+}
+
+/**
+ * The agent version every server should be running: the latest release, or the
+ * offline fallback. Lives HERE, not in `lib/version.ts`, because that module is
+ * client-reachable and even a dynamic import of this one drags `server-only`
+ * into the browser bundle.
+ */
+export async function resolveExpectedAgentVersion(): Promise<string> {
+  const release = await resolveLatestAgentRelease();
+  return release?.version || FALLBACK_AGENT_VERSION;
 }

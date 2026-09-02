@@ -2,12 +2,8 @@ import "server-only";
 
 import { revalidateTag } from "next/cache";
 
-import {
-  DEPLO_VERSION,
-  DEPLO_REPO,
-  isNewer,
-  resolveExpectedAgentVersion,
-} from "../version";
+import { DEPLO_VERSION, DEPLO_REPO, isNewer } from "../version";
+import { resolveExpectedAgentVersion } from "../agent/release";
 import { requireInstanceAdmin } from "../membership";
 
 /** Result of checking the upstream GitHub repository for a newer release. */

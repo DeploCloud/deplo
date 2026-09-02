@@ -23,11 +23,8 @@ import {
   resolveServerIp,
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
-import {
-  resolveExpectedAgentVersion,
-  reportedAgentVersion,
-  agentUpdateAvailable,
-} from "@/lib/version";
+import { reportedAgentVersion, agentUpdateAvailable } from "@/lib/version";
+import { resolveExpectedAgentVersion } from "@/lib/agent/release";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,

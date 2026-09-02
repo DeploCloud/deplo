@@ -8,11 +8,8 @@ import { viewerIsInstanceOwner } from "@/lib/data/instance-owner";
 import { listAllUsers } from "@/lib/data/members";
 import { listAllServers } from "@/lib/data/servers";
 import { isInstanceAdmin } from "@/lib/membership";
-import {
-  agentUpdateAvailable,
-  reportedAgentVersion,
-  resolveExpectedAgentVersion,
-} from "@/lib/version";
+import { agentUpdateAvailable, reportedAgentVersion } from "@/lib/version";
+import { resolveExpectedAgentVersion } from "@/lib/agent/release";
 
 export const metadata = { title: "Settings · Deplo" };
 
