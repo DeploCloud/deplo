@@ -518,6 +518,13 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   what the thing does or what to do next; don't restate the control's own label, don't narrate
   implementation, don't explain Docker. If it needs a paragraph to make sense, the UI is wrong, not
   the copy. Errors and server messages are the exception: surface those verbatim.
+- **The default amount of visible explanation is NONE.** Copy earns its place by being needed at a
+  glance; everything else is a tooltip (`FieldLabel info=` / `InfoTip`) or a docs page, and a field
+  gets ONE of the two, never a paragraph under it as well. A line like "The archive is extracted and
+  built with the Build & Output settings below. Use Save & Deploy to build and release it." is three
+  facts a user reads once and then reads past forever, on a screen they came to in order to do one
+  thing. Section hints, stage descriptions and "what this does" blurbs all fall under this: put them
+  in the title's tooltip. A screen whose meaning survives deleting its prose was carrying debt.
 - **Never invent a name for a thing the world already names.** If a control, pattern or concept
   already has a label every user has seen a hundred times, use THAT label - exactly, not a
   synonym you find tidier. It is **"Select all" / "Unselect all"**, never "Select these" /

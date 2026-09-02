@@ -170,12 +170,6 @@ export function UploadInput({
         )}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        {deferred
-          ? "The archive is extracted and built with the Build & Output settings below when you deploy."
-          : "The archive is extracted and built with the Build & Output settings below. Use Save & Deploy to build and release it."}
-      </p>
-
       <input
         ref={inputRef}
         type="file"

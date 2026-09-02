@@ -899,6 +899,51 @@ export function DeploymentSettingsForm({
                 </div>
               )}
 
+              {source === "docker-image" && (
+                <div className="space-y-2">
+                  <FieldLabel
+                    info={
+                      <>
+                        Start typing to search registries; add{" "}
+                        <code className="font-mono">:</code> to pick a tag. A
+                        green check confirms the image exists.
+                      </>
+                    }
+                    docs="deploy.dockerImage"
+                  >
+                    Docker image
+                  </FieldLabel>
+                  <ImageInput value={dockerImage} onChange={setDockerImage} />
+                </div>
+              )}
+
+              {source === "upload" && (
+                <UploadInput appId={appId} current={initialUpload} />
+              )}
+
+              {source === "compose" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <FieldLabel
+                      className="flex items-center gap-1.5"
+                      info="The Compose file defining this stack's services. Deplo builds or pulls each service's image and deploys them together."
+                      docs="compose.overview"
+                    >
+                      <FileText className="size-3.5" />
+                      docker-compose.yml
+                    </FieldLabel>
+                    <FullComposeDialog appId={appId} />
+                  </div>
+                  <ComposeEditor
+                    value={compose}
+                    onChange={setCompose}
+                    onDiagnostics={setComposeDiags}
+                    minHeight={340}
+                  />
+                  <ComposeLintSummary diagnostics={composeDiags} />
+                </div>
+              )}
+
               {/* Always here, because the Server picker is: every source runs
                   somewhere, while the root directory and the build server only
                   apply to a repo Deplo compiles. */}
@@ -940,11 +985,9 @@ export function DeploymentSettingsForm({
                     )}
                     <div className="space-y-2">
                       <FieldLabel
-                        className="flex items-center gap-1.5"
                         info="The server (host machine) that builds and runs this app."
                         docs="servers.overview"
                       >
-                        <ServerIcon className="size-3.5" />
                         Server
                       </FieldLabel>
                       {/* No gap between the two: the warning is squared off at
@@ -1008,51 +1051,6 @@ export function DeploymentSettingsForm({
                   )}
                 </Collapse>
               </div>
-
-              {source === "docker-image" && (
-                <div className="space-y-2">
-                  <FieldLabel
-                    info={
-                      <>
-                        Start typing to search registries; add{" "}
-                        <code className="font-mono">:</code> to pick a tag. A
-                        green check confirms the image exists.
-                      </>
-                    }
-                    docs="deploy.dockerImage"
-                  >
-                    Docker image
-                  </FieldLabel>
-                  <ImageInput value={dockerImage} onChange={setDockerImage} />
-                </div>
-              )}
-
-              {source === "upload" && (
-                <UploadInput appId={appId} current={initialUpload} />
-              )}
-
-              {source === "compose" && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <FieldLabel
-                      className="flex items-center gap-1.5"
-                      info="The Compose file defining this stack's services. Deplo builds or pulls each service's image and deploys them together."
-                      docs="compose.overview"
-                    >
-                      <FileText className="size-3.5" />
-                      docker-compose.yml
-                    </FieldLabel>
-                    <FullComposeDialog appId={appId} />
-                  </div>
-                  <ComposeEditor
-                    value={compose}
-                    onChange={setCompose}
-                    onDiagnostics={setComposeDiags}
-                    minHeight={340}
-                  />
-                  <ComposeLintSummary diagnostics={composeDiags} />
-                </div>
-              )}
             </AnimatedHeight>
           </CardContent>
           <CardFooter className="justify-between border-t border-border pt-4">
