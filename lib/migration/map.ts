@@ -1151,8 +1151,8 @@ const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/;
  *  which is the only shape that may need a credential Deplo does not have. */
 const CONNECTED_PROVIDER = new Set(["github", "gitlab", "gitea", "bitbucket"]);
 
-/** The registry a reference names, or null for Docker Hub (a host has a dot,
- *  a colon, or is `localhost`). */
+/** The registry a reference names, or null for Docker Hub (a host has a dot or a
+ *  colon, or is `localhost`). */
 function namedRegistry(image: string): string | null {
   const first = image.split("/")[0] ?? "";
   if (image.split("/").length < 2) return null;
@@ -1183,12 +1183,12 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
       notes.push(
         "From a private registry. Add it under Registries and reselect it - {panel} never exposes the password.",
       );
-    // No credential on the row and a registry of its own: {panel} may have been
-    // pulling with a machine-wide `docker login` nothing here can see, and the
-    // deploy then fails on the image with nothing in the report to explain it.
+    // No credential on the row, but the image names a registry of its own:
+    // {panel} may have been pulling with a machine-wide `docker login` nothing
+    // here can see, and the deploy then failed on the image saying nothing.
     else if (namedRegistry(image))
       notes.push(
-        `${image} comes from ${namedRegistry(image)}. If that image is private, add the registry under Registries and reselect it.`,
+        `Pulled from ${namedRegistry(image)}. If that image is private, add the registry under Registries and reselect it.`,
       );
     // A registry running ON the source host. The reference is perfectly valid over
     // there and means nothing here, and the failure it produces later ("pull

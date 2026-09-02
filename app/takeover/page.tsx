@@ -11,7 +11,7 @@ import {
   resumableMigration,
 } from "@/lib/data/migration-import";
 import { canExposePorts } from "@/lib/membership";
-import { panelFallbackHost } from "@/lib/deploy/domains";
+import { panelFallbackHost, sameMachineHost } from "@/lib/deploy/domains";
 import { MigrationWizard } from "@/components/settings/migrations/migration-wizard";
 import { TakeoverActions } from "@/components/takeover/takeover-actions";
 import { TakeoverPreflight } from "@/components/takeover/takeover-preflight";
@@ -88,6 +88,7 @@ export default async function TakeoverPage() {
           servers={servers}
           buildServers={buildServers}
           resumable={resumable}
+          sameMachineHost={sameMachineHost()}
           isInstanceAdmin={admin}
           canExposePorts={mayExposePorts}
           prefill={{

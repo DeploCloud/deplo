@@ -829,6 +829,19 @@ export interface StackResult {
    */
   bytesWritten: number;
   sha256: string;
+  /**
+   * ImportVolume / ImportHostPath only: entries the sanitising import refused to write -
+   * here, links whose target leaves the archive. Left empty by an agent without the
+   * "volume-copy.drop-report" capability, which reads as "not reported", never "none".
+   */
+  droppedLinks: number;
+  /**
+   * Device, fifo and socket entries dropped. Stripped mode bits are not counted: they
+   * change no content.
+   */
+  droppedSpecial: number;
+  /** The first few dropped entry names, truncated, so a message can name them. */
+  droppedNames: string[];
 }
 
 export interface ExportHostPathRequest {
@@ -5100,7 +5113,7 @@ export const StackRef: MessageFns<StackRef> = {
 };
 
 function createBaseStackResult(): StackResult {
-  return { ok: false, error: "", bytesWritten: 0, sha256: "" };
+  return { ok: false, error: "", bytesWritten: 0, sha256: "", droppedLinks: 0, droppedSpecial: 0, droppedNames: [] };
 }
 
 export const StackResult: MessageFns<StackResult> = {
@@ -5116,6 +5129,15 @@ export const StackResult: MessageFns<StackResult> = {
     }
     if (message.sha256 !== "") {
       writer.uint32(34).string(message.sha256);
+    }
+    if (message.droppedLinks !== 0) {
+      writer.uint32(40).int32(message.droppedLinks);
+    }
+    if (message.droppedSpecial !== 0) {
+      writer.uint32(48).int32(message.droppedSpecial);
+    }
+    for (const v of message.droppedNames) {
+      writer.uint32(58).string(v!);
     }
     return writer;
   },
@@ -5159,6 +5181,30 @@ export const StackResult: MessageFns<StackResult> = {
           message.sha256 = reader.string();
           continue;
         }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.droppedLinks = reader.int32();
+          continue;
+        }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.droppedSpecial = reader.int32();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.droppedNames.push(reader.string());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -5178,6 +5224,21 @@ export const StackResult: MessageFns<StackResult> = {
         ? globalThis.Number(object.bytes_written)
         : 0,
       sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+      droppedLinks: isSet(object.droppedLinks)
+        ? globalThis.Number(object.droppedLinks)
+        : isSet(object.dropped_links)
+        ? globalThis.Number(object.dropped_links)
+        : 0,
+      droppedSpecial: isSet(object.droppedSpecial)
+        ? globalThis.Number(object.droppedSpecial)
+        : isSet(object.dropped_special)
+        ? globalThis.Number(object.dropped_special)
+        : 0,
+      droppedNames: globalThis.Array.isArray(object?.droppedNames)
+        ? object.droppedNames.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.dropped_names)
+        ? object.dropped_names.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -5195,6 +5256,15 @@ export const StackResult: MessageFns<StackResult> = {
     if (message.sha256 !== "") {
       obj.sha256 = message.sha256;
     }
+    if (message.droppedLinks !== 0) {
+      obj.droppedLinks = Math.round(message.droppedLinks);
+    }
+    if (message.droppedSpecial !== 0) {
+      obj.droppedSpecial = Math.round(message.droppedSpecial);
+    }
+    if (message.droppedNames?.length) {
+      obj.droppedNames = message.droppedNames;
+    }
     return obj;
   },
 
@@ -5207,6 +5277,9 @@ export const StackResult: MessageFns<StackResult> = {
     message.error = object.error ?? "";
     message.bytesWritten = object.bytesWritten ?? 0;
     message.sha256 = object.sha256 ?? "";
+    message.droppedLinks = object.droppedLinks ?? 0;
+    message.droppedSpecial = object.droppedSpecial ?? 0;
+    message.droppedNames = object.droppedNames?.map((e) => e) || [];
     return message;
   },
 };

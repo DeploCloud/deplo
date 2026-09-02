@@ -31,6 +31,7 @@ export function MigrationsTabs({
   buildServers,
   runs,
   resumable,
+  sameMachineHost,
   isInstanceAdmin,
   canExposePorts,
 }: {
@@ -45,6 +46,8 @@ export function MigrationsTabs({
   /** The run the wizard opens on: the team's, if one is in flight, or one whose
    *  report this person has not closed yet. Null for the empty connect form. */
   resumable: ImportRun | null;
+  /** The address a container on this instance reaches its own host on. */
+  sameMachineHost: string;
   isInstanceAdmin: boolean;
   canExposePorts: boolean;
 }) {
@@ -104,6 +107,7 @@ export function MigrationsTabs({
           isInstanceAdmin={isInstanceAdmin}
           canExposePorts={canExposePorts}
           resumable={resumable}
+          sameMachineHost={sameMachineHost}
         />
       </TabsContent>
 

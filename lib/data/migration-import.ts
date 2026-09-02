@@ -32,6 +32,8 @@ import {
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
+import { lookup } from "node:dns/promises";
+
 import { mapLimit } from "../utils";
 import { sourceAgentReachable } from "./agent-reach";
 import { getCurrentUser } from "../auth";
@@ -1070,6 +1072,38 @@ export async function setMigrationMachineAddress(input: {
   return { warning };
 }
 
+/**
+ * Which of these addresses is THIS machine. A name is not enough: a panel on the
+ * same box is typed as the name it is opened on, which matched nothing - so Deplo
+ * registered the host a second time and asked for another agent on it.
+ */
+async function selfAddresses(
+  candidates: (string | null | undefined)[],
+  self: Set<string>,
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  const wanted = [
+    ...new Set(
+      candidates
+        .map((a) => a?.trim().toLowerCase())
+        .filter((a): a is string => Boolean(a)),
+    ),
+  ];
+  await mapLimit(wanted, 8, async (a) => {
+    if (isDeploHostServer({ ip: a, host: a }, self)) {
+      out.add(a);
+      return;
+    }
+    try {
+      const hits = await lookup(a, { all: true });
+      if (hits.some((h) => self.has(h.address.toLowerCase()))) out.add(a);
+    } catch {
+      /* a name nothing resolves is simply not this machine */
+    }
+  });
+  return out;
+}
+
 async function planMachines(
   c: SourceCredential,
   teamId: string,
@@ -1085,6 +1119,25 @@ async function planMachines(
   const byId = new Map(mine.map((s) => [s.id, s] as const));
   const self = deploHostSelfAddresses();
   const remembered = await rememberedAddresses(teamId, c.baseUrl);
+  let ownAddress: string | null = null;
+  try {
+    ownAddress = new URL(c.baseUrl).hostname;
+  } catch {
+    /* the client already normalised this; a bad one just matches nothing */
+  }
+  const mineSelf = await selfAddresses(
+    [
+      ownAddress,
+      ...servers.map((s) => s.ipAddress),
+      ...remembered.values(),
+      ...mine.flatMap((s) => [s.ip, s.host]),
+    ],
+    self,
+  );
+  const isSelf = (address: string | null | undefined) => {
+    const a = address?.trim().toLowerCase();
+    return Boolean(a && mineSelf.has(a));
+  };
   const at = (address: string | null) => {
     const a = address?.trim().toLowerCase();
     if (!a) return null;
@@ -1096,18 +1149,11 @@ async function planMachines(
       ) ??
       // The same-machine case, which the wizard has a toggle for: the other platform runs
       // on the box Deplo runs on.
-      (isDeploHostServer({ ip: a, host: a }, self)
-        ? mine.find((s) => isDeploHostServer(s, self))
+      (isSelf(a)
+        ? mine.find((s) => isDeploHostServer(s, self) || isSelf(s.ip ?? s.host))
         : undefined);
     return hit ? { deploServerId: hit.id, deploServerName: hit.name } : null;
   };
-
-  let ownAddress: string | null = null;
-  try {
-    ownAddress = new URL(c.baseUrl).hostname;
-  } catch {
-    /* the client already normalised this; a bad one just matches nothing */
-  }
 
   /**
    * A remembered correction wins over the derived address, and BOTH are tried for

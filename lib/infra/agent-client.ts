@@ -251,6 +251,24 @@ export interface AgentJobStatus {
   timedOut: boolean;
 }
 
+/** What an import's sanitizer threw away, as the agent reported it. */
+export interface DroppedEntries {
+  /** Links whose target leaves the archive. */
+  links: number;
+  /** Devices, sockets and fifos. */
+  special: number;
+  /** The first few names, for a message that can be concrete. */
+  names: string[];
+}
+
+function droppedFrom(resp: StackResult): DroppedEntries {
+  return {
+    links: Number(resp.droppedLinks ?? 0),
+    special: Number(resp.droppedSpecial ?? 0),
+    names: resp.droppedNames ?? [],
+  };
+}
+
 /** A live, mTLS-secured connection to one agent, with a typed wrapper. */
 export interface AgentConnection {
   /**
@@ -344,6 +362,10 @@ export interface AgentConnection {
      *  that is "not reported", never "nothing arrived". */
     bytesWritten: number;
     sha256: string;
+    /** What the destination's sanitizer threw away: a link whose target leaves the
+     *  archive, and a device, socket or fifo. Empty from an agent without
+     *  `volume-copy.drop-report`, which is "not reported". */
+    dropped: DroppedEntries;
   }>;
   /**
    * Stream an arbitrary HOST DIRECTORY out of this host as a gzipped tar - the
@@ -369,6 +391,7 @@ export interface AgentConnection {
     error: string;
     bytesWritten: number;
     sha256: string;
+    dropped: DroppedEntries;
   }>;
   /**
    * Stream an app's host-side FILES DIR (a plain host directory, not a Docker
@@ -1330,6 +1353,7 @@ function dial(target: DialTarget): AgentConnection {
         error: string;
         bytesWritten: number;
         sha256: string;
+        dropped: DroppedEntries;
       }>((resolve, reject) => {
         const call: ClientWritableStream<VolumeChunk> = client.importVolume(
           new Metadata(),
@@ -1342,6 +1366,7 @@ function dial(target: DialTarget): AgentConnection {
                   error: resp.error,
                   bytesWritten: Number(resp.bytesWritten ?? 0),
                   sha256: resp.sha256 ?? "",
+                  dropped: droppedFrom(resp),
                 }),
         );
         pumpClientStream<VolumeChunk>(
@@ -1381,6 +1406,7 @@ function dial(target: DialTarget): AgentConnection {
         error: string;
         bytesWritten: number;
         sha256: string;
+        dropped: DroppedEntries;
       }>((resolve, reject) => {
         const call: ClientWritableStream<HostPathChunk> = client.importHostPath(
           new Metadata(),
@@ -1393,6 +1419,7 @@ function dial(target: DialTarget): AgentConnection {
                   error: resp.error,
                   bytesWritten: Number(resp.bytesWritten ?? 0),
                   sha256: resp.sha256 ?? "",
+                  dropped: droppedFrom(resp),
                 }),
         );
         pumpClientStream<HostPathChunk>(

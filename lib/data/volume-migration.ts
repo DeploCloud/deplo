@@ -10,6 +10,7 @@ import {
   connectAgent,
   mapVolumeCopyUnsupported,
   type AgentConnection,
+  type DroppedEntries,
 } from "../infra/agent-client";
 
 /**
@@ -112,6 +113,20 @@ async function destMustProveTheCopy(dest: AgentConnection): Promise<boolean> {
   }
 }
 
+/** The destination counts what its sanitizer refused, so the report can say it. */
+const DROP_REPORT_CAPABILITY = "volume-copy.drop-report";
+
+async function hasCapability(
+  agent: AgentConnection,
+  capability: string,
+): Promise<boolean> {
+  try {
+    return (await agent.hello()).capabilities?.includes(capability) === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Both halves of a host-path copy can carry ONE FILE, not only a directory. */
 const FILE_COPY_CAPABILITY = "host-path-copy.file";
 
@@ -134,6 +149,29 @@ function tooOldForFiles(sourcePath: string, which: string): Error {
 }
 
 /**
+ * The one sentence for what a copy left behind, or null when there is nothing to
+ * say. An agent without `volume-copy.drop-report` answers zeros, which is why the
+ * capability is asked for rather than the counters read on their own.
+ */
+async function droppedNote(
+  dest: AgentConnection,
+  dropped: DroppedEntries | undefined,
+): Promise<string | null> {
+  if (!dropped) return null;
+  const total = dropped.links + dropped.special;
+  if (total === 0) return null;
+  if (!(await hasCapability(dest, DROP_REPORT_CAPABILITY))) return null;
+  const kinds = [
+    dropped.links > 0 &&
+      `${dropped.links} link${dropped.links === 1 ? "" : "s"} pointing outside it`,
+    dropped.special > 0 &&
+      `${dropped.special} device${dropped.special === 1 ? "" : "s"}, socket${dropped.special === 1 ? "" : "s"} or pipe${dropped.special === 1 ? "" : "s"}`,
+  ].filter((x): x is string => Boolean(x));
+  const named = dropped.names.slice(0, 3).join(", ");
+  return `${total} entr${total === 1 ? "y" : "ies"} did not come across: ${kinds.join(" and ")}${named ? ` (${named})` : ""}. Deplo does not copy those - re-create them by hand if the app needs them.`;
+}
+
+/**
  * What a copy actually moved.
  */
 export interface VolumeCopyResult {
@@ -151,6 +189,13 @@ export interface VolumeCopyResult {
    * failed to arrive.
    */
   missing?: boolean;
+  /**
+   * What the destination's sanitizer refused: an absolute or escaping link, and
+   * every device, socket and fifo. Dropped on purpose and, until the agent
+   * counted them, dropped in silence - a tree arrived short and the run read
+   * clean. Null from an agent that does not report them.
+   */
+  dropped?: string | null;
 }
 
 /**
@@ -318,6 +363,7 @@ export async function copyVolumeBetween(
     error: string;
     bytesWritten?: number;
     sha256?: string;
+    dropped?: DroppedEntries;
   };
   // Both cross-checks are OPTIONAL by version, not by importance: an agent older
   // than the fields answers 0 and "", which is "not reported" - reading a 0 as
@@ -363,7 +409,12 @@ export async function copyVolumeBetween(
       `the copy of "${volumeName}" was truncated: ${bytes} bytes sent, ${res.bytesWritten} written`,
     );
 
-  return { bytes, sha256: digest, empty: false };
+  return {
+    bytes,
+    sha256: digest,
+    empty: false,
+    dropped: await droppedNote(dest, res.dropped),
+  };
 }
 
 /**
@@ -431,6 +482,7 @@ export async function copyHostPathBetween(
     error: string;
     bytesWritten?: number;
     sha256?: string;
+    dropped?: DroppedEntries;
   };
   try {
     res = await dest.importHostPath(targetPath, wipe, counted, file);
@@ -465,7 +517,13 @@ export async function copyHostPathBetween(
       `the copy of "${sourcePath}" was truncated: ${bytes} bytes sent, ${res.bytesWritten} written`,
     );
 
-  return { bytes, sha256: digest, empty: false, file };
+  return {
+    bytes,
+    sha256: digest,
+    empty: false,
+    file,
+    dropped: await droppedNote(dest, res.dropped),
+  };
 }
 
 /**

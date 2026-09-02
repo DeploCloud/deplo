@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { MigrationsTabs } from "@/components/settings/migrations/migrations-tabs";
+import { sameMachineHost } from "@/lib/deploy/domains";
 
 export const metadata = { title: "Settings · Migrations" };
 
@@ -82,6 +83,7 @@ export default async function SettingsMigrationsPage() {
         buildServers={buildServers}
         runs={runs}
         resumable={resumable}
+        sameMachineHost={sameMachineHost()}
         isInstanceAdmin={admin}
         canExposePorts={mayExposePorts}
       />

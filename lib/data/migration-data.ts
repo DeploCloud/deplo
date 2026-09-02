@@ -1156,7 +1156,8 @@ async function runMoveMigrationServiceData(
           targetId: landed.targetId,
           message:
             `Copied ${formatBytes(copied.bytes)} (compressed) into ${pair.targetVolume} (${pair.mountPath}).` +
-            (pair.note ? ` ${pair.note}` : ""),
+            (pair.note ? ` ${pair.note}` : "") +
+            (copied.dropped ? ` ${copied.dropped}` : ""),
         });
       } catch (e) {
         // Cancelled, not broken: leave every remaining volume alone and let the
@@ -1272,7 +1273,9 @@ async function runMoveMigrationServiceData(
           outcome: "created",
           targetKind: landed.targetKind,
           targetId: landed.targetId,
-          message: `Copied ${formatBytes(copied.bytes)} (compressed) into ${bind.targetPath} (${bind.mountPath}), a host ${copied.file ? "file" : "directory"}.`,
+          message:
+            `Copied ${formatBytes(copied.bytes)} (compressed) into ${bind.targetPath} (${bind.mountPath}), a host ${copied.file ? "file" : "directory"}.` +
+            (copied.dropped ? ` ${copied.dropped}` : ""),
         });
       } catch (e) {
         if (isCopyAborted(e)) throw e;

@@ -366,6 +366,7 @@ export function MigrationWizard({
   isInstanceAdmin,
   canExposePorts,
   resumable,
+  sameMachineHost,
   prefill = null,
 }: {
   teamId: string;
@@ -383,6 +384,8 @@ export function MigrationWizard({
    * or one whose report they have not closed yet.
    */
   resumable: ImportRun | null;
+  /** The address a container on this instance reaches its own host on. */
+  sameMachineHost: string;
   /**
    * The panel this machine is being taken over from, when the installer already
    * found it. The operator then only has to paste a key.
@@ -1064,6 +1067,7 @@ export function MigrationWizard({
                   setApiKey={setApiKey}
                   sameMachine={sameMachine}
                   setSameMachine={setSameMachine}
+                  sameMachineHost={sameMachineHost}
                   canUsePrivate={isInstanceAdmin}
                   scanning={scanning}
                   kind={kind}
@@ -1174,6 +1178,7 @@ function ConnectStep({
   setApiKey,
   sameMachine,
   setSameMachine,
+  sameMachineHost,
   canUsePrivate,
   scanning,
   kind,
@@ -1188,6 +1193,8 @@ function ConnectStep({
   setApiKey: (v: string) => void;
   sameMachine: boolean;
   setSameMachine: (v: boolean) => void;
+  /** The address a container on this instance reaches its own host on. */
+  sameMachineHost: string;
   /** Instance admin. Only they may point Deplo at a private address. */
   canUsePrivate: boolean;
   scanning: boolean;
@@ -1216,7 +1223,11 @@ function ConnectStep({
             id="source-url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={sameMachine ? copy.privateHost : copy.urlPlaceholder}
+            placeholder={
+              sameMachine
+                ? `http://${sameMachineHost}:${copy.privatePort}`
+                : copy.urlPlaceholder
+            }
             autoComplete="off"
             spellCheck={false}
           />
@@ -1251,8 +1262,9 @@ function ConnectStep({
             info={
               <>
                 Lets Deplo dial a private address. From in here, {copy.name} is
-                usually at <code>{copy.privateHost}</code> or on the host&apos;s
-                own IP.
+                at{" "}
+                <code>{`http://${sameMachineHost}:${copy.privatePort}`}</code>{" "}
+                or on the host&apos;s own IP.
               </>
             }
             docs={stepDocs(kind, "source")}

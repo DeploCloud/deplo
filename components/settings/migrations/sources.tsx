@@ -134,8 +134,9 @@ interface SourceCopy {
   /** Dokploy calls it a key, Coolify calls it a token. Use their word. */
   tokenLabel: string;
   tokenInfo: string;
-  /** Where it usually answers from inside a container, for Same machine. */
-  privateHost: string;
+  /** The port it answers on, for the Same machine placeholder. The HOST half is
+   *  read off this instance (`sameMachineHost`), never guessed. */
+  privatePort: number;
   scanIdle: string;
   scanBusy: string;
   docs: DocsTopic;
@@ -156,7 +157,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     tokenLabel: "API token",
     tokenInfo:
       "In Dokploy: Settings, Profile, API/CLI. In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked. It reads whatever its owner can see, so mint it from an account that sees everything you want to move.",
-    privateHost: "http://172.17.0.1:3000",
+    privatePort: 3000,
     scanIdle: "Check this panel",
     scanBusy: "Reading the panel",
     docs: "migration.run",
@@ -170,7 +171,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     tokenLabel: "API key",
     tokenInfo:
       "In Dokploy: Settings, Profile, API/CLI. It reads whatever its owner can see, so mint it from an account that sees every project you want to move.",
-    privateHost: "http://172.17.0.1:3000",
+    privatePort: 3000,
     scanIdle: "Check this Dokploy",
     scanBusy: "Reading Dokploy",
     docs: "migration.dokploy",
@@ -184,7 +185,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     tokenLabel: "API token",
     tokenInfo:
       "In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked - without it the variables and database passwords arrive empty. Use an owner's or admin's token.",
-    privateHost: "http://172.17.0.1:8000",
+    privatePort: 8000,
     scanIdle: "Check this Coolify",
     scanBusy: "Reading Coolify",
     docs: "migration.coolify",

@@ -500,6 +500,54 @@ interface ProjectGroup {
   placements: ServicePlacement[];
 }
 
+/**
+ * A project with nothing IN it on the panel. Left out silently, it read as a
+ * project that vanished between the scan and the report - and one with services
+ * nobody ticked stays silent, because that one was a choice.
+ */
+async function noteEmptyProjects(row: RunRow, c: RunCredential): Promise<void> {
+  let projects;
+  try {
+    projects = await sourceClient(await connectCredential(c)).listProjects();
+  } catch {
+    return;
+  }
+  for (const p of projects) {
+    const holds = (e: {
+      applications?: unknown[] | null;
+      compose?: unknown[] | null;
+      postgres?: unknown[] | null;
+      mysql?: unknown[] | null;
+      mariadb?: unknown[] | null;
+      mongo?: unknown[] | null;
+      redis?: unknown[] | null;
+      libsql?: unknown[] | null;
+      clickhouse?: unknown[] | null;
+    }) =>
+      [
+        e.applications,
+        e.compose,
+        e.postgres,
+        e.mysql,
+        e.mariadb,
+        e.mongo,
+        e.redis,
+        e.libsql,
+        e.clickhouse,
+      ].some((l) => (l ?? []).length > 0);
+    if ((p.environments ?? []).some(holds) || holds(p)) continue;
+    await appendRunItem(row.id, panelNameFor(row), {
+      path: p.name,
+      sourceKind: "project",
+      sourceName: p.name,
+      sourceId: p.projectId,
+      outcome: "skipped",
+      message:
+        "Nothing is in this project on {panel}, so there was nothing to bring across.",
+    });
+  }
+}
+
 /** What is still to do, in the order it was chosen, grouped by project. */
 async function pendingGroups(runId: string): Promise<ProjectGroup[]> {
   const rows = await getDb()
@@ -562,6 +610,19 @@ async function runConfigPhase(row: RunRow, c: RunCredential): Promise<void> {
   // nothing came across is the thing this must never do.
   let inARow = 0;
   let done = row.doneSteps;
+
+  await noteEmptyProjects(row, c);
+  // A key belongs to ONE of them, and neither panel's API will list the others -
+  // so a second tenant's whole estate is simply absent from a report that reads
+  // complete. Said once, where "what did and did not come across" is answered.
+  await appendRunItem(row.id, panelNameFor(row), {
+    path: "{panel}",
+    sourceKind: "organization",
+    sourceName: row.orgName || "{panel}",
+    outcome: "skipped",
+    message:
+      "An API key belongs to one organization, so this import covers that one only. Anything under another organization on {panel} needs a second import with a key from it.",
+  });
 
   for (const g of await pendingGroups(row.id)) {
     if (await stopped(row.id)) return;
@@ -657,6 +718,39 @@ async function markUncopied(
   }
 }
 
+/** Under this, a copy is walking into a disk that cannot hold what it carries. */
+const DISK_FLOOR_BYTES = 5 * 1024 * 1024 * 1024;
+const DISK_FLOOR_RATIO = 0.1;
+
+/**
+ * The machine about to RECEIVE the bytes, before any of them move. The takeover
+ * has asked this since it existed; an external migration never did, and a copy
+ * into a disk at 93% just failed part way with nothing having said why.
+ */
+async function noteTightDisks(row: RunRow, serverIds: string[]): Promise<void> {
+  const { fetchHostInfo } = await import("../infra/agent-client");
+  const { formatBytes } = await import("../utils");
+  for (const id of [...new Set(serverIds)]) {
+    let info;
+    try {
+      info = await fetchHostInfo(id);
+    } catch {
+      continue;
+    }
+    const total = info.diskTotalBytes;
+    const free = Math.max(0, total - info.diskUsedBytes);
+    if (total <= 0) continue;
+    if (free >= DISK_FLOOR_BYTES && free / total >= DISK_FLOOR_RATIO) continue;
+    await appendRunItem(row.id, panelNameFor(row), {
+      path: "Data",
+      sourceKind: "data",
+      sourceName: "disk",
+      outcome: "manual",
+      message: `The machine receiving this data has ${formatBytes(free)} free of ${formatBytes(total)}. A copy writes a second copy of everything before the old one goes, so free some room first.`,
+    });
+  }
+}
+
 async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
   await beat(row.id);
   const planned = await planMigrationDataMove({
@@ -679,6 +773,10 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
       });
 
   const planning = planned.filter((d) => d.volumes.length > 0);
+  await noteTightDisks(
+    row,
+    planning.map((d) => d.targetServerId).filter((id) => id != null),
+  );
   const unreachable = planning.filter((d) => !d.sourceReachable);
   const movable = planning.filter((d) => d.sourceReachable);
   if (unreachable.length > 0) {

@@ -704,7 +704,14 @@ test("mapSource takes a docker image and refuses one Deplo would interpolate", (
     kind: "docker-image",
     image: "ghcr.io/acme/api:1.2",
   });
-  assert.deepEqual(ok.notes, []);
+  // A registry of its own and no credential on the row: the panel may have been
+  // pulling with a `docker login` nothing here can see.
+  assert.match(ok.notes.join(" "), /Pulled from ghcr\.io/);
+
+  const hub = mapSource(
+    app({ sourceType: "docker", dockerImage: "nginx:alpine" }),
+  );
+  assert.deepEqual(hub.notes, [], "Docker Hub needs no login to say so");
 
   const bad = mapSource(
     app({ sourceType: "docker", dockerImage: "acme/api:1 && rm -rf /" }),

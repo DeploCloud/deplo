@@ -1,6 +1,7 @@
 import "server-only";
 
 import { networkInterfaces } from "node:os";
+import { readFileSync } from "node:fs";
 import {
   uniqueNamesGenerator,
   adjectives,
@@ -51,6 +52,41 @@ function allNicIpv4(): string[] {
     }
   }
   return addrs;
+}
+
+/**
+ * The address a container on this instance reaches its own HOST on: the default
+ * route's gateway. Guessed as `172.17.0.1` for years, which is Docker's default
+ * bridge - and Deplo's own network is not that one, so the address it offered for
+ * the same-machine case reached nothing.
+ */
+export function sameMachineHost(): string {
+  // OUTSIDE a container the default gateway is the ROUTER, not this box - and
+  // calling that "us" would make a server row for the router read as agent 0.
+  try {
+    readFileSync("/.dockerenv");
+  } catch {
+    return "127.0.0.1";
+  }
+  try {
+    const lines = readFileSync("/proc/net/route", "utf8").split("\n").slice(1);
+    for (const line of lines) {
+      const [, dest, gw, , , , , mask] = line.split(/\s+/);
+      if (dest !== "00000000" || mask !== "00000000" || !gw) continue;
+      // Little-endian hex, the way the kernel writes it.
+      const n = parseInt(gw, 16);
+      const ip = [
+        n & 255,
+        (n >> 8) & 255,
+        (n >> 16) & 255,
+        (n >> 24) & 255,
+      ].join(".");
+      if (isIpv4(ip) && ip !== "0.0.0.0") return ip;
+    }
+  } catch {
+    /* not Linux, or no /proc - the loopback answer is the honest one */
+  }
+  return "127.0.0.1";
 }
 
 /** First non-internal IPv4 on a network interface, preferring a public one. */
@@ -138,6 +174,12 @@ export function deploHostSelfAddresses(): Set<string> {
     }
   }
   for (const nic of allNicIpv4()) add(nic);
+  // The host as this CONTAINER sees it (loopback when there is no container, which
+  // is already local). Without it, the one address that does reach a panel on the
+  // same machine read as a stranger, and Deplo asked for a second agent on the box
+  // it is already running on.
+  const gateway = sameMachineHost();
+  if (gateway !== "127.0.0.1") add(gateway);
   return addrs;
 }
 
