@@ -94,6 +94,7 @@ import type { BuildConfig, DeploySource } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 import { serverLabel } from "@/lib/utils";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 
@@ -101,6 +102,7 @@ export interface WizardServer {
   id: string;
   name: string;
   type: "localhost" | "remote";
+  isDeploHost: boolean;
 }
 
 /** A host that can compile for another machine (Settings → Servers marks one). */
@@ -109,6 +111,7 @@ export interface WizardBuildServer {
   name: string;
   hostArch: string;
   buildOnly: boolean;
+  isDeploHost: boolean;
 }
 
 export interface WizardTemplate {
@@ -676,6 +679,7 @@ export function NewAppWizard({
                 <span className="flex items-center gap-2">
                   <ServerIcon className="size-4 text-muted-foreground" />
                   {serverLabel(s)}
+                  <ServerRoleHint isDeploHost={s.isDeploHost} />
                 </span>
               </SelectItem>
             ))}
@@ -730,6 +734,7 @@ export function NewAppWizard({
                     <span className="flex items-center gap-2">
                       <ServerIcon className="size-4 text-muted-foreground" />
                       {s.name}
+                      <ServerRoleHint isDeploHost={s.isDeploHost} />
                       {s.buildOnly && (
                         <Badge variant="outline">Build server</Badge>
                       )}

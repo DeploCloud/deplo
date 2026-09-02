@@ -1,5 +1,9 @@
 import { listServers } from "@/lib/data/servers";
 import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+} from "@/lib/deploy/domains";
+import {
   getFleetMetrics,
   getServerMetricsHistory,
 } from "@/lib/data/monitoring";
@@ -34,6 +38,7 @@ export default async function MonitoringPage() {
   // replaced a synthetic snapshot built from three columns nothing writes, which
   // rendered an online host as 0% CPU, 0% memory and 0 containers.
   const shown = servers.filter((s) => !s.importOnly);
+  const selfAddrs = deploHostSelfAddresses();
   const initialHistory = shown[0]
     ? await getServerMetricsHistory(shown[0].id)
     : [];
@@ -48,6 +53,7 @@ export default async function MonitoringPage() {
         status: s.status,
         ip: s.ip,
         dockerVersion: s.dockerVersion,
+        isDeploHost: isDeploHostServer(s, selfAddrs),
       }))}
       initialHistory={initialHistory}
       initialFleet={fleet}

@@ -42,6 +42,7 @@ interface ServerLite {
   status: ServerStatus;
   ip: string;
   dockerVersion: string;
+  isDeploHost: boolean;
 }
 
 const SERVER_FIELDS = `serverId online ts cpu cpuCores memUsed memTotal memPct

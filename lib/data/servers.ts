@@ -191,9 +191,16 @@ export function assertNotMigrationSource(
  * The BUILD SERVER picker: the hosts that can compile for another machine.
  */
 export async function listBuildServerChoices(): Promise<
-  { id: string; name: string; hostArch: string; buildOnly: boolean }[]
+  {
+    id: string;
+    name: string;
+    hostArch: string;
+    buildOnly: boolean;
+    isDeploHost: boolean;
+  }[]
 > {
   const teamId = await requireActiveTeamId();
+  const self = deploHostSelfAddresses();
   return (await listServersForTeam(teamId))
     .filter((s) => !s.storageOnly && !s.importOnly)
     .map((s) => ({
@@ -201,6 +208,7 @@ export async function listBuildServerChoices(): Promise<
       name: s.name,
       hostArch: s.hostArch,
       buildOnly: s.buildOnly,
+      isDeploHost: isDeploHostServer(s, self),
     }));
 }
 

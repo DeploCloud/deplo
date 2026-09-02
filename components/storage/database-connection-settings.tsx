@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowRightLeft, KeyRound, Eye } from "lucide-react";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import {
   Card,
   CardContent,
@@ -44,7 +45,7 @@ export function DatabaseConnectionSettings({
   canConfigure,
 }: {
   db: DatabaseDTO;
-  servers: { id: string; name: string }[];
+  servers: { id: string; name: string; isDeploHost: boolean }[];
   canExposePorts: boolean;
   canConfigure: boolean;
 }) {
@@ -70,7 +71,7 @@ function ExposureCard({
   canConfigure,
 }: {
   db: DatabaseDTO;
-  servers: { id: string; name: string }[];
+  servers: { id: string; name: string; isDeploHost: boolean }[];
   canExposePorts: boolean;
   canConfigure: boolean;
 }) {
@@ -120,7 +121,10 @@ function ExposureCard({
                 <SelectContent>
                   {servers.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.name}
+                      <span className="flex items-center gap-2">
+                        {s.name}
+                        <ServerRoleHint isDeploHost={s.isDeploHost} />
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

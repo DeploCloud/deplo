@@ -8,6 +8,7 @@ export interface SettingsServer {
   id: string;
   name: string;
   type: "localhost" | "remote";
+  isDeploHost: boolean;
 }
 
 /**

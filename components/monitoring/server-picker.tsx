@@ -14,12 +14,14 @@ import { StatusDot } from "@/components/shared/status-badge";
 import type { FleetRow } from "@/components/monitoring/fleet-list";
 import type { ServerStatus } from "@/lib/types";
 import { cn, serverLabel } from "@/lib/utils";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 
 export interface PickableServer {
   id: string;
   name: string;
   status: ServerStatus;
   ip: string;
+  isDeploHost: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ export function ServerPicker({
                 >
                   <StatusDot status={s.status} />
                   <span className="flex-1 truncate">{serverLabel(s)}</span>
+                  <ServerRoleHint isDeploHost={s.isDeploHost} />
                   <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                     {measured
                       ? `${row.cpu.toFixed(0)}% · ${row.memPct.toFixed(0)}%`

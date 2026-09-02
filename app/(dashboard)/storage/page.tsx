@@ -8,6 +8,10 @@ import {
 } from "@/lib/data/destinations";
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+} from "@/lib/deploy/domains";
 import { listApps } from "@/lib/data/apps";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import {
@@ -126,12 +130,18 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   // Only provisioned servers can host a database (provisioning routes through a live
   // agent). A storage-only host runs nothing, so it can never provision a database;
   // nor can a migration source, which is another platform's machine.
+  // Resolved once for both lists: it walks the NICs.
+  const selfAddrs = deploHostSelfAddresses();
   const dbServers = servers
     .filter(
       (s) =>
         Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly,
     )
-    .map((s) => ({ id: s.id, name: s.name }));
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      isDeploHost: isDeploHostServer(s, selfAddrs),
+    }));
   // The placement picker's rows: a database takes the same kind of home an App
   // does, and that home is the network apps reach it on.
   const dbEnvironments = (await listAllEnvironmentsForTeam()).map((e) => ({
@@ -144,7 +154,12 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   // storage-only box that hosts nothing, which is exactly the point of one.
   const destinationServers = servers
     .filter((s) => Boolean(s.agent?.certFingerprint) && !s.importOnly)
-    .map((s) => ({ id: s.id, name: s.name, storageOnly: s.storageOnly }));
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      storageOnly: s.storageOnly,
+      isDeploHost: isDeploHostServer(s, selfAddrs),
+    }));
 
   // Named once: the schedule dialog appears both in the toolbar and in the empty
   // state, and only one of the two is ever on screen.

@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BetaChip } from "@/components/shared/beta-chip";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { gqlAction } from "@/lib/graphql-client";
 
 export interface BuildServerChoice {
@@ -22,6 +23,7 @@ export interface BuildServerChoice {
   hostArch: string;
   /** True for a host dedicated to building; false for an ordinary server. */
   buildOnly: boolean;
+  isDeploHost: boolean;
 }
 
 /** The stored value's three meanings, as one select value. `AUTOMATIC` and `SELF`
@@ -165,11 +167,14 @@ export function BuildServerPanel({
             </SelectItem>
             {others.map((c) => (
               <SelectItem key={c.id} value={c.id} disabled={!compatible(c)}>
-                {c.name}
-                {!compatible(c) &&
-                  (c.hostArch === "" || serverArch === ""
-                    ? " - architecture unknown"
-                    : ` - ${c.hostArch}, not ${serverArch}`)}
+                <span className="flex items-center gap-2">
+                  {c.name}
+                  {!compatible(c) &&
+                    (c.hostArch === "" || serverArch === ""
+                      ? " - architecture unknown"
+                      : ` - ${c.hostArch}, not ${serverArch}`)}
+                  <ServerRoleHint isDeploHost={c.isDeploHost} />
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

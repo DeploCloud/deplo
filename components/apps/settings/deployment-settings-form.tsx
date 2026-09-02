@@ -81,6 +81,7 @@ import type {
 import type { BuildConfig, DeploySource, GitRepo } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { cn, serverLabel, usesComposeStack } from "@/lib/utils";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -966,6 +967,7 @@ export function DeploymentSettingsForm({
                       <span className="flex items-center gap-2">
                         <ServerIcon className="size-4 text-muted-foreground" />
                         {serverLabel(s)}
+                        <ServerRoleHint isDeploHost={s.isDeploHost} />
                       </span>
                     </SelectItem>
                   ))}

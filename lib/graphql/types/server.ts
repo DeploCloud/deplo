@@ -502,6 +502,7 @@ const BuildServerChoiceRef = builder
     name: string;
     hostArch: string;
     buildOnly: boolean;
+    isDeploHost: boolean;
   }>("BuildServerChoice")
   .implement({
     description:
@@ -516,6 +517,10 @@ const BuildServerChoiceRef = builder
       buildOnly: t.exposeBoolean("buildOnly", {
         description:
           "True for a host dedicated to building (it runs no apps). False for an ordinary server that would build for this app in addition to hosting its own.",
+      }),
+      isDeploHost: t.exposeBoolean("isDeploHost", {
+        description:
+          "Whether this is the host running Deplo itself, as opposed to a remote that only runs the deploy agent.",
       }),
     }),
   });

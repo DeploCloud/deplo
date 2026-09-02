@@ -42,6 +42,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -93,7 +94,7 @@ export interface PreviewSettingsFormProps {
   appServerId: string;
   /** The app's build port - what a preview uses when it names none. */
   appPort: number;
-  servers: { id: string; name: string }[];
+  servers: { id: string; name: string; isDeploHost: boolean }[];
   /** Previews with a stack up right now - what turning the switch off destroys. */
   activeCount: number;
 }
@@ -456,7 +457,10 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                           .filter((s) => s.id !== props.appServerId)
                           .map((s) => (
                             <SelectItem key={s.id} value={s.id}>
-                              {s.name}
+                              <span className="flex items-center gap-2">
+                                {s.name}
+                                <ServerRoleHint isDeploHost={s.isDeploHost} />
+                              </span>
                             </SelectItem>
                           ))}
                       </SelectContent>

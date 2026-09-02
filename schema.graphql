@@ -692,6 +692,11 @@ type BuildServerChoice {
   """
   hostArch: String
   id: ID
+
+  """
+  Whether this is the host running Deplo itself, as opposed to a remote that only runs the deploy agent.
+  """
+  isDeploHost: Boolean
   name: String
 }
 

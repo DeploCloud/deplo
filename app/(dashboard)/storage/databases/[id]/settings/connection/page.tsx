@@ -2,6 +2,10 @@ import { notFound } from "next/navigation";
 import { Network } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+} from "@/lib/deploy/domains";
 import { canExposePorts, hasCapability } from "@/lib/membership";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DatabaseConnectionSettings } from "@/components/storage/database-connection-settings";
@@ -27,12 +31,17 @@ export default async function DatabaseConnectionSettingsPage(
   // Only provisioned servers can host a database (provisioning routes through a
   // live agent), so those are the only move targets, and neither a storage-only
   // host (runs nothing) nor a migration source (not our machine) is ever one.
+  const selfAddrs = deploHostSelfAddresses();
   const dbServers = servers
     .filter(
       (s) =>
         Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly,
     )
-    .map((s) => ({ id: s.id, name: s.name }));
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      isDeploHost: isDeploHostServer(s, selfAddrs),
+    }));
 
   return (
     <section className="space-y-4">

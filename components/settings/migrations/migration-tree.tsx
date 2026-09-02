@@ -28,6 +28,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { LogoImage } from "@/components/shared/project-logo";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import type { DatabaseType } from "@/lib/types";
 import {
   importableOf,
@@ -694,11 +695,7 @@ function RunSelect({
           <SelectItem key={s.id} value={s.id}>
             <span className="flex items-center gap-2">
               {s.name}
-              {s.isDeploHost && (
-                <span data-hint className="text-xs text-muted-foreground">
-                  Deplo host
-                </span>
-              )}
+              <ServerRoleHint isDeploHost={s.isDeploHost} />
             </span>
           </SelectItem>
         ))}
@@ -743,6 +740,7 @@ function BuildSelect({
           <SelectItem key={s.id} value={s.id}>
             <span className="flex items-center gap-2">
               {s.name}
+              <ServerRoleHint isDeploHost={s.isDeploHost} />
               {s.buildOnly && (
                 <span data-hint className="text-xs text-muted-foreground">
                   Build only

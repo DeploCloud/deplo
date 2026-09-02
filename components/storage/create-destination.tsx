@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useRouter } from "next/navigation";
 import { AnimatedHeight } from "@/components/shared/animated-height";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { KindCard } from "@/components/shared/kind-card";
@@ -93,6 +94,7 @@ export interface DestinationServerOption {
   id: string;
   name: string;
   storageOnly: boolean;
+  isDeploHost: boolean;
 }
 
 const EMPTY_S3 = {
@@ -615,6 +617,7 @@ function ServerFields({
               <span className="flex items-center gap-2">
                 <Server className="size-4 text-muted-foreground" />
                 {s.name}
+                <ServerRoleHint isDeploHost={s.isDeploHost} />
                 {s.storageOnly && (
                   <Badge variant="muted" className="text-[10px] font-normal">
                     Storage only
