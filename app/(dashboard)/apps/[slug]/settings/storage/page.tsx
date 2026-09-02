@@ -4,6 +4,7 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { canMountHostVolumes } from "@/lib/membership";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { containerWorkdir } from "@/lib/apps/volume-model";
+import { composeDeclaredMounts } from "@/lib/apps/compose-storage";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { StorageSettingsForm } from "@/components/apps/settings/storage-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
@@ -51,6 +52,9 @@ export default async function AppStorageSettingsPage(
           appId={project.id}
           slug={project.slug}
           volumes={project.volumes ?? []}
+          // A stack's own yaml is storage too, and it is the only storage most
+          // migrated apps have - without it the tab claims the data is thrown away.
+          composeMounts={composeDeclaredMounts(project)}
           composeServices={composeServices}
           // The same heuristic the renderer falls back to, so the picker's
           // placeholder names the service a blank row will actually mount into.

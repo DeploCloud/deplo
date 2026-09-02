@@ -34,6 +34,7 @@ import {
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import type { VolumeMount } from "@/lib/types";
+import type { ComposeMount } from "@/lib/apps/compose-storage";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -108,6 +109,7 @@ export function StorageSettingsForm({
   appId,
   slug,
   volumes: initialVolumes,
+  composeMounts,
   composeServices,
   defaultComposeService,
   canMountHostVolumes,
@@ -117,6 +119,8 @@ export function StorageSettingsForm({
   appId: string;
   slug: string;
   volumes: VolumeMount[];
+  /** Storage this app's own compose file mounts; read-only here. */
+  composeMounts: ComposeMount[];
   /** Compose services this app declares; empty ⇒ single-container (no picker). */
   composeServices: string[];
   /** The service a row with no explicit pick lands on at deploy. */
@@ -389,6 +393,7 @@ export function StorageSettingsForm({
             <VolumeFields
               slug={slug}
               volumes={volumes}
+              composeMounts={composeMounts}
               composeServices={composeServices}
               defaultComposeService={defaultComposeService}
               canMountHostVolumes={canMountHostVolumes}

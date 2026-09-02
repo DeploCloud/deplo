@@ -53,6 +53,7 @@ import {
 import { Collapse } from "@/components/shared/collapse";
 import { cn, shortId } from "@/lib/utils";
 import type { MountPropagation, VolumeMount } from "@/lib/types";
+import type { ComposeMount } from "@/lib/apps/compose-storage";
 import { DocsLink } from "@/components/ui/docs-link";
 
 /**
@@ -80,6 +81,7 @@ const PROPAGATION_NONE = "none";
 export function VolumeFields({
   slug,
   volumes,
+  composeMounts = [],
   composeServices = [],
   defaultComposeService,
   canMountHostVolumes = true,
@@ -90,6 +92,12 @@ export function VolumeFields({
 }: {
   slug: string;
   volumes: VolumeMount[];
+  /**
+   * Storage this app's own compose file declares. Listed, never editable here:
+   * the compose file is where it is written, and a row added at a path it
+   * already mounts is dropped at deploy.
+   */
+  composeMounts?: ComposeMount[];
   /** Compose services to choose from; empty ⇒ single-container (no picker). */
   composeServices?: string[];
   /** Which service the Automatic option resolves to at deploy. */
@@ -158,7 +166,8 @@ export function VolumeFields({
     setExpandedId(id);
   }
 
-  if (volumes.length === 0) {
+  // "No storage yet" is only true when the compose file keeps nothing either.
+  if (volumes.length === 0 && composeMounts.length === 0) {
     return (
       <EmptyPicker onAdd={add} canMountHostVolumes={canMountHostVolumes} />
     );
@@ -166,38 +175,81 @@ export function VolumeFields({
 
   return (
     <div className="space-y-3">
-      <ul className="space-y-2" aria-label="Storage this app keeps">
-        {volumes.map((v) => {
-          const problem =
-            revealProblems || touched.has(v.id)
-              ? volumeProblem(v, containerWorkdir)
-              : null;
+      {composeMounts.length > 0 && <ComposeMountList mounts={composeMounts} />}
+      {volumes.length > 0 && (
+        <ul className="space-y-2" aria-label="Storage this app keeps">
+          {volumes.map((v) => {
+            const problem =
+              revealProblems || touched.has(v.id)
+                ? volumeProblem(v, containerWorkdir)
+                : null;
+            return (
+              <MountRow
+                key={v.id}
+                mount={v}
+                slug={slug}
+                problem={problem}
+                // A problem force-expands its row: a blocked save must never
+                // complain about a field it is keeping folded away.
+                expanded={expandedId === v.id || problem !== null}
+                onToggle={() =>
+                  setExpandedId((cur) => (cur === v.id ? null : v.id))
+                }
+                pickService={pickService}
+                composeServices={composeServices}
+                defaultComposeService={defaultComposeService}
+                canMountHostVolumes={canMountHostVolumes}
+                containerWorkdir={containerWorkdir}
+                fileContent={fileContent}
+                onChange={(patch) => update(v.id, patch)}
+                onKindChange={(kind) => changeKind(v.id, kind)}
+                onRemove={() => remove(v.id)}
+              />
+            );
+          })}
+        </ul>
+      )}
+      <AddMenu onAdd={add} canMountHostVolumes={canMountHostVolumes} />
+    </div>
+  );
+}
+
+/**
+ * Storage the stack's own compose file mounts. Read-only: the yaml is where it is
+ * written, and a Storage row at a path it already mounts is dropped at deploy.
+ */
+function ComposeMountList({ mounts }: { mounts: ComposeMount[] }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <p className="text-sm font-medium">From docker-compose.yml</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        This app&apos;s compose file mounts these itself. Edit it under
+        Deployments to change them.
+      </p>
+      <ul
+        className="mt-3 space-y-2"
+        aria-label="Storage the compose file mounts"
+      >
+        {mounts.map((m) => {
+          const Icon = KIND_ICON[m.kind];
           return (
-            <MountRow
-              key={v.id}
-              mount={v}
-              slug={slug}
-              problem={problem}
-              // A problem force-expands its row: a blocked save must never
-              // complain about a field it is keeping folded away.
-              expanded={expandedId === v.id || problem !== null}
-              onToggle={() =>
-                setExpandedId((cur) => (cur === v.id ? null : v.id))
-              }
-              pickService={pickService}
-              composeServices={composeServices}
-              defaultComposeService={defaultComposeService}
-              canMountHostVolumes={canMountHostVolumes}
-              containerWorkdir={containerWorkdir}
-              fileContent={fileContent}
-              onChange={(patch) => update(v.id, patch)}
-              onKindChange={(kind) => changeKind(v.id, kind)}
-              onRemove={() => remove(v.id)}
-            />
+            <li
+              key={`${m.kind}:${m.source}:${m.mountPath}`}
+              className="flex items-center gap-3 rounded-lg border border-border px-3 py-2"
+            >
+              <Badge variant="muted" className="shrink-0 gap-1.5">
+                <Icon className="size-3" />
+                {VOLUME_KINDS[m.kind].label}
+              </Badge>
+              <span className="min-w-0 truncate font-mono text-xs text-foreground">
+                {m.source}
+                <span className="px-1.5 text-muted-foreground">→</span>
+                {m.mountPath}
+              </span>
+            </li>
           );
         })}
       </ul>
-      <AddMenu onAdd={add} canMountHostVolumes={canMountHostVolumes} />
     </div>
   );
 }
