@@ -242,7 +242,13 @@ spin_elapsed() {
   return 0
 }
 
-spin_ok()   { local e; e="$(spin_elapsed)"; spin_kill; ok   "${1:-$UI_SPIN_MSG}" "$e"; }
+# Both the caller's detail and the elapsed time: the detail is the half that says
+# what actually happened, and a stopwatch reading is no reason to drop it.
+spin_ok() {
+  local e d; e="$(spin_elapsed)"; d="${2:-}"; spin_kill
+  [ -n "$d" ] && [ -n "$e" ] && d="$d ($e)"
+  ok "${1:-$UI_SPIN_MSG}" "${d:-$e}"
+}
 spin_warn() { local e; e="$(spin_elapsed)"; spin_kill; warn "${1:-$UI_SPIN_MSG}" "$e"; }
 spin_err()  { spin_kill; err "${1:-$UI_SPIN_MSG}"; }
 

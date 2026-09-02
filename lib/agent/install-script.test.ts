@@ -385,3 +385,144 @@ test("a port that merely CONTAINS the agent port is not a match", async () => {
     "ufw allow 9443/tcp",
   );
 });
+
+/* ------------------------------------------------------------------ */
+/* The takeover's stop / rollback                                      */
+/* ------------------------------------------------------------------ */
+
+/** One shell function, lifted out of an installer so it can be driven directly. */
+async function shellFn(file: string, name: string): Promise<string> {
+  const script = await readFile(join(process.cwd(), file), "utf8");
+  const start = script.search(new RegExp(`^${name}\\(\\)\\s*\\{`, "m"));
+  assert.ok(start >= 0, `${name} not found in ${file}`);
+  const head = script.slice(start);
+  const first = head.slice(0, head.indexOf("\n"));
+  // A one-liner closes on its own line; anything else runs to the next `\n}`.
+  return first.trimEnd().endsWith("}")
+    ? first
+    : head.slice(0, head.indexOf("\n}\n") + 2);
+}
+
+async function bash(body: string, extraPath?: string) {
+  const { stdout } = await promisify(execFile)("/bin/bash", ["-c", body], {
+    env: {
+      ...process.env,
+      ...(extraPath ? { PATH: `${extraPath}:/usr/bin:/bin` } : {}),
+    },
+  });
+  return stdout;
+}
+
+test("spin_ok renders the caller's detail AND the elapsed time", async () => {
+  for (const file of ["install.sh", "install-agent.sh"]) {
+    const out = await bash(`set -euo pipefail
+UI_SPIN_MSG="the spinner's own message"
+spin_elapsed() { printf '80s'; }
+spin_kill() { :; }
+ok() { printf '%s|%s\\n' "$1" "\${2:-}"; }
+${await shellFn(file, "spin_ok")}
+spin_ok "Old platform and its apps stopped" "nothing of it was removed"
+spin_ok "no detail, only the clock"
+`);
+    assert.equal(
+      out,
+      "Old platform and its apps stopped|nothing of it was removed (80s)\n" +
+        "no detail, only the clock|80s\n",
+      `${file}: spin_ok dropped its second argument`,
+    );
+  }
+});
+
+/**
+ * Four of the other platform's containers, two of them ALREADY STOPPED. The two
+ * core ones answer to a name and to an id, which is what used to be counted twice.
+ */
+const DOCKER_STUB = `#!/bin/bash
+S="$STUB_STATE"
+NAMES="oldplatform oldplatform-db app-abc worker-xyz"
+short() { case "$1" in oldplatform) echo 4fb8c486a61e ;; oldplatform-db) echo aaaaaaaaaaaa ;;
+  app-abc) echo bbbbbbbbbbbb ;; worker-xyz) echo cccccccccccc ;; esac; }
+name_of() { local n; for n in $NAMES; do
+  case "$1" in "$n"|"$(short "$n")"*) echo "$n"; return 0 ;; esac; done; return 1; }
+case "$1" in
+  ps) case "$*" in *-aq*) for n in $NAMES; do short "$n"; done ;;
+                   *) echo oldplatform; echo oldplatform-db ;; esac ;;
+  inspect)
+    shift; fmt=""; targets=""
+    while [ $# -gt 0 ]; do case "$1" in --format) fmt="$2"; shift 2 ;;
+      *) targets="$targets $1"; shift ;; esac; done
+    for t in $targets; do n="$(name_of "$t")" || exit 1
+      case "$fmt" in
+        *.Id*) printf '%s%s\\n' "$(short "$n")" "0000000000000000000000000000000000000000000000000000" ;;
+        *.managed*) echo true ;;
+        *working_dir*) echo ;;
+        *RestartPolicy*) printf '%s:%s\\n' "$(cat "$S/$n.pol")" "$(cat "$S/$n.run")" ;;
+      esac; done ;;
+  update) shift; pol="\${1#--restart=}"; shift
+    for c in "$@"; do echo "$pol" > "$S/$(name_of "$c").pol"; done ;;
+  stop)  shift; for c in "$@"; do echo 0 > "$S/$(name_of "$c").run"; done ;;
+  start) shift; for c in "$@"; do echo 1 > "$S/$(name_of "$c").run"; done ;;
+esac
+exit 0
+`;
+
+const BEFORE = [
+  ["oldplatform", "always", "1"],
+  ["oldplatform-db", "always", "0"],
+  ["app-abc", "unless-stopped", "1"],
+  ["worker-xyz", "always", "0"],
+];
+
+test("the takeover stops each container once and rolls every policy back", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-takeover-"));
+  const state = join(dir, "state");
+  await bash(`mkdir -p ${state}`);
+  await writeFile(join(dir, "docker"), DOCKER_STUB, { mode: 0o755 });
+  for (const [n, pol, run] of BEFORE) {
+    await writeFile(join(state, `${n}.pol`), `${pol}\n`);
+    await writeFile(join(state, `${n}.run`), `${run}\n`);
+  }
+  const fns = (
+    await Promise.all(
+      [
+        "foreign_containers",
+        "foreign_services",
+        "foreign_workloads",
+        "foreign_ids",
+        "foreign_stop",
+        "foreign_start",
+      ].map((n) => shellFn("install.sh", n)),
+    )
+  ).join("\n");
+
+  const out = await bash(
+    `set -euo pipefail
+export STUB_STATE=${state}
+STATE_FILE=${dir}/state.env; DEPLO_DIR=${dir}; TAKEOVER=oldplatform
+: > "$STATE_FILE"; exec 9>/dev/null
+state_set() { printf '%s=%s\\n' "$1" "$2" >> "$STATE_FILE"; }
+state_get() { sed -n "s/^$1=//p" "$STATE_FILE" | tail -n1; }
+platform_dir() { printf '%s' "${dir}"; }
+${fns}
+echo "ids=$(foreign_ids | wc -l)"
+foreign_stop
+echo "recorded=$(state_get foreign_restart | wc -w)"
+foreign_start
+for n in ${BEFORE.map(([n]) => n).join(" ")}; do
+  printf '%s:%s:%s\\n' "$n" "$(cat ${state}/$n.pol)" "$(cat ${state}/$n.run)"
+done`,
+    dir,
+  );
+  await rm(dir, { recursive: true, force: true });
+
+  const lines = out.trim().split("\n");
+  // Six entries for four containers is the name/id double count.
+  assert.equal(lines[0], "ids=4");
+  // Two of them were already down; recording only the running ones loses their policy.
+  assert.equal(lines[1], "recorded=4");
+  assert.deepEqual(
+    lines.slice(2),
+    BEFORE.map(([n, pol, run]) => `${n}:${pol}:${run}`),
+    "a rollback must put every restart policy back and start only what was up",
+  );
+});

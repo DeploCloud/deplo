@@ -214,7 +214,13 @@ spin_elapsed() {
   return 0
 }
 
-spin_ok()   { local e; e="$(spin_elapsed)"; spin_kill; ok   "${1:-$UI_SPIN_MSG}" "$e"; }
+# Both the caller's detail and the elapsed time: the detail is the half that says
+# what actually happened, and a stopwatch reading is no reason to drop it.
+spin_ok() {
+  local e d; e="$(spin_elapsed)"; d="${2:-}"; spin_kill
+  [ -n "$d" ] && [ -n "$e" ] && d="$d ($e)"
+  ok "${1:-$UI_SPIN_MSG}" "${d:-$e}"
+}
 spin_warn() { local e; e="$(spin_elapsed)"; spin_kill; warn "${1:-$UI_SPIN_MSG}" "$e"; }
 spin_err()  { spin_kill; err "${1:-$UI_SPIN_MSG}"; }
 
@@ -1498,10 +1504,27 @@ fi
 # its certificate signed like any other server - no second trust path.
 phase "This host as a server"
 
+# "An agent is installed" is not "an agent enrolled with ME": the migration wizard
+# puts one on the source host, which is this very box on a takeover. Its bootstrap
+# env records the panel it answered to; no record at all predates the file, so ours.
+agent_is_ours() {
+  local u
+  u="$(sed -n 's/^DEPLO_BOOTSTRAP_URL=//p' /var/lib/deplo-agent/bootstrap.env 2>/dev/null | tail -n1)"
+  [ -n "$u" ] || return 0
+  u="${u#*://}"; u="${u%%/*}"; u="${u%%:*}"
+  case "$u" in
+    127.0.0.1 | localhost | "$SERVER_IP" | "$TARGET_IP" | "$FALLBACK_HOST" | "$PANEL_HOST") return 0 ;;
+  esac
+  return 1
+}
+
 enroll_this_host() {
   if [ -x /usr/local/bin/deplo-agent ]; then
-    ok "Server agent already installed on this host"
-    return 0
+    if agent_is_ours; then
+      ok "Server agent already installed on this host"
+      return 0
+    fi
+    step "The agent here answers to another panel - enrolling it with this one"
   fi
   # No `sudo`: this script already runs as root (checked at the top). `--quiet`
   # because the agent installer renders the same interface, and two of them
@@ -1623,11 +1646,20 @@ foreign_services() {
   docker service ls --format '{{.Name}}' 2>/dev/null | grep -E '^dokploy(-postgres)?$' || true
 }
 
+# One container answers to a NAME and to an ID, and `sort -u` cannot tell the two
+# apart. Everything resolves to its id, so nothing is recorded or acted on twice.
+foreign_ids() {
+  local c
+  for c in $(printf '%s\n%s\n' "$(foreign_containers)" "$(foreign_workloads)" | grep -v '^$' | sort -u); do
+    docker inspect --format '{{.Id}}' "$c" 2>/dev/null || true
+  done | sort -u
+}
+
 # Stop it for good: `--restart=no` FIRST, or the docker restart below brings the
 # whole platform back up underneath Deplo. Its APPS go down with it - they hold
 # the ports Deplo's proxy is about to take, and two copies of one app would run.
 foreign_stop() {
-  local names svc n c pol saved=""
+  local ids svc n c pol saved=""
   for svc in $(foreign_services); do
     n="$(docker service inspect "$svc" --format '{{.Spec.Mode.Replicated.Replicas}}' 2>/dev/null || true)"
     state_set "foreign_replicas_$svc" "${n:-1}"
@@ -1635,33 +1667,34 @@ foreign_stop() {
     # database is already at zero never will.
     docker service update --detach --replicas 0 "$svc" >&9 2>&9 || true
   done
-  names="$(printf '%s\n%s\n' "$(foreign_containers)" "$(foreign_workloads)" \
-    | grep -v '^$' | sort -u || true)"
-  [ -n "$names" ] || return 0
-  # What each RUNNING one had, so the rollback restores the policy it found
-  # instead of inventing one. A container already down stays down.
-  for c in $names; do
-    pol="$(docker inspect "$c" --format '{{if .State.Running}}{{or .HostConfig.RestartPolicy.Name "no"}}{{end}}' 2>/dev/null || true)"
+  ids="$(foreign_ids)"
+  [ -n "$ids" ] || return 0
+  # The policy of EVERYTHING this touches, plus whether it was running: `--restart=no`
+  # below hits the ones already down too, and an unrecorded one never gets it back.
+  for c in $ids; do
+    pol="$(docker inspect "$c" --format '{{or .HostConfig.RestartPolicy.Name "no"}}:{{if .State.Running}}1{{else}}0{{end}}' 2>/dev/null || true)"
     [ -n "$pol" ] && saved="$saved $c:$pol"
   done
   state_set foreign_restart "${saved# }"
   # shellcheck disable=SC2086
-  docker update --restart=no $names >&9 2>&9 || true
+  docker update --restart=no $ids >&9 2>&9 || true
   # shellcheck disable=SC2086
-  docker stop $names >&9 2>&9 || true
+  docker stop $ids >&9 2>&9 || true
 }
 
-# The way back: every container foreign_stop took down, on the policy it had.
+# The way back: the policy goes back on everything, and only what was up comes up.
+# An entry with no third field is the older two-field form, which recorded only
+# running containers.
 foreign_start() {
-  local svc n pair c pol
+  local svc n pair c rest pol run
   for svc in $(foreign_services); do
     n="$(state_get "foreign_replicas_$svc" || true)"
     docker service update --detach --replicas "${n:-1}" "$svc" >&9 2>&9 || true
   done
   for pair in $(state_get foreign_restart || true); do
-    c="${pair%:*}"; pol="${pair##*:}"
+    c="${pair%%:*}"; rest="${pair#*:}"; pol="${rest%%:*}"; run="${rest#*:}"
     docker update --restart="${pol:-no}" "$c" >&9 2>&9 || true
-    docker start "$c" >&9 2>&9 || true
+    [ "$run" = 0 ] || docker start "$c" >&9 2>&9 || true
   done
 }
 
@@ -1898,10 +1931,8 @@ foreign_remove() {
   blank
   phase "Removing $FOREIGN_LABEL"
 
-  local core workloads all vols nets svcs
-  core="$(foreign_containers)"
-  workloads="$(foreign_workloads)"
-  all="$(printf '%s\n%s\n' "$core" "$workloads" | grep -v '^$' | sort -u)"
+  local all vols nets svcs left_v left_n
+  all="$(foreign_ids)"
 
   # Read what they hold BEFORE they are gone; an id no longer exists afterwards.
   # shellcheck disable=SC2086
@@ -1941,7 +1972,17 @@ foreign_remove() {
   docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
     | grep -E "^(ghcr\.io/)?(coollabsio|dokploy)/" | xargs -r docker rmi -f >&9 2>&9 || true
   rm -rf "$(platform_dir "$TAKEOVER")"
-  spin_ok "$FOREIGN_LABEL removed" "containers, volumes, networks, images and its directory"
+  spin_ok "$FOREIGN_LABEL removed" "containers, images, its directory, and the volumes and networks they held"
+  # Volumes and networks are read off the containers being removed, so whatever it
+  # made for an app it had already deleted is still here. Say so rather than delete
+  # by name pattern, which is how a removal eats the apps just brought across.
+  left_v="$(docker volume ls -q --filter dangling=true 2>/dev/null | wc -l | tr -d ' ')"
+  left_n="$(docker network ls -q --filter dangling=true 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${left_v:-0}" != 0 ] || [ "${left_n:-0}" != 0 ]; then
+    note "$left_v unused volume(s) and $left_n unused network(s) are still on this host,"
+    note "some of them $FOREIGN_LABEL's. Look before you remove any:"
+    note "  docker volume ls -f dangling=true && docker network ls -f dangling=true"
+  fi
   state_set takeover "removed"
   takeover_post "removed"
 }
@@ -2007,15 +2048,28 @@ takeover_after_cutover() {
 }
 
 takeover_wait() {
-  local waited=0 said_unreachable=0 mute=0 said_mute=0 body state
+  local waited=0 said_unreachable=0 mute=0 said_mute=0 body state door
+  # Deplo is on loopback until the cutover, so this route through the other
+  # platform's proxy is the only way in that does not need SSH. Write it now.
+  door="$(takeover_side_door)"
   blank
   printf ' %bNext%b\n' "$C_B" "$C_OFF"
-  printf '   1  From your own machine:  %bssh -L %s:localhost:%s root@%s%b\n' "$C_ACC" "$PANEL_PORT" "$PANEL_PORT" "$SERVER_IP" "$C_OFF"
-  printf '   2  Open %bhttp://localhost:%s%b and create your account.\n' "$C_ACC" "$PANEL_PORT" "$C_OFF"
-  printf '   3  Bring your projects over from %s.\n' "$FOREIGN_LABEL"
-  printf '   4  Leave this window open - it takes the ports when you say so.\n\n'
+  case "$door" in
+    http://*)
+      printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$door" "$C_OFF"
+      printf '      No SSH needed - it goes in through %s'"'"'s own proxy on port 80.\n' "$FOREIGN_LABEL"
+      ;;
+    *)
+      door=""
+      printf '   1  From your own machine:  %bssh -L %s:localhost:%s root@%s%b\n' "$C_ACC" "$PANEL_PORT" "$PANEL_PORT" "$SERVER_IP" "$C_OFF"
+      printf '      Then open %bhttp://localhost:%s%b and create your account.\n' "$C_ACC" "$PANEL_PORT" "$C_OFF"
+      ;;
+  esac
+  printf '   2  Bring your projects over from %s.\n' "$FOREIGN_LABEL"
+  printf '   3  Leave this window open - it takes the ports when you say so.\n\n'
   note "Deplo answers on loopback only until it takes 80 and 443."
   note "No certificate can issue until then, so the browser warns once."
+  [ -n "$door" ] && note "Over SSH instead: ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP"
   note "Closing this window is safe: re-run $DEPLO_DIR/install.sh to pick it back up."
 
   spin_start "Waiting for the migration"
@@ -2105,8 +2159,15 @@ closing_notes() {
     note "$FALLBACK_HOST answers too, so the panel stays reachable while its DNS moves."
   else
     note "$FALLBACK_HOST already resolves to this server, so there is no DNS to set up."
-    note "The browser warns about the certificate: no authority issues one for a nip.io"
-    note "address. To use your own domain, re-run with --domain <your domain>."
+    # Only true while the panel is still on its interim ports: the challenge needs
+    # 80, so nothing can issue until the cutover moves them.
+    if [ "$HTTP_PORT" = 80 ]; then
+      note "Its certificate issues on the first request."
+    else
+      note "The browser warns about the certificate: none can issue while Deplo waits"
+      note "on a temporary port. It issues once Deplo takes 80 and 443."
+    fi
+    note "To use your own domain, re-run with --domain <your domain>."
   fi
   note "Locked out? ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP, then open http://localhost:$PANEL_PORT"
   note "GitHub must be able to reach $PUBLIC_URL for callbacks and webhooks."
