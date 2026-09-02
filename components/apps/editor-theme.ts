@@ -16,6 +16,29 @@ import { yaml as yamlLang } from "@codemirror/lang-yaml";
 import { classifyYamlScalar, type YamlScalarKind } from "./editor-language";
 
 /**
+ * The lint gutter draws its markers as a `content:` image, which cannot read a
+ * CSS variable - so the severity colours are the token values, spelled out.
+ * The glyph is black on all three: it has to stay legible on amber.
+ */
+function markerSvg(content: string): string {
+  return `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">${encodeURIComponent(content)}</svg>')`;
+}
+
+const ERROR_MARKER =
+  '<circle cx="20" cy="20" r="16" fill="#ff4242"/>' +
+  '<path stroke="#000" stroke-width="4.5" stroke-linecap="round" d="M14 14l12 12M26 14L14 26"/>';
+
+const WARNING_MARKER =
+  '<path fill="#f5a623" stroke="#f5a623" stroke-width="5" stroke-linejoin="round" d="M20 7L36 33H4Z"/>' +
+  '<path fill="#000" d="M17.9 16h4.2l-.7 10h-2.8z"/>' +
+  '<circle cx="20" cy="29.5" r="2.1" fill="#000"/>';
+
+const INFO_MARKER =
+  '<circle cx="20" cy="20" r="16" fill="#a1a1aa"/>' +
+  '<circle cx="20" cy="12.5" r="2.2" fill="#000"/>' +
+  '<path fill="#000" d="M17.9 17.5h4.2v12h-4.2z"/>';
+
+/**
  * Shared CodeMirror chrome for the dashboard's editors: Deplo tokens for the
  * frame, VSCode Dark+/Light+ tokens (--code-*) for the syntax.
  */
@@ -80,10 +103,10 @@ export const deploTheme = EditorView.theme({
     textUnderlineOffset: "3px",
   },
 
-  // --- Gutter severity dots ---
-  ".cm-lint-marker-error": { color: "var(--destructive)" },
-  ".cm-lint-marker-warning": { color: "var(--warning)" },
-  ".cm-lint-marker-info": { color: "var(--muted-foreground)" },
+  // --- Gutter severity markers, matching ComposeLintSummary's icons ---
+  ".cm-lint-marker-error": { content: markerSvg(ERROR_MARKER) },
+  ".cm-lint-marker-warning": { content: markerSvg(WARNING_MARKER) },
+  ".cm-lint-marker-info": { content: markerSvg(INFO_MARKER) },
 
   // --- The hover tooltip (was unstyled → white text on white) ---
   ".cm-tooltip": {
