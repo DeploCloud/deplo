@@ -2,6 +2,8 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  AGENT_REPO,
+  FALLBACK_AGENT_VERSION,
   resolveLatestAgentRelease,
   refreshAgentRelease,
   __resetReleaseCacheForTests,
@@ -287,4 +289,57 @@ test("a resolved release keeps being served through a GitHub blip", async () => 
     "2.0.0",
     "the installer still has a release to render",
   );
+});
+
+/**
+ * The one that made `curl … | bash` answer 503 in the middle of an install with a
+ * fresh process behind it, so there was no last-good to serve: 60 unauthenticated
+ * calls an hour is an instance-wide budget, and a takeover spends several.
+ *
+ * The assets are plain downloads, not the API, so the version Deplo ships pinned
+ * resolves with the budget at zero.
+ */
+test("the pinned release resolves without the API when the budget is spent", async () => {
+  const orig = globalThis.fetch;
+  const seen: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    seen.push(url);
+    if (url.includes("api.github.com"))
+      return new Response("rate limit exceeded", { status: 403 });
+    if (url.endsWith("/checksums.txt"))
+      return new Response(
+        `${"c".repeat(64)}  deplo-agent-linux-amd64\n` +
+          `${"d".repeat(64)}  deplo-agent-linux-arm64\n`,
+        { status: 200 },
+      );
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  __resetReleaseCacheForTests();
+  try {
+    const rel = await resolveLatestAgentRelease();
+    assert.equal(rel?.version, FALLBACK_AGENT_VERSION);
+    assert.deepEqual(rel!.binaries.amd64, {
+      url: `https://github.com/${AGENT_REPO}/releases/download/v${FALLBACK_AGENT_VERSION}/deplo-agent-linux-amd64`,
+      sha256: "c".repeat(64),
+    });
+    assert.ok(
+      seen.some((u) => u.includes("api.github.com")),
+      "the API is still asked first - the fallback is a fallback",
+    );
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test("no release at all is still null, so no unverified binary is served", async () => {
+  const orig = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response("nope", { status: 404 })) as typeof fetch;
+  __resetReleaseCacheForTests();
+  try {
+    assert.equal(await resolveLatestAgentRelease(), null);
+  } finally {
+    globalThis.fetch = orig;
+  }
 });

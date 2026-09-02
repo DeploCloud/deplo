@@ -9,8 +9,9 @@ export async function GET() {
   const script = await renderInstallScript();
   if (!script) {
     return new Response(
-      "# The Deplo agent release could not be resolved (GitHub unreachable, or no\n" +
-        "# published release/checksums). Remote servers cannot be provisioned yet.\n",
+      "# Deplo could not resolve the agent's binary: neither the latest release nor\n" +
+        "# the pinned one answered from github.com. Check this machine's outbound\n" +
+        "# access to github.com, then run this command again.\n",
       { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
     );
   }

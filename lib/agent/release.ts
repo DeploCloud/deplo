@@ -97,7 +97,7 @@ export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> 
   if (cache && now() - cache.at < ttl)
     return cache.release ?? cacheCell.lastGood ?? null;
 
-  const release = await fetchLatestRelease();
+  const release = (await fetchLatestRelease()) ?? (await fetchPinnedRelease());
   cacheCell.value = { at: now(), release };
   if (release) cacheCell.lastGood = release;
   // ponytail: last-good lives in this process only, so a restart while GitHub is
@@ -112,6 +112,43 @@ export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> 
 export async function refreshAgentRelease(): Promise<AgentRelease | null> {
   cacheCell.value = null;
   return resolveLatestAgentRelease();
+}
+
+/** Where a release's assets are downloaded from. NOT the API: this host serves
+ *  files, and it does not count against the 60 calls an hour an unauthenticated
+ *  api.github.com allows a whole instance. */
+function downloadBase(tag: string): string {
+  return `https://github.com/${AGENT_REPO}/releases/download/${tag}`;
+}
+
+/**
+ * The PINNED version, resolved without asking the API at all.
+ *
+ * Deplo ships knowing which agent it expects, and the assets of that release are
+ * plain downloads - so an exhausted API budget stops being fatal. It was: the
+ * installer is rendered per request, so `/install-agent.sh` answered 503 in the
+ * middle of an install and the agent never went on the host.
+ */
+async function fetchPinnedRelease(): Promise<AgentRelease | null> {
+  const base = downloadBase(`v${FALLBACK_AGENT_VERSION}`);
+  let sums: Map<string, string>;
+  try {
+    const res = await fetch(`${base}/checksums.txt`, {
+      headers: { "User-Agent": GH_HEADERS["User-Agent"] },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    sums = parseChecksums(await res.text());
+  } catch {
+    return null;
+  }
+  const pick = (arch: "amd64" | "arm64") => {
+    const sha256 = sums.get(assetName(arch));
+    return sha256 ? { url: `${base}/${assetName(arch)}`, sha256 } : null;
+  };
+  const binaries = { amd64: pick("amd64"), arm64: pick("arm64") };
+  if (!binaries.amd64 && !binaries.arm64) return null;
+  return { version: FALLBACK_AGENT_VERSION, binaries };
 }
 
 async function fetchLatestRelease(): Promise<AgentRelease | null> {
