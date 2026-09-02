@@ -136,7 +136,7 @@ export function UploadInput({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "group flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border p-8 text-center transition-colors",
+          "group flex min-h-72 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border p-8 text-center transition-colors",
           dragging && "border-primary bg-primary/5",
           uploading && "cursor-default opacity-80",
         )}

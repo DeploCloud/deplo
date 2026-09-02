@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Input } from "@/components/ui/input";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { BuildMethodFields } from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
 import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
@@ -191,6 +191,7 @@ function FieldGroup({
   children,
 }: {
   title: string;
+  /** What the group is for. Read in the title's tooltip, never below it. */
   hint?: string;
   /** Skips the top rule when this is the first thing in the card. */
   first?: boolean;
@@ -200,12 +201,10 @@ function FieldGroup({
     <div
       className={first ? "space-y-3" : "space-y-3 border-t border-border pt-5"}
     >
-      <div className="space-y-1">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          {title}
-        </p>
-        {hint && <p className="text-xs text-muted-foreground/80">{hint}</p>}
-      </div>
+      <p className="flex w-fit items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {title}
+        {hint && <InfoTip content={hint} />}
+      </p>
       {children}
     </div>
   );

@@ -299,9 +299,9 @@ export function BuildOutputCard({
 }
 
 /**
- * One stage of the pipeline: a marker on the rail, a title, a line saying what
- * happens here, and the fields that steer it. The connector is drawn by every
- * stage except the last, so the rail ends exactly where the pipeline does.
+ * One stage of the pipeline: a marker on the rail, a title carrying what happens
+ * here in its tooltip, and the fields that steer it. The connector is drawn by
+ * every stage except the last, so the rail ends where the pipeline does.
  */
 function Stage({
   marker,
@@ -313,6 +313,7 @@ function Stage({
 }: {
   marker: React.ReactNode;
   title: string;
+  /** What happens at this stage. Read in the title's tooltip, never below it. */
   hint?: React.ReactNode;
   /** Right-aligned control on the title row (a switch), for stages whose whole
    * setting IS one control. */
@@ -333,14 +334,10 @@ function Stage({
       </span>
       <div className={cn("min-w-0", !last && "pb-6")}>
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
-            <p className="text-sm font-medium">{title}</p>
-            {hint && (
-              <p className="text-xs leading-snug text-muted-foreground">
-                {hint}
-              </p>
-            )}
-          </div>
+          <p className="flex w-fit min-w-0 items-center gap-1.5 text-sm font-medium">
+            {title}
+            {hint && <InfoTip content={hint} />}
+          </p>
           {action}
         </div>
         {children && <div className="mt-3">{children}</div>}

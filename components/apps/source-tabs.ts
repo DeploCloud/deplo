@@ -54,6 +54,14 @@ export const SOURCE_TABS: SourceTab[] = [
     veil: { hue: 248 },
   },
   {
+    id: "compose",
+    label: "Compose",
+    icon: FileText,
+    blurb: "Bring up a docker-compose stack as written.",
+    brand: { bg: "#50E3C2", fg: "#0A0A0A" },
+    veil: { hue: 175 },
+  },
+  {
     id: "upload",
     label: "Upload",
     icon: Upload,
@@ -62,14 +70,6 @@ export const SOURCE_TABS: SourceTab[] = [
     // as one of the five rather than the odd grey one out.
     brand: { bg: "#8B5CF6", fg: "#FFFFFF" },
     veil: { hue: 293 },
-  },
-  {
-    id: "compose",
-    label: "Compose",
-    icon: FileText,
-    blurb: "Bring up a docker-compose stack as written.",
-    brand: { bg: "#50E3C2", fg: "#0A0A0A" },
-    veil: { hue: 175 },
   },
 ];
 

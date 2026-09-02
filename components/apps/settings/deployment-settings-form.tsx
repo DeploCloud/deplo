@@ -105,8 +105,8 @@ const SOURCE_TABS: {
   { id: "github", label: "GitHub", icon: GitHubIcon },
   { id: "git", label: "Git", icon: GitBranch },
   { id: "docker-image", label: "Docker Image", icon: Container },
-  { id: "upload", label: "Upload", icon: Upload },
   { id: "compose", label: "Compose", icon: FileText },
+  { id: "upload", label: "Upload", icon: Upload },
 ];
 
 type SourceKeyInput = {
