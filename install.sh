@@ -1121,6 +1121,18 @@ if ! grep -q '^DEPLO_HOST_BOOTSTRAP_TOKEN=' "$ENV_FILE"; then
 fi
 HOST_TOKEN="$(grep '^DEPLO_HOST_BOOTSTRAP_TOKEN=' "$ENV_FILE" | cut -d= -f2- || true)"
 trace_on
+
+# The key that gates the first-account wizard, so the panel is claimed by whoever
+# ran this script rather than by whoever reaches /setup first. Appended like the
+# token above, so a re-run gives one to an instance installed before it existed
+# and an update never rotates it. It stops mattering once an account exists.
+trace_off
+if ! grep -q '^DEPLO_SETUP_KEY=' "$ENV_FILE"; then
+  umask 077
+  echo "DEPLO_SETUP_KEY=$(openssl rand -hex 8)" >> "$ENV_FILE"
+fi
+SETUP_KEY="$(grep '^DEPLO_SETUP_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
+trace_on
 # This box's own name, for the server card. Read here because Deplo runs in a
 # container, where `hostname` answers with a random container id.
 HOST_NAME="$(hostname 2>/dev/null || cat /proc/sys/kernel/hostname 2>/dev/null || echo "")"
@@ -1191,6 +1203,10 @@ panel_url() {
   esac
 }
 PUBLIC_URL="$(panel_url)"
+
+# The first-account link. Takes the base as an argument because during a takeover
+# $PUBLIC_URL is an interim port bound to loopback and the way in is the side door.
+setup_url() { printf '%s/setup?key=%s' "${1:-$PUBLIC_URL}" "$SETUP_KEY"; }
 
 # One router per host, both onto the one service. Unquoted scalars on purpose:
 # this is byte-for-byte what `withPanelRoute` re-renders, so the first edit from
@@ -1393,7 +1409,12 @@ services:
       - DEPLO_PUBLIC_URL=$PUBLIC_URL
       - DEPLO_SERVER_IP=$SERVER_IP
       - DEPLO_HOST_BOOTSTRAP_TOKEN=\${DEPLO_HOST_BOOTSTRAP_TOKEN}
+      - DEPLO_SETUP_KEY=\${DEPLO_SETUP_KEY}
       - DEPLO_HOST_NAME=$HOST_NAME
+      # The host port the line above publishes the panel on. The panel cannot see
+      # its own port map, and it needs it to hand this machine's own agent an
+      # address that works before the proxy's ports are Deplo's.
+      - DEPLO_PANEL_PORT=$PANEL_PORT
       # Empty on an ordinary install. The panel seeds its takeover state from
       # this once, then owns it - so the cutover clearing it changes nothing.
       - DEPLO_TAKEOVER=$TAKEOVER
@@ -1529,16 +1550,33 @@ enroll_this_host() {
   # No `sudo`: this script already runs as root (checked at the top). `--quiet`
   # because the agent installer renders the same interface, and two of them
   # stacked reads as the script having started over.
+  # Fetched to a file rather than straight into a pipe: `curl -f | bash` throws the
+  # body away, and the body is the only place the panel says WHY it would not serve
+  # an installer. A bare "curl: (22)" was the whole diagnosis for an agent that
+  # never went on.
+  local script code
+  script="$(mktemp)"
   spin_start "Installing the server agent on this host"
   trace_off                      # $HOST_TOKEN is on this command line
-  if curl -fsSL "$AGENT_BOOTSTRAP_URL/install-agent.sh" </dev/null \
-     | bash -s -- "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet >&9 2>&9; then
+  code="$(curl -sSL -o "$script" -w '%{http_code}' \
+            "$AGENT_BOOTSTRAP_URL/install-agent.sh" </dev/null 2>&9 || true)"
+  if [ "$code" = 200 ] &&
+     bash "$script" "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet >&9 2>&9; then
     trace_on
+    rm -f "$script"
     spin_ok "Server agent installed" "this host is now a Deplo server"
     return 0
   fi
   trace_on
   spin_err "The server agent did not install"
+  # The panel answers a plain-text reason on every refusal; show it rather than
+  # the status code alone.
+  if [ -n "$code" ] && [ "$code" != 200 ]; then
+    note "The dashboard answered $code for /install-agent.sh:"
+    head -n 4 "$script" 2>/dev/null | sed 's/^#[[:space:]]*//' |
+      while IFS= read -r l; do [ -n "$l" ] && note "  $l"; done
+  fi
+  rm -f "$script"
   return 1
 }
 
@@ -1550,7 +1588,15 @@ if ! enroll_this_host; then
   HOST_ENROLLED=false
   err "This host was not added as a server. Deplo itself is installed and running."
   note "Transcript: $UI_LOG"
-  note "Re-run this script to try again, or add the server from Settings > Servers."
+  # A takeover has no second way out: the migration copies data through the agent
+  # ON THIS HOST, and until the ports move nothing of Deplo's answers from outside,
+  # so Settings > Servers cannot mint a command that reaches this machine either.
+  if [ -n "$TAKEOVER" ]; then
+    note "The migration cannot copy any data until it is: re-run $DEPLO_DIR/install.sh"
+    note "here, in this shell, and it will install the agent and pick the takeover up."
+  else
+    note "Re-run this script to try again, or add the server from Settings > Servers."
+  fi
 fi
 
 # ==============================================================================
@@ -1622,15 +1668,20 @@ takeover_side_door_remove() {
 
 # Every way into the panel, in the order they cost the operator something.
 takeover_unreachable_advice() {
+  local door
   blank
   warn "Nothing has opened Deplo yet."
   note "Until the ports move its proxy is bound to loopback on purpose, so there is"
   note "no login page of Deplo's on the internet yet. Two ways in:"
   note "  1. Through $FOREIGN_LABEL's own proxy on port 80:"
-  note "     $(takeover_side_door)"
+  # The side door answers with a sentence, not a URL, when that platform has no
+  # dynamic config dir here - appending the setup path to that would be nonsense.
+  door="$(takeover_side_door)"
+  case "$door" in http://*) door="$(setup_url "$door")" ;; esac
+  note "     $door"
   note "  2. From your own machine, over SSH:"
   note "     ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP"
-  note "     then open http://localhost:$PANEL_PORT"
+  note "     then open $(setup_url "http://localhost:$PANEL_PORT")"
 }
 
 # Everything the other platform put on this machine, by container name.
@@ -2056,13 +2107,13 @@ takeover_wait() {
   printf ' %bNext%b\n' "$C_B" "$C_OFF"
   case "$door" in
     http://*)
-      printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$door" "$C_OFF"
+      printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$(setup_url "$door")" "$C_OFF"
       printf '      No SSH needed - it goes in through %s'"'"'s own proxy on port 80.\n' "$FOREIGN_LABEL"
       ;;
     *)
       door=""
       printf '   1  From your own machine:  %bssh -L %s:localhost:%s root@%s%b\n' "$C_ACC" "$PANEL_PORT" "$PANEL_PORT" "$SERVER_IP" "$C_OFF"
-      printf '      Then open %bhttp://localhost:%s%b and create your account.\n' "$C_ACC" "$PANEL_PORT" "$C_OFF"
+      printf '      Then open %b%s%b and create your account.\n' "$C_ACC" "$(setup_url "http://localhost:$PANEL_PORT")" "$C_OFF"
       ;;
   esac
   printf '   2  Bring your projects over from %s.\n' "$FOREIGN_LABEL"
@@ -2143,12 +2194,19 @@ else
   card_open "Deplo installed in ${TOTAL}s"
 fi
 card_kv "Dashboard" "$PUBLIC_URL"
+card_kv "Set up" "$(setup_url)"
 [ "$USE_DOMAIN" = true ] && card_kv "Backup address" "https://$FALLBACK_HOST"
 card_kv "Version" "$VERSION_LABEL"
 card_kv "Data dir" "$DEPLO_DIR"
 card_kv "Database" "Postgres, private network only"
 card_kv "Proxy" "Traefik, ports $HTTP_PORT/$HTTPS_PORT, automatic HTTPS"
-[ "$HOST_ENROLLED" = true ] && card_kv "Server" "${HOST_NAME:-$SERVER_IP}, this machine"
+# Said either way. Omitted, a failed enrolment left a card that read like a clean
+# install of something that cannot deploy anything yet.
+if [ "$HOST_ENROLLED" = true ]; then
+  card_kv "Server" "${HOST_NAME:-$SERVER_IP}, this machine"
+else
+  card_kv "Server" "NOT installed - re-run this script on this host"
+fi
 card_close
 
 # The DNS, certificate and callback notes. A takeover gets them too: on a machine
@@ -2193,7 +2251,7 @@ fi
 
 printf ' %bNext%b\n' "$C_B" "$C_OFF"
 if [ "$MODE" != update ]; then
-  printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
+  printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$(setup_url)" "$C_OFF"
   printf '   2  Connect a repository from Settings > Git.\n'
   printf '   3  Deploy your first app.\n\n'
 else

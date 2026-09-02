@@ -17,7 +17,12 @@ import {
   session as sessionTable,
 } from "./db/schema/auth";
 import { createLocalAccountIssuer } from "better-auth";
-import { hashPassword, passwordNeedsRehash, verifyPassword } from "./crypto";
+import {
+  constantTimeEquals,
+  hashPassword,
+  passwordNeedsRehash,
+  verifyPassword,
+} from "./crypto";
 import { avatarUrlFor } from "./avatar";
 import { monogramColor } from "./avatar-colors";
 import type { Capability, PublicUser, Role, Team, User } from "./types";
@@ -529,6 +534,22 @@ export async function isSetupNeeded(): Promise<boolean> {
   return n === 0;
 }
 
+export type SetupKeyState = "ok" | "missing" | "wrong";
+
+/**
+ * The installer mints `DEPLO_SETUP_KEY` and prints it in the setup link, so the
+ * first account is claimed by whoever ran the install rather than by whoever
+ * reaches the panel first. No key configured leaves setup exactly as it was.
+ */
+export function checkSetupKey(
+  presented: string | null | undefined,
+): SetupKeyState {
+  const expected = process.env.DEPLO_SETUP_KEY?.trim();
+  if (!expected) return "ok";
+  if (!presented) return "missing";
+  return constantTimeEquals(presented, expected) ? "ok" : "wrong";
+}
+
 /** Throwing variant for server actions / route handlers. */
 export async function assertUser(): Promise<PublicUser> {
   const user = await getCurrentUser();
@@ -850,7 +871,12 @@ export async function completeSetup(input: {
   password: string;
   image?: string | null;
   teamImage?: string | null;
+  /** From the installer's setup link. Checked before anything touches the db. */
+  key?: string | null;
 }): Promise<{ ok: boolean; error?: string }> {
+  if (checkSetupKey(input.key) !== "ok")
+    return { ok: false, error: "That setup link is not valid." };
+
   const existing = (await getDb().select({ n: count() }).from(usersTable))[0]!
     .n;
   if (existing > 0)

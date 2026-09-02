@@ -30,6 +30,7 @@ const COMPLETE_SETUP = /* GraphQL */ `
     $password: String!
     $image: String
     $teamImage: String
+    $key: String
   ) {
     completeSetup(
       username: $username
@@ -39,6 +40,7 @@ const COMPLETE_SETUP = /* GraphQL */ `
       password: $password
       image: $image
       teamImage: $teamImage
+      key: $key
     ) {
       viewer {
         id
@@ -55,7 +57,7 @@ const STEPS = [
   { id: "team", label: "Your team" },
 ];
 
-export function OnboardingWizard() {
+export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
   const router = useRouter();
   const { phase, markSeen } = useLogoIntro(INTRO_SEEN);
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
@@ -76,6 +78,7 @@ export function OnboardingWizard() {
           password: account.password,
           image: account.image,
           teamImage: team.image,
+          key: setupKey,
         });
         router.push("/?welcome=1");
         router.refresh();

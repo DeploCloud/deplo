@@ -155,6 +155,8 @@ const setupSchema = z.object({
     .max(200),
   image: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
   teamImage: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
+  // The installer's setup link. Verified in completeSetup, never here.
+  key: z.string().max(200).nullish(),
 });
 
 const registerSchema = z.object({
@@ -301,6 +303,7 @@ builder.mutationFields((t) => ({
       password: t.arg.string({ required: true }),
       image: t.arg.string(),
       teamImage: t.arg.string(),
+      key: t.arg.string(),
     },
     resolve: async (_r, args) => {
       const parsed = setupSchema.safeParse(args);

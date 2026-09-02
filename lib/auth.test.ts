@@ -18,6 +18,7 @@ import { eq } from "drizzle-orm";
 import { verifyPassword } from "./crypto";
 import { runWithIdentity } from "./auth/request-context";
 import {
+  checkSetupKey,
   completeSetup,
   createAccountWithTeam,
   createAccountWithTeams,
@@ -547,4 +548,77 @@ test("first-run setup: a picture that is not an image data-URI is refused", asyn
   assert.equal(res.ok, false);
   assert.match(res.error ?? "", /profile picture/);
   assert.equal((await db.select().from(usersTable)).length, 0);
+});
+
+/** The installer's key lives in the environment, so every case restores it. */
+async function withSetupKey(key: string | null, fn: () => Promise<void>) {
+  const before = process.env.DEPLO_SETUP_KEY;
+  if (key === null) delete process.env.DEPLO_SETUP_KEY;
+  else process.env.DEPLO_SETUP_KEY = key;
+  try {
+    await fn();
+  } finally {
+    if (before === undefined) delete process.env.DEPLO_SETUP_KEY;
+    else process.env.DEPLO_SETUP_KEY = before;
+  }
+}
+
+const SETUP_KEY = "a3f9c1d84b7e2065";
+
+/**
+ * completeSetup signs the owner in last, and that needs a request scope the
+ * harness has none of - so a call that clears the key gate throws on the cookie
+ * write, with the account already created. Reaching that throw is the pass.
+ */
+async function setupRefusal(
+  input: Parameters<typeof completeSetup>[0],
+): Promise<string | null> {
+  try {
+    const res = await completeSetup(input);
+    return res.ok ? null : (res.error ?? "refused");
+  } catch (e) {
+    assert.match(String(e), /cookies/);
+    return null;
+  }
+}
+
+test("setup key: an instance without one is unchanged", async () => {
+  await withSetupKey(null, async () => {
+    assert.equal(checkSetupKey(null), "ok");
+    assert.equal(checkSetupKey("anything"), "ok");
+    assert.equal(await setupRefusal(WIZARD), null);
+    assert.equal((await db.select().from(usersTable)).length, 1);
+  });
+});
+
+test("setup key: the installer's link creates the first account", async () => {
+  await withSetupKey(SETUP_KEY, async () => {
+    assert.equal(checkSetupKey(SETUP_KEY), "ok");
+    assert.equal(await setupRefusal({ ...WIZARD, key: SETUP_KEY }), null);
+    assert.equal((await db.select().from(usersTable)).length, 1);
+  });
+});
+
+test("setup key: a wrong key claims nothing", async () => {
+  await withSetupKey(SETUP_KEY, async () => {
+    assert.equal(checkSetupKey("b3f9c1d84b7e2065"), "wrong");
+    // Shorter, longer and empty all have to land on the same refusal - a length
+    // mismatch is what constantTimeEquals refuses before it compares.
+    for (const key of ["b3f9c1d84b7e2065", "short", `${SETUP_KEY}x`, ""]) {
+      assert.match(
+        (await setupRefusal({ ...WIZARD, key })) ?? "",
+        /setup link/,
+      );
+    }
+    assert.equal((await db.select().from(usersTable)).length, 0);
+  });
+});
+
+test("setup key: no key at all claims nothing", async () => {
+  await withSetupKey(SETUP_KEY, async () => {
+    assert.equal(checkSetupKey(null), "missing");
+    assert.equal(checkSetupKey(undefined), "missing");
+    assert.match((await setupRefusal(WIZARD)) ?? "", /setup link/);
+    assert.equal((await db.select().from(usersTable)).length, 0);
+  });
 });

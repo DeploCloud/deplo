@@ -18,6 +18,7 @@ services:
       - NODE_ENV=production
       - DEPLO_DATA_DIR=/data
       - DEPLO_SECRET=${DEPLO_SECRET:?set DEPLO_SECRET}
+      - DEPLO_SETUP_KEY=${DEPLO_SETUP_KEY:-}
       - DEPLO_PUBLIC_URL=https://${DEPLO_DOMAIN:?set DEPLO_DOMAIN}
       - DEPLO_DATABASE_URL=postgres://deplo:${DEPLO_DB_PASSWORD:?set DEPLO_DB_PASSWORD}@postgres:5432/deplo
     # NOT published on the host: the panel answers over HTTPS through Traefik and
