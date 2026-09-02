@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Plus, Eye, EyeOff } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -29,6 +29,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { RevealInput } from "@/components/ui/password-field";
+import { Combobox } from "@/components/shared/combobox";
+import { AnimatedHeight } from "@/components/shared/animated-height";
+import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { useRouter } from "next/navigation";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
@@ -49,7 +53,7 @@ export function CreateDatabase({
   autoOpen = false,
   size = "default",
 }: {
-  servers: { id: string; name: string }[];
+  servers: { id: string; name: string; isDeploHost: boolean }[];
   /**
    * The team's Environments, for the placement picker. A database placed in one
    * answers on that Environment's network; the top level is the team's own.
@@ -256,7 +260,7 @@ export function CreateDatabase({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="space-y-4">
+          <AnimatedHeight className="space-y-4" scroll={false}>
             <div className="space-y-2">
               <Label htmlFor="db-name">Name</Label>
               <Input
@@ -268,22 +272,28 @@ export function CreateDatabase({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Engine</Label>
-                <Select value={type} onValueChange={onTypeChange}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TYPES.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        <span className="flex items-center gap-2">
-                          <DatabaseLogo type={t.id} size={16} />
-                          {t.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="db-engine">Engine</Label>
+                <Combobox
+                  id="db-engine"
+                  items={TYPES}
+                  value={type}
+                  onChange={onTypeChange}
+                  getKey={(t) => t.id}
+                  matches={(t, q) =>
+                    t.id.includes(q) || t.name.toLowerCase().includes(q)
+                  }
+                  displayValue={(t) => t.name}
+                  renderLeading={(t) => <DatabaseLogo type={t.id} size={16} />}
+                  renderOption={(t) => (
+                    <span className="flex items-center gap-2 text-sm">
+                      <DatabaseLogo type={t.id} size={16} />
+                      {t.name}
+                    </span>
+                  )}
+                  placeholder="Select an engine"
+                  searchPlaceholder="Search engines"
+                  emptyLabel={() => "No engine found"}
+                />
               </div>
               <div className="space-y-2">
                 <FieldLabel
@@ -300,14 +310,10 @@ export function CreateDatabase({
               </div>
             </div>
             <div className="space-y-3 rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm font-medium">Credentials</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Optional. Leave blank to use generated defaults. These are set
-                  only when the database is first created and can&apos;t be
-                  changed later.
-                </p>
-              </div>
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                Credentials
+                <InfoTip content="Optional. Leave blank to use generated defaults. These are set only when the database is first created and can't be changed later." />
+              </p>
               {creds.username && (
                 <div className="space-y-1.5">
                   <Label htmlFor="db-user">Username</Label>
@@ -338,30 +344,18 @@ export function CreateDatabase({
                 <div className="space-y-1.5">
                   <Label htmlFor="db-pass">Password</Label>
                   <div className="flex gap-2">
-                    <Input
-                      id="db-pass"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="auto-generated"
-                      autoComplete="new-password"
-                      className="font-mono"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setShowPassword((s) => !s)}
-                      aria-label={
-                        showPassword ? "Hide password" : "Show password"
-                      }
-                    >
-                      {showPassword ? (
-                        <EyeOff className="size-4" />
-                      ) : (
-                        <Eye className="size-4" />
-                      )}
-                    </Button>
+                    <div className="min-w-0 flex-1">
+                      <RevealInput
+                        id="db-pass"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        visible={showPassword}
+                        onVisibleChange={setShowPassword}
+                        placeholder="auto-generated"
+                        autoComplete="new-password"
+                        className="font-mono"
+                      />
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
@@ -386,7 +380,10 @@ export function CreateDatabase({
                   <SelectContent>
                     {servers.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.name}
+                        <span className="flex items-center gap-2">
+                          {s.name}
+                          <ServerRoleHint isDeploHost={s.isDeploHost} />
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -470,7 +467,7 @@ export function CreateDatabase({
                 </div>
               )}
             </div>
-          </div>
+          </AnimatedHeight>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel

@@ -51,9 +51,17 @@ function RevealToggle({
  */
 export function RevealInput({
   className,
+  visible: controlled,
+  onVisibleChange,
   ...props
-}: Omit<React.ComponentProps<typeof Input>, "type">) {
-  const [visible, setVisible] = React.useState(false);
+}: Omit<React.ComponentProps<typeof Input>, "type"> & {
+  /** Controlled reveal, for a caller that also unmasks - a Generate button
+   *  hands over a password that has to be readable before the dialog closes. */
+  visible?: boolean;
+  onVisibleChange?: (visible: boolean) => void;
+}) {
+  const [own, setOwn] = React.useState(false);
+  const visible = controlled ?? own;
   return (
     <div className="relative">
       <Input
@@ -63,7 +71,10 @@ export function RevealInput({
       />
       <RevealToggle
         visible={visible}
-        onToggle={() => setVisible((v) => !v)}
+        onToggle={() => {
+          setOwn(!visible);
+          onVisibleChange?.(!visible);
+        }}
         disabled={props.disabled}
         controls={props.id}
       />
