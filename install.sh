@@ -1588,12 +1588,12 @@ if ! enroll_this_host; then
   HOST_ENROLLED=false
   err "This host was not added as a server. Deplo itself is installed and running."
   note "Transcript: $UI_LOG"
-  # A takeover has no second way out: the migration copies data through the agent
-  # ON THIS HOST, and until the ports move nothing of Deplo's answers from outside,
-  # so Settings > Servers cannot mint a command that reaches this machine either.
+  # Said out loud on a takeover: the migration copies every byte through the agent
+  # ON THIS HOST, so without one the data phase cannot start at all.
   if [ -n "$TAKEOVER" ]; then
-    note "The migration cannot copy any data until it is: re-run $DEPLO_DIR/install.sh"
-    note "here, in this shell, and it will install the agent and pick the takeover up."
+    note "No data can be copied off $(platform_label "$TAKEOVER") until it is one."
+    note "Re-run $DEPLO_DIR/install.sh here, or copy the command the dashboard"
+    note "offers under Settings > Servers - both install the agent on this machine."
   else
     note "Re-run this script to try again, or add the server from Settings > Servers."
   fi
