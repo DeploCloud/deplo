@@ -12,9 +12,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
-import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * Advanced settings: rebuild the container.
@@ -58,19 +58,18 @@ export function RebuildContainerCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
           <Hammer className="size-4 text-muted-foreground" />
           Rebuild container
+          <InfoTip
+            content="A full deployment from the current source, for a container that looks stuck or out of sync with its settings. Cached layers are reused - clear the build cache above to build from scratch."
+            docs="deploy.trace"
+          />
         </CardTitle>
+        {/* The consequence, which is the thing you want to know before clicking. */}
         <CardDescription>
-          Rebuild the image from the current source and replace the running
-          container with a fresh one - a full deployment that bakes in your
-          latest code, environment variables and settings. Attached volumes,
-          domains and data are untouched; the current container keeps serving
-          until the new build is ready. Use it when the container looks stuck or
-          out of sync with its configuration. Cached layers are reused - to
-          build from scratch, clear the build cache first (Settings → Deployment
-          → Build &amp; Output → Advanced). <DocsLink topic="deploy.trace" />
+          Volumes, domains and data are untouched, and the current container
+          keeps serving until the new build is ready.
         </CardDescription>
       </CardHeader>
       <CardFooter className="justify-end">
