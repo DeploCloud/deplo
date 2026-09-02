@@ -32,10 +32,14 @@ export function SettingRow({
   children: React.ReactNode;
 }) {
   return (
+    // Stacked on a phone, side by side from `sm`. A fixed control column is what
+    // sends a settings page into horizontal overflow on a 375px viewport, so it
+    // only exists once there is room for it.
     <div
       className={cn(
-        "flex justify-between gap-4 rounded-lg border border-border p-3",
-        align === "center" ? "items-center" : "items-start",
+        "flex flex-col gap-2 rounded-lg border border-border p-3",
+        "sm:flex-row sm:justify-between sm:gap-4",
+        align === "center" ? "sm:items-center" : "sm:items-start",
         className,
       )}
     >
@@ -43,7 +47,7 @@ export function SettingRow({
         htmlFor={htmlFor}
         info={info}
         docs={docs}
-        className={align === "start" ? "pt-2" : undefined}
+        className={align === "start" ? "sm:pt-2" : undefined}
       >
         {Icon && <Icon aria-hidden className="size-3.5 shrink-0 opacity-50" />}
         {label}
@@ -52,7 +56,7 @@ export function SettingRow({
           construction instead of each caller picking its own max-width. A
           control that wants the whole column asks with `w-full`; a switch stays
           right-aligned in it. */}
-      <div className="flex min-w-0 shrink-0 basis-72 justify-end">
+      <div className="flex w-full min-w-0 justify-end sm:w-72 sm:shrink-0">
         {children}
       </div>
     </div>
