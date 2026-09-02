@@ -55,13 +55,6 @@ import {
 } from "@/components/apps/upload-input";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { BuildOutputCard } from "@/components/apps/settings/build-output-card";
-import { BuildCachePanel } from "@/components/apps/settings/build-cache-panel";
-import { ComposeArgsPanel } from "@/components/apps/settings/compose-args-panel";
-import {
-  BuildServerPanel,
-  type BuildServerChoice,
-} from "@/components/apps/settings/build-server-panel";
-import { DeployHookPanel } from "@/components/apps/settings/deploy-hook-panel";
 import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
 import {
   GitDeployOptions,
@@ -190,12 +183,6 @@ export function DeploymentSettingsForm({
   canManageGit,
   framework,
   frameworkOverride: initialFrameworkOverride,
-  deployHookEnabled,
-  deployHookUrlMasked,
-  composeUpArgs,
-  buildServerId,
-  buildFallbackLocal,
-  buildServerChoices,
 }: {
   appId: string;
   slug: string;
@@ -237,22 +224,6 @@ export function DeploymentSettingsForm({
   connectionAccess: AccessRequirement[];
   /** Only whoever can change the connection is sent to the provider to fix it. */
   canManageGit: boolean;
-  /** Whether the app's deploy hook answers at all (Advanced settings). */
-  deployHookEnabled: boolean;
-  /**
-   * The hook URL with its secret segment dotted out - resolved server-side so the
-   * page can show the link's shape without the token reaching the browser.
-   */
-  deployHookUrlMasked: string | null;
-  /** Extra flags appended to this app's `docker compose up`, or null for the
-   * untouched command (Advanced settings). */
-  composeUpArgs: string | null;
-  /** Which server BUILDS this app; null is Automatic (Advanced settings). */
-  buildServerId: string | null;
-  /** Build on this app's own server when the build server is unreachable. */
-  buildFallbackLocal: boolean;
-  /** The hosts this team may compile on, with their architectures. */
-  buildServerChoices: BuildServerChoice[];
 }) {
   const router = useRouter();
   const [build, setBuild] = React.useState<BuildConfig>(initialBuild);
@@ -1030,26 +1001,6 @@ export function DeploymentSettingsForm({
                       </div>
                     </div>
                   </div>
-
-                  {/* Same gate as the build cache: only an app Deplo BUILDS can
-                      build somewhere else. */}
-                  {buildCardVisible && (
-                    <BuildServerPanel
-                      appId={appId}
-                      serverId={serverId}
-                      serverName={
-                        servers.find((s) => s.id === serverId)?.name ??
-                        "its own server"
-                      }
-                      serverArch={
-                        buildServerChoices.find((c) => c.id === serverId)
-                          ?.hostArch ?? ""
-                      }
-                      buildServerId={buildServerId}
-                      buildFallbackLocal={buildFallbackLocal}
-                      choices={buildServerChoices}
-                    />
-                  )}
                 </Collapse>
               </div>
             </AnimatedHeight>
@@ -1106,55 +1057,6 @@ export function DeploymentSettingsForm({
         {/* Advanced settings - the deploy controls that are nobody's first-run
             business: the build cache, and the hook that lets something outside
             Deplo trigger a deployment. */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex w-fit items-center gap-2 text-base">
-              Advanced settings
-              <InfoTip
-                content="Rarely-changed controls: how builds reuse their cache, and how a deployment can be triggered from outside Deplo."
-                docs="build.cache"
-              />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {/* The build cache is a single-image build concern, so it follows the
-                same gate as the Build card. Saves on change - a switch that needs
-                a separate Save is how people think a setting stuck when it didn't. */}
-            {buildCardVisible && (
-              <BuildCachePanel
-                appId={appId}
-                buildCache={build.buildCache}
-                clearPending={build.buildCacheClearPending}
-                // Mirror the committed value back into the build state. Neither
-                // field is part of currentBuildKey, so this can never light up
-                // "unsaved changes" for something already saved.
-                onChange={(next) =>
-                  setBuild((b) => ({
-                    ...b,
-                    buildCache: next.buildCache,
-                    buildCacheClearPending: next.clearPending,
-                  }))
-                }
-              />
-            )}
-            <ComposeArgsPanel
-              appId={appId}
-              slug={slug}
-              value={composeUpArgs}
-              usesEnvFile={isComposeStack}
-            />
-            {/* No hook for an app a git provider already triggers: the page
-                sends no URL for those (a second trigger beside the provider's
-                own is one more credential to leak for a job already done). */}
-            {deployHookUrlMasked && (
-              <DeployHookPanel
-                appId={appId}
-                enabled={deployHookEnabled}
-                maskedUrl={deployHookUrlMasked}
-              />
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* Warn before leaving with unsaved source/build edits (auto-deploy saves

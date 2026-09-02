@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { Rocket } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
-import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
+import { listServerChoices } from "@/lib/data/servers";
 import { installationAccess, listGithubInstallations } from "@/lib/data/github";
 import {
   appWebhookStatus,
@@ -30,9 +29,6 @@ export default async function AppDeploymentSettingsPage(
   if (!project) notFound();
 
   const servers = await listServerChoices();
-  // Wider than the deploy targets: a build-only server is here BECAUSE it cannot
-  // deploy, and an ordinary server can build for another one too.
-  const buildServerChoices = await listBuildServerChoices();
   const installations = await listGithubInstallations();
   const connections = await listGitConnections();
 
@@ -81,9 +77,6 @@ export default async function AppDeploymentSettingsPage(
           build={project.build}
           framework={project.framework}
           frameworkOverride={project.frameworkOverride}
-          buildServerId={project.buildServerId ?? null}
-          buildFallbackLocal={project.buildFallbackLocal}
-          buildServerChoices={buildServerChoices}
           autoDeploy={project.autoDeploy}
           source={project.source}
           repo={project.repo}
@@ -112,13 +105,6 @@ export default async function AppDeploymentSettingsPage(
             project.repo?.connectionId
               ? requiredAccess(project.repo.provider as GitProviderId)
               : []
-          }
-          deployHookEnabled={project.deployHookEnabled}
-          composeUpArgs={project.composeUpArgs}
-          // The link's shape, never its token: the real URL is fetched only when someone with
-          // `configure_apps` deliberately reveals it.
-          deployHookUrlMasked={
-            providerTriggers ? null : await deployHookUrlMasked(project.id)
           }
         />
         {/**

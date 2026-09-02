@@ -12,6 +12,7 @@ import {
   parseComposeUpArgs,
   validateComposeUpArgs,
 } from "@/lib/deploy/compose-args";
+import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -135,6 +136,10 @@ export function ComposeArgsPanel({
       </div>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {/* Its own, because this panel's Save is its own: the page's guard tracks
+          the source and build cards, and never saw these flags. */}
+      <UnsavedChangesGuard when={dirty} />
     </form>
   );
 }
