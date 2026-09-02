@@ -1081,7 +1081,7 @@ async function runMoveMigrationServiceData(
       };
     }
     notes.push(
-      `{panel} would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was copied as it is.`,
+      `{panel} would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was read as it is.`,
     );
   }
   // Only a stop that HAPPENED is written down: backing out of a takeover starts
