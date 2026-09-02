@@ -127,15 +127,16 @@ export function RobotGraphic({
         strokeWidth="2.5"
       />
 
-      {/* ---- the cable. Absent until there is something to connect. ---- */}
+      {/* ---- the cable. Absent until there is something to connect, and in the
+              robot's own ink: it continues the arm, so a second colour here
+              reads as one line painted half-way. ---- */}
       {(state === "reaching" || live) && (
         <path
           d="M74 74 C90 76, 96 72, 112 72"
-          className={
-            live
-              ? "stroke-[var(--deplo-robot-ink)]"
-              : "deplo-robot-cable stroke-muted-foreground"
-          }
+          className={cn(
+            !live && "deplo-robot-cable",
+            "stroke-[var(--deplo-robot-ink)]",
+          )}
           strokeWidth="2.5"
           strokeLinecap="round"
         />
