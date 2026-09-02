@@ -47,6 +47,8 @@ type Impact = {
   pushSubscriptions: number;
 };
 
+type Counted = { url: string; impact: Impact | null; error: string | null };
+
 export type ImpactSeverity = "critical" | "manual" | "minor";
 
 /** A consequence only the caller can vouch for, e.g. the proxy restarting. */
@@ -130,28 +132,42 @@ export function PanelAddressDialog({
   successMessage?: string;
   onConfirm: () => Promise<ActionResult<unknown>>;
 }) {
-  const [impact, setImpact] = React.useState<Impact | null>(null);
-  const [failed, setFailed] = React.useState<string | null>(null);
+  const [result, setResult] = React.useState<Counted | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  // Read on mount.
+  // Counted in the BACKGROUND, so the dialog opens on its numbers instead of on
+  // a spinner - and counted again on open, so they are never an hour old.
   React.useEffect(() => {
+    if (!url) return;
     let cancelled = false;
-    void gqlAction<{ panelAddressImpact: Impact }, Impact>(
-      IMPACT_QUERY,
-      { url },
-      (d) => d.panelAddressImpact,
-    ).then((res) => {
-      if (cancelled) return;
-      if (res.ok && res.data) setImpact(res.data);
-      else if (!res.ok) setFailed(res.error);
-    });
+    const load = () =>
+      void gqlAction<{ panelAddressImpact: Impact }, Impact>(
+        IMPACT_QUERY,
+        { url },
+        (d) => d.panelAddressImpact,
+      ).then((res) => {
+        if (cancelled) return;
+        setResult({
+          url,
+          impact: res.ok ? (res.data ?? null) : null,
+          error: res.ok ? null : res.error,
+        });
+      });
+    // `url` is the address field itself, one keystroke at a time - except on
+    // open, where the answer is wanted now.
+    const timer = setTimeout(load, open ? 0 : 300);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [url]);
+  }, [url, open]);
 
-  const loading = !impact && !failed;
+  // An answer about a different address is not this dialog's answer.
+  const counted = result?.url === url ? result : null;
+  const impact = counted?.impact ?? null;
+  const failed = counted?.error ?? null;
+  const loading = !counted;
+  const busy = pending || loading;
   const unchanged = !!impact && !impact.hostChanges && !impact.schemeChanges;
   const rows = React.useMemo(
     () =>
@@ -173,7 +189,7 @@ export function PanelAddressDialog({
     e.stopPropagation();
     // Nothing to agree to until the counts land: confirming before then would
     // be agreeing to an unknown.
-    if (pending || loading) return;
+    if (busy) return;
     startTransition(async () => {
       const res = await onConfirm();
       if (res.ok) {
@@ -211,13 +227,6 @@ export function PanelAddressDialog({
                     : "Everything tied to the old address stops working there."}
               </DialogDescription>
             </DialogHeader>
-
-            {loading && (
-              <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border py-8 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                Checking what this would break
-              </div>
-            )}
 
             {/* The move is still allowed: the counts are information, and
                 refusing to move an address because a probe failed would take
@@ -302,23 +311,23 @@ export function PanelAddressDialog({
               <Button
                 type="submit"
                 variant="destructive"
-                disabled={pending || loading}
-                aria-busy={pending}
-                aria-label={pending ? confirmLabel : undefined}
+                disabled={busy}
+                aria-busy={busy}
+                aria-label={busy ? confirmLabel : undefined}
               >
-                {/* While the action runs, a spinner stands in for the label.
-                    The label stays mounted (just hidden) so the button keeps
-                    its width and the footer doesn't jump mid-action. */}
+                {/* The only spinner left: it stands in for the label while the
+                    action runs, and on the rare open that beats the counts. The
+                    label stays mounted (just hidden) so the footer can't jump. */}
                 <span className="grid place-items-center">
                   <span
                     className={cn(
                       "col-start-1 row-start-1",
-                      pending && "invisible",
+                      busy && "invisible",
                     )}
                   >
                     {confirmLabel}
                   </span>
-                  {pending && (
+                  {busy && (
                     <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
                   )}
                 </span>

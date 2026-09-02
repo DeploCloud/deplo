@@ -316,19 +316,18 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
         />
       </CardContent>
 
-      {/* Mounted only while open, so it always opens on freshly counted
-          consequences rather than the ones from the last time it was looked at. */}
-      {confirming && (
-        <PanelAddressDialog
-          open
-          onOpenChange={setConfirming}
-          url={target}
-          title={`Move the panel to ${target}?`}
-          confirmLabel="Change address"
-          successMessage={`Deplo now calls itself ${target}`}
-          onConfirm={save}
-        />
-      )}
+      {/* Mounted with the card, not with the dialog: the consequences are
+          counted while the address is being typed, so the confirm opens on its
+          numbers. An address that is not a change is not counted at all. */}
+      <PanelAddressDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        url={dirty ? target : ""}
+        title={`Move the panel to ${target}?`}
+        confirmLabel="Change address"
+        successMessage={`Deplo now calls itself ${target}`}
+        onConfirm={save}
+      />
     </Card>
   );
 }
@@ -610,9 +609,9 @@ function PanelHttpCard() {
        * the scheme is half of an origin, so turning https off takes every passkey
        * with it exactly as a new hostname would.
        */}
-      {confirming && cert?.domain && (
+      {cert?.domain && (
         <PanelAddressDialog
-          open
+          open={confirming}
           onOpenChange={(o) => !o && setConfirming(false)}
           url={`${enabled ? "http" : "https"}://${cert.domain}`}
           title={
