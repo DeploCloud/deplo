@@ -169,129 +169,132 @@ export function BuildOutputCard({
         {/* Each command is shown as a decision - Deplo works it out, or you take
             it over. No detected value is printed: nixpacks and railpack settle
             these inside the agent, and a guess here would read as a promise. */}
-        {/* Plain fields, with what Deplo would run in the placeholder. Empty is
-            "work it out": a cleared field must never skip a step, so the skip
-            (an empty string) is reachable through the API, not from here. */}
-        {showInstallCommand && (
-          <SettingRow
-            label="Install command"
-            icon={Package}
-            htmlFor="install-command"
-            info="Overrides how dependencies are installed before the build."
-            docs="build.fields"
-          >
-            <Input
-              id="install-command"
-              className="w-full font-mono text-xs"
-              placeholder={defaultsFor(method).install}
-              value={build.installCommand ?? ""}
-              disabled={pending}
-              onChange={(e) => setCommand("installCommand", e.target.value)}
-            />
-          </SettingRow>
-        )}
+        {/* Two to a row from `sm`: each is one short field, and stacked they made
+            a card of mostly empty space. Plain fields, with what Deplo would run
+            in the placeholder - empty is "work it out", so a cleared field never
+            skips a step. The skip (an empty string) is reachable through the API. */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {showInstallCommand && (
+            <SettingRow
+              label="Install command"
+              icon={Package}
+              htmlFor="install-command"
+              info="Overrides how dependencies are installed before the build."
+              docs="build.fields"
+            >
+              <Input
+                id="install-command"
+                className="w-full font-mono text-xs"
+                placeholder={defaultsFor(method).install}
+                value={build.installCommand ?? ""}
+                disabled={pending}
+                onChange={(e) => setCommand("installCommand", e.target.value)}
+              />
+            </SettingRow>
+          )}
 
-        {showBuildCommand && (
-          <SettingRow
-            label="Build command"
-            icon={Hammer}
-            htmlFor="build-command"
-            info="Overrides the command that builds your app."
-            docs="build.fields"
-          >
-            <Input
-              id="build-command"
-              className="w-full font-mono text-xs"
-              placeholder={defaultsFor(method).build}
-              value={build.buildCommand ?? ""}
-              disabled={pending}
-              onChange={(e) => setCommand("buildCommand", e.target.value)}
-            />
-          </SettingRow>
-        )}
+          {showBuildCommand && (
+            <SettingRow
+              label="Build command"
+              icon={Hammer}
+              htmlFor="build-command"
+              info="Overrides the command that builds your app."
+              docs="build.fields"
+            >
+              <Input
+                id="build-command"
+                className="w-full font-mono text-xs"
+                placeholder={defaultsFor(method).build}
+                value={build.buildCommand ?? ""}
+                disabled={pending}
+                onChange={(e) => setCommand("buildCommand", e.target.value)}
+              />
+            </SettingRow>
+          )}
 
-        {showStartCommand && (
-          <SettingRow
-            label="Start command"
-            icon={Play}
-            htmlFor="start-command"
-            info="Overrides the command that starts your app inside the container."
-            docs="build.fields"
-          >
-            <Input
-              id="start-command"
-              className="w-full font-mono text-xs"
-              placeholder={defaultsFor(method).start}
-              value={build.startCommand ?? ""}
-              disabled={pending}
-              onChange={(e) => setCommand("startCommand", e.target.value)}
-            />
-          </SettingRow>
-        )}
+          {showStartCommand && (
+            <SettingRow
+              label="Start command"
+              icon={Play}
+              htmlFor="start-command"
+              info="Overrides the command that starts your app inside the container."
+              docs="build.fields"
+            >
+              <Input
+                id="start-command"
+                className="w-full font-mono text-xs"
+                placeholder={defaultsFor(method).start}
+                value={build.startCommand ?? ""}
+                disabled={pending}
+                onChange={(e) => setCommand("startCommand", e.target.value)}
+              />
+            </SettingRow>
+          )}
 
-        {showOutputDirectory && (
-          <SettingRow
-            label="Output directory"
-            icon={FolderOutput}
-            htmlFor="output-directory"
-            info="The directory the build writes to, when it is not the builder's own."
-            docs="build.fields"
-          >
-            <Input
-              id="output-directory"
-              className="w-full font-mono text-xs"
-              placeholder="dist"
-              value={build.outputDirectory ?? ""}
-              disabled={pending}
-              onChange={(e) => setCommand("outputDirectory", e.target.value)}
-            />
-          </SettingRow>
-        )}
+          {showOutputDirectory && (
+            <SettingRow
+              label="Output directory"
+              icon={FolderOutput}
+              htmlFor="output-directory"
+              info="The directory the build writes to, when it is not the builder's own."
+              docs="build.fields"
+            >
+              <Input
+                id="output-directory"
+                className="w-full font-mono text-xs"
+                placeholder="dist"
+                value={build.outputDirectory ?? ""}
+                disabled={pending}
+                onChange={(e) => setCommand("outputDirectory", e.target.value)}
+              />
+            </SettingRow>
+          )}
 
-        {showNodeVersion && (
-          <SettingRow
-            label="Node.js version"
-            icon={Braces}
-            htmlFor="node-version"
-            info={
-              usesDefaultNodeMajor(method)
-                ? `Pins the Node.js major. Empty uses Node ${DEFAULT_NODE_MAJOR}.`
-                : "Pins the Node.js major. Empty reads it from your project."
-            }
-            docs="build.fields"
-          >
-            <NodeVersionInput
-              id="node-version"
-              className="w-full"
-              value={build.runtimeVersion ?? ""}
-              onChange={(v) => setBuild((b) => ({ ...b, runtimeVersion: v }))}
-              placeholder={
+          {showNodeVersion && (
+            <SettingRow
+              label="Node.js version"
+              icon={Braces}
+              htmlFor="node-version"
+              info={
                 usesDefaultNodeMajor(method)
-                  ? `Node ${DEFAULT_NODE_MAJOR}`
-                  : "read from your project"
+                  ? `Pins the Node.js major. Empty uses Node ${DEFAULT_NODE_MAJOR}.`
+                  : "Pins the Node.js major. Empty reads it from your project."
               }
+              docs="build.fields"
+            >
+              <NodeVersionInput
+                id="node-version"
+                className="w-full"
+                value={build.runtimeVersion ?? ""}
+                onChange={(v) => setBuild((b) => ({ ...b, runtimeVersion: v }))}
+                placeholder={
+                  usesDefaultNodeMajor(method)
+                    ? `Node ${DEFAULT_NODE_MAJOR}`
+                    : "read from your project"
+                }
+              />
+            </SettingRow>
+          )}
+
+          <SettingRow
+            label="Container port"
+            icon={Plug}
+            htmlFor="container-port"
+            info="The port your app listens on inside the container (Traefik routes here)."
+            docs="build.port"
+          >
+            <Input
+              id="container-port"
+              type="number"
+              min={1}
+              className="w-full [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              value={portText}
+              disabled={pending}
+              onChange={(e) => onPortChange(e.target.value)}
+              onBlur={() => setPortDraft(null)}
             />
           </SettingRow>
-        )}
-
-        <SettingRow
-          label="Container port"
-          icon={Plug}
-          htmlFor="container-port"
-          info="The port your app listens on inside the container (Traefik routes here)."
-          docs="build.port"
-        >
-          <Input
-            id="container-port"
-            type="number"
-            min={1}
-            className="w-full [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            value={portText}
-            disabled={pending}
-            onChange={(e) => onPortChange(e.target.value)}
-            onBlur={() => setPortDraft(null)}
-          />
-        </SettingRow>
+        </div>
       </CardContent>
 
       <CardFooter className="justify-between border-t border-border pt-4">

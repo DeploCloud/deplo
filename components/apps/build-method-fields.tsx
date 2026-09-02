@@ -394,12 +394,7 @@ function FrameworkField({
               recognise a framework.
             </>
           )
-        ) : current ? (
-          <>
-            Read from your source on the last deploy, and re-checked on every
-            one.
-          </>
-        ) : (
+        ) : current ? null : (
           <>
             Nothing recognised yet. Pick one if you already know, otherwise the
             next deploy names it.

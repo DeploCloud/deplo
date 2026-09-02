@@ -53,10 +53,11 @@ export function SettingRow({
         {label}
       </FieldLabel>
       {/* One control column for every row, so a page of rows lines up by
-          construction instead of each caller picking its own max-width. A
-          control that wants the whole column asks with `w-full`; a switch stays
-          right-aligned in it. */}
-      <div className="flex w-full min-w-0 justify-end sm:w-72 sm:shrink-0">
+          construction instead of each caller picking its own max-width. It is a
+          flex BASIS, not a width: in a full-width row it holds 18rem, and in a
+          two-column grid it gives way rather than crushing the label. A control
+          that wants the whole column asks with `w-full`. */}
+      <div className="flex w-full min-w-0 justify-end sm:basis-72">
         {children}
       </div>
     </div>
