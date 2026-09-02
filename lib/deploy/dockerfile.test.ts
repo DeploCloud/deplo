@@ -27,20 +27,28 @@ function build(overrides: Partial<BuildConfig> = {}): BuildConfig {
 
 /**
  * Build-time env parity: the generated Dockerfile must declare each resolved env
- * var as `ARG KEY` + `ENV KEY=$KEY` BEFORE the install/build commands, so
- * build-time-inlined config (NEXT_PUBLIC_* et al.)
+ * var as `ARG KEY` BEFORE the install/build commands, so build-time-inlined config
+ * (NEXT_PUBLIC_* et al.) is in the RUN environment.
  */
-test("generateDockerfile declares each env key as ARG+ENV before the build steps", () => {
+test("generateDockerfile declares each env key as ARG before the build steps", () => {
   const df = generateDockerfile(build(), ["NEXT_PUBLIC_API", "DATABASE_URL"]);
-  const argIdx = df.indexOf("ARG DATABASE_URL\nENV DATABASE_URL=$DATABASE_URL");
-  assert.notEqual(argIdx, -1, `missing ARG/ENV pair in:\n${df}`);
-  assert.match(
-    df,
-    /ARG NEXT_PUBLIC_API\nENV NEXT_PUBLIC_API=\$NEXT_PUBLIC_API/,
-  );
+  const argIdx = df.indexOf("ARG DATABASE_URL\n");
+  assert.notEqual(argIdx, -1, `missing ARG in:\n${df}`);
+  assert.match(df, /ARG NEXT_PUBLIC_API\n/);
   // Declarations come before the first RUN (install), so both install and
   // build commands see the vars.
-  assert.ok(argIdx < df.indexOf("RUN "), "ARG/ENV must precede the RUN steps");
+  assert.ok(argIdx < df.indexOf("RUN "), "the ARGs must precede the RUN steps");
+});
+
+// A build arg already reaches every RUN, so the ENV would only persist the value in
+// the built image's config (`docker inspect`).
+test("generateDockerfile never declares a build var as ENV", () => {
+  const df = generateDockerfile(build(), [
+    "PAYLOAD_SECRET",
+    "S3_ACCESS_KEY_ID",
+  ]);
+  assert.ok(!df.includes("ENV PAYLOAD_SECRET"), df);
+  assert.ok(!df.includes("ENV S3_ACCESS_KEY_ID"), df);
 });
 
 test("generateDockerfile with no env keys matches the var-free shape", () => {
@@ -48,6 +56,8 @@ test("generateDockerfile with no env keys matches the var-free shape", () => {
   assert.ok(!df.includes("ARG "), `unexpected ARG in:\n${df}`);
 });
 
+// NODE_ENV is the one exception: this file sets it itself, and an ENV outranks a
+// build arg of the same name, so the user's value needs its own ENV to win.
 test("a user NODE_ENV lands after the default so it wins", () => {
   const df = generateDockerfile(build(), ["NODE_ENV"]);
   const defaultIdx = df.indexOf("ENV NODE_ENV=production");

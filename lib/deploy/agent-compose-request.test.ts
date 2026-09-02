@@ -139,8 +139,9 @@ test("git plan with a legacy/auto method embeds the env NAMES (not values) in th
   assert.equal(req.buildKind, BuildKind.BUILD_KIND_DOCKERFILE);
   assert.equal(req.dockerfile?.generated, true);
   const body = req.dockerfile?.generatedDockerfile ?? "";
-  assert.match(body, /ARG API_KEY\nENV API_KEY=\$API_KEY/);
-  assert.match(body, /ARG PORT\nENV PORT=\$PORT/);
+  assert.match(body, /ARG API_KEY\n/);
+  assert.ok(!body.includes("ENV API_KEY"), body);
+  assert.match(body, /ARG PORT\n/);
   assert.ok(
     !body.includes("secret"),
     "env VALUE must not be baked into the Dockerfile",

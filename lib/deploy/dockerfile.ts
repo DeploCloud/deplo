@@ -31,10 +31,14 @@ export function generateDockerfile(
     `WORKDIR ${workdir}`,
     `ENV NODE_ENV=production`,
   ];
-  // One ARG/ENV pair per line (classic-builder compatible), sorted for a
-  // deterministic file (and therefore deterministic docker layer caching).
+  // One `ARG` per line (classic-builder compatible), sorted for a deterministic file
+  // (and therefore deterministic docker layer caching). No matching `ENV`: a build arg
+  // already reaches every RUN, so the ENV would only persist the value in the image
+  // config. The exception is a name this file sets itself, because an ENV outranks a
+  // build arg of the same name and would shadow the user's value for the whole build.
   for (const key of dockerfileEnvKeys(envKeys)) {
-    lines.push(`ARG ${key}`, `ENV ${key}=$${key}`);
+    lines.push(`ARG ${key}`);
+    if (SELF_SET_ENV.has(key)) lines.push(`ENV ${key}=$${key}`);
   }
 
   if (skipInstall) {
@@ -59,6 +63,10 @@ export function generateDockerfile(
   lines.push(`EXPOSE ${port}`, `CMD ${toExecForm(start)}`);
   return lines.join("\n") + "\n";
 }
+
+/** The env names this file declares as `ENV` itself, so a user var of that name
+ * has to be re-declared to win. */
+const SELF_SET_ENV = new Set(["NODE_ENV"]);
 
 /**
  * The dependency descriptors copied before the install so the install layer caches
