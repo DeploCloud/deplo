@@ -3,9 +3,12 @@
 import * as React from "react";
 import { toast } from "sonner";
 import {
+  ArrowUpDown,
   Check,
   ExternalLink,
   GitBranch,
+  Globe,
+  ListFilter,
   Lock,
   RefreshCw,
   Search,
@@ -13,7 +16,6 @@ import {
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -46,6 +48,23 @@ export interface RepoSelection {
 /** Which credential lists the repositories: a GitHub App installation, or a git
  *  connection to any other host. Only the query name differs. */
 export type RepoSourceKind = "github" | "connection";
+
+/** The list's two facets: what a repository IS, and what order they come in. */
+type RepoVisibility = "all" | "public" | "private";
+type RepoSort = "recent" | "name";
+
+/** Public or private, always BEFORE the name: it is read with the name, not
+ *  after it. Labelled, so the row's accessible name carries it too. */
+function RepoVisibilityMark({ private: isPrivate }: { private: boolean }) {
+  const Icon = isPrivate ? Lock : Globe;
+  return (
+    <Icon
+      role="img"
+      aria-label={isPrivate ? "Private" : "Public"}
+      className="size-3.5 shrink-0 text-muted-foreground"
+    />
+  );
+}
 
 // Varied bar widths so the loading placeholder reads like a real repo list
 // instead of an even grid of identical lines.
@@ -89,6 +108,8 @@ export function RepoBrowser({
   const [repos, setRepos] = React.useState<RepoSummary[]>([]);
   const [loadingRepos, setLoadingRepos] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const [visibility, setVisibility] = React.useState<RepoVisibility>("all");
+  const [sort, setSort] = React.useState<RepoSort>("recent");
   const [selected, setSelected] = React.useState<RepoSummary | null>(null);
   const [branches, setBranches] = React.useState<string[]>([]);
   const [branch, setBranch] = React.useState("");
@@ -231,11 +252,24 @@ export function RepoBrowser({
     await hydrateBranches(sourceId, repo);
   }
 
-  const filtered = query
-    ? repos.filter((r) =>
-        r.fullName.toLowerCase().includes(query.toLowerCase()),
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return repos
+      .filter(
+        (r) =>
+          (visibility === "all" || r.private === (visibility === "private")) &&
+          (!q || r.fullName.toLowerCase().includes(q)),
       )
-    : repos;
+      .sort((a, b) =>
+        sort === "name"
+          ? a.fullName.localeCompare(b.fullName)
+          : // A provider that reports no date sinks to the bottom rather than
+            // claiming to be the freshest.
+            a.updatedAt < b.updatedAt
+            ? 1
+            : -1,
+      );
+  }, [repos, query, visibility, sort]);
 
   if (selected && !browsing) {
     // Chosen repo - a compact confirmation, so the common "already picked" case isn't a
@@ -255,15 +289,10 @@ export function RepoBrowser({
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
+              <RepoVisibilityMark private={selected.private} />
               <span className="truncate text-sm font-medium">
                 {selected.fullName}
               </span>
-              {selected.private && (
-                <Badge variant="secondary" className="gap-1 px-1.5 py-0">
-                  <Lock className="size-3" />
-                  Private
-                </Badge>
-              )}
             </div>
             <p className="truncate text-xs text-muted-foreground">
               {selected.updatedAt
@@ -351,24 +380,71 @@ export function RepoBrowser({
           </Button>
         )}
       </div>
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search repositories"
-          className="pr-9 pl-9"
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground"
-          onClick={() => loadRepos(sourceId)}
-          aria-label="Refresh repositories"
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search repositories"
+            className="pr-9 pl-9"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground"
+            onClick={() => loadRepos(sourceId)}
+            aria-label="Refresh repositories"
+          >
+            <RefreshCw
+              className={cn("size-4", loadingRepos && "animate-spin")}
+            />
+          </Button>
+        </div>
+        <Select
+          value={visibility}
+          onValueChange={(v) => setVisibility(v as RepoVisibility)}
         >
-          <RefreshCw className={cn("size-4", loadingRepos && "animate-spin")} />
-        </Button>
+          <SelectTrigger
+            className="w-full shrink-0 sm:w-[8rem]"
+            aria-label="Filter repositories"
+          >
+            <span className="flex! min-w-0 items-center gap-2">
+              {visibility === "all" ? (
+                <ListFilter className="size-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <RepoVisibilityMark private={visibility === "private"} />
+              )}
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="public">Public</SelectItem>
+            <SelectItem value="private">Private</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sort} onValueChange={(v) => setSort(v as RepoSort)}>
+          <SelectTrigger
+            className="w-full shrink-0 sm:w-[11rem]"
+            aria-label="Sort repositories"
+          >
+            {/**
+             * `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1` to its
+             * direct-child spans, whose `display:-webkit-box` outranks a plain `flex` class
+             * (the `>span` selector is more specific) and would stack the icon above the value.
+             */}
+            <span className="flex! min-w-0 items-center gap-2">
+              <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="recent">Recently updated</SelectItem>
+            <SelectItem value="name">Name (A-Z)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       {unreachable && !loadingRepos && (
         <p className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-xs text-muted-foreground">
@@ -394,7 +470,9 @@ export function RepoBrowser({
             <p className="text-sm text-muted-foreground">
               {repos.length === 0
                 ? (emptyMessage ?? "No repositories to show.")
-                : "No repositories match your search."}
+                : visibility === "all"
+                  ? "No repositories match your search."
+                  : "No repositories match your filters."}
             </p>
             {repos.length === 0 && emptyAction}
           </div>
@@ -413,13 +491,11 @@ export function RepoBrowser({
                   isSelected && "bg-accent",
                 )}
               >
+                <RepoVisibilityMark private={repo.private} />
                 <span className="min-w-0 flex-1 truncate">
                   <span className="font-medium">{repo.name}</span>
                   <span className="text-muted-foreground"> · {owner}</span>
                 </span>
-                {repo.private && (
-                  <Lock className="size-3.5 shrink-0 text-muted-foreground" />
-                )}
                 {repo.updatedAt && (
                   <span className="shrink-0 text-[11px] text-muted-foreground">
                     {timeAgo(repo.updatedAt)}
