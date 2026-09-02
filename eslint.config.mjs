@@ -9,6 +9,8 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    // A restart keeps the previous build beside the new one.
+    ".next.prev-*/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
