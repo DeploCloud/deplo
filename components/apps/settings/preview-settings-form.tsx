@@ -29,7 +29,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FieldLabel } from "@/components/ui/info-tip";
-import type { DocsTopic } from "@/lib/docs";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -43,6 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
+import { SettingRow } from "@/components/shared/setting-row";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -50,30 +50,6 @@ import { gqlAction } from "@/lib/graphql-client";
  * fields change together (a domain and its HTTPS, a limit and a timeout) and
  * saving them one keystroke at a time would deploy half a thought.
  */
-
-/** One row: label + explanation on the left, control on the right. */
-function SettingRow({
-  label,
-  info,
-  docs,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  info: string;
-  docs?: DocsTopic;
-  htmlFor?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-      <FieldLabel htmlFor={htmlFor} info={info} docs={docs}>
-        {label}
-      </FieldLabel>
-      {children}
-    </div>
-  );
-}
 
 export interface PreviewSettingsFormProps {
   appId: string;
