@@ -38,6 +38,23 @@ export type DokployDbKind = (typeof DOKPLOY_DB_KINDS)[number];
 const DOKPLOY_PANEL: PanelIdentity = { name: "Dokploy", portHint: ":3000" };
 
 /**
+ * A key {panel} minted is born at 10 requests a DAY, and a migration reads the
+ * panel hundreds of times - so the run dies part way with an HTTP number and no
+ * hint of what to change. Say where the limit is.
+ */
+async function requestFailed(res: Response, procedure: string): Promise<Error> {
+  const detail = (await res.text().catch(() => "")).slice(0, 300).trim();
+  if (res.status === 429)
+    return new Error(
+      `Dokploy refused the request on ${procedure}: this API key has run out of requests. Raise its rate limit in Dokploy (Settings, Profile, API/CLI) and run the import again.`,
+    );
+  return new Error(
+    `Dokploy request failed (${res.status}) on ${procedure}` +
+      (detail ? `: ${detail}` : ""),
+  );
+}
+
+/**
  * One GET against Dokploy, with a readable failure.
  */
 async function get<T>(
@@ -66,13 +83,7 @@ async function get<T>(
   );
 
   refuseRedirect(res, DOKPLOY_PANEL);
-  if (!res.ok) {
-    const detail = (await res.text().catch(() => "")).slice(0, 300).trim();
-    throw new Error(
-      `Dokploy request failed (${res.status}) on ${procedure}` +
-        (detail ? `: ${detail}` : ""),
-    );
-  }
+  if (!res.ok) throw await requestFailed(res, procedure);
   return (await res.json()) as T;
 }
 
@@ -103,13 +114,7 @@ async function post<T>(
     },
     DOKPLOY_PANEL,
   );
-  if (!res.ok) {
-    const detail = (await res.text().catch(() => "")).slice(0, 300).trim();
-    throw new Error(
-      `Dokploy request failed (${res.status}) on ${procedure}` +
-        (detail ? `: ${detail}` : ""),
-    );
-  }
+  if (!res.ok) throw await requestFailed(res, procedure);
   return (await res.json().catch(() => null)) as T;
 }
 

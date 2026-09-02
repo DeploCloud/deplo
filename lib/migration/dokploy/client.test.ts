@@ -241,3 +241,14 @@ test("a kind Dokploy has no procedure for is refused rather than posted", async 
     /cannot start a libsql/i,
   );
 });
+
+test("a key that has run out of requests says where to raise it", async () => {
+  __setMigrationFetchForTest(
+    async () => new Response("Too many requests", { status: 429 }),
+  );
+  await assert.rejects(
+    () => listProjects(cred),
+    /run out of requests.*Raise its rate limit/s,
+  );
+  __resetMigrationFetchForTest();
+});
