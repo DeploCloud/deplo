@@ -1852,11 +1852,33 @@ class Report {
     };
     this.items.push(row);
     if (!this.runId) return;
+    // The data phase writes every plan note, then the copy writes the same notes
+    // again from its own read of the panel - so one advisory reached the report
+    // twice, word for word. An outcome line is never dropped; advice is.
+    if (row.outcome === "manual" && (await this.alreadySaid(row))) return;
     await getDb()
       .insert(itemsTable)
       .values({ id: newId("dimi"), runId: this.runId, ...row });
     // Everything this run CREATES is the run's to write until it ends.
     if (row.outcome === "created") await markMigrating(this.runId, row);
+  }
+
+  /** Has this run already recorded this exact advisory, on this exact subject? */
+  private async alreadySaid(row: ImportItemDTO): Promise<boolean> {
+    if (!row.message) return false;
+    const hit = await getDb()
+      .select({ id: itemsTable.id })
+      .from(itemsTable)
+      .where(
+        and(
+          eq(itemsTable.runId, this.runId!),
+          eq(itemsTable.outcome, "manual"),
+          eq(itemsTable.path, row.path),
+          eq(itemsTable.message, row.message),
+        ),
+      )
+      .limit(1);
+    return hit.length > 0;
   }
 
   /** Every note from a mapper, as its own `manual` line. */

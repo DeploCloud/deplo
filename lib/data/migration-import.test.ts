@@ -984,6 +984,47 @@ test("a line written after the run is over does not freeze the app", async () =>
   assert.equal(after.migrationRunId, null, "and it stays handed back");
 });
 
+// The data phase writes every plan note, then the copy re-reads the panel and
+// writes the same notes again - so one advisory reached the report twice, word
+// for word. An OUTCOME line is never dropped, however identical: two volumes can
+// legitimately report the same sentence.
+test("the same advice is not written into one report twice", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const advice = {
+    path: "Blink / production / blink-web",
+    sourceKind: "data",
+    sourceName: "blink-web",
+    message:
+      'The compose file mounts "shared-vol" at /data, but {panel} ignored that.',
+  };
+  await appendRunItem(runId, "Dokploy", { ...advice, outcome: "manual" });
+  await appendRunItem(runId, "Dokploy", { ...advice, outcome: "manual" });
+  await appendRunItem(runId, "Dokploy", {
+    ...advice,
+    path: "Blink / production / blink-api",
+    outcome: "manual",
+  });
+  await appendRunItem(runId, "Dokploy", { ...advice, outcome: "skipped" });
+  await appendRunItem(runId, "Dokploy", { ...advice, outcome: "skipped" });
+
+  const rows = await db.select().from(itemsTable);
+  assert.equal(
+    rows.filter((r) => r.outcome === "manual").length,
+    2,
+    "one line per subject, not one per read of the panel",
+  );
+  assert.equal(
+    rows.filter((r) => r.outcome === "skipped").length,
+    2,
+    "an outcome is a fact and is never folded away",
+  );
+  assert.match(
+    rows.find((r) => r.outcome === "manual")!.message!,
+    /Dokploy ignored that/,
+    "the placeholder is resolved before the comparison, not after",
+  );
+});
+
 // The verdict has to be about whether the data is there, not about how the last
 // attempt went: a panel that stumbles on a retry must not blank out a copy that
 // already landed, and then tell the owner their data is missing.
