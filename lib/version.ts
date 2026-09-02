@@ -40,18 +40,17 @@ export function isNewer(latest: string, current: string): boolean {
 }
 
 /**
- * Whether to offer "Update agent" for a host at all. `isNewer` alone would hide it
- * exactly there. - An agent that reported nothing, or a version this cannot parse,
- * gets the button too.
+ * Whether to offer "Update agent" for a host at all. A host AHEAD of the latest
+ * release is not outdated - a moved or deleted tag walks `latest` backwards, and
+ * calling that an update advertises a downgrade. Unknown or unparseable: offer it.
  */
 export function agentUpdateAvailable(
   reported: string | null,
   expected: string,
 ): boolean {
-  const a = reported ? parseSemver(reported) : null;
-  const b = parseSemver(expected);
-  if (!a || !b) return true;
-  return !(a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);
+  if (!reported || !parseSemver(reported) || !parseSemver(expected))
+    return true;
+  return isNewer(expected, reported);
 }
 
 /**

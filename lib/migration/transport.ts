@@ -47,6 +47,15 @@ function isBareIpHttps(baseUrl: string): boolean {
   }
 }
 
+/** The hostname alone, for naming the panel's own http port as the way out. */
+function hostOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname;
+  } catch {
+    return "";
+  }
+}
+
 /**
  * A transport failure, said out loud. All of these read the same otherwise, so the
  * user is left guessing on the one screen where guessing costs the most.
@@ -88,11 +97,16 @@ export function describeTransportError(
     case "DEPTH_ZERO_SELF_SIGNED_CERT":
     case "SELF_SIGNED_CERT_IN_CHAIN":
     case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
-    case "ERR_TLS_CERT_ALTNAME_INVALID":
+    case "ERR_TLS_CERT_ALTNAME_INVALID": {
       // The trap, named.
-      return isBareIpHttps(baseUrl)
-        ? `${baseUrl} answered with a certificate this machine does not trust (${code}) - which is what an IP address gets, because the certificate is issued for the panel's NAME. Put the address you open ${panel.name} on in your browser here. The machine's own address is asked for at the next step, and it is not this field.`
-        : `The https certificate ${at} is not one this machine trusts (${code}).`;
+      if (isBareIpHttps(baseUrl))
+        return `${baseUrl} answered with a certificate this machine does not trust (${code}) - which is what an IP address gets, because the certificate is issued for the panel's NAME. Put the address you open ${panel.name} on in your browser here. The machine's own address is asked for at the next step, and it is not this field.`;
+      // Nothing here can be told to accept a certificate, so the only way out is
+      // the panel's own http port, in front of whatever is presenting this one.
+      const host = hostOf(baseUrl);
+      const via = host ? `, typically http://${host}${panel.portHint}` : "";
+      return `The https certificate ${at} is not one this machine trusts (${code}). Deplo cannot be told to accept it - use ${panel.name}'s plain http address instead${via}.`;
+    }
     case "ERR_SSL_WRONG_VERSION_NUMBER":
     case "EPROTO":
       return `${baseUrl} answered, but not over https. Try http:// instead.`;
