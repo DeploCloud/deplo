@@ -50,6 +50,7 @@ import {
   volumeReadout,
   type VolumeKind,
 } from "@/lib/apps/volume-model";
+import { Collapse } from "@/components/shared/collapse";
 import { cn, shortId } from "@/lib/utils";
 import type { MountPropagation, VolumeMount } from "@/lib/types";
 import { DocsLink } from "@/components/ui/docs-link";
@@ -346,7 +347,7 @@ function MountRow({
         </SimpleTooltip>
       </div>
 
-      {expanded && (
+      <Collapse open={expanded}>
         <>
           {/* Zone 1 - the one question this editor asks. */}
           <div className="space-y-2.5 border-t border-border p-4">
@@ -580,7 +581,7 @@ function MountRow({
             )}
           </div>
         </>
-      )}
+      </Collapse>
     </li>
   );
 }

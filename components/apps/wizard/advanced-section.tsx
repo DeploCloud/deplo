@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
 
+import { Collapse } from "@/components/shared/collapse";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,9 +43,9 @@ export function AdvancedSection({
           />
         </span>
       </button>
-      {open && (
-        <div className="space-y-5 border-t border-border p-4">{children}</div>
-      )}
+      <Collapse open={open} className="space-y-5 border-t border-border p-4">
+        {children}
+      </Collapse>
     </div>
   );
 }
