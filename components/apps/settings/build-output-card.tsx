@@ -70,6 +70,7 @@ export function BuildOutputCard({
   // there is no process to start - dockerfile: none - the repo's Dockerfile owns
   // install/build/run
   const method = build.buildMethod;
+  const methodName = method.charAt(0).toUpperCase() + method.slice(1);
   const showBuildCommand =
     method === "nixpacks" || method === "railpack" || method === "static";
   const showStartCommand = method === "nixpacks" || method === "railpack";
@@ -79,6 +80,13 @@ export function BuildOutputCard({
   // a Dockerfile owns all four itself.
   const showInstallCommand = showBuildCommand;
   const showOutputDirectory = method === "static";
+
+  // nixpacks and railpack settle their own phases inside the agent, and the wire
+  // cannot yet tell "run nothing" from "work it out" - so an emptied override
+  // there is detected, not skipped. Say so rather than promise otherwise.
+  const skipReachesBuilder = method !== "nixpacks" && method !== "railpack";
+  const emptyMeansDetect = (v: string | null) =>
+    !skipReachesBuilder && v === "";
 
   // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
@@ -149,6 +157,11 @@ export function BuildOutputCard({
             id="install-command"
             info="Overrides how dependencies are installed before the build."
             docs="build.fields"
+            note={
+              emptyMeansDetect(overrideOf(build.installCommand))
+                ? `${methodName} works out its own install step, so leaving this empty detects one rather than skipping it.`
+                : undefined
+            }
             value={overrideOf(build.installCommand)}
             onChange={(v) =>
               setBuild((b) => ({ ...b, installCommand: v ?? "" }))
@@ -164,6 +177,11 @@ export function BuildOutputCard({
             id="build-command"
             info="Overrides the command that builds your app."
             docs="build.fields"
+            note={
+              emptyMeansDetect(overrideOf(build.buildCommand))
+                ? `${methodName} works out its own build step, so leaving this empty detects one rather than skipping it.`
+                : undefined
+            }
             value={overrideOf(build.buildCommand)}
             onChange={(v) => setBuild((b) => ({ ...b, buildCommand: v ?? "" }))}
             placeholder="npm run build"

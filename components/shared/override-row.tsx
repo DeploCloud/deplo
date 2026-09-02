@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AlertTriangle } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +28,8 @@ export function OverrideRow({
   value,
   onChange,
   placeholder,
+  /** A consequence of the current value, shown because it is one. */
+  note,
   mono = true,
   disabled,
   control,
@@ -44,6 +47,7 @@ export function OverrideRow({
   value: string | null;
   onChange: (next: string | null) => void;
   placeholder?: string;
+  note?: string;
   mono?: boolean;
   disabled?: boolean;
   /** A control other than a text input (a combobox, a number field). */
@@ -60,7 +64,7 @@ export function OverrideRow({
     onChange(next ? (value ?? detected ?? "") : null);
   }
 
-  return (
+  const row = (
     <SettingRow
       label={label}
       info={info}
@@ -106,5 +110,17 @@ export function OverrideRow({
         />
       </div>
     </SettingRow>
+  );
+
+  if (!note || !on) return row;
+
+  return (
+    <div>
+      {row}
+      <p className="mt-1 flex items-start gap-1.5 px-3 text-xs text-warning">
+        <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+        {note}
+      </p>
+    </div>
   );
 }
