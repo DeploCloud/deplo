@@ -522,6 +522,22 @@ export async function planMigrationDataMove(
     return p;
   };
 
+  // One pass per MACHINE, not per service: the plan lists tens of services and
+  // reading who owns a host path parses every app's compose on that host.
+  const ownedBy = new Map<
+    string,
+    Promise<{ appId: string; name: string; path: string }[]>
+  >();
+  const ownersOn = (serverId: string | null) => {
+    if (!serverId) return Promise.resolve([]);
+    let p = ownedBy.get(serverId);
+    if (!p) {
+      p = hostPathOwners(serverId, "");
+      ownedBy.set(serverId, p);
+    }
+    return p;
+  };
+
   for (const svc of await sourceServices(c)) {
     const target = targets.get(svc.id);
     if (!target) continue;
@@ -533,11 +549,12 @@ export async function planMigrationDataMove(
       singleData: landed.targetKind === "database",
     });
     const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
-    const owners = binds.length
-      ? await hostPathOwners(landed.targetServerId, landed.targetId)
-      : [];
+    const owners = binds.length ? await ownersOn(landed.targetServerId) : [];
     const shared = binds.flatMap((b) => {
-      const clash = owners.find((o) => pathsOverlap(o.path, b.targetPath));
+      const clash = owners.find(
+        (o) =>
+          o.appId !== landed.targetId && pathsOverlap(o.path, b.targetPath),
+      );
       return clash ? [sharedPathNote(clash, b.targetPath)] : [];
     });
     // Said HERE, before anything is stopped: a machine Deplo cannot read is a machine

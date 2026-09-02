@@ -248,7 +248,7 @@ test("a key that has run out of requests says where to raise it", async () => {
   );
   await assert.rejects(
     () => listProjects(cred),
-    /run out of requests.*Raise its rate limit/s,
+    /run out of requests[\s\S]*Raise its rate limit/,
   );
   __resetMigrationFetchForTest();
 });
