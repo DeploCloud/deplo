@@ -686,6 +686,11 @@ if [ -z "$TAKEOVER" ] && [ "$MODE" = install ]; then
     note "Deplo can only install here by taking its place: it brings your projects"
     note "across, then removes $FOREIGN_LABEL. Two panels cannot share 80 and 443."
     note "Nothing is touched until you have looked at what came over."
+    # The old panel staying on disk is the way back from a takeover that WORKED.
+    # A snapshot is the way back from the rest: a destination volume emptied for a
+    # copy that then failed, a disk that filled, the Docker restart at the cutover.
+    note "Take a snapshot of this server first. It is one click at every provider,"
+    note "and it covers what the takeover itself cannot put back."
     if [ "$CHECK_ONLY" = true ]; then
       # Report on the install that WOULD happen, temporary ports and all -
       # nothing here changes anything, and a check that measured the wrong ports
