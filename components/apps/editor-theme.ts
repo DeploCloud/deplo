@@ -117,13 +117,15 @@ export const deploTheme = EditorView.theme({
     boxShadow: "0 4px 12px color-mix(in srgb, black 15%, transparent)",
     overflow: "hidden",
   },
-  ".cm-tooltip.cm-tooltip-lint": { padding: "0" },
-  ".cm-tooltip .cm-tooltip-lint .cm-diagnostic": {
+  // The lint tooltip IS the .cm-tooltip element, not a child of one.
+  ".cm-tooltip.cm-tooltip-lint": { padding: "0", maxWidth: "20rem" },
+  ".cm-tooltip.cm-tooltip-lint .cm-diagnostic": {
     padding: "6px 10px",
     margin: "0",
     borderLeftWidth: "3px",
     borderLeftStyle: "solid",
     whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
     fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
     fontSize: "12px",
     lineHeight: "1.4",
