@@ -23,7 +23,11 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  UnderlineTabsList,
+  UnderlineTabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -87,6 +91,7 @@ import type {
 import { deploySourceEnumName } from "@/lib/types";
 import { cn, serverLabel, usesComposeStack } from "@/lib/utils";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
+import { Collapse } from "@/components/shared/collapse";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -701,27 +706,23 @@ export function DeploymentSettingsForm({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Segmented control (app Tabs primitive, no panels - the
-                conditional inputs below render off the `source` state). */}
+            {/* The page sub-nav's own tab strip, inside the card: no panels, the
+                conditional inputs below render off the `source` state. */}
             <Tabs
               value={source}
               onValueChange={(v) => setSource(v as DeploySource)}
             >
-              <TabsList className="h-auto flex-wrap justify-start gap-1">
+              <UnderlineTabsList>
                 {SOURCE_TABS.map((tab) => {
                   const Icon = tab.icon;
                   return (
-                    <TabsTrigger
-                      key={tab.id}
-                      value={tab.id}
-                      className="gap-1.5"
-                    >
+                    <UnderlineTabsTrigger key={tab.id} value={tab.id}>
                       <Icon className="size-4" />
                       {tab.label}
-                    </TabsTrigger>
+                    </UnderlineTabsTrigger>
                   );
                 })}
-              </TabsList>
+              </UnderlineTabsList>
             </Tabs>
 
             {usesGithubApp && (
@@ -861,15 +862,16 @@ export function DeploymentSettingsForm({
                     )}
                   />
                 </button>
-                {triggerOpen && (
-                  <div className="border-t border-border p-4">
-                    <GitDeployOptions
-                      value={gitOptions}
-                      onChange={setGitOptions}
-                      disabled={pending}
-                    />
-                  </div>
-                )}
+                <Collapse
+                  open={triggerOpen}
+                  className="border-t border-border p-4"
+                >
+                  <GitDeployOptions
+                    value={gitOptions}
+                    onChange={setGitOptions}
+                    disabled={pending}
+                  />
+                </Collapse>
               </div>
             )}
 
@@ -905,15 +907,16 @@ export function DeploymentSettingsForm({
                     )}
                   />
                 </button>
-                {advancedOpen && (
-                  <div className="border-t border-border p-4">
-                    <RootDirectoryFields
-                      build={build}
-                      onBuildChange={setBuild}
-                      disabled={pending}
-                    />
-                  </div>
-                )}
+                <Collapse
+                  open={advancedOpen}
+                  className="border-t border-border p-4"
+                >
+                  <RootDirectoryFields
+                    build={build}
+                    onBuildChange={setBuild}
+                    disabled={pending}
+                  />
+                </Collapse>
               </div>
             )}
 
