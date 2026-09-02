@@ -1735,6 +1735,38 @@ test("data that did not copy KEEPS the source, agent and all", async () => {
   );
 });
 
+test("a copy that was redone lets the agent go", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.74");
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+  // The failure, and then the recopy that fixed it: the marker on the app is what
+  // the recopy clears, and reading the report LINE alone held the agent on the
+  // source machine for ever, with nothing in the UI able to say the data arrived.
+  await appendRunItem(runId, "Dokploy", {
+    path: "Blink / production / web",
+    sourceKind: "volume",
+    sourceName: "web-data",
+    outcome: "failed",
+    targetKind: "app",
+    targetId: web.id,
+    message: "the copy failed",
+  });
+  await db.execute(
+    `update apps set data_copy_error = '' where id = '${web.id}'`,
+  );
+
+  await asOwner(() => finishMigration(runId));
+
+  assert.equal(
+    await asOwner(() => getServerById(id)),
+    null,
+    "nothing is stranded any more, so the agent has no reason to stay",
+  );
+});
+
 /** An agent too old to know the uninstall RPC: it never advertises the
  *  capability, so every attempt lands on the same refusal. */
 function refusingAgent() {
