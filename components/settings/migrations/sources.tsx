@@ -134,8 +134,8 @@ interface SourceCopy {
   /** Dokploy calls it a key, Coolify calls it a token. Use their word. */
   tokenLabel: string;
   tokenInfo: string;
-  /** The port it answers on, for the Same machine placeholder. The HOST half is
-   *  read off this instance (`sameMachineHost`), never guessed. */
+  /** The port it answers on, for the same-machine address the field's tooltip
+   *  shows. The HOST half is read off this instance, never guessed. */
   privatePort: number;
   scanIdle: string;
   scanBusy: string;

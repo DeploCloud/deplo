@@ -1037,6 +1037,13 @@
       "when": 1788366347908,
       "tag": "0147_nullable_build_commands",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1788366348908,
+      "tag": "0148_drop_migration_allow_private",
+      "breakpoints": true
     }
   ]
 }

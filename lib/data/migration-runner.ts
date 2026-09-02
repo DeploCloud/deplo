@@ -78,7 +78,6 @@ interface RunCredential {
   kind: MigrationPlatform;
   url: string;
   apiKey: string;
-  allowPrivate: boolean;
 }
 
 export interface StartRunInput {
@@ -87,7 +86,6 @@ export interface StartRunInput {
   /** Which product the scan identified. Recorded once, never re-detected; absent
    *  only from a caller that predates the second platform. */
   kind?: MigrationPlatform;
-  allowPrivate: boolean;
   orgName?: string | null;
   /** One entry per SERVICE, in the order they should be worked through. */
   targets: {
@@ -136,7 +134,6 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
       .update(runsTable)
       .set({
         apiKeyEnc: encryptSecret(input.apiKey),
-        allowPrivate: input.allowPrivate,
         actorUserId: userId,
         totalSteps: input.targets.length,
         doneSteps: 0,
@@ -386,7 +383,6 @@ async function credentialFor(row: RunRow): Promise<RunCredential> {
     kind: isMigrationPlatform(row.platform) ? row.platform : "dokploy",
     url: row.sourceUrl,
     apiKey: decryptSecretOrThrow(row.apiKeyEnc, "the panel's API token"),
-    allowPrivate: row.allowPrivate,
   };
 }
 
@@ -633,7 +629,6 @@ async function runConfigPhase(row: RunRow, c: RunCredential): Promise<void> {
         url: c.url,
         apiKey: c.apiKey,
         kind: c.kind,
-        allowPrivate: c.allowPrivate,
         runId: row.id,
         projectId: g.projectId,
         servers,
@@ -757,7 +752,6 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
     url: c.url,
     apiKey: c.apiKey,
     kind: c.kind,
-    allowPrivate: c.allowPrivate,
     runId: row.id,
   });
   // Every reason a service will not have its data copied is SAID. These notes
@@ -831,7 +825,6 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
         url: c.url,
         apiKey: c.apiKey,
         kind: c.kind,
-        allowPrivate: c.allowPrivate,
         runId: row.id,
         sourceKind: d.sourceKind,
         sourceId: d.sourceId,

@@ -196,6 +196,7 @@ export const DOCS = {
   "upgrade.overview": "operations/upgrade",
   "upgrade.releases": "operations/upgrade#release-history",
 
+  "migration.takeover": "guides/take-over-your-vps",
   "migration.dokploy": "guides/move-from-dokploy",
   "migration.coolify": "guides/move-from-coolify",
   // One guide per panel, section by section: a Coolify migration that sent people

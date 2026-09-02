@@ -51,9 +51,7 @@ const LEFTOVERS = /* GraphQL */ `
     $apiKey: String!
     $kind: MigrationPlatform
   ) {
-    scanMigrationSource(
-      input: { url: $url, apiKey: $apiKey, allowPrivate: true, kind: $kind }
-    ) {
+    scanMigrationSource(input: { url: $url, apiKey: $apiKey, kind: $kind }) {
       projects {
         name
         environments {

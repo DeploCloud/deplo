@@ -505,11 +505,6 @@ const ConnectInputRef = builder.inputType("MigrationSourceInput", {
       description:
         "Read the panel as this product. Omit it and Deplo works out which it is from the address and the token.",
     }),
-    allowPrivate: t.boolean({
-      required: false,
-      description:
-        "Allow a private or loopback address - what the same-machine case needs (http://172.17.0.1:3000). Instance admin only, like a git connection's or an S3 endpoint's private-endpoint flag.",
-    }),
   }),
 });
 
@@ -626,7 +621,6 @@ builder.mutationFields((t) => ({
         url: input.url,
         apiKey: input.apiKey,
         kind: input.kind ?? undefined,
-        allowPrivate: input.allowPrivate ?? false,
       }),
   }),
   beginMigration: t.field({
@@ -675,7 +669,6 @@ builder.mutationFields((t) => ({
         url: input.url,
         apiKey: input.apiKey,
         kind: input.kind ?? undefined,
-        allowPrivate: input.allowPrivate ?? false,
         runId,
         projectId,
         servers: servers?.map((s) => ({ from: s.from, to: s.to })),
@@ -705,7 +698,6 @@ builder.mutationFields((t) => ({
         url: input.url,
         apiKey: input.apiKey,
         kind: input.kind ?? undefined,
-        allowPrivate: input.allowPrivate ?? false,
         runId,
       }),
   }),
@@ -723,7 +715,6 @@ builder.mutationFields((t) => ({
         url: input.url,
         apiKey: input.apiKey,
         kind: input.kind ?? undefined,
-        allowPrivate: input.allowPrivate ?? false,
         runId,
       }),
   }),
@@ -743,7 +734,6 @@ builder.mutationFields((t) => ({
         url: input.url,
         apiKey: input.apiKey,
         kind: input.kind ?? undefined,
-        allowPrivate: input.allowPrivate ?? false,
         runId,
         sourceKind,
         sourceId,
@@ -765,7 +755,6 @@ builder.mutationFields((t) => ({
         url: input.url,
         apiKey: input.apiKey,
         kind: input.kind ?? undefined,
-        allowPrivate: input.allowPrivate ?? false,
         orgName: orgName ?? null,
         targets: targets.map((t2) => ({
           projectId: t2.projectId,

@@ -2617,11 +2617,6 @@ input MigrationServerChoiceInput {
 
 input MigrationSourceInput {
   """
-  Allow a private or loopback address - what the same-machine case needs (http://172.17.0.1:3000). Instance admin only, like a git connection's or an S3 endpoint's private-endpoint flag.
-  """
-  allowPrivate: Boolean
-
-  """
   The panel's API key or token. Dokploy: Settings -> Profile -> API/CLI. Coolify: Keys & Tokens -> API tokens, with `read:sensitive` ticked, or the values and database passwords arrive empty. Use an owner's or admin's either way: a plain member's is refused. Never stored.
   """
   apiKey: String!

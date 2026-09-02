@@ -2809,8 +2809,6 @@ export const migrationRuns = pgTable(
      * stored".
      */
     apiKeyEnc: text("api_key_enc"),
-    /** Whether this run may reach a private address (instance-admin only). */
-    allowPrivate: boolean("allow_private").notNull().default(false),
     /** Progress the SERVER owns, so every viewer sees the same numbers. */
     totalSteps: integer("total_steps").notNull().default(0),
     doneSteps: integer("done_steps").notNull().default(0),

@@ -359,12 +359,6 @@ export interface ConnectInput {
   apiKey: string;
   /** Read the panel as this product. Absent means: work out which it is. */
   kind?: MigrationPlatform;
-  /**
-   * Reach an address `lib/outbound-url.ts` would refuse, which is what the
-   * internal migration needs (`http://172.17.0.1:3000`). Instance admin only,
-   * exactly like `allowPrivateEndpoint` on a git connection or an S3 endpoint.
-   */
-  allowPrivate?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -481,11 +475,19 @@ export async function credentialFor(
   input: ConnectInput,
 ): Promise<SourceCredential> {
   const baseUrl = normalizeSourceBaseUrl(input.url);
-  if (input.allowPrivate) await requireInstanceAdmin();
-  else
+  // The address says whether this is the same-machine / LAN case, so nobody has to
+  // declare it: private means instance admin, like a git connection's flag.
+  try {
     await assertSafeOutboundUrl(baseUrl, "The panel address", {
       allowHttp: true,
     });
+  } catch {
+    await requireInstanceAdmin().catch(() => {
+      throw new Error(
+        "Only an instance admin can point Deplo at a private address",
+      );
+    });
+  }
   const apiKey = input.apiKey.trim();
   if (!apiKey) throw new Error("Paste the panel's API key");
   // The SSRF gate is above, so the detection's own request is behind it too.
@@ -1148,8 +1150,7 @@ async function planMachines(
           s.ip?.trim().toLowerCase() === a ||
           s.host?.trim().toLowerCase() === a,
       ) ??
-      // The same-machine case, which the wizard has a toggle for: the other platform runs
-      // on the box Deplo runs on.
+      // The same-machine case: the other platform runs on the box Deplo runs on.
       (isSelf(a)
         ? mine.find((s) => isDeploHostServer(s, self) || isSelf(s.ip ?? s.host))
         : undefined);

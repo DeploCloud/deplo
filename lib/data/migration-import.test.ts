@@ -416,6 +416,19 @@ function importProject(runId: string, projectId: string) {
 /* Scan                                                                */
 /* ------------------------------------------------------------------ */
 
+// The connect step used to carry a "Same machine" toggle for this. The address
+// already says whether it is private; only who is asking is still a question.
+test("a private panel address is instance-admin only, and needs no flag", async () => {
+  const PRIVATE = { url: "http://172.17.0.1:3000", apiKey: CONNECT.apiKey };
+  for (const url of [PRIVATE.url, "http://127.0.0.1:3000"])
+    await assert.rejects(
+      () => asMember(() => scanMigrationSource({ ...PRIVATE, url })),
+      /instance admin/i,
+    );
+  const plan = await asOwner(() => scanMigrationSource(PRIVATE));
+  assert.equal(plan.platform, "dokploy");
+});
+
 test("scan describes the whole tree without writing anything", async () => {
   const plan = await asOwner(() => scanMigrationSource(CONNECT));
 
@@ -550,7 +563,7 @@ test("a machine already registered as a MIGRATION SOURCE is still recognised", a
 });
 
 test("Dokploy on the machine Deplo runs on resolves to the agent already there", async () => {
-  // The same-machine case the wizard has a toggle for.
+  // The same-machine case.
   const { servers: serversTable } = await import("../db/schema/control-plane");
   const { eq } = await import("drizzle-orm");
   const beforeIp = process.env.DEPLO_SERVER_IP;
@@ -823,16 +836,6 @@ test("an app never arrives with fewer addresses than it had", async () => {
   ]);
   // And the routes are intact: the port is what Dokploy served on, not a default.
   for (const d of doms) assert.equal(d.port, 3000);
-});
-
-test("scan refuses an address that is not this team's business", async () => {
-  await assert.rejects(
-    () =>
-      asOwner(() =>
-        scanMigrationSource({ url: "http://127.0.0.1:3000", apiKey: "k" }),
-      ),
-    /private or internal address/,
-  );
 });
 
 // A token nothing accepts is also a panel Deplo cannot identify, so the refusal
@@ -2685,7 +2688,6 @@ test("a machine with no agent stops the run before it starts", async () => {
         startMigrationRun({
           url: URL_BASE,
           apiKey: CONNECT.apiKey,
-          allowPrivate: false,
           orgName: null,
           targets: [
             {
@@ -2716,7 +2718,6 @@ test("a panel that does not answer leaves no run behind", async () => {
       startMigrationRun({
         url: URL_BASE,
         apiKey: "whatever",
-        allowPrivate: false,
         orgName: null,
         targets: [
           {

@@ -14,12 +14,12 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
+import { docsUrl } from "@/lib/docs";
 import { formatBuildDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Switch } from "@/components/ui/switch";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { KindCard } from "@/components/shared/kind-card";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
@@ -41,7 +41,6 @@ import {
   SOURCE_COPY,
   SOURCE_KINDS,
   SourceMark,
-  stepDocs,
   type SourceKind,
 } from "./sources";
 import { RemoveMigrationSources } from "./remove-sources";
@@ -401,9 +400,6 @@ export function MigrationWizard({
   const [step, setStep] = React.useState<StepId>("connect");
   const [url, setUrl] = React.useState(prefill?.url ?? "");
   const [apiKey, setApiKey] = React.useState("");
-  // A takeover is the same-machine case by definition, and the toggle is an
-  // instance-admin one - which whoever ran the installer is.
-  const [sameMachine, setSameMachine] = React.useState(prefill != null);
   const [scanning, setScanning] = React.useState(false);
   const [plan, setPlan] = React.useState<Plan | null>(null);
   /** Pinned by the person after a scan that could not identify the panel. */
@@ -484,10 +480,9 @@ export function MigrationWizard({
     () => ({
       url,
       apiKey,
-      allowPrivate: sameMachine,
       kind: plan?.platform ?? null,
     }),
-    [url, apiKey, sameMachine, plan],
+    [url, apiKey, plan],
   );
 
   /** What is known about the panel so far: what answered, or what was pinned. */
@@ -517,7 +512,7 @@ export function MigrationWizard({
     const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
       SCAN,
       {
-        input: { url, apiKey, allowPrivate: sameMachine, kind: forcedKind },
+        input: { url, apiKey, kind: forcedKind },
       },
       (d) => d.scanMigrationSource,
     );
@@ -1065,10 +1060,8 @@ export function MigrationWizard({
                   setUrl={setUrl}
                   apiKey={apiKey}
                   setApiKey={setApiKey}
-                  sameMachine={sameMachine}
-                  setSameMachine={setSameMachine}
                   sameMachineHost={sameMachineHost}
-                  canUsePrivate={isInstanceAdmin}
+                  showTakeoverHint={prefill == null}
                   scanning={scanning}
                   kind={kind}
                   forcedKind={forcedKind}
@@ -1176,10 +1169,8 @@ function ConnectStep({
   setUrl,
   apiKey,
   setApiKey,
-  sameMachine,
-  setSameMachine,
   sameMachineHost,
-  canUsePrivate,
+  showTakeoverHint,
   scanning,
   kind,
   forcedKind,
@@ -1191,12 +1182,10 @@ function ConnectStep({
   setUrl: (v: string) => void;
   apiKey: string;
   setApiKey: (v: string) => void;
-  sameMachine: boolean;
-  setSameMachine: (v: boolean) => void;
   /** The address a container on this instance reaches its own host on. */
   sameMachineHost: string;
-  /** Instance admin. Only they may point Deplo at a private address. */
-  canUsePrivate: boolean;
+  /** Off on the takeover page: whoever is there is already doing this. */
+  showTakeoverHint: boolean;
   scanning: boolean;
   /** What is known so far: what answered, or what was pinned. */
   kind: SourceKind | null;
@@ -1216,18 +1205,23 @@ function ConnectStep({
           {/**
            * "Panel address", not "Address".
            */}
-          <FieldLabel htmlFor="source-url" info={copy.urlInfo} docs={copy.docs}>
+          <FieldLabel
+            htmlFor="source-url"
+            info={
+              <>
+                {copy.urlInfo} On the same machine as Deplo, that is{" "}
+                <code>{`http://${sameMachineHost}:${copy.privatePort}`}</code>.
+              </>
+            }
+            docs={copy.docs}
+          >
             Panel address
           </FieldLabel>
           <Input
             id="source-url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={
-              sameMachine
-                ? `http://${sameMachineHost}:${copy.privatePort}`
-                : copy.urlPlaceholder
-            }
+            placeholder={copy.urlPlaceholder}
             autoComplete="off"
             spellCheck={false}
           />
@@ -1252,40 +1246,30 @@ function ConnectStep({
           />
         </div>
 
-        {/**
-         * Shown to everybody, off and explained for whoever cannot use it.
-         */}
-        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-          <FieldLabel
-            htmlFor="same-machine"
-            className="gap-2"
-            info={
-              <>
-                Lets Deplo dial a private address. From in here, {copy.name} is
-                at{" "}
-                <code>{`http://${sameMachineHost}:${copy.privatePort}`}</code>{" "}
-                or on the host&apos;s own IP.
-              </>
-            }
-            docs={stepDocs(kind, "source")}
-          >
-            <ServerIcon className="size-4 text-muted-foreground" />
-            Same machine
-          </FieldLabel>
-          {canUsePrivate ? (
-            <Switch
-              id="same-machine"
-              checked={sameMachine}
-              onCheckedChange={setSameMachine}
-            />
-          ) : (
-            <SimpleTooltip content="Only an instance admin can point Deplo at a private address">
-              <span className="inline-flex">
-                <Switch id="same-machine" checked={false} disabled />
-              </span>
-            </SimpleTooltip>
-          )}
-        </div>
+        {showTakeoverHint && (
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <ServerIcon className="size-4 text-muted-foreground" />
+                Take over your VPS
+                <Badge variant="info">Beta</Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Putting Deplo on the machine {copy.name} already runs on? The
+                installer brings everything across and takes the ports for you.
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" className="shrink-0" asChild>
+              <a
+                href={docsUrl("migration.takeover")}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Read the docs
+              </a>
+            </Button>
+          </div>
+        )}
 
         {/**
          * The picker appears on ANY failed first read, not on a special "could not
