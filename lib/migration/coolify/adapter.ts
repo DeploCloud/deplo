@@ -3,7 +3,13 @@
  */
 
 import { mapLimit } from "../../utils";
-import { composeServices, deploFilesPath, isDataHostPath } from "../map";
+import {
+  composeServices,
+  composeVolumeHostNames,
+  composeVolumeMounts,
+  deploFilesPath,
+  isDataHostPath,
+} from "../map";
 import type {
   MigrationSourceClient,
   RuntimeQuery,
@@ -467,6 +473,24 @@ async function serviceRuntime(
   const status = await resourceStatus(c, group, svc.id);
   const running = status.startsWith("running");
   const notes: string[] = [];
+  // {panel} renames EVERY volume a stack declares to its own `<uuid>_<key>` and
+  // honours neither `external: true` nor a pinned `name:` - so the volume the
+  // file names is not the one that was running, and it holds data that is
+  // somebody else's to move. Said out loud: unsaid, an operator who put their
+  // data in it reads "holds nothing" as Deplo losing it.
+  const pinnedPaths = new Map(
+    composeVolumeMounts(svc.composeFile ?? "").map((m) => [
+      m.name,
+      m.mountPath,
+    ]),
+  );
+  for (const [alias, name] of composeVolumeHostNames(svc.composeFile ?? "")) {
+    const mountPath = pinnedPaths.get(alias);
+    if (!mountPath || volumes.some((v) => v.name === name)) continue;
+    notes.push(
+      `The compose file mounts "${name}" at ${mountPath}, but {panel} ignored that and gave ${svc.appName} a volume of its own there - so whatever is in "${name}" was never this stack's data, and Deplo does not copy it.`,
+    );
+  }
   if (volumes.length + hostMounts.length === 0)
     notes.push(
       `{panel} says ${svc.appName} mounts nothing, so there is nothing to copy.`,

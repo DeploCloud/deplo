@@ -297,9 +297,80 @@ test("a stack's config file on a real host path is carried by the data phase", a
     appName: "gitea",
     declaredVolumes: [],
     declaredBindMounts: [],
+    composeFile: null,
   });
   // Without this the file landed mounted and EMPTY, with no report line at all.
   assert.deepEqual(state.hostMounts, [
     { hostPath: "/srv/mx/single.conf", mountPath: "/etc/app/single.conf" },
   ]);
+});
+
+/**
+ * Coolify renames EVERY compose volume to `<uuid>_<key>` and honours neither
+ * `external: true` nor a pinned `name:` - verified against 4.3.14, whose rendered
+ * `docker_compose` mounts its own volume and leaves the pinned declaration
+ * dangling. So the storage row is the truth, and the volume the author named -
+ * which their data may well be in - is data this stack never had. Copying it
+ * would carry a stranger's bytes; saying nothing read as Deplo losing theirs.
+ */
+test("a volume the panel renamed out from under the compose is named, not copied", async (t) => {
+  serve(t, {
+    "/api/v1/services/svc-gitea/storages": {
+      persistent_storages: [
+        { uuid: "s1", name: "svc-gitea_r9data", mount_path: "/data/r9" },
+        { uuid: "s2", name: "svc-gitea_r9ext", mount_path: "/data/ext" },
+      ],
+    },
+  });
+  const state = await coolifyClient(cred).serviceRuntime({
+    kind: "compose",
+    id: "svc-gitea",
+    appName: "gitea",
+    declaredVolumes: [],
+    declaredBindMounts: [],
+    composeFile: [
+      "services:",
+      "  core:",
+      "    image: alpine",
+      "    volumes:",
+      "      - r9data:/data/r9",
+      "      - r9ext:/data/ext",
+      "volumes:",
+      "  r9data:",
+      "  r9ext:",
+      "    external: true",
+      "    name: r9-cool-external",
+    ].join("\n"),
+  });
+  assert.deepEqual(state.volumes, [
+    { name: "svc-gitea_r9data", mountPath: "/data/r9" },
+    { name: "svc-gitea_r9ext", mountPath: "/data/ext" },
+  ]);
+  assert.deepEqual(state.notes, [
+    'The compose file mounts "r9-cool-external" at /data/ext, but {panel} ignored that and gave gitea a volume of its own there - so whatever is in "r9-cool-external" was never this stack\'s data, and Deplo does not copy it.',
+  ]);
+});
+
+test("a pinned volume nothing in the stack mounts is not worth a line", async (t) => {
+  serve(t);
+  const state = await coolifyClient(cred).serviceRuntime({
+    kind: "compose",
+    id: "svc-gitea",
+    appName: "gitea",
+    declaredVolumes: [],
+    declaredBindMounts: [],
+    composeFile: [
+      "services:",
+      "  core:",
+      "    image: alpine",
+      "    volumes:",
+      "      - gitea-data:/data",
+      "volumes:",
+      "  gitea-data:",
+      "  leftover:",
+      "    external: true",
+    ].join("\n"),
+  });
+  assert.deepEqual(state.volumes, [{ name: "gitea-data", mountPath: "/data" }]);
+  assert.deepEqual(state.notes, []);
 });

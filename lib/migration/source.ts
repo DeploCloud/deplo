@@ -64,6 +64,9 @@ export interface RuntimeQuery {
   appName: string;
   declaredVolumes: NamedVolume[];
   declaredBindMounts: HostMount[];
+  /** The stack's own YAML, which is the only place a volume's real name is
+   *  written when the file pins one. Null for anything that is not a stack. */
+  composeFile: string | null;
 }
 
 export interface MigrationSourceClient {

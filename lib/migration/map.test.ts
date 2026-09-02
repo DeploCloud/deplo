@@ -10,6 +10,7 @@ import {
   composeBuildServices,
   retargetPlatformEnvFiles,
   composeServiceExposingPort,
+  composeVolumeHostNames,
   composeVolumeMounts,
   deploDatabaseVolumeName,
   deploVolumeName,
@@ -1577,6 +1578,74 @@ test("declaredSourceVolumes prefixes a compose stack's volumes with its project"
   });
   assert.deepEqual(out, [
     { name: "test-alltube-ab12_data", mountPath: "/var/lib/app" },
+  ]);
+});
+
+test("composeVolumeHostNames reads the names only the file decides", () => {
+  const compose = [
+    "volumes:",
+    "  plain:",
+    "  empty: {}",
+    "  pinned:",
+    "    name: fixed-on-the-host",
+    "  ext:",
+    "    external: true",
+    "  extName:",
+    "    external: true",
+    "    name: someone-elses",
+    "  legacy:",
+    "    external:",
+    "      name: old-spelling",
+    "  notExternal:",
+    "    external: false",
+  ].join("\n");
+  assert.deepEqual(
+    [...composeVolumeHostNames(compose)],
+    [
+      ["pinned", "fixed-on-the-host"],
+      ["ext", "ext"],
+      ["extName", "someone-elses"],
+      ["legacy", "old-spelling"],
+    ],
+  );
+  assert.equal(composeVolumeHostNames("").size, 0);
+  assert.equal(composeVolumeHostNames("services:\n  web:\n   - : :").size, 0);
+});
+
+// The project prefix is what compose WOULD have named it - the panel creates that
+// one, empty, beside the external volume the container really mounts. Copying it
+// reported "holds nothing" over a volume with data in it.
+test("declaredSourceVolumes never prefixes a volume the compose pins", () => {
+  const out = declaredSourceVolumes({
+    kind: "compose",
+    appName: "test-stack-ab12",
+    composeFile: [
+      "services:",
+      "  web:",
+      "    volumes:",
+      "      - data:/var/lib/app",
+      "      - ext:/data/ext",
+      "      - pinned:/data/pinned",
+      "      - dopts:/data/dopts",
+      "volumes:",
+      "  data:",
+      "  ext:",
+      "    external: true",
+      "  pinned:",
+      "    name: chosen-by-hand",
+      "  dopts:",
+      "    driver_opts:",
+      "      type: none",
+      "      device: /srv/r9-dopts",
+      "      o: bind",
+    ].join("\n"),
+  });
+  assert.deepEqual(out, [
+    { name: "test-stack-ab12_data", mountPath: "/var/lib/app" },
+    { name: "ext", mountPath: "/data/ext" },
+    { name: "chosen-by-hand", mountPath: "/data/pinned" },
+    // `driver_opts` names no volume: compose still creates <project>_dopts.
+    { name: "test-stack-ab12_dopts", mountPath: "/data/dopts" },
   ]);
 });
 

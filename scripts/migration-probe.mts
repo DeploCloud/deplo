@@ -256,6 +256,8 @@ async function describeVolumes(
       appName: String(detail.appName ?? detail.name ?? id),
       declaredVolumes: [],
       declaredBindMounts: [],
+      composeFile:
+        typeof detail.composeFile === "string" ? detail.composeFile : null,
     })
     .catch((e: unknown) => {
       console.log(

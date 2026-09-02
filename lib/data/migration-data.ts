@@ -197,6 +197,8 @@ interface SourceService {
   declaredVolumes: NamedVolume[];
   /** Same, for the host directories it bind-mounts. */
   declaredBindMounts: HostMount[];
+  /** The stack's YAML, for the volume names only the file knows. */
+  composeFile: string | null;
 }
 
 /**
@@ -271,6 +273,7 @@ async function sourceServices(c: SourceCredential): Promise<SourceService[]> {
           composeFile,
           (detail as { stackDir?: string | null }).stackDir ?? null,
         ),
+        composeFile,
       };
     },
   );

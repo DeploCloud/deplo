@@ -2194,9 +2194,17 @@ export function declaredSourceVolumes(input: {
     if (m?.type === "volume")
       push(m.volumeName?.trim() ?? "", m.mountPath?.trim() ?? "");
 
-  if (input.kind === "compose" && input.appName.trim())
+  if (input.kind === "compose") {
+    // A volume the FILE names is not the project-prefixed one - and the prefix is
+    // all a stopped stack has, so an unpinned volume still needs the stack's name.
+    const pinned = composeVolumeHostNames(input.composeFile ?? "");
+    const project = input.appName.trim();
     for (const v of composeVolumeMounts(input.composeFile ?? ""))
-      push(`${input.appName.trim()}_${v.name}`, v.mountPath);
+      push(
+        pinned.get(v.name) ?? (project ? `${project}_${v.name}` : ""),
+        v.mountPath,
+      );
+  }
 
   return out;
 }
@@ -2386,6 +2394,42 @@ export function composeServiceExposingPort(
       (Array.isArray(svc?.expose) && svc.expose.length > 0),
   );
   return exposing.length === 1 ? exposing[0][0] : null;
+}
+
+/**
+ * The volumes whose real name on the host the compose FILE decides: a pinned
+ * `name:` takes that, `external: true` takes the key as written. Neither gets the
+ * project prefix, so deriving one from the key names a volume that is not there.
+ */
+export function composeVolumeHostNames(compose: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let doc: { volumes?: unknown } | null;
+  try {
+    doc = yaml.load(compose) as typeof doc;
+  } catch {
+    return out;
+  }
+  const declared = doc?.volumes;
+  if (!declared || typeof declared !== "object" || Array.isArray(declared))
+    return out;
+  for (const [key, body] of Object.entries(
+    declared as Record<string, unknown>,
+  )) {
+    if (!body || typeof body !== "object" || Array.isArray(body)) continue;
+    const { name, external } = body as { name?: unknown; external?: unknown };
+    // `external: {name: x}` is the deprecated spelling of a pinned name.
+    const asMap =
+      external && typeof external === "object"
+        ? (external as { name?: unknown })
+        : null;
+    const isExternal = Boolean(asMap) || composeTruthy(external);
+    const pinned =
+      (typeof name === "string" && name.trim()) ||
+      (typeof asMap?.name === "string" && asMap.name.trim()) ||
+      (isExternal ? key : "");
+    if (pinned) out.set(key, pinned);
+  }
+  return out;
 }
 
 /**
