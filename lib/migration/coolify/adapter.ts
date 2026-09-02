@@ -3,7 +3,7 @@
  */
 
 import { mapLimit } from "../../utils";
-import { composeServices } from "../map";
+import { composeServices, deploFilesPath, isDataHostPath } from "../map";
 import type {
   MigrationSourceClient,
   RuntimeQuery,
@@ -442,7 +442,20 @@ async function serviceRuntime(
     .filter((m) => m.type === "volume" && m.volumeName)
     .map((m) => ({ name: m.volumeName!, mountPath: m.mountPath }));
   const hostMounts = mounts
-    .filter((m) => m.type === "bind" && m.hostPath)
+    .filter(
+      (m) =>
+        m.hostPath &&
+        (m.type === "bind" ||
+          // A stack binds the path its YAML names, so a config file sitting on a
+          // real host path is data the copy has to carry - the same rule the
+          // Storage row is written by (`mapMounts`). Said here too, or the file
+          // lands mounted and empty with no line to show for it.
+          (m.type === "file" &&
+            svc.kind === "compose" &&
+            m.hostPath.startsWith("/") &&
+            isDataHostPath(m.hostPath) &&
+            deploFilesPath(m.hostPath) == null)),
+    )
     .map((m) => ({ hostPath: m.hostPath!, mountPath: m.mountPath }));
   // A `./x` bind is nowhere in the storage rows, and it is the stack's real state
   // directory: without this the report said the service "mounts nothing" over a

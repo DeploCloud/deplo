@@ -277,3 +277,29 @@ test("a database is started on its own group, not the services one", async (t) =
     `no database start was posted; calls were ${seen.join(", ")}`,
   );
 });
+
+test("a stack's config file on a real host path is carried by the data phase", async (t) => {
+  serve(t, {
+    "/api/v1/services/svc-gitea/storages": {
+      file_storages: [
+        {
+          uuid: "f1",
+          fs_path: "/srv/mx/single.conf",
+          mount_path: "/etc/app/single.conf",
+          content: "a = 1",
+        },
+      ],
+    },
+  });
+  const state = await coolifyClient(cred).serviceRuntime({
+    kind: "compose",
+    id: "svc-gitea",
+    appName: "gitea",
+    declaredVolumes: [],
+    declaredBindMounts: [],
+  });
+  // Without this the file landed mounted and EMPTY, with no report line at all.
+  assert.deepEqual(state.hostMounts, [
+    { hostPath: "/srv/mx/single.conf", mountPath: "/etc/app/single.conf" },
+  ]);
+});
