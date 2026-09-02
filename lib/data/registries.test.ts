@@ -19,14 +19,20 @@ import { addRegistry, deleteRegistry, listRegistries } from "./registries";
 
 let db: TestDb;
 let pg: PGlite;
+let realFetch: typeof globalThis.fetch;
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+  // The credential check is a network call; every fixture here is a good one.
+  realFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(null, { status: 200 })) as typeof fetch;
 });
 
 after(async () => {
   __resetTestDb();
+  globalThis.fetch = realFetch;
   await pg.close();
 });
 
@@ -114,6 +120,37 @@ test("addRegistry validates required fields", async () => {
       /Enter the registry host/,
     );
   });
+});
+
+test("a credential the registry refuses is never stored", async () => {
+  const saved = globalThis.fetch;
+  // ghcr's shape: the probe challenges, the token realm denies.
+  globalThis.fetch = (async (url: string | URL) =>
+    String(url).endsWith("/v2/")
+      ? new Response(null, {
+          status: 401,
+          headers: {
+            "www-authenticate": 'Bearer realm="https://ghcr.io/token"',
+          },
+        })
+      : new Response(null, { status: 403 })) as typeof fetch;
+  try {
+    await asUser1(async () => {
+      await assert.rejects(
+        () =>
+          addRegistry({
+            name: "dead",
+            type: "ghcr",
+            username: "octocat",
+            password: "ghp_expired",
+          }),
+        /ghcr\.io rejected this username and token/,
+      );
+    });
+  } finally {
+    globalThis.fetch = saved;
+  }
+  assert.equal((await db.select().from(registriesTable)).length, 0);
 });
 
 test("deleteRegistry removes only the active team's matching registry", async () => {

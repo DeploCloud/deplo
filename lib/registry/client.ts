@@ -296,6 +296,71 @@ function ociAuthHeaders(token: string | null | "none"): Record<string, string> {
   return token && token !== "none" ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// ---------------------------------------------------------------------------
+// Credential check (`docker login` without the daemon)
+// ---------------------------------------------------------------------------
+
+export type CredentialCheck = "ok" | "rejected" | "unknown";
+
+/**
+ * Does this username / token actually authenticate at this registry? Probe
+ * `/v2/` for the Bearer challenge, then ask the realm for a token as Basic auth.
+ * "unknown" on an unreachable registry - an outage must not block a save.
+ */
+export async function checkRegistryCredential(
+  registry: string,
+  username: string,
+  password: string,
+): Promise<CredentialCheck> {
+  const bare = registry
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/+$/, "");
+  const host =
+    bare === DOCKER_HUB_REGISTRY || bare === "index.docker.io"
+      ? "registry-1.docker.io"
+      : bare;
+  const probeUrl = `https://${host}/v2/`;
+  // `registry` is user input, never probe a non-public target.
+  if (!(await isPublicHttpsUrl(probeUrl))) return "unknown";
+
+  const basic = {
+    Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+  };
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
+  let probe: Response;
+  try {
+    probe = await fetch(probeUrl, {
+      headers: { "User-Agent": UA, ...basic },
+      signal: ctrl.signal,
+      cache: "no-store",
+      redirect: "manual",
+    });
+  } catch {
+    return "unknown";
+  } finally {
+    clearTimeout(t);
+  }
+  // A Basic-only registry answers the probe itself; a token one 401s with a
+  // challenge and ignores the header we just sent.
+  if (probe.ok) return "ok";
+  const challenge = parseBearerChallenge(probe.headers.get("www-authenticate"));
+  if (!challenge) return probe.status === 401 ? "rejected" : "unknown";
+  if (!(await isPublicHttpsUrl(challenge.realm))) return "unknown";
+
+  const params = new URLSearchParams();
+  if (challenge.service) params.set("service", challenge.service);
+  params.set("account", username);
+  const { status } = await fetchJson(
+    `${challenge.realm}?${params.toString()}`,
+    { headers: basic },
+  );
+  if (status === 200) return "ok";
+  // ghcr answers a bad credential 403, the Hub and GitLab 401.
+  return status === 401 || status === 403 ? "rejected" : "unknown";
+}
+
 interface OciTagsResponse {
   tags?: string[] | null;
 }

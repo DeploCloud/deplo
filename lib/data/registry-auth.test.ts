@@ -30,14 +30,20 @@ import {
 
 let db: TestDb;
 let pg: PGlite;
+let realFetch: typeof globalThis.fetch;
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+  // The credential check is a network call; every fixture here is a good one.
+  realFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(null, { status: 200 })) as typeof fetch;
 });
 
 after(async () => {
   __resetTestDb();
+  globalThis.fetch = realFetch;
   await pg.close();
 });
 

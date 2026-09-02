@@ -16,6 +16,7 @@ import {
 } from "../membership";
 import { recordActivity } from "./activity";
 import { decryptSecretOrThrow, encryptSecret } from "../crypto";
+import { checkRegistryCredential } from "../registry/client";
 import { REGISTRY_SECRET_LABEL, type RegistryType } from "../types";
 
 export interface RegistryDTO {
@@ -145,6 +146,21 @@ export async function addRegistry(input: {
     // that issues one, "Password or access token" only for a generic registry.
     throw new Error(
       `Enter the ${REGISTRY_SECRET_LABEL[input.type].toLowerCase()}`,
+    );
+  }
+
+  // A credential that does not work is invisible until a build dies with
+  // `denied: denied` - and it poisons PUBLIC pulls from the same host too.
+  const check = await checkRegistryCredential(
+    registryUrl,
+    input.username.trim(),
+    input.password,
+  );
+  if (check === "rejected") {
+    throw new Error(
+      `${registryUrl} rejected this username and ${REGISTRY_SECRET_LABEL[
+        input.type
+      ].toLowerCase()}`,
     );
   }
 
