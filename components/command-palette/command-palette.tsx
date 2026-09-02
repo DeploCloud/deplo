@@ -622,7 +622,7 @@ function PaletteBody({
         {nothing && !loading && (
           <div className="flex flex-col items-center py-8 text-center">
             <PaletteEmptyGraphic className="mb-3" />
-            <p className="text-sm">No results for &ldquo;{query}&rdquo;</p>
+            <p className="text-sm">No results</p>
             <p className="mt-1 text-xs text-muted-foreground">
               Try an app name, a page, or a command.
             </p>
