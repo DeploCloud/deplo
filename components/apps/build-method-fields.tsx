@@ -210,42 +210,43 @@ function MethodSettings({
         {meta.name} options
       </div>
 
-      {onFrameworkChange && supportsFrameworkDetection(method) && (
-        <FrameworkField
-          framework={framework ?? null}
-          detected={detectedFramework ?? null}
-          onChange={onFrameworkChange}
-        />
-      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {onFrameworkChange && supportsFrameworkDetection(method) && (
+          <FrameworkField
+            framework={framework ?? null}
+            detected={detectedFramework ?? null}
+            onChange={onFrameworkChange}
+          />
+        )}
 
-      {method === "dockerfile" && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField
-            label="Dockerfile path"
-            placeholder="Dockerfile"
-            value={settings.dockerfilePath ?? ""}
-            onChange={(v) => onSettingsChange({ dockerfilePath: v })}
-            help="Path to the Dockerfile, relative to the repo root."
-          />
-          <TextField
-            label="Build context path"
-            placeholder="."
-            value={settings.dockerContextPath ?? ""}
-            onChange={(v) => onSettingsChange({ dockerContextPath: v })}
-            help="Directory sent to the Docker build, relative to the repo root."
-          />
-          <TextField
-            label="Build stage (target)"
-            placeholder="(final stage)"
-            value={settings.dockerBuildStage ?? ""}
-            onChange={(v) => onSettingsChange({ dockerBuildStage: v })}
-            help="Optional --target stage in a multi-stage Dockerfile."
-          />
-        </div>
-      )}
+        {method === "dockerfile" && (
+          <>
+            <TextField
+              label="Dockerfile path"
+              placeholder="Dockerfile"
+              value={settings.dockerfilePath ?? ""}
+              onChange={(v) => onSettingsChange({ dockerfilePath: v })}
+              help="Path to the Dockerfile, relative to the repo root."
+            />
+            <TextField
+              label="Build context path"
+              placeholder="."
+              value={settings.dockerContextPath ?? ""}
+              onChange={(v) => onSettingsChange({ dockerContextPath: v })}
+              help="Directory sent to the Docker build, relative to the repo root."
+            />
+            <TextField
+              label="Build stage (target)"
+              placeholder="(final stage)"
+              value={settings.dockerBuildStage ?? ""}
+              onChange={(v) => onSettingsChange({ dockerBuildStage: v })}
+              help="Optional --target stage in a multi-stage Dockerfile."
+              className="sm:col-span-2"
+            />
+          </>
+        )}
 
-      {method === "railpack" && (
-        <div className="grid gap-4 sm:grid-cols-2">
+        {method === "railpack" && (
           <div className="space-y-2">
             <FieldLabel
               info={
@@ -263,11 +264,9 @@ function MethodSettings({
               onChange={(v) => onSettingsChange({ railpackVersion: v })}
             />
           </div>
-        </div>
-      )}
+        )}
 
-      {method === "nixpacks" && (
-        <div className="grid gap-4 sm:grid-cols-2">
+        {method === "nixpacks" && (
           <TextField
             label="Publish directory"
             placeholder="(auto)"
@@ -275,27 +274,29 @@ function MethodSettings({
             onChange={(v) => onSettingsChange({ nixpacksPublishDirectory: v })}
             help="After the build finishes, serve just this directory as a static site through NGINX - handy when your build emits static assets to publish. Leave blank to run the app normally."
           />
-        </div>
-      )}
+        )}
 
-      {method === "static" && (
-        <label className="flex cursor-pointer items-start gap-3">
-          <Checkbox
-            checked={settings.staticSinglePageApp ?? false}
-            onCheckedChange={(v) =>
-              onSettingsChange({ staticSinglePageApp: v === true })
-            }
-            className="mt-0.5"
-          />
-          <span>
-            <span className="text-sm font-medium">Single-page application</span>
-            <span className="mt-1 block text-xs text-muted-foreground">
-              Route unknown paths to index.html so client-side routing works
-              (history-API fallback).
+        {method === "static" && (
+          <label className="flex cursor-pointer items-start gap-3 sm:col-span-2">
+            <Checkbox
+              checked={settings.staticSinglePageApp ?? false}
+              onCheckedChange={(v) =>
+                onSettingsChange({ staticSinglePageApp: v === true })
+              }
+              className="mt-0.5"
+            />
+            <span>
+              <span className="text-sm font-medium">
+                Single-page application
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Route unknown paths to index.html so client-side routing works
+                (history-API fallback).
+              </span>
             </span>
-          </span>
-        </label>
-      )}
+          </label>
+        )}
+      </div>
     </div>
   );
 }
@@ -326,7 +327,7 @@ function FrameworkField({
   const overridden = framework != null && framework !== detected;
 
   return (
-    <div className="mb-4 space-y-2">
+    <div className="space-y-2">
       <FieldLabel
         info={
           <>
@@ -345,7 +346,7 @@ function FrameworkField({
           value={framework ?? AUTO}
           onValueChange={(v) => onChange(v === AUTO ? null : v)}
         >
-          <SelectTrigger className="w-full max-w-xs">
+          <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -416,6 +417,7 @@ function TextField({
   placeholder,
   help,
   docs,
+  className,
 }: {
   label: string;
   value: string;
@@ -423,9 +425,11 @@ function TextField({
   placeholder?: string;
   help?: string;
   docs?: DocsTopic;
+  /** For a field that has to span the grid rather than sit in one column. */
+  className?: string;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2", className)}>
       <FieldLabel info={help} docs={docs}>
         {label}
       </FieldLabel>
