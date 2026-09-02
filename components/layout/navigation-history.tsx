@@ -39,7 +39,7 @@ function stamp(value: number): void {
  * the pathname so React Strict Mode's double-invoked effect (or both sidebars
  * mounting) can't count one entry twice.
  */
-function record(pathname: string): void {
+export function record(pathname: string): void {
   navigating = false; // a settled navigation ends any in-flight back jump
   if (pathname === lastPath) return;
   lastPath = pathname;

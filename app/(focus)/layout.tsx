@@ -5,6 +5,7 @@ import { getTeamIdentity, listMyTeams } from "@/lib/data/teams";
 import { TwoFactorRequiredError } from "@/lib/membership";
 import { userHasPasskey } from "@/lib/passkey-policy";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
+import { NavigationHistoryTracker } from "@/components/layout/navigation-history";
 
 /**
  * The dashboard's gate without its shell: a route that wants the whole window
@@ -41,6 +42,9 @@ export default async function FocusLayout({
   return (
     <div className="relative min-h-dvh">
       <div className="deplo-graph-bg pointer-events-none absolute inset-0 opacity-[0.5]" />
+      {/* The shell isn't here to mount it, and an unrecorded entry makes the
+          sidebar's back links land back ON the wizard. */}
+      <NavigationHistoryTracker />
       <div className="relative z-10">{children}</div>
     </div>
   );
