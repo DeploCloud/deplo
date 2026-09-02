@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
+import { languageForPath } from "@/components/apps/editor-language";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
@@ -213,6 +214,7 @@ export function DatabaseConfigFiles({
                   value={row.content}
                   onChange={(content) => update(row.key, { content })}
                   minHeight={EDITOR_MIN_HEIGHT}
+                  language={languageForPath(row.filePath)}
                 />
               </div>
 

@@ -15,91 +15,32 @@ import {
   historyKeymap,
   indentWithTab,
 } from "@codemirror/commands";
+import { indentOnInput, bracketMatching } from "@codemirror/language";
+import type { EditorLanguage } from "@/components/apps/editor-language";
 import {
-  syntaxHighlighting,
-  HighlightStyle,
-  indentOnInput,
-  bracketMatching,
-} from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
+  deploSyntaxHighlighting,
+  deploTheme,
+  yamlExtensions,
+} from "@/components/apps/editor-theme";
 
 /**
- * A plain-text CodeMirror editor sharing the dashboard's neutral theme - used by
- * the Storage editor to edit an app's config files.
+ * A CodeMirror editor on the dashboard's theme - an app's config files, a
+ * database's, and read-only YAML previews. `language` null keeps it plain text.
  */
-
-const editorTheme = EditorView.theme({
-  "&": {
-    backgroundColor: "var(--background)",
-    color: "var(--foreground)",
-    fontSize: "12px",
-  },
-  "&.cm-editor": { height: "100%", borderRadius: "0.5rem" },
-  "&.cm-focused": { outline: "none" },
-  ".cm-scroller": {
-    fontFamily:
-      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-    lineHeight: "1.6",
-  },
-  ".cm-content": { caretColor: "var(--foreground)", padding: "8px 0" },
-  ".cm-gutters": {
-    backgroundColor: "var(--muted)",
-    color: "var(--muted-foreground)",
-    border: "none",
-    borderRight: "1px solid var(--border)",
-  },
-  ".cm-lineNumbers .cm-gutterElement": { padding: "0 8px 0 12px" },
-  ".cm-activeLineGutter": {
-    backgroundColor: "var(--accent)",
-    color: "var(--foreground)",
-  },
-  ".cm-activeLine": {
-    backgroundColor: "color-mix(in srgb, var(--accent) 45%, transparent)",
-  },
-  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--foreground)" },
-  "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "color-mix(in srgb, var(--ring) 30%, transparent)",
-    outline: "1px solid color-mix(in srgb, var(--ring) 60%, transparent)",
-  },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection":
-    {
-      backgroundColor: "color-mix(in srgb, var(--ring) 40%, transparent)",
-    },
-});
-
-const editorHighlight = HighlightStyle.define([
-  {
-    tag: [t.definition(t.propertyName), t.propertyName],
-    color: "var(--foreground)",
-    fontWeight: "600",
-  },
-  {
-    tag: [t.keyword, t.operatorKeyword, t.bool, t.null],
-    color: "var(--warning)",
-  },
-  { tag: [t.string, t.special(t.string)], color: "var(--success)" },
-  { tag: [t.number, t.integer, t.float], color: "var(--foreground)" },
-  {
-    tag: [t.comment, t.lineComment, t.blockComment],
-    color: "var(--muted-foreground)",
-    fontStyle: "italic",
-  },
-  {
-    tag: [t.meta, t.punctuation, t.separator],
-    color: "var(--muted-foreground)",
-  },
-]);
-
 export function TextEditor({
   value,
   onChange,
   readOnly = false,
   minHeight = 360,
+  maxHeight,
+  language = null,
 }: {
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
   minHeight?: number;
+  maxHeight?: string;
+  language?: EditorLanguage | null;
 }) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const viewRef = React.useRef<EditorView | null>(null);
@@ -124,12 +65,16 @@ export function TextEditor({
         history(),
         indentOnInput(),
         bracketMatching(),
-        syntaxHighlighting(editorHighlight, { fallback: true }),
+        ...(language === "yaml" ? yamlExtensions() : []),
+        deploSyntaxHighlighting,
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         EditorView.theme({
-          ".cm-scroller": { minHeight: `${minHeight}px` },
+          ".cm-scroller": {
+            minHeight: `${minHeight}px`,
+            ...(maxHeight ? { maxHeight } : {}),
+          },
         }),
-        editorTheme,
+        deploTheme,
         EditorView.lineWrapping,
         EditorState.readOnly.of(readOnly),
         EditorView.editable.of(!readOnly),
@@ -144,9 +89,9 @@ export function TextEditor({
       view.destroy();
       viewRef.current = null;
     };
-    // Rebuild only when read-only flips; value sync happens in the effect below.
+    // Rebuild only when read-only or the language flips; value sync is below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readOnly]);
+  }, [readOnly, language]);
 
   // Push controlled value changes in from outside (e.g. opening a new file)
   // without clobbering the user's cursor while they type the same value back.

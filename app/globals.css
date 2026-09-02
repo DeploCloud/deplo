@@ -80,6 +80,17 @@
   --input: #e4e4e7;
   --ring: #a1a1aa;
 
+  /* Editor syntax: VS Code Light+ / Dark+, so a compose file reads the way it
+     does in an editor. The frame around it stays on Deplo tokens. */
+  --code-key: #800000;
+  --code-string: #a31515;
+  --code-number: #098658;
+  --code-constant: #0000ff;
+  --code-comment: #008000;
+  --code-type: #267f99;
+  --code-keyword: #af00db;
+  --code-punctuation: #000000;
+
   --sidebar: #fafafa;
   --sidebar-foreground: #0a0a0a;
   --sidebar-border: #e4e4e7;
@@ -138,6 +149,15 @@
   --border: #242424;
   --input: #2e2e2e;
   --ring: #525252;
+
+  --code-key: #569cd6;
+  --code-string: #ce9178;
+  --code-number: #b5cea8;
+  --code-constant: #569cd6;
+  --code-comment: #6a9955;
+  --code-type: #4ec9b0;
+  --code-keyword: #c586c0;
+  --code-punctuation: #d4d4d4;
 
   --sidebar: #000000;
   --sidebar-foreground: #ededed;

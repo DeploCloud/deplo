@@ -6,6 +6,7 @@ import { FolderOpen, RotateCw, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/info-tip";
+import { languageForPath } from "@/components/apps/editor-language";
 import type { StorageFileDraft } from "@/lib/apps/storage-file-model";
 import { cn } from "@/lib/utils";
 
@@ -121,6 +122,7 @@ export function StorageFileEditor({
           value={current.draft}
           onChange={onChange}
           minHeight={EDITOR_MIN_HEIGHT}
+          language={languageForPath(path)}
         />
       </Section>
     );
@@ -144,6 +146,7 @@ export function StorageFileEditor({
         value={carried ?? ""}
         onChange={onChange}
         minHeight={EDITOR_MIN_HEIGHT}
+        language={languageForPath(path)}
       />
     </Section>
   );

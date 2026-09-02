@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { FileText, Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -13,6 +14,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
+
+/**
+ * CodeMirror is ~40KB and this dialog is rarely opened, so it stays out of the
+ * Deployment page's bundle. Same reasoning as `storage-file-editor.tsx`.
+ */
+const TextEditor = dynamic(
+  () => import("./text-editor").then((m) => m.TextEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-lg border border-input bg-muted/40" />
+    ),
+  },
+);
 
 /**
  * Shows the full Deplo-generated compose stack - the augmented YAML that `docker
@@ -73,9 +88,14 @@ export function FullComposeDialog({ appId }: { appId: string }) {
         ) : yaml ? (
           <div className="relative">
             <CopyButton value={yaml} className="absolute top-2 right-2 z-10" />
-            <pre className="max-h-[60vh] overflow-auto rounded-lg border border-border bg-muted/40 p-4 text-xs leading-relaxed">
-              <code className="font-mono">{yaml}</code>
-            </pre>
+            <TextEditor
+              value={yaml}
+              onChange={() => {}}
+              readOnly
+              language="yaml"
+              minHeight={200}
+              maxHeight="60vh"
+            />
           </div>
         ) : (
           <p className="py-8 text-center text-sm text-muted-foreground">
