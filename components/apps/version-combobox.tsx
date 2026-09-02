@@ -105,7 +105,7 @@ export function VersionCombobox({
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative w-full">
       <Input
         id={id}
         value={value}

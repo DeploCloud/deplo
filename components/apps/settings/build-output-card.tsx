@@ -43,13 +43,17 @@ import type {
  * decide inside the agent, and printing a guess there would read as a promise.
  */
 function defaultsFor(method: string) {
-  return method === "dockerfile"
-    ? { install: "npm ci", build: "(none)", start: "node server.js" }
-    : {
-        install: "Auto-detected",
-        build: "Auto-detected",
-        start: "Auto-detected",
-      };
+  // Ours, so these are literal: the generated Dockerfile forces devDependencies
+  // in, runs no build of its own, and falls back to node.
+  if (method === "dockerfile")
+    return {
+      install: "npm ci --include=dev",
+      build: "no build step",
+      start: "node server.js",
+    };
+  // What nixpacks emits for a Node app, measured against 1.41.0: it reads
+  // package.json's scripts, and railpack reads the same ones.
+  return { install: "npm ci", build: "npm run build", start: "npm run start" };
 }
 export function BuildOutputCard({
   build,
@@ -264,7 +268,7 @@ export function BuildOutputCard({
               placeholder={
                 usesDefaultNodeMajor(method)
                   ? `Node ${DEFAULT_NODE_MAJOR}`
-                  : "Auto-detected"
+                  : "read from your project"
               }
             />
           </SettingRow>
