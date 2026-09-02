@@ -5,17 +5,11 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import {
   Save,
-  GitBranch,
-  Container,
   FileText,
-  Boxes,
-  Upload,
   Server as ServerIcon,
   Rocket,
-  ChevronDown,
   AlertTriangle,
 } from "lucide-react";
-import { GitHubIcon } from "@/components/shared/brand-icons";
 import {
   Card,
   CardContent,
@@ -56,6 +50,9 @@ import {
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { BuildOutputCard } from "@/components/apps/settings/build-output-card";
 import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
+import { SettingRow } from "@/components/shared/setting-row";
+import { SettingsDrawer } from "@/components/shared/settings-drawer";
+import { Switch } from "@/components/ui/switch";
 import {
   GitDeployOptions,
   watchPathsToArray,
@@ -89,19 +86,8 @@ import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Collapse } from "@/components/shared/collapse";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
+import { SOURCE_TABS } from "@/components/apps/source-tabs";
 import { gqlAction } from "@/lib/graphql-client";
-
-const SOURCE_TABS: {
-  id: DeploySource;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}[] = [
-  { id: "github", label: "GitHub", icon: GitHubIcon },
-  { id: "git", label: "Git", icon: GitBranch },
-  { id: "docker-image", label: "Docker Image", icon: Container },
-  { id: "compose", label: "Compose", icon: Boxes },
-  { id: "upload", label: "Upload", icon: Upload },
-];
 
 type SourceKeyInput = {
   source: DeploySource;
@@ -235,13 +221,6 @@ export function DeploymentSettingsForm({
   // it is refused - a switch that waits out a round trip reads as a broken one.
   const [autoDeploy, applyAutoDeploy] = useOptimisticValue(initialAutoDeploy);
   const [pending, startTransition] = React.useTransition();
-  // The git deploy-trigger options are advanced and rarely changed, so the whole
-  // section is collapsed by default (a summary of the active trigger shows in the
-  // closed header).
-  const [triggerOpen, setTriggerOpen] = React.useState(false);
-  // The Root Directory now lives in a second collapsed "Additional options" panel
-  // of the Deploy Source card (advanced, rarely changed for a single-folder repo).
-  const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
   // Compose stack (template / multi-service deploys). Lives as a source tab.
   const [compose, setCompose] = React.useState(initialCompose ?? "");
@@ -826,51 +805,6 @@ export function DeploymentSettingsForm({
                 </div>
               )}
 
-              {/**
-               * Git deploy options (trigger type, watch paths, submodules) - for the GitHub App
-               * repo picker (once connected) and the plain Git URL.
-               */}
-              {repoConfigVisible && (
-                <div className="rounded-lg border border-border">
-                  <button
-                    type="button"
-                    onClick={() => setTriggerOpen((v) => !v)}
-                    aria-expanded={triggerOpen}
-                    className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="font-medium">Deploy trigger</span>
-                      {!triggerOpen && (
-                        <span className="truncate text-xs text-muted-foreground">
-                          {gitOptions.triggerType === "tag"
-                            ? "On new tag"
-                            : "On push to branch"}
-                          {watchPathsToArray(gitOptions.watchPaths).length >
-                            0 && " · path-filtered"}
-                          {gitOptions.submodules && " · submodules"}
-                        </span>
-                      )}
-                    </span>
-                    <ChevronDown
-                      className={cn(
-                        "size-4 shrink-0 text-muted-foreground transition-transform",
-                        triggerOpen && "rotate-180",
-                      )}
-                    />
-                  </button>
-                  <Collapse
-                    open={triggerOpen}
-                    className="border-t border-border p-4"
-                  >
-                    <GitDeployOptions
-                      value={gitOptions}
-                      onChange={setGitOptions}
-                      disabled={pending}
-                    />
-                  </Collapse>
-                </div>
-              )}
-
               {source === "docker-image" && (
                 <div className="space-y-2">
                   <FieldLabel
@@ -919,98 +853,77 @@ export function DeploymentSettingsForm({
               {/* Always here, because the Server picker is: every source runs
                   somewhere, while the root directory and the build server only
                   apply to a repo Deplo compiles. */}
-              <div className="rounded-lg border border-border">
-                <button
-                  type="button"
-                  onClick={() => setAdvancedOpen((v) => !v)}
-                  aria-expanded={advancedOpen}
-                  className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
+              <SettingsDrawer
+                title="Additional options"
+                summary={closedSummary}
+              >
+                {rootCardVisible && (
+                  <SettingRow
+                    label="Root directory"
+                    htmlFor="root-directory"
+                    info='Sub-folder to build from, e.g. "apps/web" in a monorepo. Leave as ./ to build from the repository root'
+                    docs="build.fields"
+                  >
+                    <RootDirectoryFields
+                      build={build}
+                      onBuildChange={setBuild}
+                      disabled={pending}
+                      bare
+                    />
+                  </SettingRow>
+                )}
+                <SettingRow
+                  label="Server"
+                  info="The server (host machine) that builds and runs this app."
+                  docs="servers.overview"
+                  align={serverMoveWarned ? "start" : "center"}
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="font-medium">Additional options</span>
-                    {!advancedOpen && (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {closedSummary}
-                      </span>
-                    )}
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "size-4 shrink-0 text-muted-foreground transition-transform",
-                      advancedOpen && "rotate-180",
-                    )}
-                  />
-                </button>
-                <Collapse
-                  open={advancedOpen}
-                  className="space-y-4 border-t border-border p-4"
-                >
-                  {/* Root and Server side by side on a wide screen: two short
-                      fields that read as one row rather than a stack. */}
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {rootCardVisible && (
-                      <RootDirectoryFields
-                        build={build}
-                        onBuildChange={setBuild}
-                        disabled={pending}
-                      />
-                    )}
-                    <div className="space-y-2">
-                      <FieldLabel
-                        info="The server (host machine) that builds and runs this app."
-                        docs="servers.overview"
-                      >
-                        Server
-                      </FieldLabel>
-                      {/* No gap between the two: the warning is squared off at
+                  {/* No gap between the two: the warning is squared off at
                           the top and sits flush under the Select, so it reads as
                           that control's own rather than a note after it. */}
-                      <div>
-                        <Select value={serverId} onValueChange={setServerId}>
-                          <SelectTrigger
-                            className={cn(
-                              "w-full",
-                              serverMoveWarned && "rounded-b-none",
-                            )}
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {servers.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>
-                                <span className="flex items-center gap-2">
-                                  <ServerIcon className="size-4 text-muted-foreground" />
-                                  {serverLabel(s)}
-                                  <ServerRoleHint isDeploHost={s.isDeploHost} />
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Collapse open={serverMoveWarned}>
-                          <div className="flex items-start gap-2 rounded-md rounded-t-none border border-t-0 border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-                            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                            <span>
-                              Saving redeploys this app on the new server and
-                              copies its data (volumes and files) across.
-                              It&apos;s briefly offline during the copy; if the
-                              copy fails the old server is left intact.
+                  <div className="w-full max-w-xs">
+                    <Select value={serverId} onValueChange={setServerId}>
+                      <SelectTrigger
+                        className={cn(
+                          "w-full",
+                          serverMoveWarned && "rounded-b-none",
+                        )}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {servers.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            <span className="flex items-center gap-2">
+                              <ServerIcon className="size-4 text-muted-foreground" />
+                              {serverLabel(s)}
+                              <ServerRoleHint isDeploHost={s.isDeploHost} />
                             </span>
-                          </div>
-                        </Collapse>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Collapse open={serverMoveWarned}>
+                      <div className="flex items-start gap-2 rounded-md rounded-t-none border border-t-0 border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          Saving redeploys this app on the new server and copies
+                          its data (volumes and files) across. It&apos;s briefly
+                          offline during the copy; if the copy fails the old
+                          server is left intact.
+                        </span>
                       </div>
-                    </div>
+                    </Collapse>
                   </div>
-                </Collapse>
-              </div>
+                </SettingRow>
+              </SettingsDrawer>
             </AnimatedHeight>
           </CardContent>
           <CardFooter className="justify-between border-t border-border pt-4">
             {source === "upload" ? (
               <>
-                <DirtyHint dirty={sourceDirty} />
+                <DirtyHint dirty={deploySourceCardDirty} />
                 <Button
-                  size="sm"
                   onClick={saveAndDeploy}
                   disabled={pending || !initialUpload}
                 >
@@ -1022,7 +935,6 @@ export function DeploymentSettingsForm({
               <>
                 <DirtyHint dirty={deploySourceCardDirty} />
                 <Button
-                  size="sm"
                   onClick={saveSource}
                   disabled={pending || !deploySourceCardDirty}
                 >
@@ -1044,19 +956,63 @@ export function DeploymentSettingsForm({
             framework={frameworkOverride ?? framework}
             detectedFramework={framework}
             onFrameworkChange={setFrameworkOverride}
-            autoDeploy={autoDeploy}
-            onAutoDeployChange={toggleAuto}
-            autoDeployBranch={autoDeployBranch}
-            showAutoDeploy={autoDeployPossible}
             dirty={buildDirty}
             pending={pending}
             onSave={saveBuild}
           />
         )}
 
-        {/* Advanced settings - the deploy controls that are nobody's first-run
-            business: the build cache, and the hook that lets something outside
-            Deplo trigger a deployment. */}
+        {/* The switch and what shapes it, together: they were two halves of one
+            answer sitting in two different cards. */}
+        {autoDeployPossible && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex w-fit items-center gap-2 text-base">
+                Deploy on push
+                <InfoTip
+                  content={`Runs a deploy on every push to ${autoDeployBranch}.`}
+                  docs="releases.autoDeploy"
+                />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <SettingRow
+                label="Deploy on push"
+                info={`Runs a deploy on every push to ${autoDeployBranch}.`}
+                docs="releases.autoDeploy"
+              >
+                <Switch
+                  checked={autoDeploy}
+                  onCheckedChange={toggleAuto}
+                  disabled={pending}
+                  aria-label="Deploy on push"
+                />
+              </SettingRow>
+
+              {repoConfigVisible && (
+                <SettingsDrawer
+                  title="Trigger"
+                  summary={
+                    <>
+                      {gitOptions.triggerType === "tag"
+                        ? "On new tag"
+                        : "On push to branch"}
+                      {watchPathsToArray(gitOptions.watchPaths).length > 0 &&
+                        " · path-filtered"}
+                      {gitOptions.submodules && " · submodules"}
+                    </>
+                  }
+                >
+                  <GitDeployOptions
+                    value={gitOptions}
+                    onChange={setGitOptions}
+                    disabled={pending}
+                  />
+                </SettingsDrawer>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Warn before leaving with unsaved source/build edits (auto-deploy saves

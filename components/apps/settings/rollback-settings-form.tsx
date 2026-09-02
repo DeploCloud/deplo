@@ -7,20 +7,19 @@ import { Save, Undo2 } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { InfoTip } from "@/components/ui/info-tip";
+import { SettingRow } from "@/components/shared/setting-row";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { MAX_ROLLBACK_KEEP } from "@/lib/types";
-import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * How many previous deployments this app can be put back on.
@@ -70,28 +69,26 @@ export function RollbackSettingsForm({
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
             <Undo2 className="size-4 text-muted-foreground" />
             Rollbacks
+            <InfoTip
+              content="Go back to an earlier deployment in seconds, without rebuilding."
+              docs="releases.rollbacks"
+            />
           </CardTitle>
-          <CardDescription>
-            Go back to an earlier deployment in seconds, without rebuilding.{" "}
-            <DocsLink topic="releases.rollbacks" />
-          </CardDescription>
         </CardHeader>
 
-        <CardContent className="grid gap-4 sm:max-w-xs">
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="rollback-keep"
-              info="Each one is a copy of the app kept on its server, so more rollbacks means more disk. Older ones are removed after each deploy. 0 keeps none."
-              docs="releases.rollbackRetention"
-            >
-              Keep
-            </FieldLabel>
+        <CardContent>
+          <SettingRow
+            label="Keep"
+            htmlFor="rollback-keep"
+            info="Each one is a copy of the app kept on its server, so more rollbacks means more disk. Older ones are removed after each deploy. 0 keeps none."
+            docs="releases.rollbackRetention"
+          >
             {/* The unit rides inside the field: "3" alone gives no clue what it
                 counts, and this number is easy to read as days. */}
-            <div className="relative">
+            <div className="relative w-40">
               <Input
                 id="rollback-keep"
                 type="number"
@@ -109,12 +106,12 @@ export function RollbackSettingsForm({
                 {parsed === 1 ? "rollback" : "rollbacks"}
               </span>
             </div>
-          </div>
+          </SettingRow>
         </CardContent>
 
         <CardFooter className="justify-between border-t border-border pt-4">
           <DirtyHint dirty={dirty} />
-          <Button size="sm" onClick={save} disabled={pending || !dirty}>
+          <Button onClick={save} disabled={pending || !dirty}>
             <Save className="size-4" />
             Save
           </Button>

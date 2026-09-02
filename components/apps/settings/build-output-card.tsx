@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Hammer, Play, Save, Terminal, Webhook } from "lucide-react";
+import { Save } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -11,14 +11,14 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { InfoTip } from "@/components/ui/info-tip";
+import { SettingRow } from "@/components/shared/setting-row";
+import { OverrideRow } from "@/components/shared/override-row";
 import { BuildMethodFields } from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { frameworkById } from "@/lib/apps/framework-catalog";
 import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
-import { cn } from "@/lib/utils";
 import type {
   BuildConfig,
   BuildMethod,
@@ -26,20 +26,23 @@ import type {
 } from "@/lib/types";
 
 /**
- * Build & Output - the card that answers "what happens between my code and a
- * running container", laid out as the PIPELINE it actually is. The rail never
- * shows a control that would do nothing.
+ * Build & output - one row per decision. A row only appears where the builder
+ * actually reads that field, so nothing here can silently do nothing.
  */
+
+/**
+ * The stored empty string means "Deplo works it out", so it is the OFF state of
+ * an override, not a value. See ADR/plan: null and "" become distinct later.
+ */
+function overrideOf(stored: string | null | undefined): string | null {
+  return stored && stored.length > 0 ? stored : null;
+}
 export function BuildOutputCard({
   build,
   onBuildChange,
   framework,
   detectedFramework,
   onFrameworkChange,
-  autoDeploy,
-  onAutoDeployChange,
-  autoDeployBranch,
-  showAutoDeploy,
   dirty,
   pending,
   onSave,
@@ -52,14 +55,6 @@ export function BuildOutputCard({
   /** What DETECTION read, so the card can say whose answer is showing. */
   detectedFramework: string | null;
   onFrameworkChange: (id: string | null) => void;
-  autoDeploy: boolean;
-  onAutoDeployChange: (value: boolean) => void;
-  /** The branch pushes are watched on, for the Deploy-on-push copy. */
-  autoDeployBranch: string;
-  /**
-   * Whether deploy-on-push means anything for this app.
-   */
-  showAutoDeploy: boolean;
   dirty: boolean;
   pending: boolean;
   onSave: () => void;
@@ -80,7 +75,10 @@ export function BuildOutputCard({
   const showStartCommand = method === "nixpacks" || method === "railpack";
   const showNodeVersion =
     method === "nixpacks" || method === "railpack" || method === "static";
-  const showBuildStage = showBuildCommand || showNodeVersion;
+  // Install and output are read by the same builders that read the build command;
+  // a Dockerfile owns all four itself.
+  const showInstallCommand = showBuildCommand;
+  const showOutputDirectory = method === "static";
 
   // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
@@ -113,235 +111,152 @@ export function BuildOutputCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
-          Build &amp; Output
+          Build &amp; output
           <InfoTip
-            content="Every stage between your code and a running container - how the image is built, what runs during the build, and how it comes up."
+            content="What happens between your code and a running container."
             docs="build.methods"
           />
         </CardTitle>
       </CardHeader>
 
-      <CardContent>
-        <div>
-          <Stage
-            marker={<Hammer className="size-4" />}
-            title="Builder"
-            hint="How the container image is made from your source."
-          >
-            <BuildMethodFields
-              method={build.buildMethod}
-              settings={build.methodSettings}
-              onMethodChange={(m: BuildMethod) =>
-                setBuild((b) => ({ ...b, buildMethod: m }))
-              }
-              onSettingsChange={(patch: Partial<BuildMethodSettings>) =>
-                setBuild((b) => ({
-                  ...b,
-                  methodSettings: { ...b.methodSettings, ...patch },
-                }))
-              }
-              // The framework is one of the BUILDER's settings - only the
-              // auto-detecting ones read the source, so it renders inside their
-              // options panel rather than as a stage of its own.
-              framework={framework}
-              detectedFramework={detectedFramework}
-              onFrameworkChange={pickFramework}
-            />
-          </Stage>
+      <CardContent className="space-y-3">
+        <BuildMethodFields
+          method={build.buildMethod}
+          settings={build.methodSettings}
+          onMethodChange={(m: BuildMethod) =>
+            setBuild((b) => ({ ...b, buildMethod: m }))
+          }
+          onSettingsChange={(patch: Partial<BuildMethodSettings>) =>
+            setBuild((b) => ({
+              ...b,
+              methodSettings: { ...b.methodSettings, ...patch },
+            }))
+          }
+          // The framework is one of the BUILDER's settings - only the
+          // auto-detecting ones read the source, so it renders inside their
+          // options panel rather than as a row of its own.
+          framework={framework}
+          detectedFramework={detectedFramework}
+          onFrameworkChange={pickFramework}
+        />
 
-          {showBuildStage && (
-            <Stage
-              marker={<Terminal className="size-4" />}
-              title="Build"
-              hint="What runs while the image is built. Leave blank to let the builder work it out from your code."
-            >
-              <div className="grid gap-4 sm:grid-cols-2">
-                {showBuildCommand && (
-                  <div className="space-y-2">
-                    <FieldLabel
-                      info="Overrides the command that builds your app. Leave blank to let the builder detect it."
-                      docs="build.fields"
-                    >
-                      Build command
-                    </FieldLabel>
-                    <Input
-                      className="font-mono text-xs"
-                      placeholder="(auto-detected)"
-                      value={build.buildCommand}
-                      onChange={(e) =>
-                        setBuild((b) => ({
-                          ...b,
-                          buildCommand: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                )}
-                {showNodeVersion && (
-                  <div className="space-y-2">
-                    <FieldLabel
-                      info={
-                        <>
-                          Pins the Node.js major, kept in sync with the real
-                          Node releases.
-                          {usesDefaultNodeMajor(method)
-                            ? ` Leave blank to use the default (Node ${DEFAULT_NODE_MAJOR}).`
-                            : " Leave blank to auto-detect from your project."}
-                        </>
-                      }
-                      docs="build.fields"
-                    >
-                      Node.js version
-                    </FieldLabel>
-                    <NodeVersionInput
-                      value={build.runtimeVersion}
-                      onChange={(v) =>
-                        setBuild((b) => ({ ...b, runtimeVersion: v }))
-                      }
-                      placeholder={
-                        usesDefaultNodeMajor(method)
-                          ? `Default (Node ${DEFAULT_NODE_MAJOR})`
-                          : "Default (auto-detect)"
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            </Stage>
-          )}
-
-          <Stage
-            marker={<Play className="size-4" />}
-            title="Run"
-            hint={
-              showStartCommand
-                ? "How the container comes up, and the port Deplo routes traffic to."
-                : "The port Deplo routes traffic to inside the container."
+        {/* Each command is shown as a decision - Deplo works it out, or you take
+            it over. No detected value is printed: nixpacks and railpack settle
+            these inside the agent, and a guess here would read as a promise. */}
+        {showInstallCommand && (
+          <OverrideRow
+            label="Install command"
+            id="install-command"
+            info="Overrides how dependencies are installed before the build."
+            docs="build.fields"
+            value={overrideOf(build.installCommand)}
+            onChange={(v) =>
+              setBuild((b) => ({ ...b, installCommand: v ?? "" }))
             }
-            last={!showAutoDeploy}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              {showStartCommand && (
-                <div className="space-y-2">
-                  <FieldLabel
-                    info="Overrides the command that starts your app inside the container."
-                    docs="build.fields"
-                  >
-                    Start command
-                  </FieldLabel>
-                  <Input
-                    className="font-mono text-xs"
-                    placeholder="(auto-detected)"
-                    value={build.startCommand}
-                    onChange={(e) =>
-                      setBuild((b) => ({ ...b, startCommand: e.target.value }))
-                    }
-                  />
-                </div>
-              )}
-              <div className="space-y-2">
-                <FieldLabel
-                  info="The port your app listens on inside the container (Traefik routes here)."
-                  docs="build.port"
-                >
-                  Container port
-                </FieldLabel>
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  value={portText}
-                  onChange={(e) => onPortChange(e.target.value)}
-                  // Dropping the draft on blur shows the committed port again,
-                  // which is what restores it after it was emptied.
-                  onBlur={() => setPortDraft(null)}
-                />
-              </div>
-            </div>
-          </Stage>
+            placeholder="npm ci"
+            disabled={pending}
+          />
+        )}
 
-          {showAutoDeploy && (
-            <Stage
-              marker={<Webhook className="size-4" />}
-              title="Deploy on push"
-              hint={
-                <>
-                  Run everything above again on every push to{" "}
-                  <code className="font-mono text-[0.7rem]">
-                    {autoDeployBranch}
-                  </code>
-                  .
-                </>
-              }
-              action={
-                <Switch
-                  checked={autoDeploy}
-                  onCheckedChange={onAutoDeployChange}
-                  disabled={pending}
-                  aria-label="Deploy on push"
-                />
-              }
-              last
-            />
-          )}
-        </div>
+        {showBuildCommand && (
+          <OverrideRow
+            label="Build command"
+            id="build-command"
+            info="Overrides the command that builds your app."
+            docs="build.fields"
+            value={overrideOf(build.buildCommand)}
+            onChange={(v) => setBuild((b) => ({ ...b, buildCommand: v ?? "" }))}
+            placeholder="npm run build"
+            disabled={pending}
+          />
+        )}
+
+        {showStartCommand && (
+          <OverrideRow
+            label="Start command"
+            id="start-command"
+            info="Overrides the command that starts your app inside the container."
+            docs="build.fields"
+            value={overrideOf(build.startCommand)}
+            onChange={(v) => setBuild((b) => ({ ...b, startCommand: v ?? "" }))}
+            placeholder="node server.js"
+            disabled={pending}
+          />
+        )}
+
+        {showOutputDirectory && (
+          <OverrideRow
+            label="Output directory"
+            id="output-directory"
+            info="The directory the build writes to, when it is not the builder's own."
+            docs="build.fields"
+            value={overrideOf(build.outputDirectory)}
+            onChange={(v) =>
+              setBuild((b) => ({ ...b, outputDirectory: v ?? "" }))
+            }
+            placeholder="dist"
+            disabled={pending}
+          />
+        )}
+
+        {showNodeVersion && (
+          <OverrideRow
+            label="Node.js version"
+            id="node-version"
+            info={
+              usesDefaultNodeMajor(method)
+                ? `Pins the Node.js major. Off uses Node ${DEFAULT_NODE_MAJOR}.`
+                : "Pins the Node.js major. Off reads it from your project."
+            }
+            docs="build.fields"
+            detectedLabel={
+              usesDefaultNodeMajor(method)
+                ? `Node ${DEFAULT_NODE_MAJOR}`
+                : "Read from your project"
+            }
+            value={overrideOf(build.runtimeVersion)}
+            onChange={(v) =>
+              setBuild((b) => ({ ...b, runtimeVersion: v ?? "" }))
+            }
+            mono={false}
+            disabled={pending}
+            control={({ value, onChange, id }) => (
+              <NodeVersionInput
+                id={id}
+                value={value}
+                onChange={onChange}
+                className="max-w-xs"
+              />
+            )}
+          />
+        )}
+
+        <SettingRow
+          label="Container port"
+          htmlFor="container-port"
+          info="The port your app listens on inside the container (Traefik routes here)."
+          docs="build.port"
+        >
+          <Input
+            id="container-port"
+            type="number"
+            min={1}
+            className="max-w-32 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            value={portText}
+            disabled={pending}
+            onChange={(e) => onPortChange(e.target.value)}
+            onBlur={() => setPortDraft(null)}
+          />
+        </SettingRow>
       </CardContent>
 
       <CardFooter className="justify-between border-t border-border pt-4">
         <DirtyHint dirty={dirty} />
-        <Button size="sm" onClick={onSave} disabled={pending || !dirty}>
+        <Button onClick={onSave} disabled={pending || !dirty}>
           <Save className="size-4" />
           Save build settings
         </Button>
       </CardFooter>
     </Card>
-  );
-}
-
-/**
- * One stage of the pipeline: a marker on the rail, a title carrying what happens
- * here in its tooltip, and the fields that steer it. The connector is drawn by
- * every stage except the last, so the rail ends where the pipeline does.
- */
-function Stage({
-  marker,
-  title,
-  hint,
-  action,
-  children,
-  last = false,
-}: {
-  marker: React.ReactNode;
-  title: string;
-  /** What happens at this stage. Read in the title's tooltip, never below it. */
-  hint?: React.ReactNode;
-  /** Right-aligned control on the title row (a switch), for stages whose whole
-   * setting IS one control. */
-  action?: React.ReactNode;
-  children?: React.ReactNode;
-  last?: boolean;
-}) {
-  return (
-    <div className="relative grid grid-cols-[1.75rem_1fr] gap-x-4">
-      {!last && (
-        <span
-          aria-hidden
-          className="absolute top-8 bottom-0 left-[0.875rem] w-px -translate-x-1/2 bg-border"
-        />
-      )}
-      <span className="relative z-10 mt-0.5 flex size-7 items-center justify-center rounded-full border border-border bg-background text-muted-foreground">
-        {marker}
-      </span>
-      <div className={cn("min-w-0", !last && "pb-6")}>
-        <div className="flex items-start justify-between gap-3">
-          <p className="flex w-fit min-w-0 items-center gap-1.5 text-sm font-medium">
-            {title}
-            {hint && <InfoTip content={hint} />}
-          </p>
-          {action}
-        </div>
-        {children && <div className="mt-3">{children}</div>}
-      </div>
-    </div>
   );
 }

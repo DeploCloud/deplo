@@ -23,6 +23,7 @@ export function OverrideRow({
   docs,
   id,
   detected,
+  detectedLabel = "Worked out at build time",
   value,
   onChange,
   placeholder,
@@ -34,8 +35,11 @@ export function OverrideRow({
   info?: React.ReactNode;
   docs?: DocsTopic;
   id?: string;
-  /** What Deplo would use on its own. Empty when it could not work it out. */
+  /** What Deplo would use on its own, when that is knowable up front. */
   detected?: string;
+  /** Shown in place of `detected` when the value is only settled at build time.
+   * Never invent a command here: a wrong one reads as a promise. */
+  detectedLabel?: string;
   /** `null` while Deplo decides; a string once the caller has taken over. */
   value: string | null;
   onChange: (next: string | null) => void;
@@ -51,9 +55,6 @@ export function OverrideRow({
   }) => React.ReactNode;
 }) {
   const on = value !== null;
-  // Nothing detected means there is nothing to show instead, so the field opens
-  // itself rather than presenting an empty promise.
-  const nothingDetected = !detected?.trim();
 
   function toggle(next: boolean) {
     onChange(next ? (value ?? detected ?? "") : null);
@@ -90,10 +91,10 @@ export function OverrideRow({
           <span
             className={cn(
               "truncate text-sm text-muted-foreground",
-              mono && "font-mono text-xs",
+              detected?.trim() && mono && "font-mono text-xs",
             )}
           >
-            {nothingDetected ? "Nothing to run" : detected}
+            {detected?.trim() || detectedLabel}
           </span>
         )}
         <Switch
