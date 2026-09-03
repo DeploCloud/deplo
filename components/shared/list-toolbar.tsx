@@ -1,12 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { LayoutGrid, List, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { ViewToggle, type ListView } from "@/components/shared/view-toggle";
 
-export type ListView = "grid" | "list";
+export type { ListView };
 
 /**
  * The one search / filter / view / create row every list wears: search on the
@@ -51,30 +50,12 @@ export function ListToolbar({
       </div>
       {filters}
       {view && onView && (
-        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
-          <SimpleTooltip content={gridLabel}>
-            <Button
-              variant={view === "grid" ? "secondary" : "ghost"}
-              size="icon-sm"
-              onClick={() => onView("grid")}
-              aria-label={gridLabel}
-              aria-pressed={view === "grid"}
-            >
-              <LayoutGrid className="size-4" />
-            </Button>
-          </SimpleTooltip>
-          <SimpleTooltip content={listLabel}>
-            <Button
-              variant={view === "list" ? "secondary" : "ghost"}
-              size="icon-sm"
-              onClick={() => onView("list")}
-              aria-label={listLabel}
-              aria-pressed={view === "list"}
-            >
-              <List className="size-4" />
-            </Button>
-          </SimpleTooltip>
-        </div>
+        <ViewToggle
+          view={view}
+          onView={onView}
+          gridLabel={gridLabel}
+          listLabel={listLabel}
+        />
       )}
       {action}
     </div>

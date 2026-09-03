@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { Search, LayoutGrid, List } from "lucide-react";
+import { useRouter } from "@/lib/nav";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { ViewToggle, type ListView } from "@/components/shared/view-toggle";
 
-export type AppView = "grid" | "list";
+export type AppView = ListView;
 
 export function AppSearch({
   initialQuery,
@@ -85,32 +84,7 @@ export function AppSearch({
         />
       </div>
       {environmentSwitcher}
-      <Button
-        variant={view === "grid" ? "outline" : "ghost"}
-        size="icon"
-        className={cn(
-          "hidden sm:flex",
-          view !== "grid" && "text-muted-foreground",
-        )}
-        aria-label="Grid view"
-        aria-pressed={view === "grid"}
-        onClick={() => selectView("grid")}
-      >
-        <LayoutGrid className="size-4" />
-      </Button>
-      <Button
-        variant={view === "list" ? "outline" : "ghost"}
-        size="icon"
-        className={cn(
-          "hidden sm:flex",
-          view !== "list" && "text-muted-foreground",
-        )}
-        aria-label="List view"
-        aria-pressed={view === "list"}
-        onClick={() => selectView("list")}
-      >
-        <List className="size-4" />
-      </Button>
+      <ViewToggle view={view} onView={selectView} className="hidden sm:flex" />
     </div>
   );
 }
