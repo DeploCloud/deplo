@@ -539,9 +539,12 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
     lines.push(`${key}=${serializeValue(value)}`);
   }
 
+  // Coolify keeps a preview twin of every variable; only a key with NO normal
+  // row is preview-only, and only that one is worth a line.
+  const normal = new Set(lines.map((l) => l.slice(0, l.indexOf("="))));
   return {
     blob: lines.join("\n"),
-    previewKeys,
+    previewKeys: previewKeys.filter((k) => !normal.has(k)),
     buildOnlyKeys,
     unreadableKeys,
     sharedRefs,

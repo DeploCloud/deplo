@@ -1354,6 +1354,24 @@ async function runMoveMigrationServiceData(
         });
         continue;
       }
+      // Same machine, same path: the directory the app will read IS the one the old
+      // platform wrote. Copying it over itself would be a wipe followed by a
+      // restore of what was just wiped - all risk, no movement.
+      if (
+        sourceServerId === landed.targetServerId &&
+        bind.sourcePath === bind.targetPath
+      ) {
+        await appendRunItem(input.runId, panel, {
+          path,
+          sourceKind: "volume",
+          sourceName: bind.sourcePath,
+          outcome: "skipped",
+          targetKind: landed.targetKind,
+          targetId: landed.targetId,
+          message: `${bind.sourcePath} is already on this machine at the same path - nothing to copy.`,
+        });
+        continue;
+      }
       // Another app on this machine mounts that path. The copy wipes before it
       // writes, so going ahead would erase a stranger's data and report a clean
       // run - the one place Deplo was seen losing data without saying so.
@@ -1373,24 +1391,6 @@ async function runMoveMigrationServiceData(
           targetKind: landed.targetKind,
           targetId: landed.targetId,
           message,
-        });
-        continue;
-      }
-      // Same machine, same path: the directory the app will read IS the one the old
-      // platform wrote. Copying it over itself would be a wipe followed by a
-      // restore of what was just wiped - all risk, no movement.
-      if (
-        sourceServerId === landed.targetServerId &&
-        bind.sourcePath === bind.targetPath
-      ) {
-        await appendRunItem(input.runId, panel, {
-          path,
-          sourceKind: "volume",
-          sourceName: bind.sourcePath,
-          outcome: "skipped",
-          targetKind: landed.targetKind,
-          targetId: landed.targetId,
-          message: `${bind.sourcePath} is already on this machine at the same path - nothing to copy.`,
         });
         continue;
       }
