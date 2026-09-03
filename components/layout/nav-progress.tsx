@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 // The sidebar icon already spins at 150ms; the bar is the second stage, for a

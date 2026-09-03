@@ -16,7 +16,9 @@ import { SharedVarsManager } from "@/components/env/shared-vars-manager";
 
 export const metadata = { title: "Environment Variables" };
 
-export default async function VariablesPage(props: PageProps<"/variables">) {
+export default async function VariablesPage(
+  props: PageProps<"/[team]/variables">,
+) {
   const { edit: editParam } = await props.searchParams;
   const openEditId = Array.isArray(editParam) ? editParam[0] : editParam;
   const wholeTeam = await reachesWholeTeam();

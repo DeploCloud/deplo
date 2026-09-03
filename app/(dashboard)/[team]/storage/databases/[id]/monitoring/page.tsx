@@ -12,7 +12,7 @@ import { HostChip } from "@/components/monitoring/host-chip";
 export const metadata = { title: "Monitoring" };
 
 export default async function DatabaseMonitoringPage(
-  props: PageProps<"/storage/databases/[id]/monitoring">,
+  props: PageProps<"/[team]/storage/databases/[id]/monitoring">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

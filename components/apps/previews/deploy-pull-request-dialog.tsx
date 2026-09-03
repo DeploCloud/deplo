@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { GitBranch, GitFork, Loader2, Plus } from "lucide-react";
 

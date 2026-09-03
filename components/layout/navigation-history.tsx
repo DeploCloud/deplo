@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
+import { usePathname } from "@/lib/nav";
+import { flatPath } from "@/lib/team-path";
 
 /**
  * "Smart back" for the sidebar sub-menu back links.
@@ -88,7 +89,10 @@ export function record(pathname: string): void {
 }
 
 function isUnder(path: string, prefix: string): boolean {
-  return path === prefix || path.startsWith(prefix + "/");
+  // The stack holds real pathnames (the team included, so the depth math counts
+  // a team switch); the prefixes are written flat, like every path here.
+  const flat = flatPath(path);
+  return flat === prefix || flat.startsWith(prefix + "/");
 }
 
 // The app-creation funnel - pages a back link must never land on, because by then

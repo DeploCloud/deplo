@@ -15,7 +15,7 @@ export const metadata = { title: "Deployments" };
 const IN_PROGRESS = new Set(["building", "queued"]);
 
 export default async function AppDeploymentsPage(
-  props: PageProps<"/apps/[slug]/deployments">,
+  props: PageProps<"/[team]/apps/[slug]/deployments">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

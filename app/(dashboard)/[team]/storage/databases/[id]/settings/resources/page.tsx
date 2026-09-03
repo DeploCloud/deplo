@@ -12,7 +12,7 @@ export const metadata = { title: "Resources" };
  * truth), so the copy says "redeploy", not "deploy".
  */
 export default async function DatabaseResourcesSettingsPage(
-  props: PageProps<"/storage/databases/[id]/settings/resources">,
+  props: PageProps<"/[team]/storage/databases/[id]/settings/resources">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

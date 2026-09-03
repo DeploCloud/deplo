@@ -19,7 +19,7 @@ import { titleClass } from "@/components/shared/page-header";
 const DB_TITLE_MAX = 24;
 
 export async function generateMetadata(
-  props: LayoutProps<"/storage/databases/[id]">,
+  props: LayoutProps<"/[team]/storage/databases/[id]">,
 ): Promise<Metadata> {
   const { id } = await props.params;
   const db = await getDatabase(id);
@@ -34,7 +34,7 @@ export async function generateMetadata(
 }
 
 export default async function DatabaseLayout(
-  props: LayoutProps<"/storage/databases/[id]">,
+  props: LayoutProps<"/[team]/storage/databases/[id]">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

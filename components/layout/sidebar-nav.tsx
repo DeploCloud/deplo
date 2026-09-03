@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link, { useLinkStatus } from "next/link";
-import { usePathname } from "next/navigation";
+import Link, { useLinkStatus } from "@/components/ui/link";
+import { useFlatPathname } from "@/lib/nav";
 import { Loader2 } from "lucide-react";
 import {
   NAV,
@@ -50,7 +50,7 @@ export function SidebarNav({
   /** Instance admin - gates items marked `requiresAdmin` (e.g. the Users settings). */
   isAdmin?: boolean;
 }) {
-  const pathname = usePathname();
+  const pathname = useFlatPathname();
   const caps = new Set(capabilities);
   const service = useAppNav();
   const dbNav = useDbNav();

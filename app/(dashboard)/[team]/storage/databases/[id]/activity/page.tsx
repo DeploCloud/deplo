@@ -11,7 +11,7 @@ export const metadata = { title: "Activity" };
  * history starts where `activities.database_id` did (migration 0134).
  */
 export default async function DatabaseActivityPage(
-  props: PageProps<"/storage/databases/[id]/activity">,
+  props: PageProps<"/[team]/storage/databases/[id]/activity">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

@@ -10,7 +10,7 @@ import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 export const metadata = { title: "Access" };
 
 export default async function AppAccessSettingsPage(
-  props: PageProps<"/apps/[slug]/settings/access">,
+  props: PageProps<"/[team]/apps/[slug]/settings/access">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

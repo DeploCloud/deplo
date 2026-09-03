@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { Layers, Play, RefreshCw, RotateCw, Square } from "lucide-react";
 import type { LucideIcon } from "lucide-react";

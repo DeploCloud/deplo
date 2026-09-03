@@ -17,7 +17,7 @@ import { usesComposeStack } from "@/lib/utils";
 export const metadata = { title: "Storage" };
 
 export default async function AppStorageSettingsPage(
-  props: PageProps<"/apps/[slug]/settings/storage">,
+  props: PageProps<"/[team]/apps/[slug]/settings/storage">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

@@ -9,7 +9,7 @@ import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 export const metadata = { title: "General" };
 
 export default async function AppGeneralSettingsPage(
-  props: PageProps<"/apps/[slug]/settings">,
+  props: PageProps<"/[team]/apps/[slug]/settings">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useFlatPathname, useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { ChevronDown, GripVertical, Plus, Settings } from "lucide-react";
 import {
@@ -31,6 +31,7 @@ import { TeamAvatar } from "@/components/shared/user-avatar";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { teamSwitchDestination } from "@/lib/team-switch";
+import { withTeam } from "@/lib/team-path";
 import { cn } from "@/lib/utils";
 import type { TeamIdentity, TeamSummary } from "@/lib/types";
 
@@ -42,14 +43,12 @@ export function TeamSwitcher({
   teams: TeamSummary[];
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const [pending, startTransition] = React.useTransition();
+  const pathname = useFlatPathname();
   // Controlled only so the pencil can shut it: Radix closes on select, and the
   // pencil deliberately does not select the row.
   const [open, setOpen] = React.useState(false);
-  // The reorder gets its OWN transition: sharing `pending` with switchTo dimmed every
-  // row to 50% (data-[disabled]:opacity-50) while the mutation and the refresh ran,
-  // which is the one thing an optimistic reorder must not do - the list has already
+  // The reorder is optimistic and must never dim the rows it has already moved,
+  // so it holds its own transition and nothing reads its pending flag.
   const [, startReorder] = React.useTransition();
   // What the drag has said so far, as ids - null until somebody drags. Ids the drag
   // never saw (a team joined in another tab) fall in at the end instead of vanishing.
@@ -96,34 +95,19 @@ export function TeamSwitcher({
   }
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  /** `to` overrides where we land - the pencil always wants that team's settings. */
-  function switchTo(teamId: string, to?: string) {
-    if (teamId === team.id) {
-      if (to) router.push(to);
-      return;
-    }
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($teamId: String!) { switchTeam(teamId: $teamId) }`,
-        { teamId },
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      // Sections (Variables, Storage, Templates, …) exist in every team, so
-      // stay on the open page and let it re-read under the new team; only a
-      // page naming one team's App/Database/Project has to be left behind.
-      const dest = to ?? teamSwitchDestination(pathname);
-      // REPLACE, never push: the entry we'd leave behind points at the team we
-      // just left, so "back" would land on a page that no longer resolves.
-      if (dest !== window.location.pathname + window.location.search) {
-        router.replace(dest);
-      }
-      // Staying put still needs the refresh - it is what re-runs the RSC reads
-      // (and the layout) with the new deplo_team cookie.
-      router.refresh();
-    });
+  /**
+   * Switching team is a navigation: the team is in the address. `to`
+   * overrides where we land - the pencil always wants that team's settings.
+   */
+  function switchTo(target: TeamSummary, to?: string) {
+    // Sections (Variables, Storage, Templates, …) exist in every team, so stay
+    // on the open page and let it re-read under the new team; only a page naming
+    // one team's App/Database/Project has to be left behind.
+    const dest = withTeam(to ?? teamSwitchDestination(pathname), target.slug);
+    if (dest === window.location.pathname + window.location.search) return;
+    // REPLACE, never push: the entry we'd leave behind points at the team we
+    // just left, so "back" would land on a page that no longer resolves.
+    router.replace(dest);
   }
 
   return (
@@ -156,11 +140,10 @@ export function TeamSwitcher({
                   team={t}
                   active={t.id === team.id}
                   sortable={sortable}
-                  disabled={pending}
-                  onSelect={() => switchTo(t.id)}
+                  onSelect={() => switchTo(t)}
                   onEdit={() => {
                     setOpen(false);
-                    switchTo(t.id, "/settings");
+                    switchTo(t, "/settings");
                   }}
                 />
               ))}
@@ -189,14 +172,12 @@ function TeamRow({
   team,
   active,
   sortable,
-  disabled,
   onSelect,
   onEdit,
 }: {
   team: TeamSummary;
   active: boolean;
   sortable: boolean;
-  disabled: boolean;
   onSelect: () => void;
   /** Switch to this team and open its settings. */
   onEdit: () => void;
@@ -221,7 +202,6 @@ function TeamRow({
         active && "bg-foreground/10",
         isDragging && "z-10 opacity-80",
       )}
-      disabled={disabled}
       onSelect={onSelect}
     >
       {/* Both controls sit in the flow and fade rather than mount, so the

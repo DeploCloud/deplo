@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/link";
 
-import { usePathname } from "next/navigation";
+import { useFlatPathname } from "@/lib/nav";
 import {
   BookOpen,
   PanelLeftClose,
@@ -45,7 +45,7 @@ export function Sidebar({
   hasSecondFactor?: boolean;
 }) {
   // The footer stands down inside a drill-in; the nav there has its own way out.
-  const { menu } = sidebarMenuFor(usePathname());
+  const { menu } = sidebarMenuFor(useFlatPathname());
   const { collapsed, hydrated, width, dragging, toggle, startResize } =
     useSidebar();
   return (

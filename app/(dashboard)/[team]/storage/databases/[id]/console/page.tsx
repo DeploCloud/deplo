@@ -9,7 +9,7 @@ import { DatabaseConsole } from "@/components/storage/database-console";
 export const metadata = { title: "Console" };
 
 export default async function DatabaseConsolePage(
-  props: PageProps<"/storage/databases/[id]/console">,
+  props: PageProps<"/[team]/storage/databases/[id]/console">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

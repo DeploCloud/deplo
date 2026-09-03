@@ -11,12 +11,11 @@ import { takeoverBlocksDashboard } from "@/lib/data/takeover";
 import { userHasPasskey } from "@/lib/passkey-policy";
 import { AppShell } from "@/components/layout/app-shell";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
+import { NoTeamAccessScreen } from "@/components/teams/no-team-access";
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
+  const { team: addressed } = await props.params;
+  const children = props.children;
   const user = await requireUser();
   // The machine's ports still belong to another panel, so there is nothing here
   // to deploy onto yet. See lib/data/takeover.ts.
@@ -27,6 +26,14 @@ export default async function DashboardLayout({
   // were removed from it). The dashboard needs an active team, so route them
   // to the standalone create-team screen instead of throwing "No active team".
   if (teams.length === 0) redirect("/welcome");
+  // The URL names the team, and it is what every read below resolves (the header
+  // proxy.ts sets from this segment). A team the viewer is not in and a team that
+  // does not exist get the SAME answer, so neither is distinguishable.
+  if (!teams.some((t) => t.slug === addressed)) {
+    const byId = teams.find((t) => t.id === addressed);
+    if (byId) redirect(`/${byId.slug}`);
+    return <NoTeamAccessScreen teams={teams} />;
+  }
 
   // Every load below is team-scoped, so all of them refuse when the active team
   // requires 2FA the account has not enrolled.
@@ -55,7 +62,12 @@ export default async function DashboardLayout({
           hasPasskey={await userHasPasskey(user.id)}
           otherTeams={teams
             .filter((t) => t.id !== e.teamId)
-            .map((t) => ({ id: t.id, name: t.name, avatarUrl: t.avatarUrl }))}
+            .map((t) => ({
+              id: t.id,
+              name: t.name,
+              slug: t.slug,
+              avatarUrl: t.avatarUrl,
+            }))}
         />
       );
     throw e;

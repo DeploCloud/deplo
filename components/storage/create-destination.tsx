@@ -35,7 +35,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { usePendingCreate } from "@/components/shared/pending-create";

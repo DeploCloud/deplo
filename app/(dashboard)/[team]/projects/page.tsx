@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
  * (`/`), which also hosts each container's drill-in view (`/?project=<id>`).
  * This stub only keeps old bookmarks working.
  */
-export default function ProjectsIndex() {
-  redirect("/");
+export default async function ProjectsIndex(
+  props: PageProps<"/[team]/projects">,
+) {
+  const { team } = await props.params;
+  redirect(`/${team}`);
 }

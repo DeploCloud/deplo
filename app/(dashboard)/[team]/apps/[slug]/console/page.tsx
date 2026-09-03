@@ -7,7 +7,7 @@ import { LiveConsole } from "@/components/apps/live-console";
 export const metadata = { title: "Console" };
 
 export default async function AppConsolePage(
-  props: PageProps<"/apps/[slug]/console">,
+  props: PageProps<"/[team]/apps/[slug]/console">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

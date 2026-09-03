@@ -20,7 +20,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 export const metadata = { title: "Environment Variables" };
 
 export default async function AppEnvPage(
-  props: PageProps<"/apps/[slug]/environment">,
+  props: PageProps<"/[team]/apps/[slug]/environment">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { Lock, CloudOff, X } from "lucide-react";
 
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
@@ -63,7 +63,7 @@ function FocusFrame({
   );
 }
 
-export default async function NewAppPage(props: PageProps<"/new">) {
+export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const params = await props.searchParams;
   const placement = await resolveOverviewPlacement(
     placementFromSearchParams(params),

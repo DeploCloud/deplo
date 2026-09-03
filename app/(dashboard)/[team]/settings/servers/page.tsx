@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { Suspense, type ElementType } from "react";
 import {
   Server as ServerIcon,
@@ -382,7 +382,7 @@ function ServerListRow({
 }
 
 export default async function ServersPage(
-  props: PageProps<"/settings/servers">,
+  props: PageProps<"/[team]/settings/servers">,
 ) {
   // Server administration is an instance-wide concern, and the management view
   // lists EVERY server (including ones restricted to other teams), so it is

@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { useFlatPathname } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 /**
@@ -25,7 +25,7 @@ const FULL_BLEED = [
  * and a header of name, status and controls, and a database's does the same.
  */
 export function useFullBleedRoute(): boolean {
-  const pathname = usePathname();
+  const pathname = useFlatPathname();
   return FULL_BLEED.some((re) => re.test(pathname));
 }
 

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import {
@@ -16,8 +16,9 @@ import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
 export const metadata = { title: "Settings · New API token" };
 
 export default async function NewTokenPage(
-  props: PageProps<"/settings/tokens/new">,
+  props: PageProps<"/[team]/settings/tokens/new">,
 ) {
+  const { team } = await props.params;
   const sp = await props.searchParams;
   const wanted = Array.isArray(sp.preset) ? sp.preset[0] : sp.preset;
   const [canManage, canGrantInstanceAdmin, tree, activeTeamId] =
@@ -29,7 +30,7 @@ export default async function NewTokenPage(
     ]);
   // Reachable only from the "New token" menu, which is itself gated, but a
   // typed URL must not open an editor whose save can only fail.
-  if (!canManage) redirect("/settings/tokens");
+  if (!canManage) redirect(`/${team}/settings/tokens`);
   // `?preset=` is the template chosen in that menu. An unknown or stale id
   // degrades to a blank token rather than erroring: the choice is a starting
   // point, not a link.

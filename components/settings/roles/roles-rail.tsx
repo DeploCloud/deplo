@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import Link from "@/components/ui/link";
+import { useFlatPathname, useRouter } from "@/lib/nav";
 import {
   Plus,
   Crown,
@@ -50,7 +50,7 @@ export function RolesRail({
   // Which entry is open comes from the URL rather than a prop, so the rail can
   // live in the layout and survive navigation between roles without re-rendering
   // the whole page from the server.
-  const pathname = usePathname();
+  const pathname = useFlatPathname();
   const activeId = pathname.startsWith("/settings/roles/")
     ? pathname.slice("/settings/roles/".length).split("/")[0]
     : null;

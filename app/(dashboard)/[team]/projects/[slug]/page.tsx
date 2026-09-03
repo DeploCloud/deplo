@@ -7,9 +7,9 @@ import { getProjectBySlug } from "@/lib/data/projects";
  * old slug URL and forwards there - keeping bookmarks and stale links working.
  */
 export default async function ProjectDetail(
-  props: PageProps<"/projects/[slug]">,
+  props: PageProps<"/[team]/projects/[slug]">,
 ) {
-  const { slug } = await props.params;
+  const { team, slug } = await props.params;
   const project = await getProjectBySlug(slug);
-  redirect(project ? `/?project=${project.id}` : "/");
+  redirect(project ? `/${team}?project=${project.id}` : `/${team}`);
 }

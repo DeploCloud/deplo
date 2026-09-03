@@ -6,7 +6,7 @@ import { hasCapability } from "@/lib/membership";
 // The header lives above the page's own Suspense boundary, so it arrives with the
 // shell instead of being redrawn as skeleton bars by loading.tsx.
 export default async function MonitoringLayout(
-  props: LayoutProps<"/monitoring">,
+  props: LayoutProps<"/[team]/monitoring">,
 ) {
   const [settings, canManage] = await Promise.all([
     getMonitoringSettings(),

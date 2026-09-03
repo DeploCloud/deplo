@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 
 /** How often a page with work in flight re-reads itself. */
 const DEFAULT_INTERVAL_MS = 5_000;

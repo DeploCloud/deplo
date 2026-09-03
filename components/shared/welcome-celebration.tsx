@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { ArrowUpRight, BookOpen, ShieldCheck } from "lucide-react";
 
 import { DeploLogo } from "@/components/logo";

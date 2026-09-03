@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { ChevronDown, ChevronUp, Cog } from "lucide-react";
 
 import { UserAvatar } from "@/components/shared/user-avatar";

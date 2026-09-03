@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import {
@@ -17,7 +17,7 @@ import { timeAgo } from "@/lib/utils";
 import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
 
 export async function generateMetadata(
-  props: PageProps<"/settings/tokens/[id]">,
+  props: PageProps<"/[team]/settings/tokens/[id]">,
 ) {
   const { id } = await props.params;
   const token = await getToken(id);
@@ -27,7 +27,7 @@ export async function generateMetadata(
 }
 
 export default async function TokenPage(
-  props: PageProps<"/settings/tokens/[id]">,
+  props: PageProps<"/[team]/settings/tokens/[id]">,
 ) {
   const { id } = await props.params;
   const [token, user, canManage, canGrantInstanceAdmin, tree, activeTeamId] =

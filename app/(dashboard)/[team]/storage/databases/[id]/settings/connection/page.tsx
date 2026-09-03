@@ -17,7 +17,7 @@ export const metadata = { title: "Connection" };
  * and its host port, the server it runs on, and password rotation.
  */
 export default async function DatabaseConnectionSettingsPage(
-  props: PageProps<"/storage/databases/[id]/settings/connection">,
+  props: PageProps<"/[team]/storage/databases/[id]/settings/connection">,
 ) {
   const { id } = await props.params;
   const [db, servers, mayExposePorts, canConfigure] = await Promise.all([

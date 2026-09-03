@@ -11,7 +11,7 @@ export const metadata = { title: "Activity" };
  * touched a variable, and when.
  */
 export default async function AppActivityPage(
-  props: PageProps<"/apps/[slug]/activity">,
+  props: PageProps<"/[team]/apps/[slug]/activity">,
 ) {
   const { slug } = await props.params;
   const app = await getAppBySlug(slug);

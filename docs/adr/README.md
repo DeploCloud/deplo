@@ -36,6 +36,7 @@ repository root.
 | [0027](0027-a-shared-variable-reaches-many-teams.md)                                      | A shared variable reaches many teams, and the instance layer is one of them. **Amends 0010 and 0012**                       |
 | [0028](0028-an-environment-owns-a-network.md)                                             | An Environment owns a network, and nothing crosses it                                                                       |
 | [0029](0029-an-app-slug-is-the-deploy-key-and-stays-instance-unique.md)                   | An app's slug is the deploy key, and it stays unique per instance                                                           |
+| [0031](0031-the-url-names-the-team.md)                                                    | The URL names the team, and it outranks the cookie                                                                          |
 
 ## Amended or superseded
 

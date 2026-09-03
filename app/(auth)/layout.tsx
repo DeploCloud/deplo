@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, isSetupNeeded } from "@/lib/auth";
 import { AuthChrome } from "@/components/auth/auth-chrome";

@@ -26,7 +26,7 @@ const PROJECT_TITLE_MAX = 24;
 
 // Titles nest as "<project> - <section> - Deplo".
 export async function generateMetadata(
-  props: LayoutProps<"/apps/[slug]">,
+  props: LayoutProps<"/[team]/apps/[slug]">,
 ): Promise<Metadata> {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
@@ -40,7 +40,9 @@ export async function generateMetadata(
   };
 }
 
-export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
+export default async function AppLayout(
+  props: LayoutProps<"/[team]/apps/[slug]">,
+) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   // Gone, or on its way out: a delete is irreversible from the moment it is

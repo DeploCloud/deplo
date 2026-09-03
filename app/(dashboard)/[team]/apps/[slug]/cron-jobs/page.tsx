@@ -13,7 +13,7 @@ export const metadata = { title: "Cron jobs" };
  * The operational page: what is scheduled on this app, and what each one did.
  */
 export default async function AppCronJobsPage(
-  props: PageProps<"/apps/[slug]/cron-jobs">,
+  props: PageProps<"/[team]/apps/[slug]/cron-jobs">,
 ) {
   const { slug } = await props.params;
   const app = await getAppBySlug(slug);

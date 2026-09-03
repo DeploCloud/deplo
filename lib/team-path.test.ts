@@ -156,3 +156,16 @@ test("the URL's team wins over the last visited one", () => {
   assert.equal(pick("stranger", null), "team_a");
   assert.equal(pick("", ""), "team_a");
 });
+
+test("a path that already names a team is left alone", () => {
+  // Nothing but a team can hold a first segment, so an unknown one is a team's -
+  // and the team switcher's own `/idra` must not become `/acme/idra`.
+  assert.equal(withTeam("/idra", "acme"), "/idra");
+  assert.equal(withTeam("/idra/apps/web", "acme"), "/idra/apps/web");
+  assert.equal(withTeam("/acme", "acme"), "/acme");
+});
+
+test("the root keeps its query where it belongs", () => {
+  assert.equal(withTeam("/?project=prj_1", "acme"), "/acme?project=prj_1");
+  assert.equal(withTeam("/#tail", "acme"), "/acme#tail");
+});

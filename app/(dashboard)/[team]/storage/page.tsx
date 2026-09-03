@@ -45,7 +45,7 @@ import {
 
 export const metadata = { title: "Storage" };
 
-export default async function StoragePage(props: PageProps<"/storage">) {
+export default async function StoragePage(props: PageProps<"/[team]/storage">) {
   // "New ▸ …" actions (the global context menu / Overview) link here with ?
   const { new: newParam } = await props.searchParams;
   const newKind = Array.isArray(newParam) ? newParam[0] : newParam;

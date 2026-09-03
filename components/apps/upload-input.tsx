@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { FileArchive, Loader2, CheckCircle2 } from "lucide-react";
 import { UploadGraphic } from "@/components/apps/upload-graphic";

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { teamSwitchDestination } from "./team-switch";
+import { flatPath, withTeam } from "./team-path";
 
 /** Section pages exist in every team - switching keeps the viewer on them. */
 test("stays on team-agnostic section pages", () => {
@@ -73,4 +74,24 @@ test("normalizes odd paths", () => {
 test("does not confuse a section with a resource route", () => {
   assert.equal(teamSwitchDestination("/storage"), "/storage");
   assert.equal(teamSwitchDestination("/settings/servers"), "/settings/servers");
+});
+
+/**
+ * What the switcher actually does: read the open path flat, keep the section it
+ * still makes sense to be on, and put the NEW team back on the front.
+ */
+test("switching team keeps the section and changes the team", () => {
+  const dest = (path: string, slug: string) =>
+    withTeam(teamSwitchDestination(flatPath(path)), slug);
+
+  assert.equal(
+    dest("/acme/settings/members", "idra"),
+    "/idra/settings/members",
+  );
+  assert.equal(dest("/acme/activity", "idra"), "/idra/activity");
+  assert.equal(dest("/acme", "idra"), "/idra");
+  // A page naming ONE team's resource has to be left behind.
+  assert.equal(dest("/acme/apps/b5-wiki", "idra"), "/idra");
+  assert.equal(dest("/acme/apps/b5-wiki/logs", "idra"), "/idra");
+  assert.equal(dest("/acme/storage/databases/db_1", "idra"), "/idra/storage");
 });

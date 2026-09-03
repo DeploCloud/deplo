@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
 import {
   GitBranch,
@@ -36,7 +36,9 @@ import {
 } from "@/lib/utils";
 import { titleClass } from "@/components/shared/page-header";
 
-export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
+export default async function AppOverview(
+  props: PageProps<"/[team]/apps/[slug]">,
+) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();

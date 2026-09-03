@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { Plus, Rocket, Folder, Boxes, Eye, ArrowUpRight } from "lucide-react";
 import { listApps } from "@/lib/data/apps";
 import { listFolders } from "@/lib/data/folders";
@@ -41,7 +41,7 @@ import {
   toActivityItem,
 } from "@/components/activity/activity-timeline";
 
-export default async function OverviewPage(props: PageProps<"/">) {
+export default async function OverviewPage(props: PageProps<"/[team]">) {
   const {
     q,
     view: viewParam,

@@ -11,7 +11,7 @@ import { RolesRail } from "@/components/settings/roles/roles-rail";
  */
 export default async function RolesLayout({
   children,
-}: LayoutProps<"/settings/roles">) {
+}: LayoutProps<"/[team]/settings/roles">) {
   // The guard belongs in the LAYOUT, not the pages under it: this runs before
   // every child, so a throw here took out the whole section - the read-only role
   // viewer included.

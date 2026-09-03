@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { gqlSubscribe } from "@/lib/graphql-client";
 import { MIGRATION_HEARTBEAT_STALE_MS } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";

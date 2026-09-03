@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
+import { useFlatPathname } from "@/lib/nav";
 import { Menu, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +39,7 @@ export function Topbar({
   capabilities?: string[];
   isAdmin?: boolean;
 }) {
-  const pathname = usePathname();
+  const pathname = useFlatPathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   // Personal/system settings have no team context, so hide the team switcher
   // there and show a neutral "Settings" label in its place.

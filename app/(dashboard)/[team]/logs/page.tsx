@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { withTeam } from "@/lib/team-path";
 import { cookies } from "next/headers";
 import { listApps } from "@/lib/data/apps";
 import { listDatabases } from "@/lib/data/databases";
@@ -32,7 +33,8 @@ export const metadata = { title: "Logs" };
 /**
  * The general Logs page: pick a thing, then watch its logs full screen.
  */
-export default async function LogsPage(props: PageProps<"/logs">) {
+export default async function LogsPage(props: PageProps<"/[team]/logs">) {
+  const { team } = await props.params;
   const params = await props.searchParams;
 
   const apps = await listApps();
@@ -88,7 +90,7 @@ export default async function LogsPage(props: PageProps<"/logs">) {
   // try/catch: `redirect` works by throwing.
   const pick = Array.isArray(params.pick) ? params.pick[0] : params.pick;
   if (!target && !pick && targets.length === 1)
-    redirect(logTargetHref(targets[0]!.key));
+    redirect(withTeam(logTargetHref(targets[0]!.key), team));
 
   // The shape of the Overview, for the picker to file the targets into.
   const [projects, environments, folders] = await Promise.all([
@@ -104,7 +106,7 @@ export default async function LogsPage(props: PageProps<"/logs">) {
   // at a bare `/logs`, so a link somebody copies shows the logs they meant and
   // Back walks the targets they actually visited.
   const askedFor = params.app ?? params.db;
-  if (!askedFor) redirect(logTargetHref(target.key));
+  if (!askedFor) redirect(withTeam(logTargetHref(target.key), team));
 
   const picker = <LogTargetPicker rows={rows} value={target.key} />;
 

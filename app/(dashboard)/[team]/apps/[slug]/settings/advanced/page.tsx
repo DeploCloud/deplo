@@ -37,7 +37,7 @@ export const metadata = { title: "Advanced" };
  * container Rebuild, and the Danger Zone (transfer to another team, delete).
  */
 export default async function AppAdvancedSettingsPage(
-  props: PageProps<"/apps/[slug]/settings/advanced">,
+  props: PageProps<"/[team]/apps/[slug]/settings/advanced">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
  * a member can do - the two are one decision, not two sections. This stub only
  * keeps old bookmarks and links working.
  */
-export default function MembersIndex() {
-  redirect("/settings/members");
+export default async function MembersIndex(
+  props: PageProps<"/[team]/members">,
+) {
+  const { team } = await props.params;
+  redirect(`/${team}/settings/members`);
 }

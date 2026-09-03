@@ -177,10 +177,14 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
 
 ## Project layout
 
-- `app/(dashboard)/`: RSC pages. Overview `page.tsx` is the one grid (projects → folders →
-  apps) with drill-ins via `?project=&env=&folder=&q=&view=`. Sections: `apps/[slug]`,
-  `deployments`, `logs`, `monitoring`, `storage`, `variables`, `members`, `activity`, `apps`,
-  `templates`, `servers`, `new`, `settings/*`. `app/(auth)/` - login/setup.
+- `app/(dashboard)/[team]/`: RSC pages, ALL of them under the team's slug (ADR-0031). Overview
+  `page.tsx` is the one grid (projects → folders → apps) with drill-ins via
+  `?project=&env=&folder=&q=&view=`. Sections: `apps/[slug]`, `deployments`, `logs`,
+  `monitoring`, `storage`, `variables`, `members`, `activity`, `apps`, `templates`, `servers`,
+  `settings/*`, plus `app/(focus)/[team]/new`. `app/(auth)/` - login/setup. Flat and outside the
+  prefix: `/login`, `/setup`, `/register/*`, `/oauth/*`, `/welcome`, `/takeover`, `/api/*`, and
+  `app/<section>/[[...rest]]` - one stub per legacy section, which redirects a pre-team address
+  into the team that owns the resource (`lib/legacy-redirect.ts`).
 - `app/api/graphql/route.ts`: the single API endpoint. Other `app/api/*/route.ts` are the REST exceptions (below).
 - `lib/data/*`: data layer (`import "server-only"`), **the security boundary**.
 - `lib/graphql/*`: Pothos builder, context, schema, and `types/*` domain modules.
@@ -479,7 +483,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   counting). `sweepRateLimits` runs in the maintenance sweep.
 - **Better Auth is the live auth path** (ADR-0014, migration 0055): session cookie
   `deplo.session_token` (a real `session` row, `__Secure-` prefixed over https), configured in
-  `lib/auth/better-auth.ts`. `deplo_team` still carries the active team and stays Deplo's own.
+  `lib/auth/better-auth.ts`. `deplo_team` still remembers the last team visited (ADR-0031) and
+  stays Deplo's own.
   Three settings are load-bearing: `user: { modelName: "users" }` (its `user` model IS the
   control-plane table, never stand up a second one), `password: {hash, verify}` wired to Deplo's
   scrypt (change it and every credential dies), and `disableSignUp: true` (Better Auth must never
@@ -615,10 +620,13 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 
 ## UX philosophy to preserve
 
-- **Everything is scoped to the active team** (topbar switcher, `deplo_team` cookie). **Servers are
-  the one shared cross-team resource**, never team-scope server records.
+- **Everything is scoped to the active team, and the URL is what names it** (ADR-0031):
+  `/<team slug>/apps/web`. Paths are written FLAT in the code and take the prefix only at the
+  navigation boundary - `withTeam()` inside `components/ui/link.tsx` and `lib/nav.ts`, which
+  eslint makes the only way in. The `deplo_team` cookie is now just "the last team visited".
+  **Servers are the one shared cross-team resource**, never team-scope server records.
 - **A Project is an "advanced folder" with an environment dropdown - it has no page of its own.**
-  It is browsed only on the Overview drill-in (`app/(dashboard)/projects/*` are redirect stubs);
+  It is browsed only on the Overview drill-in (`app/(dashboard)/[team]/projects/*` are redirect stubs);
   each Environment owns its own Apps and shared vars.
 - **Every mutating action is capability-gated and enforced server-side.** UI `hasCapability` checks
   are cosmetic (hide/disable); the authoritative gate is `requireCapability` in the data layer.

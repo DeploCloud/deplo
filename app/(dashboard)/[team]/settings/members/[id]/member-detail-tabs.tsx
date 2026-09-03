@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useRouter, useSearchParams } from "@/lib/nav";
+import Link from "@/components/ui/link";
 import { toast } from "sonner";
 import {
   Check,

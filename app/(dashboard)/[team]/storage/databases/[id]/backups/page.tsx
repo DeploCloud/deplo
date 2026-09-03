@@ -13,7 +13,7 @@ import { BackupsPanel } from "@/components/storage/backups-panel";
 export const metadata = { title: "Backups" };
 
 export default async function DatabaseBackupsPage(
-  props: PageProps<"/storage/databases/[id]/backups">,
+  props: PageProps<"/[team]/storage/databases/[id]/backups">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

@@ -15,7 +15,7 @@ import { HostChip } from "@/components/monitoring/host-chip";
 export const metadata = { title: "Monitoring" };
 
 export default async function AppMonitoringPage(
-  props: PageProps<"/apps/[slug]/monitoring">,
+  props: PageProps<"/[team]/apps/[slug]/monitoring">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

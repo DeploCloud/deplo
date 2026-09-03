@@ -15,7 +15,9 @@ function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
-export default async function TemplatesPage(props: PageProps<"/templates">) {
+export default async function TemplatesPage(
+  props: PageProps<"/[team]/templates">,
+) {
   const searchParams = await props.searchParams;
 
   // The catalogue is a catalogue: anyone on the team may read it.

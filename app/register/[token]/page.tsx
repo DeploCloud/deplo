@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { getRegistrationLinkInfo } from "@/lib/data/members";
 import { AuthChrome } from "@/components/auth/auth-chrome";
 import { InvalidLinkGraphic } from "@/components/auth/invalid-link-graphic";

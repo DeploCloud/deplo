@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { ArrowRight, LayoutTemplate } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";

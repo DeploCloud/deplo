@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildGrants,
   groupNodes,
-} from "@/app/(dashboard)/settings/members/[id]/member-detail-tabs";
+} from "@/app/(dashboard)/[team]/settings/members/[id]/member-detail-tabs";
 import type { Capability } from "./types";
 
 /**

@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
  * from the wizard that just ran it or from the History tab. A bookmarked run
  * lands on that tab.
  */
-export default function ImportRunRedirect() {
-  redirect("/settings/migrations?tab=history");
+export default async function ImportRunRedirect(
+  props: PageProps<"/[team]/settings/import/[id]">,
+) {
+  const { team } = await props.params;
+  redirect(`/${team}/settings/migrations?tab=history`);
 }

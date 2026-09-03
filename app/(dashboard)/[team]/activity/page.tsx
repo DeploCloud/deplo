@@ -38,7 +38,9 @@ import type { FacetOption } from "@/components/env/env-filters";
 
 export const metadata = { title: "Activity" };
 
-export default async function ActivityPage(props: PageProps<"/activity">) {
+export default async function ActivityPage(
+  props: PageProps<"/[team]/activity">,
+) {
   const params = parseActivityParams(await props.searchParams);
   const filter = {
     actorUserIds: params.actorUserIds,

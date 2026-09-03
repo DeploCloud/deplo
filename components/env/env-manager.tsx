@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import {
   LockOpen,
@@ -12,7 +12,7 @@ import {
   Settings,
   Unlink,
 } from "lucide-react";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import {
   Table,
   TableBody,

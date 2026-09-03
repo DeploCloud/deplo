@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
@@ -26,7 +26,7 @@ import {
 import { MemberDetailTabs } from "./member-detail-tabs";
 
 export async function generateMetadata(
-  props: PageProps<"/settings/members/[id]">,
+  props: PageProps<"/[team]/settings/members/[id]">,
 ) {
   if (!(await hasCapability("manage_members"))) return { title: "Settings" };
   const { id } = await props.params;
@@ -40,7 +40,7 @@ export async function generateMetadata(
  * One member's permissions and reach, in the team you are acting in.
  */
 export default async function MemberPage(
-  props: PageProps<"/settings/members/[id]">,
+  props: PageProps<"/[team]/settings/members/[id]">,
 ) {
   if (!(await hasCapability("manage_members"))) notFound();
   const { id } = await props.params;

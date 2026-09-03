@@ -27,9 +27,11 @@ was removed). Created at first-run setup and via the topbar "Create team".
 _Avoid_: organization, workspace, tenant, account.
 
 **Active team**:
-The team a request operates in, resolved server-side from the `deplo_team` cookie
-(validated against the user's memberships, falling back to their first team) and cached
-per-request - exactly like `getCurrentUser()`. The data layer never threads a `teamId`
+The team a request operates in, **named by the first path segment** of the address
+(`/<team slug>/apps/web`, ADR-0031) and resolved server-side in that order: the token's team,
+the URL's, the last one visited (the `deplo_team` cookie), the user's first. Every source is
+validated against the user's memberships, and the result is cached per-request - exactly like
+`getCurrentUser()`. The data layer never threads a `teamId`
 through signatures: read functions call `requireActiveTeamId()` and filter by it;
 mutations call `requireCapability(cap)`. See `lib/membership.ts`.
 _Avoid_: current team (ambiguous with the team being viewed), selected team.

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { CircleAlert, RotateCw, ScrollText } from "lucide-react";
 import { gql } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";

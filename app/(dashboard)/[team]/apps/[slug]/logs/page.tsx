@@ -10,7 +10,7 @@ import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types";
 export const metadata = { title: "Logs" };
 
 export default async function AppLogsPage(
-  props: PageProps<"/apps/[slug]/logs">,
+  props: PageProps<"/[team]/apps/[slug]/logs">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

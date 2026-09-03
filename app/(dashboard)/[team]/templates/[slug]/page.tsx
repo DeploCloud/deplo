@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -45,14 +45,16 @@ import { titleClass } from "@/components/shared/page-header";
 /** How many siblings the Related rail carries. */
 const RELATED = 12;
 
-export async function generateMetadata(props: PageProps<"/templates/[slug]">) {
+export async function generateMetadata(
+  props: PageProps<"/[team]/templates/[slug]">,
+) {
   const { slug } = await props.params;
   const template = await getTemplate(slug).catch(() => null);
   return { title: template ? template.name : "Template" };
 }
 
 export default async function TemplatePage(
-  props: PageProps<"/templates/[slug]">,
+  props: PageProps<"/[team]/templates/[slug]">,
 ) {
   const [{ slug }, searchParams] = await Promise.all([
     props.params,

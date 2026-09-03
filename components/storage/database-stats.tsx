@@ -1,5 +1,5 @@
 import * as React from "react";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { Archive, HardDrive } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusDot } from "@/components/shared/status-badge";

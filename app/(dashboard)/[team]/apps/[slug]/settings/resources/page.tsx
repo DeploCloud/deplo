@@ -14,7 +14,7 @@ export const metadata = { title: "Resources" };
  * neighbours on a shared host, no Docker knowledge required.
  */
 export default async function AppResourcesSettingsPage(
-  props: PageProps<"/apps/[slug]/settings/resources">,
+  props: PageProps<"/[team]/apps/[slug]/settings/resources">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

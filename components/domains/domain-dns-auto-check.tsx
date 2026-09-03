@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { gqlAction } from "@/lib/graphql-client";

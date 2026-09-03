@@ -30,6 +30,6 @@ test("back out of an app jumps past the wizard that created it", () => {
 });
 
 test("the wizard's own layout records its entry", () => {
-  const layout = readFileSync("app/(focus)/layout.tsx", "utf8");
+  const layout = readFileSync("app/(focus)/[team]/layout.tsx", "utf8");
   assert.match(layout, /<NavigationHistoryTracker \/>/);
 });

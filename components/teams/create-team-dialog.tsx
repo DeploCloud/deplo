@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import {
@@ -58,7 +58,7 @@ export function CreateTeamDialog({
   function create() {
     startTransition(async () => {
       const res = await gqlAction<{ createTeam: Team }, Team>(
-        `mutation($name: String!) { createTeam(name: $name) { id } }`,
+        `mutation($name: String!) { createTeam(name: $name) { id slug } }`,
         { name },
         (d) => d.createTeam,
       );
@@ -66,7 +66,9 @@ export function CreateTeamDialog({
         toast.success("Team created");
         onOpenChange(false);
         setName(defaultName ?? "");
-        if (redirect) router.push("/");
+        // Into the new team, by name: the team a page shows IS its address, so
+        // landing on `/` would just put the old one back.
+        if (redirect && res.data) router.push(`/${res.data.slug}`);
         // Either way: `createTeam` switches the active team server-side, so
         // every read on the page behind this dialog is now about a different
         // team and has to run again.

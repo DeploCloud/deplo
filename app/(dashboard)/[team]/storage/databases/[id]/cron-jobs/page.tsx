@@ -11,7 +11,7 @@ import { CronJobsList } from "@/components/crons/cron-jobs-list";
 export const metadata = { title: "Cron jobs" };
 
 export default async function DatabaseCronJobsPage(
-  props: PageProps<"/storage/databases/[id]/cron-jobs">,
+  props: PageProps<"/[team]/storage/databases/[id]/cron-jobs">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

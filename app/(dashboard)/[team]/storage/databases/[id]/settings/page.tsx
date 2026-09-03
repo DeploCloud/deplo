@@ -12,7 +12,7 @@ export const metadata = { title: "General" };
  * server, password) lives one entry down under Connection.
  */
 export default async function DatabaseGeneralSettingsPage(
-  props: PageProps<"/storage/databases/[id]/settings">,
+  props: PageProps<"/[team]/storage/databases/[id]/settings">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

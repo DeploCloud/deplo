@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 export const metadata = { title: "Backups" };
 
 export default async function AppBackupsPage(
-  props: PageProps<"/apps/[slug]/backups">,
+  props: PageProps<"/[team]/apps/[slug]/backups">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

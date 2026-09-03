@@ -29,7 +29,7 @@ import { OptimisticList } from "@/components/shared/optimistic-list";
 export const metadata = { title: "App Domains" };
 
 export default async function AppDomainsPage(
-  props: PageProps<"/apps/[slug]/domains">,
+  props: PageProps<"/[team]/apps/[slug]/domains">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

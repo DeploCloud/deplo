@@ -14,7 +14,7 @@ import type { ContainerMetrics } from "@/lib/data/container-metrics";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 export default async function DatabaseOverviewPage(
-  props: PageProps<"/storage/databases/[id]">,
+  props: PageProps<"/[team]/storage/databases/[id]">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

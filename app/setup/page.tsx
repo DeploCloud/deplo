@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { redirect } from "next/navigation";
 import { checkSetupKey, isSetupNeeded } from "@/lib/auth";
 import { noteBrowserReached } from "@/lib/data/takeover";

@@ -12,7 +12,7 @@ export const TEAM_HEADER = "x-deplo-team";
 export const ACTIVE_TEAM_COOKIE = "deplo_team";
 export const ACTIVE_TEAM_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
-/** First segments that are not a team's page and never take the prefix. */
+/** First segments that live OUTSIDE the dashboard - never a team's page. */
 const FLAT_SEGMENTS = [
   "api",
   "engines",
@@ -57,7 +57,7 @@ export const RESERVED_TEAM_SLUGS: ReadonlySet<string> = new Set<string>([
   ...TEAM_SECTIONS,
 ]);
 
-const FLAT = new Set<string>(FLAT_SEGMENTS);
+const SECTIONS = new Set<string>(TEAM_SECTIONS);
 
 function firstSegment(pathname: string): string {
   return pathname.split(/[?#]/)[0].split("/")[1] ?? "";
@@ -78,7 +78,11 @@ function takesTeam(path: string): boolean {
   // "//host/x" is protocol-relative: another origin, however much it looks local.
   if (!path.startsWith("/") || path.startsWith("//")) return false;
   const seg = firstSegment(path);
-  if (FLAT.has(seg)) return false;
+  // The root, with or without a query.
+  if (!seg) return true;
+  // Only the dashboard's OWN sections take a team. Anything else is either flat
+  // or ALREADY a team's, since nothing but a team can hold a first segment.
+  if (!SECTIONS.has(seg)) return false;
   // An asset, by the dot in its LAST segment: /templates/n8n.svg is public/,
   // while /templates is the page.
   const last = path.split(/[?#]/)[0].split("/").pop() ?? "";
@@ -86,16 +90,16 @@ function takesTeam(path: string): boolean {
 }
 
 /**
- * `/apps/x?tab=1` in team `acme` -> `/acme/apps/x?tab=1`. Idempotent, and a no-op
- * for an absolute URL, a bare query/hash, a flat path or an asset.
+ * `/apps/x?tab=1` in team `acme` -> `/acme/apps/x?tab=1`. A no-op for an absolute
+ * URL, a bare query/hash, an asset, a flat path, and a path already in a team.
  */
 export function withTeam(
   path: string,
   slug: string | null | undefined,
 ): string {
   if (!slug || !takesTeam(path)) return path;
-  if (firstSegment(path) === slug) return path;
-  return path === "/" ? `/${slug}` : `/${slug}${path}`;
+  const bare = path === "/" || path.startsWith("/?") || path.startsWith("/#");
+  return `/${slug}${bare ? path.slice(1) : path}`;
 }
 
 /**

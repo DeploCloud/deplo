@@ -5,6 +5,7 @@ import { getTeamIdentity, listMyTeams } from "@/lib/data/teams";
 import { TwoFactorRequiredError } from "@/lib/membership";
 import { userHasPasskey } from "@/lib/passkey-policy";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
+import { NoTeamAccessScreen } from "@/components/teams/no-team-access";
 import { NavigationHistoryTracker } from "@/components/layout/navigation-history";
 
 /**
@@ -12,14 +13,18 @@ import { NavigationHistoryTracker } from "@/components/layout/navigation-history
  * (the new-app wizard) still needs a signed-in user, a team, and the same
  * two-factor refusal - it just has no sidebar to hang them off.
  */
-export default async function FocusLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function FocusLayout(props: LayoutProps<"/[team]">) {
+  const { team: addressed } = await props.params;
+  const children = props.children;
   const user = await requireUser();
   const teams = await listMyTeams();
   if (teams.length === 0) redirect("/welcome");
+  // The same refusal the dashboard layout gives, for the same reason.
+  if (!teams.some((t) => t.slug === addressed)) {
+    const byId = teams.find((t) => t.id === addressed);
+    if (byId) redirect(`/${byId.slug}/new`);
+    return <NoTeamAccessScreen teams={teams} />;
+  }
 
   try {
     // Team-scoped, so it refuses when the active team requires a second factor
@@ -33,7 +38,12 @@ export default async function FocusLayout({
           hasPasskey={await userHasPasskey(user.id)}
           otherTeams={teams
             .filter((t) => t.id !== e.teamId)
-            .map((t) => ({ id: t.id, name: t.name, avatarUrl: t.avatarUrl }))}
+            .map((t) => ({
+              id: t.id,
+              name: t.name,
+              slug: t.slug,
+              avatarUrl: t.avatarUrl,
+            }))}
         />
       );
     throw e;

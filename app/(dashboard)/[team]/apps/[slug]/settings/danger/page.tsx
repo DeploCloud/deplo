@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
  * `/settings/danger` path working for existing links and bookmarks.
  */
 export default async function AppDangerSettingsRedirect(
-  props: PageProps<"/apps/[slug]/settings/danger">,
+  props: PageProps<"/[team]/apps/[slug]/settings/danger">,
 ) {
-  const { slug } = await props.params;
-  redirect(`/apps/${slug}/settings/advanced`);
+  const { team, slug } = await props.params;
+  redirect(`/${team}/apps/${slug}/settings/advanced`);
 }

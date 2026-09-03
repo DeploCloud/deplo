@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
@@ -37,7 +37,7 @@ import { TimeAgo } from "@/components/shared/time-ago";
 export const metadata = { title: "Deployment" };
 
 export default async function DeploymentDetailPage(
-  props: PageProps<"/apps/[slug]/deployments/[id]">,
+  props: PageProps<"/[team]/apps/[slug]/deployments/[id]">,
 ) {
   const { slug, id } = await props.params;
   const project = await getAppBySlug(slug);

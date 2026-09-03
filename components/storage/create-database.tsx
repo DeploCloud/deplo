@@ -33,7 +33,7 @@ import { RevealInput } from "@/components/ui/password-field";
 import { Combobox } from "@/components/shared/combobox";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { generatePassword } from "@/lib/password-policy";

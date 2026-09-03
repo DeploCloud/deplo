@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { GitPullRequest } from "lucide-react";
 
 import { getAppBySlug } from "@/lib/data/apps";
@@ -20,7 +20,7 @@ export const metadata = { title: "Pull requests" };
  * Pull request previews for one app.
  */
 export default async function AppPullRequestsPage(
-  props: PageProps<"/apps/[slug]/pull-requests">,
+  props: PageProps<"/[team]/apps/[slug]/pull-requests">,
 ) {
   const { slug } = await props.params;
   const app = await getAppBySlug(slug);

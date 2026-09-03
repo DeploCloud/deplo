@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { Globe, Loader2, Pencil, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";

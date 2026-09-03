@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { ArrowLeft } from "lucide-react";
 
 import { DeploMark } from "@/components/logo";
@@ -33,7 +33,7 @@ import { ServerDetailTabs } from "./server-detail-tabs";
 import { titleClass } from "@/components/shared/page-header";
 
 export async function generateMetadata(
-  props: PageProps<"/settings/servers/[id]">,
+  props: PageProps<"/[team]/settings/servers/[id]">,
 ) {
   const { id } = await props.params;
   const server = await getServerById(id).catch(() => null);
@@ -44,7 +44,7 @@ export async function generateMetadata(
  * One server's management page.
  */
 export default async function ServerDetailPage(
-  props: PageProps<"/settings/servers/[id]">,
+  props: PageProps<"/[team]/settings/servers/[id]">,
 ) {
   // Instance-admin, like the list page and for the same reason: this view spans
   // servers restricted to other teams, and every action on it is host-wide.

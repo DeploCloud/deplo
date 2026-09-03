@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { SlidersHorizontal, SquareTerminal } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases";
 import { hasCapability } from "@/lib/membership";
@@ -28,7 +28,7 @@ export const metadata = { title: "Advanced" };
  * from scratch, delete with artifacts).
  */
 export default async function DatabaseAdvancedSettingsPage(
-  props: PageProps<"/storage/databases/[id]/settings/advanced">,
+  props: PageProps<"/[team]/storage/databases/[id]/settings/advanced">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

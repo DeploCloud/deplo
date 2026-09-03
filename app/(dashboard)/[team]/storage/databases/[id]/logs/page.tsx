@@ -7,7 +7,7 @@ import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types";
 export const metadata = { title: "Logs" };
 
 export default async function DatabaseLogsPage(
-  props: PageProps<"/storage/databases/[id]/logs">,
+  props: PageProps<"/[team]/storage/databases/[id]/logs">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);

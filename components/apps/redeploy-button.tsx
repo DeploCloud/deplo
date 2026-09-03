@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { RotateCw, Rocket, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";

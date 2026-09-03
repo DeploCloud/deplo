@@ -22,7 +22,7 @@ import type { GitProviderId } from "@/lib/types";
 export const metadata = { title: "Deployment" };
 
 export default async function AppDeploymentSettingsPage(
-  props: PageProps<"/apps/[slug]/settings/deployments">,
+  props: PageProps<"/[team]/apps/[slug]/settings/deployments">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

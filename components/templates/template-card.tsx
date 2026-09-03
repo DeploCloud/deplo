@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/link";
 import { Package } from "lucide-react";
 import { LogoImage } from "@/components/shared/project-logo";
 import { cn } from "@/lib/utils";

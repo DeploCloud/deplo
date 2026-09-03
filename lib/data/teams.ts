@@ -7,6 +7,8 @@ import {
   requirePersonalSession,
 } from "../auth/request-context";
 import {
+  apps as appsTable,
+  databases as databasesTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
   sharedEnvVars,
@@ -15,7 +17,7 @@ import {
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { assertUser, getCurrentUser } from "../auth";
 import {
   requireActiveTeamId,
   requireCapability,
@@ -82,6 +84,37 @@ export async function getTeamIdentity(): Promise<
     slug: t.slug,
     avatarUrl: teamAvatarUrl(t.image),
   };
+}
+
+/**
+ * The slug of the team owning an app (by its instance-unique slug, ADR-0029) or a
+ * database (by id) - but only when the viewer is a member of it. Deliberately
+ * cross-team: it is what makes a link written before the team was in the address
+ * open the right team. It names nothing the viewer cannot already see.
+ */
+export async function myTeamSlugOwning(
+  what: "app" | "database",
+  key: string,
+): Promise<string | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const rows =
+    what === "app"
+      ? await getDb()
+          .select({ teamId: appsTable.teamId })
+          .from(appsTable)
+          .where(eq(appsTable.slug, key))
+          .limit(1)
+      : await getDb()
+          .select({ teamId: databasesTable.teamId })
+          .from(databasesTable)
+          .where(eq(databasesTable.id, key))
+          .limit(1);
+  const owner = rows[0]?.teamId;
+  if (!owner) return null;
+  return (
+    (await teamsForUser(user.id)).find((t) => t.id === owner)?.slug ?? null
+  );
 }
 
 /** The active team, settings included. A team-wide read. */

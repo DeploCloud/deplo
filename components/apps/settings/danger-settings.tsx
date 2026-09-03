@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/nav";
 import { ArrowLeftRight, Trash2 } from "lucide-react";
 import {
   Card,

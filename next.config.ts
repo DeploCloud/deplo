@@ -55,7 +55,7 @@ const nextConfig: NextConfig = {
   // require the tracer can follow, but that binary then dlopens libvips from a
   // SIBLING package, and a dlopen is invisible to file tracing.
   outputFileTracingIncludes: {
-    "/templates": [
+    "/[team]/templates": [
       "./node_modules/@img/sharp-linuxmusl-x64/**",
       "./node_modules/@img/sharp-libvips-linuxmusl-x64/lib/*.so*",
     ],

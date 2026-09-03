@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link from "@/components/ui/link";
+import { useRouter } from "@/lib/nav";
 import { ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,23 +28,17 @@ export function TwoFactorLockScreen({
   hasPasskey = false,
 }: {
   reason: string;
-  otherTeams: { id: string; name: string; avatarUrl: string | null }[];
+  otherTeams: {
+    id: string;
+    name: string;
+    slug: string;
+    avatarUrl: string | null;
+  }[];
   /** This account holds a passkey that works here, but did not sign in with it. */
   hasPasskey?: boolean;
 }) {
   const router = useRouter();
   const [wizard, setWizard] = React.useState(false);
-  const [switching, setSwitching] = React.useState(false);
-
-  async function switchTeam(teamId: string) {
-    setSwitching(true);
-    const res = await gqlAction(
-      `mutation ($teamId: ID!) { switchTeam(teamId: $teamId) }`,
-      { teamId },
-    );
-    setSwitching(false);
-    if (res.ok) router.refresh();
-  }
 
   return (
     <div className="flex min-h-svh items-center justify-center p-6">
@@ -91,20 +85,17 @@ export function TwoFactorLockScreen({
                 Or switch to a team that does not require it:
               </p>
               <div className="flex flex-wrap gap-2">
+                {/* A link, not a mutation: the team a page is in IS its address. */}
                 {otherTeams.map((t) => (
-                  <Button
-                    key={t.id}
-                    variant="outline"
-                    size="sm"
-                    disabled={switching}
-                    onClick={() => void switchTeam(t.id)}
-                  >
-                    <TeamAvatar
-                      name={t.name}
-                      avatarUrl={t.avatarUrl}
-                      size="sm"
-                    />
-                    {t.name}
+                  <Button key={t.id} asChild variant="outline" size="sm">
+                    <Link href={`/${t.slug}`}>
+                      <TeamAvatar
+                        name={t.name}
+                        avatarUrl={t.avatarUrl}
+                        size="sm"
+                      />
+                      {t.name}
+                    </Link>
                   </Button>
                 ))}
               </div>
