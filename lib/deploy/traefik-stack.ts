@@ -21,108 +21,6 @@ import { composeTruthy } from "./compose-lint";
 /** The container the installer creates. A Traefik under any other name is not ours. */
 export const TRAEFIK_CONTAINER = "deplo-traefik";
 
-/** Router + middleware names for the dashboard route. Also the removal marker. */
-const ROUTER = "deplo-traefik-dashboard";
-const AUTH_MIDDLEWARE = `${ROUTER}-auth`;
-
-/** The static flag that turns the dashboard on. Not settable via a label. */
-const DASHBOARD_FLAG = "--api.dashboard=true";
-
-/**
- * Written beside our router labels when WE are the ones who added {@link
- * DASHBOARD_FLAG}, so unpublishing can take the flag back out without stealing a
- * dashboard the operator had enabled themselves.
- */
-const FLAG_MARKER = "deplo.traefik.dashboard-flag=deplo";
-
-export type TraefikDashboard = {
-  /** The host the dashboard answers on. */
-  domain: string;
-  /**
-   * htpasswd lines (`user:$2b$…`) with SINGLE `$`, as {@link htpasswdLine}
-   * produces them. The compose escaping is applied here.
-   */
-  htpasswdUsers: string;
-};
-
-/**
- * Turn the dashboard on (or off, with `dashboard: null`) in an existing
- * `deplo-traefik` compose file, returning the new YAML.
- */
-export function withTraefikDashboard(
-  currentYaml: string,
-  dashboard: TraefikDashboard | null,
-): string {
-  const doc = parseCompose(currentYaml);
-  const service = traefikService(doc);
-  withRedirectFallback(doc, service);
-
-  const command = listOf(service.get("command", true));
-  const labels = listOf(service.get("labels", true));
-
-  // Our own labels always come off first, so enabling twice is idempotent and
-  // disabling leaves whatever the operator added untouched. `traefik.enable` is
-  // deliberately NOT treated as ours here - see the disable branch.
-  const kept = labels.filter(
-    (l) => !isOurs(l) && !l.startsWith("traefik.enable="),
-  );
-
-  if (!dashboard) {
-    // The static flag comes out only when we put it there.
-    if (labels.includes(FLAG_MARKER)) {
-      setList(
-        doc,
-        service,
-        "command",
-        command.filter((c) => c !== DASHBOARD_FLAG),
-      );
-    }
-    // `traefik.enable=true` is ours only when nothing else on this container needs it.
-    const needsEnable = kept.some((l) => l.startsWith("traefik."));
-    setList(
-      doc,
-      service,
-      "labels",
-      needsEnable ? ["traefik.enable=true", ...kept] : kept,
-    );
-    return dump(doc);
-  }
-
-  const domain = assertRoutableHost(
-    dashboard.domain,
-    "A domain is required to publish the Traefik dashboard",
-  );
-  if (!dashboard.htpasswdUsers.trim())
-    throw new Error(
-      "Credentials are required to publish the Traefik dashboard",
-    );
-
-  // Claim the flag only when we are the one adding it - a host that already had
-  // it keeps it when the panel is turned off again.
-  const ourFlag =
-    !command.includes(DASHBOARD_FLAG) || labels.includes(FLAG_MARKER);
-  if (!command.includes(DASHBOARD_FLAG)) command.push(DASHBOARD_FLAG);
-  setList(doc, service, "command", command);
-
-  setList(doc, service, "labels", [
-    "traefik.enable=true",
-    ...(ourFlag ? [FLAG_MARKER] : []),
-    `traefik.http.routers.${ROUTER}.rule=Host(\`${domain}\`)`,
-    `traefik.http.routers.${ROUTER}.entrypoints=websecure`,
-    `traefik.http.routers.${ROUTER}.tls.certresolver=${certResolver(command)}`,
-    // api@internal is Traefik's built-in handler for its own dashboard + API.
-    `traefik.http.routers.${ROUTER}.service=api@internal`,
-    `traefik.http.routers.${ROUTER}.middlewares=${AUTH_MIDDLEWARE}`,
-    // `$` is doubled because this lands in a compose file, which reads a single
-    // `$` as variable interpolation and would eat the hash - the same escaping
-    // routing.ts applies to an app's basic-auth label.
-    `traefik.http.middlewares.${AUTH_MIDDLEWARE}.basicauth.users=` +
-      dashboard.htpasswdUsers.replace(/\$/g, "$$$$"),
-    ...kept,
-  ]);
-  return dump(doc);
-}
-
 /* ------------------------------------------------------------------ */
 /* The Let's Encrypt account email                                     */
 /* ------------------------------------------------------------------ */
@@ -707,28 +605,6 @@ function withRedirectFallback(doc: Stack, service: YAMLMap): void {
   ]);
 }
 
-/** Whether this stack currently publishes the dashboard, and on which host. */
-export function traefikDashboardDomain(currentYaml: string): string | null {
-  let service: YAMLMap | null;
-  try {
-    service = traefikServiceNode(parseCompose(currentYaml));
-  } catch {
-    return null;
-  }
-  if (!service) return null;
-  if (!listOf(service.get("command", true)).includes(DASHBOARD_FLAG))
-    return null;
-  for (const label of listOf(service.get("labels", true))) {
-    const m = label.match(
-      new RegExp(
-        `^traefik\\.http\\.routers\\.${ROUTER}\\.rule=Host\\(\`([^\`]+)\`\\)$`,
-      ),
-    );
-    if (m) return m[1];
-  }
-  return null;
-}
-
 /* ------------------------------------------------------------------ */
 /* Internals                                                           */
 /* ------------------------------------------------------------------ */
@@ -879,17 +755,6 @@ function certResolver(command: string[]): string {
     if (m) return m[1];
   }
   return "letsencrypt";
-}
-
-/**
- * Our labels, identified by router/middleware name - the removal marker.
- */
-function isOurs(label: string): boolean {
-  return (
-    label.startsWith(`traefik.http.routers.${ROUTER}.`) ||
-    label.startsWith(`traefik.http.middlewares.${AUTH_MIDDLEWARE}.`) ||
-    label === FLAG_MARKER
-  );
 }
 
 function dump(doc: Stack): string {

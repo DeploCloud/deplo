@@ -8,16 +8,13 @@ import {
   Clock,
   Hammer,
   Cpu,
-  ExternalLink,
   Globe,
   KeyRound,
   Loader2,
   RefreshCw,
   ShieldAlert,
-  Sparkles,
   Trash2,
   TriangleAlert,
-  LayoutDashboard,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +30,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -44,13 +40,12 @@ import {
 } from "@/components/servers/server-role-options";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { gqlAction } from "@/lib/graphql-client";
-import { regenerateNipDomain } from "@/lib/nip-suggestion";
 import { formatBytes } from "@/lib/utils";
 import type { ServerSummary } from "./server-detail-tabs";
 
 /**
- * The Advanced tab: what this box actually IS, what time it thinks it is, the
- * Traefik web panel, and the two irreversible things.
+ * The Advanced tab: what this box actually IS, what time it thinks it is, and
+ * the two irreversible things.
  */
 
 type HostInfo = {
@@ -70,8 +65,6 @@ type HostInfo = {
   timeUnixMs: number;
   controlPlaneTimeUnixMs: number;
   utcOffsetMinutes: number;
-  traefikManaged: boolean;
-  traefikDashboardDomain: string | null;
   canRestartControlPlane: boolean;
 };
 
@@ -79,7 +72,7 @@ const HOST_INFO_FIELDS = `
   cpuModel cpuCores cpuThreads memTotalBytes diskTotalBytes diskUsedBytes
   osPretty kernel arch dockerVersion dockerRootDir uptimeSec
   timezone timeUnixMs controlPlaneTimeUnixMs utcOffsetMinutes
-  traefikManaged traefikDashboardDomain canRestartControlPlane
+  canRestartControlPlane
 `;
 
 /**
@@ -127,7 +120,6 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
       <ServerRolePanel server={server} />
       <HostDetails info={info} loading={loading} error={error} onRetry={load} />
       <ServerClock server={server} reading={reading} onChanged={setReading} />
-      <TraefikPanel server={server} info={info} onChanged={load} />
       <InstallCommand server={server} />
       <DangerZone server={server} />
     </>
@@ -466,367 +458,6 @@ function formatOffset(minutes: number): string {
   const sign = minutes < 0 ? "-" : "+";
   const abs = Math.abs(minutes);
   return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
-}
-
-/* ------------------------------------------------------------------ */
-/* Traefik web panel                                                   */
-/* ------------------------------------------------------------------ */
-
-function TraefikPanel({
-  server,
-  info,
-  onChanged,
-}: {
-  server: ServerSummary;
-  info: HostInfo | null;
-  onChanged: () => void;
-}) {
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  const [enabled, setEnabled] = React.useState(
-    Boolean(server.traefikDashboard),
-  );
-  const [domain, setDomain] = React.useState(
-    server.traefikDashboard?.domain ?? server.suggestedTraefikDomain ?? "",
-  );
-  const [username, setUsername] = React.useState(
-    server.traefikDashboard?.username ?? "",
-  );
-  const [password, setPassword] = React.useState("");
-  const [confirming, setConfirming] = React.useState(false);
-  // Set once we have applied something ourselves: from then on the stored row and
-  // the host cannot disagree, so the drift line below stays out of the way while
-  // the page and the reading catch up with each other.
-  const [applied, setApplied] = React.useState(false);
-
-  // What the HOST is publishing, read off its own Traefik configuration. Before the
-  // first reading lands there is nothing else to go on, so the row stands in.
-  const published = info
-    ? info.traefikDashboardDomain
-    : (server.traefikDashboard?.domain ?? null);
-  const recorded = server.traefikDashboard?.domain ?? null;
-  const canManage = info?.traefikManaged ?? false;
-  // The free hostname currently on offer. Seeded with the server's own (already
-  // fresh) suggestion and re-rolled in the browser on every Generate, so the
-  // tooltip always names the one the button would drop into the field.
-  const [suggested, setSuggested] = React.useState(
-    server.suggestedTraefikDomain,
-  );
-
-  // Adopt the host's answer whenever a fresh reading arrives. Adjusting state
-  // during render is the supported pattern (ServerClock above does the same with
-  // the timezone); an effect would paint the stale value first.
-  const [seen, setSeen] = React.useState(info);
-  if (seen !== info) {
-    setSeen(info);
-    if (info) {
-      setEnabled(info.traefikDashboardDomain !== null);
-      if (info.traefikDashboardDomain) setDomain(info.traefikDashboardDomain);
-    }
-  }
-
-  // A password is required to publish, but an EDIT that only moves the domain
-  // reuses the stored one - asking for it again would be a reason not to bother.
-  const complete =
-    domain.trim() !== "" &&
-    username.trim() !== "" &&
-    (password !== "" || published !== null);
-  // What Apply would actually change. Without this the button is armed on a host
-  // with no panel, reading "Turn off panel" and recreating Traefik - every site
-  // here blipping - to turn off something that was never on.
-  const changes = enabled
-    ? domain.trim().toLowerCase() !== (published ?? "") ||
-      username.trim() !== (server.traefikDashboard?.username ?? "") ||
-      password !== ""
-    : published !== null;
-  // Named for what it will do to THIS host, not for the switch's position: with
-  // nothing published, "Turn off panel" describes nothing that exists.
-  const actionLabel = !enabled
-    ? "Turn off panel"
-    : published
-      ? "Update panel"
-      : "Publish panel";
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!changes || (enabled && !complete)) return;
-    // Either direction recreates the Traefik container, which takes every site on
-    // this host down for a few seconds. That is not something to discover
-    // afterwards, so both get the same confirmation.
-    setConfirming(true);
-  }
-
-  function apply() {
-    const next = domain.trim().toLowerCase();
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation SetServerTraefikDashboard($id: String!, $input: TraefikDashboardInput) {
-          setServerTraefikDashboard(id: $id, input: $input) { id }
-        }`,
-        {
-          id: server.id,
-          input: enabled
-            ? {
-                domain: next,
-                username: username.trim(),
-                password: password || null,
-              }
-            : null,
-        },
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      setConfirming(false);
-      setPassword("");
-      setApplied(true);
-      toast.success(
-        enabled
-          ? `Traefik panel published on ${next}`
-          : "Traefik panel turned off",
-      );
-      onChanged();
-      router.refresh();
-    });
-  }
-
-  return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <LayoutDashboard className="size-4" />
-            Traefik web panel
-            <BetaChip />
-            <InfoTip
-              content="Traefik's own dashboard: the live view of every route and certificate on this server. Useful when a domain is not resolving the way you expect."
-              docs="servers.advanced"
-            />
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Publish Traefik&rsquo;s dashboard on a domain, behind a username and
-            password.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {info && !canManage ? (
-            <p className="text-sm text-muted-foreground">
-              This server runs a reverse proxy Deplo did not install, so Deplo
-              will not reconfigure it here.
-            </p>
-          ) : (
-            <form className="space-y-4" onSubmit={submit}>
-              {/**
-               * Where it is answering right now, with the way in.
-               */}
-              {info && published ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">
-                      Live on this server
-                    </div>
-                    <p className="mt-1 truncate font-mono text-sm text-muted-foreground">
-                      {published}
-                    </p>
-                  </div>
-                  <Button variant="outline" asChild>
-                    <a
-                      href={`https://${published}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <ExternalLink className="size-4" />
-                      Open panel
-                    </a>
-                  </Button>
-                </div>
-              ) : null}
-
-              {/* Our record and the host disagree - said out loud, because the
-                  only way here is someone having reconfigured the proxy on the
-                  box. Nothing is repaired silently, and the host is believed. */}
-              {info && !applied && recorded && recorded !== published ? (
-                <p className="text-sm text-muted-foreground">
-                  {published
-                    ? `Deplo had ${recorded} on record for this server, so its proxy was reconfigured somewhere else.`
-                    : `Deplo had this panel on record for ${recorded}, but the host is not publishing it.`}
-                </p>
-              ) : null}
-
-              <div className="flex items-center gap-3">
-                <Switch
-                  id="traefik-panel"
-                  checked={enabled}
-                  onCheckedChange={setEnabled}
-                  disabled={pending || !info}
-                />
-                <Label htmlFor="traefik-panel">Publish the panel</Label>
-              </div>
-
-              {enabled ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2 sm:col-span-2">
-                    {/* Same shape as the Add domain dialog: the free hostname is
-                        offered here too, because a fresh install has no domain to
-                        point at this and the panel would be unreachable. */}
-                    <div className="flex items-center justify-between gap-2">
-                      <FieldLabel
-                        htmlFor="traefik-domain"
-                        info={
-                          suggested ? (
-                            <>
-                              No domain?{" "}
-                              <span className="font-mono">{suggested}</span> is
-                              filled in for you and works with zero DNS setup.
-                              Click Generate for a different one.
-                            </>
-                          ) : (
-                            "Point this domain's DNS at this server first, or the certificate cannot be issued."
-                          )
-                        }
-                        docs="domains.noDomainYet"
-                      >
-                        Domain
-                      </FieldLabel>
-                      {/* Rolls new words onto the same server, endlessly, and is
-                          also the way back after typing over the field. */}
-                      {suggested ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs text-muted-foreground"
-                          onClick={() => {
-                            const next = regenerateNipDomain(suggested);
-                            setSuggested(next);
-                            setDomain(next);
-                          }}
-                          disabled={pending}
-                        >
-                          <Sparkles className="size-3.5" />
-                          Generate
-                        </Button>
-                      ) : null}
-                    </div>
-                    <Input
-                      id="traefik-domain"
-                      value={domain}
-                      onChange={(e) => setDomain(e.target.value)}
-                      placeholder="traefik.example.com"
-                      disabled={pending}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="traefik-user"
-                      info="Anyone with these credentials can see every route and certificate on this server."
-                      docs="servers.advanced"
-                    >
-                      Username
-                    </FieldLabel>
-                    <Input
-                      id="traefik-user"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      autoComplete="off"
-                      disabled={pending}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="traefik-password"
-                      info="Stored encrypted and never shown again. Leave blank when editing to keep the current one."
-                      docs="servers.advanced"
-                    >
-                      Password
-                    </FieldLabel>
-                    <Input
-                      id="traefik-password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder={published ? "Unchanged" : ""}
-                      autoComplete="new-password"
-                      disabled={pending}
-                      required={published === null}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              <Button
-                type="submit"
-                disabled={
-                  pending || !info || !changes || (enabled && !complete)
-                }
-              >
-                {pending ? "Applying" : actionLabel}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog
-        open={confirming}
-        onOpenChange={(o) => !o && setConfirming(false)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            {enabled ? (
-              <>
-                <DialogTitle>
-                  Publish the Traefik panel on {domain.trim().toLowerCase()}?
-                </DialogTitle>
-                <DialogDescription>
-                  Traefik has to restart to pick this up, so every site on{" "}
-                  {server.name} is unreachable for a few seconds.{" "}
-                  {domain.trim().toLowerCase() === suggested ? (
-                    <>
-                      This hostname already resolves to this server, so its
-                      certificate can be issued right away.
-                    </>
-                  ) : (
-                    <>
-                      Make sure <strong>{domain.trim().toLowerCase()}</strong>{" "}
-                      already points at this server, or its certificate will not
-                      be issued.
-                    </>
-                  )}
-                </DialogDescription>
-              </>
-            ) : (
-              <>
-                <DialogTitle>
-                  Turn the Traefik panel off on {server.name}?
-                </DialogTitle>
-                <DialogDescription>
-                  It stops answering on <strong>{published}</strong>. Traefik
-                  has to restart for that, so every site on this server is
-                  unreachable for a few seconds.
-                </DialogDescription>
-              </>
-            )}
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirming(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => apply()} disabled={pending}>
-              {pending ? "Applying" : actionLabel}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
 }
 
 /* ------------------------------------------------------------------ */

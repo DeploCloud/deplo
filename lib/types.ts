@@ -473,10 +473,6 @@ export interface Server {
    * still run in parallel.
    */
   deployConcurrency: number;
-  /**
-   * The Traefik web panel: the host's own Traefik dashboard, published here.
-   */
-  traefikDashboard?: { domain: string; username: string };
   createdAt: string;
   /**
    * Agent trust material - present once a server is provisioned (Part B). Absent

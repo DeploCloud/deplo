@@ -1044,6 +1044,13 @@
       "when": 1788366348908,
       "tag": "0148_drop_migration_allow_private",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1788366349908,
+      "tag": "0149_drop_traefik_dashboard",
+      "breakpoints": true
     }
   ]
 }

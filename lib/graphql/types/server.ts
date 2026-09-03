@@ -31,7 +31,6 @@ import {
   restartServerWorkloads,
   restartServerTraefik,
   restartDeploPanel,
-  setServerTraefikDashboard,
   type ServerHostInfo,
   type ServerRestartReport,
   type RestartedWorkload,
@@ -202,23 +201,6 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
         "Whether this is the host running Deplo itself (the dashboard and API), as opposed to a remote that only runs the deploy agent. It cannot be removed, and it is the only server that can restart the Deplo panel.",
       resolve: (s) => isDeploHostServer(s, deploHostSelfAddresses()),
     }),
-    traefikDashboardDomain: t.string({
-      nullable: true,
-      // Instance-admin for the same reason statusMessage is: it describes shared
-      // infrastructure the operator administers, not something every member who
-      // can merely deploy here needs to know the address of.
-      authScopes: { instanceAdmin: true },
-      description:
-        "The domain this server publishes Traefik's own dashboard on, or null when it is off (the default). Requires instanceAdmin. The credentials guarding it are never readable.",
-      resolve: (s) => s.traefikDashboard?.domain ?? null,
-    }),
-    traefikDashboardUser: t.string({
-      nullable: true,
-      authScopes: { instanceAdmin: true },
-      description:
-        "The username for the Traefik dashboard's basic auth, so the form can show whose credentials are in place. The password has no read path at all.",
-      resolve: (s) => s.traefikDashboard?.username ?? null,
-    }),
   }),
 });
 
@@ -288,16 +270,6 @@ const ServerHostInfoRef = builder
       utcOffsetMinutes: t.exposeInt("utcOffsetMinutes", {
         description:
           "Offset from UTC in MINUTES, not hours - Kathmandu is +345 and Kolkata +330.",
-      }),
-      traefikManaged: t.exposeBoolean("traefikManaged", {
-        description:
-          "Whether Deplo installed the Traefik on this host. False for a server behind the operator's own proxy, where Deplo will not reconfigure anything - the dashboard cannot be published there.",
-      }),
-      traefikDashboardDomain: t.string({
-        nullable: true,
-        description:
-          "The domain the host is CURRENTLY serving Traefik's dashboard on, read from the live stack file rather than from what Deplo stored, so a host reconfigured out of band reports the truth.",
-        resolve: (i) => i.traefikDashboardDomain,
       }),
       canRestartControlPlane: t.exposeBoolean("canRestartControlPlane", {
         description:
@@ -530,27 +502,6 @@ const SetServerTeamsInputType = builder.inputType("SetServerTeamsInput", {
     serverId: t.string({ required: true }),
     allTeams: t.boolean({ required: true }),
     teamIds: t.stringList({ required: false }),
-  }),
-});
-
-const TraefikDashboardInputType = builder.inputType("TraefikDashboardInput", {
-  description:
-    "Where to publish Traefik's dashboard and who may open it. Credentials are not optional: the dashboard exposes every router, service and certificate on the host.",
-  fields: (t) => ({
-    domain: t.string({
-      required: true,
-      description:
-        "The host the dashboard answers on. Point its DNS at this server first.",
-    }),
-    username: t.string({
-      required: true,
-      description: "Basic-auth username. No colons.",
-    }),
-    password: t.string({
-      required: false,
-      description:
-        "Basic-auth password. Required the first time the dashboard is turned on; omit it on a later edit to keep the stored one. It can never be read back.",
-    }),
   }),
 });
 
@@ -864,29 +815,6 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id }) => {
       await restartDeploPanel(id);
       return true;
-    },
-  }),
-  setServerTraefikDashboard: t.field({
-    type: ServerRef,
-    authScopes: { instanceAdmin: true },
-    description:
-      "Publish Traefik's own web dashboard for this server on a domain, protected by basic auth, or turn it off by passing no input. A domain, a username and a password are ALL required to enable it - the dashboard lists every route, service and certificate on the host, so it is never published unprotected. On an edit that only changes the domain the stored password is reused; the password itself can never be read back. Applying the change recreates the Traefik container, so routing on this host is interrupted for a few seconds.",
-    args: {
-      id: t.arg.string({ required: true }),
-      input: t.arg({ type: TraefikDashboardInputType, required: false }),
-    },
-    resolve: async (_r, { id, input }) => {
-      await setServerTraefikDashboard(
-        id,
-        input
-          ? {
-              domain: input.domain,
-              username: input.username,
-              password: input.password ?? "",
-            }
-          : null,
-      );
-      return (await getServer(id))!;
     },
   }),
   // A MUTATION for the same reason checkServerHostInfo is one: it dials the host

@@ -669,12 +669,6 @@ export const servers = pgTable(
     // (lib/deploy/deploy-queue.ts) reads it as the per-server slot count; a
     // same-service deploy never overlaps regardless.
     deployConcurrency: integer("deploy_concurrency").notNull().default(1),
-    // The Traefik web panel: Traefik's own dashboard, published on a domain.
-    traefikDashboardDomain: text("traefik_dashboard_domain"),
-    traefikDashboardUser: text("traefik_dashboard_user"),
-    // Encrypted (AES-256-GCM via DEPLO_SECRET), never projected into a DTO and with no
-    // reveal path.
-    traefikDashboardPasswordEnc: text("traefik_dashboard_password_enc"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

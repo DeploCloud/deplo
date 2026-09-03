@@ -9,18 +9,10 @@ import { getDb } from "../db/client";
 import {
   apps as appsTable,
   databases as databasesTable,
-  servers as serversTable,
 } from "../db/schema/control-plane";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { getCurrentUser } from "../auth";
-import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
 import { isDeploHostServer } from "../deploy/domains";
-import {
-  withTraefikDashboard,
-  traefikDashboardDomain,
-} from "../deploy/traefik-stack";
-import { assertPasswordNotPwned } from "../pwned-password";
-import { assertPasswordPolicy } from "../password-policy";
 import { recordActivity } from "./activity";
 import { assertNotMigrationSource, getServerById } from "./servers";
 import { stopStackOn, startStackOn } from "./volume-migration";
@@ -53,16 +45,6 @@ export type ServerHostInfo = {
    */
   controlPlaneTimeUnixMs: number;
   utcOffsetMinutes: number;
-  /**
-   * Whether Deplo installed the Traefik on this host - i.e. whether there is a
-   * stack of ours to reconfigure. False for a host behind the operator's own
-   * proxy, which is exactly when the dashboard toggle must not be offered.
-   */
-  traefikManaged: boolean;
-  /** The domain the host is CURRENTLY publishing the dashboard on, read from the
-   *  live stack file rather than from our stored column - the same read-live-not
-   *  -stored rule status and URLs follow. */
-  traefikDashboardDomain: string | null;
   /** Whether the panel runs in a container the agent could restart. */
   canRestartControlPlane: boolean;
 };
@@ -355,151 +337,6 @@ function controlPlaneHint(): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* The Traefik web panel                                               */
-/* ------------------------------------------------------------------ */
-
-export type TraefikDashboardInput = {
-  domain: string;
-  username: string;
-  /** Empty ⇒ keep the stored one (an edit that only moves the domain). Required
-   *  the first time the dashboard is enabled. */
-  password: string;
-};
-
-/**
- * Publish (or unpublish) the host's Traefik dashboard. The compose file is read
- * from the LIVE host and transformed, never re-rendered from a template - see
- * lib/deploy/traefik-stack.ts for why.
- */
-export async function setServerTraefikDashboard(
-  id: string,
-  input: TraefikDashboardInput | null,
-): Promise<void> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
-  const server = await getServerById(id);
-  if (!server) throw new Error("Server not found");
-
-  // Validate BEFORE dialing. A request missing a password must be refused on its
-  // own merits, not after a round trip that may itself fail, otherwise the
-  // operator gets "server unreachable" for a form they simply filled in wrong.
-  let credentials: {
-    domain: string;
-    username: string;
-    password: string;
-  } | null = null;
-  if (input) {
-    const domain = input.domain.trim().toLowerCase();
-    const username = input.username.trim();
-    if (!domain)
-      throw new Error("Enter the domain the Traefik panel should answer on");
-    if (!username) throw new Error("Enter a username for the Traefik panel");
-    // A username with a colon would split the htpasswd line and silently create a
-    // different account than the one the operator typed.
-    if (username.includes(":"))
-      throw new Error("A username cannot contain a colon");
-    // Only a freshly typed one: an edit that keeps the stored password must not be
-    // refused for a credential that is already published.
-    if (input.password) {
-      assertPasswordPolicy(input.password);
-      await assertPasswordNotPwned(input.password);
-    }
-
-    // An empty password means "keep the stored one" - an edit that only moves the
-    // domain must not require retyping it. Empty with nothing stored is the
-    // first-time case, and that is exactly what may never be published.
-    const password = input.password || (await storedPassword(id));
-    if (!password)
-      throw new Error(
-        "Enter a password for the Traefik panel - it cannot be published without one",
-      );
-    credentials = { domain, username, password };
-  }
-
-  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } =
-    await import("../infra/agent-client");
-
-  const stored = credentials
-    ? {
-        domain: credentials.domain,
-        username: credentials.username,
-        passwordEnc: encryptSecret(credentials.password),
-      }
-    : null;
-
-  // Read and write under one lock: the whole stack file is rewritten here, and
-  // installing a certificate on this host rewrites the same file. Interleaved,
-  // whichever read second puts the other's change back. See withTraefikStackLock.
-  const changesTheHost = await withTraefikStackLock(id, async () => {
-    const current = await fetchHostInfo(id);
-    if (!current.traefikComposeYaml)
-      throw new Error(
-        `Deplo did not install Traefik on ${server.name}, so it cannot publish a dashboard there.`,
-      );
-
-    const composeYaml = credentials
-      ? withTraefikDashboard(current.traefikComposeYaml, {
-          domain: credentials.domain,
-          // Re-hashed on every write: the bcrypt salt is random, so the stack
-          // file never carries a hash we could have reused from somewhere else.
-          htpasswdUsers: await htpasswdLine(
-            credentials.username,
-            credentials.password,
-          ),
-        })
-      : withTraefikDashboard(current.traefikComposeYaml, null);
-
-    // A rewrite that would change nothing is never applied. The case this exists for is
-    // "turn off the panel" on a host that never published one: it now costs one read of
-    // the host and nothing else.
-    if (composeYaml === current.traefikComposeYaml) return false;
-    const res = await applyTraefikConfig(id, { composeYaml });
-    if (!res.ok)
-      throw new Error(
-        res.error ||
-          `Could not apply the Traefik configuration on ${server.name}`,
-      );
-    return true;
-  });
-
-  // Only now - the row describes what the host is serving, not what we asked for.
-  await getDb()
-    .update(serversTable)
-    .set({
-      traefikDashboardDomain: stored?.domain ?? null,
-      traefikDashboardUser: stored?.username ?? null,
-      traefikDashboardPasswordEnc: stored?.passwordEnc ?? null,
-    })
-    .where(eq(serversTable.id, id));
-
-  // Only a real change is an event. Bringing a stale row back in line with a host
-  // that publishes nothing is bookkeeping, and an Activity line claiming someone
-  // turned off a panel that was never on is a small lie in the audit trail.
-  if (changesTheHost) {
-    await recordActivity(
-      "server",
-      stored
-        ? `Published the Traefik panel for ${server.name} on ${stored.domain}`
-        : `Turned off the Traefik panel for ${server.name}`,
-      user.name,
-      null,
-      teamId,
-    );
-  }
-}
-
-/** The stored dashboard password, so changing the domain does not mean retyping
- *  it. Never leaves this module - there is no reveal path for it. */
-async function storedPassword(id: string): Promise<string> {
-  const [row] = await getDb()
-    .select({ enc: serversTable.traefikDashboardPasswordEnc })
-    .from(serversTable)
-    .where(eq(serversTable.id, id));
-  return row?.enc ? decryptSecret(row.enc) : "";
-}
-
-/* ------------------------------------------------------------------ */
 /* Mapping                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -519,10 +356,8 @@ function toHostInfo(info: {
   timezone: string;
   timeUnixMs: number;
   utcOffsetMinutes: number;
-  traefikComposeYaml: string;
   controlPlaneContainer: string;
 }): ServerHostInfo {
-  const managed = Boolean(info.traefikComposeYaml);
   return {
     cpuModel: info.cpuModel,
     cpuCores: info.cpuCores,
@@ -543,12 +378,6 @@ function toHostInfo(info: {
     // which is why a few seconds of it never counts as drift.
     controlPlaneTimeUnixMs: Date.now(),
     utcOffsetMinutes: info.utcOffsetMinutes,
-    traefikManaged: managed,
-    // Read from the LIVE stack file, not from our stored column: a host whose
-    // Traefik was reconfigured out of band should report what it is serving.
-    traefikDashboardDomain: managed
-      ? traefikDashboardDomain(info.traefikComposeYaml)
-      : null,
     canRestartControlPlane: Boolean(info.controlPlaneContainer),
   };
 }

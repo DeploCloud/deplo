@@ -17,10 +17,6 @@ import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
-  isLoopbackIp,
-  nipDomain,
-  randomWords,
-  resolveServerIp,
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
 import { reportedAgentVersion, agentUpdateAvailable } from "@/lib/version";
@@ -78,17 +74,6 @@ export default async function ServerDetailPage(
     avatarUrl: t.avatarUrl,
   }));
   const agentVersion = reportedAgentVersion(hydrated);
-
-  // A working hostname for the Traefik panel that needs no DNS at all, the same
-  // zero-config nip.io host an App's domains are offered. Null on a loopback-only
-  // host, where such a name would resolve for nobody.
-  // ponytail: suggested without knowing the host's ACME challenge - a proxy the
-  // operator switched to DNS-01 only cannot validate a nip.io name and would serve a
-  // self-signed cert for it.
-  const serverIp = resolveServerIp(hydrated);
-  const suggestedTraefikDomain = isLoopbackIp(serverIp)
-    ? null
-    : nipDomain("traefik", randomWords(), serverIp);
 
   const seed: Record<string, ServerHealthState> = {
     [server.id]: {
@@ -160,8 +145,6 @@ export default async function ServerDetailPage(
             // Never "import": a migration source 404s above, so the summary's
             // three-role union still holds here.
             role: serverRole(hydrated) as "everything" | "build" | "storage",
-            traefikDashboard: hydrated.traefikDashboard ?? null,
-            suggestedTraefikDomain,
             isDeploHost,
             provisioning: hydrated.status === "provisioning",
             agentVersion,

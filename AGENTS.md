@@ -452,9 +452,9 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 - **Every password a person CHOOSES gets two gates:** `assertPasswordPolicy` (sync, shared with
   the strength meter) and `await assertPasswordNotPwned` (`lib/pwned-password.ts`, the Have I Been
   Pwned range API, k-anonymous and **failing open** so no-egress instances still work). Both run on
-  account creation, change-password, the admin reset, basic auth, the Traefik panel and a
-  database's engine password - the last three only since the audit that found the doc claiming it
-  and the code doing only half. The one carve-out is a GENERATED credential: a database password
+  account creation, change-password, the admin reset, basic auth and a database's engine
+  password - the last two only since the audit that found the doc claiming it and the code
+  doing only half. The one carve-out is a GENERATED credential: a database password
   Deplo mints itself is `randomToken(24)`, which is base64url and would fail "at least 1 special
   character" about a third of the time, so the policy bounds only a password a person typed.
   Better Auth's own `/api/auth/*` endpoints are covered by the

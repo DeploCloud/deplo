@@ -59,7 +59,6 @@ const SERVER_FIELDS = {
   uninstallError: true,
   hostArch: true,
   deployConcurrency: true,
-  traefikDashboard: true,
   createdAt: true,
   agent: true,
   bootstrap: true,
@@ -107,10 +106,6 @@ export function serverToRow(s: Server): ServerInsert {
     // distinct, honest state the UI renders as "Unknown", so neither is defaulted.
     statusCheckedAt: s.statusCheckedAt ?? null,
     statusMessage: s.statusMessage ?? null,
-    // The dashboard's domain + username round-trip; the password does NOT, and this
-    // must never learn to write it.
-    traefikDashboardDomain: s.traefikDashboard?.domain ?? null,
-    traefikDashboardUser: s.traefikDashboard?.username ?? null,
     createdAt: s.createdAt,
   };
 }
@@ -158,14 +153,6 @@ export function assembleServer(row: ServerRow): Server {
       tokenHash: row.bootstrapTokenHash,
       expiresAt: row.bootstrapExpiresAt ?? "",
       usedAt: row.bootstrapUsedAt,
-    };
-  }
-  // The domain is what makes the dashboard "on"; the username rides along for the
-  // form. The encrypted password is NEVER projected - it stays in the data layer.
-  if (row.traefikDashboardDomain) {
-    server.traefikDashboard = {
-      domain: row.traefikDashboardDomain,
-      username: row.traefikDashboardUser ?? "",
     };
   }
   if (row.lastSeenAt !== null) server.lastSeenAt = row.lastSeenAt;
