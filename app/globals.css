@@ -3810,3 +3810,36 @@ html body[data-scroll-locked] {
     animation: none;
   }
 }
+
+/* The takeover leftovers: the stopped panel lands, then its share of the disk
+ * fills. Once, on the only screen that draws it. */
+@keyframes deplo-disk-tile {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes deplo-disk-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.deplo-disk-tile {
+  animation: deplo-disk-tile 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+}
+
+.deplo-disk-fill {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: deplo-disk-fill 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the drawn frame: the tile in place, the disk share filled. */
+  .deplo-disk-tile,
+  .deplo-disk-fill {
+    animation: none;
+  }
+}
