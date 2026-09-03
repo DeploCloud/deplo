@@ -1826,6 +1826,8 @@ async function runDeployment(depId: string): Promise<void> {
     // The capability belongs to whichever host actually RUNS the builder. With a
     // build server that is the builder, not the target: gating the target on a
     // method it will never invoke would refuse a deploy for the wrong host's age.
+    // ponytail: only the head of the chain is gated; a fallback host too old for the
+    // method fails its build instead. Gate each one if the fleet ever runs mixed.
     const capServerId = builders[0]?.id ?? serverId;
     if (requiredCapability) {
       try {
