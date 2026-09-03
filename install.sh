@@ -1650,11 +1650,14 @@ agent_is_ours() {
 
 enroll_this_host() {
   if [ -x /usr/local/bin/deplo-agent ]; then
-    if agent_is_ours; then
+    # Only an UPDATE keeps an agent that is here: a fresh install minted a new
+    # secret, so a new CA, and an agent enrolled with the previous one answers
+    # nothing - it read as "already installed" and every deploy then failed.
+    if [ "$MODE" = update ] && agent_is_ours; then
       ok "Server agent already installed on this host"
       return 0
     fi
-    step "The agent here answers to another panel - enrolling it with this one"
+    step "Enrolling the agent that is already here with this panel"
   fi
   # No `sudo`: this script already runs as root (checked at the top). `--quiet`
   # because the agent installer renders the same interface, and two of them
