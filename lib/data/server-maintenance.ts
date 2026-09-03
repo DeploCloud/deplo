@@ -207,6 +207,7 @@ export async function restartServerWorkloads(
     })),
   ];
 
+  const { AgentUnreachableError } = await import("../infra/agent-client");
   const failures: RestartedWorkload[] = [];
   let restarted = 0;
   let skipped = 0;
@@ -221,6 +222,10 @@ export async function restartServerWorkloads(
     try {
       await stopStackOn(id, target.slug);
     } catch (e) {
+      // A host that did not ANSWER (a gRPC code = the dial itself failed) fails
+      // every remaining workload identically: one refusal, not twenty rows of it.
+      if (e instanceof AgentUnreachableError && typeof e.code === "number")
+        throw e;
       failures.push({ kind: target.kind, name: target.name, error: reason(e) });
       continue;
     }

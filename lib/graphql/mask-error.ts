@@ -2,6 +2,8 @@ import "server-only";
 
 import { GraphQLError } from "graphql";
 
+import { unreachableMessage } from "../infra/server-health";
+
 /**
  * What may be said to a client when a resolver throws.
  */
@@ -36,6 +38,10 @@ export function userFacingMessage(error: unknown): string | null {
     if (!orig || orig instanceof GraphQLError) return error.message;
     error = orig; // otherwise inspect the wrapped cause below
   }
+  // A host that did not answer is not an internal fault - it has its own curated
+  // sentence, and the raw transport error (dial address included) still never leaves.
+  const unreachable = unreachableMessage(error);
+  if (unreachable) return unreachable;
   if (error instanceof Error && !isInternalError(error)) return error.message;
   return null;
 }

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { HostUnavailable } from "@/components/servers/host-unavailable";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "./server-detail-tabs";
 
@@ -152,7 +153,7 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
               ))}
             </div>
           ) : error ? (
-            <p className="text-sm text-muted-foreground">{error}</p>
+            <HostUnavailable what="Custom certificates" reason={error} />
           ) : certificates && certificates.length > 0 ? (
             <div className="space-y-2">
               {certificates.map((certificate) => (

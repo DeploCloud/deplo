@@ -98,3 +98,20 @@ export function classifyServerHealth(
 export function isRetryableProbeFailure(err: unknown): boolean {
   return err instanceof AgentUnreachableError && !err.trust;
 }
+
+/**
+ * What a FEATURE says when its host did not answer. Never the raw transport
+ * error: it embeds the dial address, and "Something went wrong" tells the
+ * operator nothing about which of the two machines is at fault.
+ * https://deplo.build/docs/concepts/servers-and-the-agent
+ */
+export function unreachableMessage(err: unknown): string | null {
+  if (!(err instanceof AgentUnreachableError)) return null;
+  if (err.trust) return HEALTH_MESSAGES.untrusted;
+  if (isCertValidityError(err)) return HEALTH_MESSAGES.certExpired;
+  // No gRPC code means our own throw site ("not provisioned"), already safe copy.
+  if (typeof err.code !== "number") return err.message;
+  return err.code === GrpcStatus.DEADLINE_EXCEEDED
+    ? "This server did not answer in time - it may be overloaded, or unreachable."
+    : "This server is unreachable. Check that the host is up and its Deplo agent is running.";
+}

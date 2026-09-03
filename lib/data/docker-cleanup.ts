@@ -23,6 +23,7 @@ import { dispatchAlert, dispatchServerAlert } from "../notify/dispatch";
 import { getServerById } from "./servers";
 import { parseCron } from "../backups/cron";
 import { runAgentCleanup } from "../infra/agent-client";
+import { unreachableMessage } from "../infra/server-health";
 import { CleanupScope } from "../agent/gen/agent";
 import type { CleanupScopeResult } from "../agent/gen/agent";
 import { appBuildsItsOwnImage, formatBytes } from "../utils";
@@ -709,7 +710,8 @@ async function finishCleanupRun(args: {
     // Every failure funnels here: unknown/unprovisioned server, AgentUnreachableError,
     // AgentCleanupUnsupportedError ("update the agent on this server"), a docker error
     // the agent reported.
-    failure = e instanceof Error ? e.message : String(e);
+    failure =
+      unreachableMessage(e) ?? (e instanceof Error ? e.message : String(e));
   }
 
   const finishedAt = nowIso();

@@ -6,6 +6,7 @@ import { AgentUnreachableError } from "./agent-client";
 import {
   classifyServerHealth,
   isRetryableProbeFailure,
+  unreachableMessage,
   HEALTH_MESSAGES,
 } from "./server-health";
 import { ContractVersion, type HelloResponse } from "../agent/gen/agent";
@@ -157,4 +158,53 @@ test("only a transport failure is worth a confirming retry", () => {
     false,
   );
   assert.equal(isRetryableProbeFailure(new Error("app error")), false);
+});
+
+/* ------------------------------------------------------------------ */
+/* The sentence every FEATURE shows when its host did not answer       */
+/* ------------------------------------------------------------------ */
+
+test("a dead host is named as unreachable, not masked into a generic failure", () => {
+  const msg = unreachableMessage(
+    new AgentUnreachableError(
+      "14 UNAVAILABLE: connect ECONNREFUSED 10.4.2.9:9443",
+      GrpcStatus.UNAVAILABLE,
+    ),
+  );
+  assert.match(msg ?? "", /unreachable/i);
+  assert.doesNotMatch(msg ?? "", /10\.4\.2\.9|9443/, "leaked the dial address");
+});
+
+test("a timeout, a trust failure and an expired certificate each get their own words", () => {
+  const timedOut = unreachableMessage(
+    new AgentUnreachableError("deadline", GrpcStatus.DEADLINE_EXCEEDED),
+  );
+  assert.match(timedOut ?? "", /in time/i);
+  assert.equal(
+    unreachableMessage(
+      new AgentUnreachableError("handshake", GrpcStatus.UNAVAILABLE, true),
+    ),
+    HEALTH_MESSAGES.untrusted,
+  );
+  assert.equal(
+    unreachableMessage(
+      new AgentUnreachableError(
+        "certificate has expired",
+        GrpcStatus.UNAVAILABLE,
+      ),
+    ),
+    HEALTH_MESSAGES.certExpired,
+  );
+});
+
+test("our own throw sites keep their copy, and other errors are left alone", () => {
+  // No gRPC code: written at the throw site, already safe and more specific.
+  assert.equal(
+    unreachableMessage(
+      new AgentUnreachableError("server eu-1 is not provisioned"),
+    ),
+    "server eu-1 is not provisioned",
+  );
+  assert.equal(unreachableMessage(new Error("npm run build exited 1")), null);
+  assert.equal(unreachableMessage(null), null);
 });

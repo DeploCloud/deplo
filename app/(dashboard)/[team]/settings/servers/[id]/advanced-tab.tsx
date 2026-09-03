@@ -40,6 +40,7 @@ import {
   type ServerRole,
 } from "@/components/servers/server-role-options";
 import { BetaChip } from "@/components/shared/beta-chip";
+import { HostUnavailable } from "@/components/servers/host-unavailable";
 import { gqlAction } from "@/lib/graphql-client";
 import { formatBytes } from "@/lib/utils";
 import type { ServerSummary } from "./server-detail-tabs";
@@ -120,7 +121,12 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
     <>
       <ServerRolePanel server={server} />
       <HostDetails info={info} loading={loading} error={error} onRetry={load} />
-      <ServerClock server={server} reading={reading} onChanged={setReading} />
+      <ServerClock
+        server={server}
+        reading={reading}
+        error={error}
+        onChanged={setReading}
+      />
       <InstallCommand server={server} />
       <DangerZone server={server} />
     </>
@@ -183,7 +189,7 @@ function HostDetails({
             ))}
           </div>
         ) : error ? (
-          <p className="text-sm text-muted-foreground">{error}</p>
+          <HostUnavailable what="Host details" reason={error} />
         ) : info ? (
           <div className="grid gap-x-8 sm:grid-cols-2">
             <div>
@@ -248,10 +254,12 @@ function formatUptime(sec: number): string {
 function ServerClock({
   server,
   reading,
+  error,
   onChanged,
 }: {
   server: ServerSummary;
   reading: Reading | null;
+  error: string | null;
   onChanged: (reading: Reading) => void;
 }) {
   const [pending, startTransition] = React.useTransition();
@@ -322,79 +330,83 @@ function ServerClock({
         </p>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={save}>
-          {/* The clock itself: big, live, and in the SERVER's zone, so a host
+        {error && !info ? (
+          <HostUnavailable what="Server time" reason={error} />
+        ) : (
+          <form className="space-y-4" onSubmit={save}>
+            {/* The clock itself: big, live, and in the SERVER's zone, so a host
               whose clock is wrong shows its wrong time rather than the browser's
               right one. */}
-          <div className="rounded-lg border border-border bg-muted/30 p-4">
-            {hostNow && info ? (
-              <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-1 font-mono tabular-nums">
-                    <span className="text-4xl leading-none font-semibold">
-                      {partsIn(hostNow, info, {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    {/* Seconds come from the instant itself: every current IANA
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              {hostNow && info ? (
+                <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-1 font-mono tabular-nums">
+                      <span className="text-4xl leading-none font-semibold">
+                        {partsIn(hostNow, info, {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      {/* Seconds come from the instant itself: every current IANA
                         offset is a whole number of minutes, and asking Intl for
                         seconds alone yields an unpadded "7". */}
-                    <span className="text-xl leading-none text-muted-foreground">
-                      :{String(hostNow.getUTCSeconds()).padStart(2, "0")}
-                    </span>
+                      <span className="text-xl leading-none text-muted-foreground">
+                        :{String(hostNow.getUTCSeconds()).padStart(2, "0")}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      {partsIn(hostNow, info, {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </div>
                   </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    {partsIn(hostNow, info, {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="muted" className="gap-1">
+                      <Globe className="size-3" />
+                      {info.timezone || "Unknown zone"}
+                    </Badge>
+                    <Badge variant="muted" className="font-mono">
+                      {formatOffset(info.utcOffsetMinutes)}
+                    </Badge>
+                    <SkewChip skewMs={skewMs} />
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Badge variant="muted" className="gap-1">
-                    <Globe className="size-3" />
-                    {info.timezone || "Unknown zone"}
-                  </Badge>
-                  <Badge variant="muted" className="font-mono">
-                    {formatOffset(info.utcOffsetMinutes)}
-                  </Badge>
-                  <SkewChip skewMs={skewMs} />
+              ) : (
+                <div className="space-y-2">
+                  <div className="h-9 w-40 animate-pulse rounded bg-muted/60" />
+                  <div className="h-4 w-56 animate-pulse rounded bg-muted/50" />
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="h-9 w-40 animate-pulse rounded bg-muted/60" />
-                <div className="h-4 w-56 animate-pulse rounded bg-muted/50" />
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="server-timezone"
-              info="The zone this machine reports its own time in. Nothing restarts, and nothing in Deplo moves with it: backups and cleanup run on UTC, and each container keeps the zone from its image."
-              docs="servers.advanced"
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="server-timezone"
+                info="The zone this machine reports its own time in. Nothing restarts, and nothing in Deplo moves with it: backups and cleanup run on UTC, and each container keeps the zone from its image."
+                docs="servers.advanced"
+              >
+                Timezone
+              </FieldLabel>
+              <TimezonePicker
+                id="server-timezone"
+                value={zone}
+                onChange={setZone}
+                disabled={pending || !info}
+                now={hostNow ? hostNow.getTime() : nowMs}
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={pending || !info || !zone || zone === info?.timezone}
             >
-              Timezone
-            </FieldLabel>
-            <TimezonePicker
-              id="server-timezone"
-              value={zone}
-              onChange={setZone}
-              disabled={pending || !info}
-              now={hostNow ? hostNow.getTime() : nowMs}
-            />
-          </div>
-          <Button
-            type="submit"
-            disabled={pending || !info || !zone || zone === info?.timezone}
-          >
-            Save timezone
-          </Button>
-        </form>
+              Save timezone
+            </Button>
+          </form>
+        )}
       </CardContent>
     </Card>
   );
