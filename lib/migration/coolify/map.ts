@@ -920,9 +920,18 @@ export function coolifyDatabase(
   extras: CoolifyExtras = {},
 ): SourceDatabase {
   const f = DB_FIELDS[kind];
+  // A custom engine configuration lives in a `<engine>_conf` column here and in
+  // a config file under Settings > Advanced on Deplo; it does not travel yet.
+  const conf = (row as Record<string, unknown>)[`${kind}_conf`];
+  const confNote =
+    typeof conf === "string" && conf.trim()
+      ? [
+          `Ran with a custom ${kind} configuration on {panel} that did not come across. Add it under Settings > Advanced once the database is here.`,
+        ]
+      : [];
   return {
     [`${kind}Id`]: row.uuid,
-    platformNotes: extras.envNotes ?? [],
+    platformNotes: [...(extras.envNotes ?? []), ...confNote],
     name: row.name ?? null,
     appName: row.name ?? null,
     description: row.description ?? null,

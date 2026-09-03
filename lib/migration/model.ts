@@ -293,6 +293,14 @@ export interface SourceDatabase {
   appName?: string | null;
   description?: string | null;
   dockerImage?: string | null;
+  /** The panel's own backup schedules for it, where the detail row carries them. */
+  backups?:
+    | {
+        schedule?: string | null;
+        enabled?: boolean | null;
+        destination?: { name?: string | null } | null;
+      }[]
+    | null;
   databaseName?: string | null;
   databaseUser?: string | null;
   databasePassword?: string | null;

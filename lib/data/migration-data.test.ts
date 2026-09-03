@@ -1728,7 +1728,7 @@ test("a bind another team's app also mounts is not wiped", async () => {
   );
   const web = plan.find((s) => s.sourceName === "blink-web");
   assert.ok(
-    web!.notes.some((n) => n.includes("squatter")),
+    web!.notes.some((n) => n.includes("another team's app")),
     `the review screen has to say it first: ${web!.notes.join(" | ")}`,
   );
 
@@ -1758,7 +1758,7 @@ test("a bind another team's app also mounts is not wiped", async () => {
     agentCalls.join(" | "),
   );
   const items = await db.execute(
-    "select outcome, message from migration_run_items where message like '%squatter%'",
+    "select outcome, message from migration_run_items where message like '%another team''s app%'",
   );
   assert.ok(items.rows.length >= 1, "the report has to name the other app");
   assert.ok(items.rows.every((r) => r.outcome === "manual"));

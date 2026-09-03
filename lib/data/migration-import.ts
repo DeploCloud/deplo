@@ -3534,6 +3534,8 @@ async function importAppService(
     if (app.isPreviewDeploymentsActive) {
       try {
         const { setAppPreviewSettings } = await import("./previews");
+        // `*.preview.acme.com` over there is the base `preview.acme.com` here.
+        const base = app.previewWildcard?.trim().replace(/^\*\./, "") || null;
         await setAppPreviewSettings(created.id, {
           enabled: true,
           port: app.previewPort ?? null,
@@ -3541,7 +3543,12 @@ async function importAppService(
             typeof app.previewLimit === "number" && app.previewLimit > 0
               ? Math.min(app.previewLimit, 50)
               : null,
+          ...(base ? { baseDomain: base } : {}),
         });
+        if (app.previewEnv?.trim())
+          notes.push(
+            "Preview deployments had variables of their own on {panel}; those did not come across. Set them under Previews.",
+          );
       } catch (e) {
         notes.push(
           `Preview deployments were on over there but did not come across: ${e instanceof Error ? e.message : "refused"}. Turn them on under Previews.`,

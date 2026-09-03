@@ -570,7 +570,7 @@ export async function planMigrationDataMove(
     if (!serverId) return Promise.resolve([]);
     let p = ownedBy.get(serverId);
     if (!p) {
-      p = hostPathOwners(serverId, "");
+      p = hostPathOwners(serverId, "", teamId);
       ownedBy.set(serverId, p);
     }
     return p;
@@ -655,6 +655,8 @@ export async function planMigrationDataMove(
 async function hostPathOwners(
   serverId: string | null | undefined,
   exceptAppId: string,
+  /** The team reading the note: another team's app is named as exactly that. */
+  teamId?: string,
 ): Promise<{ appId: string; name: string; path: string }[]> {
   if (!serverId) return [];
   const rows = await getDb()
@@ -663,10 +665,16 @@ async function hostPathOwners(
       name: appsTable.name,
       slug: appsTable.slug,
       compose: appsTable.compose,
+      teamId: appsTable.teamId,
     })
     .from(appsTable)
     .where(eq(appsTable.serverId, serverId));
-  const mine = rows.filter((r) => r.id !== exceptAppId);
+  const mine = rows
+    .filter((r) => r.id !== exceptAppId)
+    .map((r) => ({
+      ...r,
+      name: teamId && r.teamId !== teamId ? "another team's app" : r.name,
+    }));
   if (mine.length === 0) return [];
   const mounts = await getDb()
     .select({
@@ -1042,7 +1050,7 @@ async function runMoveMigrationServiceData(
   // writes an arbitrary path on two machines.
   const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
   const bindOwners = binds.length
-    ? await hostPathOwners(landed.targetServerId, landed.targetId)
+    ? await hostPathOwners(landed.targetServerId, landed.targetId, teamId)
     : [];
   // One nothing here mounts. Silent, this read as a stack that came across whole,
   // with an empty directory inside it.
