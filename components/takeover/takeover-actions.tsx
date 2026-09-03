@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { gql, gqlAction } from "@/lib/graphql-client";
@@ -277,16 +277,16 @@ export function TakeoverActions({
 
   // pending: the migration is still the operator's to finish.
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Take over the machine</CardTitle>
-        <p className="mt-1 text-sm text-muted-foreground">
-          When everything you want is here, Deplo takes ports 80, 443 and 3000
-          from {platformLabel} and inherits its certificates.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Take over the machine</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            When everything you want is here, Deplo takes ports 80, 443 and 3000
+            from {platformLabel} and inherits its certificates.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-2">
           <Button onClick={takePorts} disabled={!finishedRunId || busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : null}
             Take over the ports
@@ -296,65 +296,59 @@ export function TakeoverActions({
               Bring at least one project over first.
             </span>
           )}
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="rounded-lg border border-destructive/40 bg-destructive/[0.06] p-3">
-          <div className="flex items-start gap-2">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
-            <div className="min-w-0 space-y-3">
-              <div>
-                <p className="text-sm font-medium">Changed your mind?</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Deplo starts your services again on {platformLabel}, undoes
-                  what it created here, and uninstalls itself.
-                </p>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="cancel-key">
-                  {platformLabel} API token, to start them again
-                </Label>
-                <Input
-                  id="cancel-key"
-                  type="password"
-                  autoComplete="off"
-                  value={cancelKey}
-                  onChange={(e) => setCancelKey(e.target.value)}
-                  placeholder="The same one you pasted above"
-                />
-              </div>
-              <ConfirmAction
-                trigger={
-                  <Button variant="destructive">Cancel and remove Deplo</Button>
-                }
-                title="Cancel the migration?"
-                description={`Everything Deplo created here is removed, your services are started again on ${platformLabel}, and Deplo comes off this machine. ${platformLabel} keeps all of its data.`}
-                confirmLabel="Cancel it"
-                optimistic
-                onConfirm={async () => {
-                  const res = await gqlAction<
-                    { cancelTakeover: { restarted: number; left: string[] } },
-                    { restarted: number; left: string[] }
-                  >(
-                    CANCEL,
-                    { apiKey: cancelKey || null },
-                    (d) => d.cancelTakeover,
-                  );
-                  if (res.ok) {
-                    setState("cancelled");
-                    const left = res.data?.left ?? [];
-                    if (left.length > 0)
-                      toast.warning(
-                        `Started ${res.data?.restarted ?? 0} again. These would not start: ${left.join("; ")}`,
-                      );
-                  }
-                  return res;
-                }}
+      {/* Outside the card, in one muted line: backing out is not a peer of the
+          thing the screen exists for. The token it needs is in the dialog. */}
+      <p className="text-center text-sm text-muted-foreground">
+        Changed your mind?{" "}
+        <ConfirmAction
+          trigger={
+            <Button
+              variant="link"
+              className="h-auto p-0 text-sm text-destructive"
+            >
+              Cancel and remove Deplo
+            </Button>
+          }
+          title="Cancel the migration?"
+          description={`Everything Deplo created here is removed, your services are started again on ${platformLabel}, and Deplo comes off this machine. ${platformLabel} keeps all of its data.`}
+          extra={
+            <div className="grid gap-1.5">
+              <Label htmlFor="cancel-key">
+                {platformLabel} API token, to start them again
+              </Label>
+              <Input
+                id="cancel-key"
+                type="password"
+                autoComplete="off"
+                value={cancelKey}
+                onChange={(e) => setCancelKey(e.target.value)}
+                placeholder="The same one you pasted before"
               />
             </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+          }
+          confirmLabel="Cancel it"
+          optimistic
+          onConfirm={async () => {
+            const res = await gqlAction<
+              { cancelTakeover: { restarted: number; left: string[] } },
+              { restarted: number; left: string[] }
+            >(CANCEL, { apiKey: cancelKey || null }, (d) => d.cancelTakeover);
+            if (res.ok) {
+              setState("cancelled");
+              const left = res.data?.left ?? [];
+              if (left.length > 0)
+                toast.warning(
+                  `Started ${res.data?.restarted ?? 0} again. These would not start: ${left.join("; ")}`,
+                );
+            }
+            return res;
+          }}
+        />
+      </p>
+    </>
   );
 }
 

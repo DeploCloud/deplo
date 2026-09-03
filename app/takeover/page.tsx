@@ -15,10 +15,8 @@ import { panelFallbackHost, sameMachineHost } from "@/lib/deploy/domains";
 import { MigrationWizard } from "@/components/settings/migrations/migration-wizard";
 import { TakeoverActions } from "@/components/takeover/takeover-actions";
 import { TakeoverPreflight } from "@/components/takeover/takeover-preflight";
-import {
-  SourceMark,
-  SOURCE_COPY,
-} from "@/components/settings/migrations/sources";
+import { SOURCE_COPY } from "@/components/settings/migrations/sources";
+import { DeploLogo } from "@/components/logo";
 
 export const metadata = { title: "Take over this machine" };
 
@@ -63,49 +61,46 @@ export default async function TakeoverPage() {
   const finished = runs.find((r) => r.status === "done") ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-10">
-      <div className="flex items-start gap-3">
-        <SourceMark kind={status.platform} className="mt-1 size-8 shrink-0" />
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold">
-            Replacing {copy.name} on this machine
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Bring your projects across, then hand Deplo the ports. Nothing is
-            deployed and nothing is removed until you say so.
-          </p>
+    <div className="relative flex min-h-dvh flex-col">
+      <div className="deplo-graph-bg pointer-events-none absolute inset-0 opacity-[0.5]" />
+      {/* The mark and nothing else: until the ports have moved there is no
+          dashboard behind this screen to offer a way back to. */}
+      <header className="relative z-10 px-6 py-5">
+        <DeploLogo />
+      </header>
+      <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-16">
+        <div className="w-full max-w-xl space-y-6">
+          {status.state === "pending" && admin && <TakeoverPreflight />}
+
+          {status.state === "pending" && (
+            <MigrationWizard
+              teamId={team.id}
+              teamName={team.name}
+              teamAvatarUrl={team.avatarUrl}
+              targetTeams={targetTeams}
+              servers={servers}
+              buildServers={buildServers}
+              resumable={resumable}
+              sameMachineHost={sameMachineHost()}
+              isInstanceAdmin={admin}
+              canExposePorts={mayExposePorts}
+              prefill={{
+                url: takeoverSourceUrl(status.platform),
+                kind: status.platform,
+              }}
+            />
+          )}
+
+          <TakeoverActions
+            platformLabel={copy.name}
+            platform={status.platform}
+            sourceUrl={takeoverSourceUrl(status.platform)}
+            state={status.state}
+            finishedRunId={finished?.id ?? null}
+            finalUrl={finalPanelUrl()}
+          />
         </div>
-      </div>
-
-      {status.state === "pending" && admin && <TakeoverPreflight />}
-
-      {status.state === "pending" && (
-        <MigrationWizard
-          teamId={team.id}
-          teamName={team.name}
-          teamAvatarUrl={team.avatarUrl}
-          targetTeams={targetTeams}
-          servers={servers}
-          buildServers={buildServers}
-          resumable={resumable}
-          sameMachineHost={sameMachineHost()}
-          isInstanceAdmin={admin}
-          canExposePorts={mayExposePorts}
-          prefill={{
-            url: takeoverSourceUrl(status.platform),
-            kind: status.platform,
-          }}
-        />
-      )}
-
-      <TakeoverActions
-        platformLabel={copy.name}
-        platform={status.platform}
-        sourceUrl={takeoverSourceUrl(status.platform)}
-        state={status.state}
-        finishedRunId={finished?.id ?? null}
-        finalUrl={finalPanelUrl()}
-      />
+      </main>
     </div>
   );
 }

@@ -1061,7 +1061,7 @@ export function MigrationWizard({
                   apiKey={apiKey}
                   setApiKey={setApiKey}
                   sameMachineHost={sameMachineHost}
-                  showTakeoverHint={prefill == null}
+                  takeover={prefill != null}
                   scanning={scanning}
                   kind={kind}
                   forcedKind={forcedKind}
@@ -1170,7 +1170,7 @@ function ConnectStep({
   apiKey,
   setApiKey,
   sameMachineHost,
-  showTakeoverHint,
+  takeover,
   scanning,
   kind,
   forcedKind,
@@ -1184,8 +1184,8 @@ function ConnectStep({
   setApiKey: (v: string) => void;
   /** The address a container on this instance reaches its own host on. */
   sameMachineHost: string;
-  /** Off on the takeover page: whoever is there is already doing this. */
-  showTakeoverHint: boolean;
+  /** The takeover screen: no hint to take one over, and the address is fixed. */
+  takeover: boolean;
   scanning: boolean;
   /** What is known so far: what answered, or what was pinned. */
   kind: SourceKind | null;
@@ -1208,15 +1208,22 @@ function ConnectStep({
           <FieldLabel
             htmlFor="source-url"
             info={
-              <>
-                {copy.urlInfo} On the same machine as Deplo, that is{" "}
-                <code>{`http://${sameMachineHost}:${copy.privatePort}`}</code>.
-              </>
+              takeover ? (
+                `Where ${copy.name} answers on this machine. There is no other panel to point at from here.`
+              ) : (
+                <>
+                  {copy.urlInfo} On the same machine as Deplo, that is{" "}
+                  <code>{`http://${sameMachineHost}:${copy.privatePort}`}</code>
+                  .
+                </>
+              )
             }
             docs={copy.docs}
           >
             Panel address
           </FieldLabel>
+          {/* On a takeover the address is this machine's own panel: shown so it
+              can be read, dimmed and read-only so it is not argued with. */}
           <Input
             id="source-url"
             value={url}
@@ -1224,6 +1231,8 @@ function ConnectStep({
             placeholder={copy.urlPlaceholder}
             autoComplete="off"
             spellCheck={false}
+            readOnly={takeover}
+            className={takeover ? "opacity-60" : undefined}
           />
         </div>
 
@@ -1246,7 +1255,7 @@ function ConnectStep({
           />
         </div>
 
-        {showTakeoverHint && (
+        {!takeover && (
           <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium">
