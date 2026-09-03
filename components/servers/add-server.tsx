@@ -134,20 +134,19 @@ export function AddServer({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ServerCog className="size-4" />
-            Connect a remote server
+            Connect a server
           </DialogTitle>
           <DialogDescription>
             {command
-              ? role === "storage"
-                ? "Run this once on the server. It installs the Deplo agent only (no Docker, no proxy), and the agent then calls home to finish provisioning."
-                : role === "build"
-                  ? "Run this once on the server. It installs Docker (if needed) and the Deplo agent, but no proxy, and the agent then calls home to finish provisioning."
-                  : "Run this once on the server. It installs Docker (if needed) and the Deplo agent, which then calls home to finish provisioning."
-              : "Register the host, then run the install command it gives you on the box. Deplo never SSHes in - the agent connects out to this control plane."}
+              ? "Run this once on the server. The agent installs itself and calls home."
+              : "Name the host, then run the install command on it. Deplo never SSHes in."}
           </DialogDescription>
         </DialogHeader>
 
-        <form className="grid gap-4" onSubmit={onSubmit}>
+        {/* gap-6, not the body's gap-4: the footer used to inherit its air from
+            whatever the last field rendered, so picking "Everything" glued Cancel
+            to the options. */}
+        <form className="grid gap-6" onSubmit={onSubmit}>
           <AnimatedHeight className="grid gap-4" scroll={false}>
             {command ? (
               <div className="space-y-2">
@@ -220,13 +219,6 @@ export function AddServer({
                     onChange={setRole}
                     disabled={() => pending}
                   />
-                  {role !== "everything" && (
-                    <p className="text-xs text-muted-foreground">
-                      {role === "build"
-                        ? "Skips the proxy. Nothing is deployed here, and it stays out of the deploy target list - apps on your other servers can build on it instead."
-                        : "Skips Docker and the proxy. Nothing is deployed here, and it stays out of the deploy target list."}
-                    </p>
-                  )}
                 </div>
               </div>
             )}

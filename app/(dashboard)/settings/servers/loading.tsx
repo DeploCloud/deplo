@@ -25,6 +25,12 @@ export default function Loading() {
         </div>
       </div>
 
+      {/* ListToolbar: search + the "what it is for" filter */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Skeleton className="h-9 flex-1 rounded-md" />
+        <Skeleton className="h-9 w-full rounded-md sm:w-44" />
+      </div>
+
       {/* Server card grid */}
       <div className="grid gap-4 sm:grid-cols-2">
         {Array.from({ length: 4 }).map((_, card) => (

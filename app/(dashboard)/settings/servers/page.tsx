@@ -8,15 +8,20 @@ import {
   HardDrive,
   Boxes,
   Settings2,
-  Hammer,
-  Archive,
-  DownloadCloud,
 } from "lucide-react";
 
-import { PageHeader, titleClass } from "@/components/shared/page-header";
+import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploMark } from "@/components/logo";
 import { AddServer } from "@/components/servers/add-server";
+import {
+  ServerUseBadge,
+  serverUse,
+} from "@/components/servers/server-role-badge";
+import {
+  ServersList,
+  type ServerListItem,
+} from "@/components/servers/servers-list";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -199,39 +204,10 @@ function ServerCard({
               Remote
             </Badge>
           )}
-          {/* A specialised host says so next to its name. Without it the page reads
-              as a list of interchangeable servers, and the one that runs nothing
+          {/* What the host is FOR, in its own colour. Without it the page reads as
+              a list of interchangeable servers, and the one that runs nothing
               looks like the one that is broken. */}
-          {server.buildOnly && (
-            <Badge
-              variant="muted"
-              className="shrink-0 gap-1"
-              title="This server only builds images, for apps that run on your other servers. Nothing is deployed here and it has no proxy."
-            >
-              <Hammer className="size-3" />
-              Build only
-            </Badge>
-          )}
-          {server.storageOnly && (
-            <Badge
-              variant="muted"
-              className="shrink-0 gap-1"
-              title="This server only holds backup files. It has no Docker and nothing is deployed here."
-            >
-              <Archive className="size-3" />
-              Backups only
-            </Badge>
-          )}
-          {server.importOnly && (
-            <Badge
-              variant="muted"
-              className="shrink-0 gap-1"
-              title="Another platform's host. Deplo installed its agent there to read the data being imported, and removes it when the migration is done."
-            >
-              <DownloadCloud className="size-3" />
-              Migration source
-            </Badge>
-          )}
+          <ServerUseBadge use={serverUse(server)} />
           <ServerHealthChip
             serverId={server.id}
             fallback={{
@@ -383,12 +359,21 @@ export default async function ServersPage(
       Number(isDeploHostServer(a, selfAddrs)),
   );
 
-  // Migration sources are listed apart from the fleet, and counted apart from it:
-  // they are other platforms' machines, borrowed for one import and given back.
-  // Mixed into the grid they read as servers someone forgot to configure - which
-  // is exactly the confusion this section exists to end.
-  const fleet = servers.filter((s) => !s.importOnly);
-  const migrationSources = servers.filter((s) => s.importOnly);
+  // Cards are rendered HERE and handed to the client list: filtering must not cost
+  // the cards their RSC-ness (each one streams its own capacity tiles).
+  const items: ServerListItem[] = servers.map((server) => ({
+    id: server.id,
+    search: [server.name, server.host, server.ip].join(" ").toLowerCase(),
+    use: serverUse(server),
+    card: (
+      <ServerCard
+        server={server}
+        specs={specsFor(server)}
+        accessTeamIds={serverTeamIds.get(server.id) ?? []}
+        isDeploHost={isDeploHostServer(server, selfAddrs)}
+      />
+    ),
+  }));
 
   // The LAST OBSERVED health of each server, handed to the client so the cards paint
   // immediately. It is a seed, not the answer: <ServerHealthProvider> re-probes every
@@ -448,7 +433,7 @@ export default async function ServersPage(
           }
         />
 
-        {fleet.length === 0 ? (
+        {items.length === 0 ? (
           <EmptyState
             icon={ServerIcon}
             title="No servers connected"
@@ -456,37 +441,7 @@ export default async function ServersPage(
             description="Use Add above to register your first Linux host, then run the one-time install command it gives you on the box."
           />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {fleet.map((server) => (
-              <ServerCard
-                key={server.id}
-                server={server}
-                specs={specsFor(server)}
-                accessTeamIds={serverTeamIds.get(server.id) ?? []}
-                isDeploHost={isDeploHostServer(server, selfAddrs)}
-              />
-            ))}
-          </div>
-        )}
-
-        {migrationSources.length > 0 && (
-          <div>
-            <h2 className={titleClass.section}>Migration sources</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Only used to import from another platform.
-            </p>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              {migrationSources.map((server) => (
-                <ServerCard
-                  key={server.id}
-                  server={server}
-                  specs={specsFor(server)}
-                  accessTeamIds={serverTeamIds.get(server.id) ?? []}
-                  isDeploHost={false}
-                />
-              ))}
-            </div>
-          </div>
+          <ServersList items={items} />
         )}
       </div>
     </ServerHealthProvider>
