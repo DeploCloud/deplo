@@ -1533,6 +1533,42 @@ test("a host directory already on this machine is not copied over itself", async
   assert.equal(items.rows.length, 1);
 });
 
+test("the plan does not call a bind already in place a clash", async () => {
+  // A takeover: same machine, same path. Another app mounting that directory
+  // is not a wipe waiting to happen, because nothing is copied at all.
+  await db.execute(
+    `update servers set host = 'dokploy.acme.test', ip = 'dokploy.acme.test' where id = '${SERVER_1}'`,
+  );
+  await seedApp(db, { id: "prj_neighbour", teamId: TEAM_A, slug: "neighbour" });
+  await db.execute(
+    "update apps set name = 'neighbour' where id = 'prj_neighbour'",
+  );
+  await db.insert(appVolumesTable).values({
+    appId: "prj_neighbour",
+    position: 0,
+    volumeId: "vol_neighbour",
+    type: "host",
+    name: "shared",
+    service: null,
+    projectPath: null,
+    hostPath: "/etc/dokploy/x",
+    mountPath: "/app/config.json",
+    readOnly: true,
+    propagation: null,
+  });
+  const runId = await openRun();
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
+  const web = plan.find((s) => s.sourceName === "blink-web")!;
+  assert.match(web.volumes[1].note!, /Already on this machine/);
+  assert.equal(
+    web.notes.some((n) => /also mounted/.test(n)),
+    false,
+    web.notes.join(" | "),
+  );
+});
+
 /* ---- the refusals ---------------------------------------------------- */
 
 test("nothing is stopped until Deplo knows which server holds the data", async () => {

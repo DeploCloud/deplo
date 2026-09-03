@@ -588,8 +588,15 @@ export async function planMigrationDataMove(
       singleData: landed.targetKind === "database",
     });
     const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
+    const sourceServer = machines.find(
+      (m) => m.sourceId === svc.serverId,
+    )?.deploServerId;
+    // Same machine, same path: nothing is copied, so nothing can be wiped either.
+    const inPlace = (b: PairedHostMount) =>
+      sourceServer === landed.targetServerId && b.sourcePath === b.targetPath;
     const owners = binds.length ? await ownersOn(landed.targetServerId) : [];
     const shared = binds.flatMap((b) => {
+      if (inPlace(b)) return [];
       const clash = owners.find(
         (o) =>
           o.appId !== landed.targetId && pathsOverlap(o.path, b.targetPath),
@@ -599,9 +606,6 @@ export async function planMigrationDataMove(
     // Said HERE, before anything is stopped: a machine Deplo cannot read is a machine
     // whose data cannot move at all, and the review screen is where that has to be read
     // - not the cutover, with the old platform already down.
-    const sourceServer = machines.find(
-      (m) => m.sourceId === svc.serverId,
-    )?.deploServerId;
     const reachable = sourceServer ? await agentAnswers(sourceServer) : false;
 
     out.push({
@@ -627,9 +631,11 @@ export async function planMigrationDataMove(
           sourceVolume: b.sourcePath,
           targetVolume: b.targetPath,
           mountPath: b.mountPath,
-          note: b.stackRelative
-            ? "A path the stack binds beside its own compose file, not a volume."
-            : "A path on the host, not a volume. Copying it needs instance admin and the host-volumes permission.",
+          note: inPlace(b)
+            ? "Already on this machine at the same path - nothing to copy."
+            : b.stackRelative
+              ? "A path the stack binds beside its own compose file, not a volume."
+              : "A path on the host, not a volume. Copying it needs instance admin and the host-volumes permission.",
         })),
       ].map((v) => ({ ...v, note: v.note ? said(v.note) : null })),
       notes: [
