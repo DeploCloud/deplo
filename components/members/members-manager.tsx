@@ -18,6 +18,15 @@ import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AccessDeltaBadge } from "@/components/members/access-delta-badge";
+import { ListToolbar } from "@/components/shared/list-toolbar";
+import { EmptyState } from "@/components/shared/empty-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { MemberDTO } from "@/lib/data/members";
 
 export function MembersManager({
@@ -34,11 +43,27 @@ export function MembersManager({
 }) {
   const [addOpen, setAddOpen] = React.useState(false);
   const [userOpen, setUserOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [role, setRole] = React.useState("all");
   // The viewer's own rank in this team. Owners (the founder OR an assigned
   // owner) may grant the owner role and act on other owners; everyone else is
   // capped at member/viewer. Derived from the member list, no extra query.
   const viewerIsOwner = members.some(
     (m) => m.userId === currentUserId && m.role === "owner",
+  );
+
+  // The roles this team actually uses - a filter listing roles nobody holds is
+  // a list of dead ends. A hand-picked set shows as "Custom", like the cards.
+  const roleNames = [
+    ...new Set(members.map((m) => m.roleName ?? "Custom")),
+  ].sort();
+  const q = query.trim().toLowerCase();
+  const shown = members.filter(
+    (m) =>
+      (role === "all" || (m.roleName ?? "Custom") === role) &&
+      (!q ||
+        m.username.toLowerCase().includes(q) ||
+        m.name.toLowerCase().includes(q)),
   );
   const actions = (isAdmin || canManage) && (
     <>
@@ -90,16 +115,50 @@ export function MembersManager({
         description="People who can access this team's apps and resources."
         actions={actions}
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {members.map((m) => (
-          <MemberCard
-            key={m.userId}
-            member={m}
-            isSelf={m.userId === currentUserId}
-            canManage={canManage}
-          />
-        ))}
-      </div>
+      {/* One member needs no search box, and neither does a single role. */}
+      {members.length > 1 && (
+        <ListToolbar
+          query={query}
+          onQuery={setQuery}
+          placeholder="Search members"
+          filters={
+            roleNames.length > 1 && (
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger className="w-full sm:w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All roles</SelectItem>
+                  {roleNames.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )
+          }
+        />
+      )}
+
+      {shown.length === 0 ? (
+        <EmptyState
+          icon={UserCog}
+          title="No matching members"
+          description="Nobody in this team matches the current search and filter."
+        />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {shown.map((m) => (
+            <MemberCard
+              key={m.userId}
+              member={m}
+              isSelf={m.userId === currentUserId}
+              canManage={canManage}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

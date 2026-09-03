@@ -17,6 +17,15 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ListToolbar } from "@/components/shared/list-toolbar";
+import { EmptyState } from "@/components/shared/empty-state";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -49,6 +58,11 @@ export function UsersPanel({
   currentUserId: string;
 }) {
   const [registerOpen, setRegisterOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [access, setAccess] = React.useState<"all" | "admin" | "member">("all");
+  const [status, setStatus] = React.useState<"all" | "active" | "suspended">(
+    "all",
+  );
   // A revoked link leaves the list on the click - the row is dead server-side
   // the moment the mutation is sent, and a live Revoke on a dead link is only
   // good for a red "Not found".
@@ -61,6 +75,16 @@ export function UsersPanel({
   // `?user=<id>` opens that account's editor on arrival - the deep link a
   // member's page uses, since accounts are instance-wide and edited here.
   const focusUserId = useSearchParams().get("user");
+
+  const q = query.trim().toLowerCase();
+  const shown = users.filter(
+    (u) =>
+      (access === "all" || u.isInstanceAdmin === (access === "admin")) &&
+      (status === "all" || u.suspended === (status === "suspended")) &&
+      (!q ||
+        u.username.toLowerCase().includes(q) ||
+        u.name.toLowerCase().includes(q)),
+  );
   // No wrapper card: the users ARE the tiles, and a card holding tiles is two
   // surfaces - and a second "Users" heading - for one list.
   return (
@@ -90,16 +114,63 @@ export function UsersPanel({
           </>
         }
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {users.map((u) => (
-          <UserRow
-            key={u.userId}
-            user={u}
-            isSelf={u.userId === currentUserId}
-            defaultOpen={u.userId === focusUserId}
-          />
-        ))}
-      </div>
+      {/* One account needs no search box. */}
+      {users.length > 1 && (
+        <ListToolbar
+          query={query}
+          onQuery={setQuery}
+          placeholder="Search users"
+          filters={
+            <>
+              <Select
+                value={access}
+                onValueChange={(v) => setAccess(v as typeof access)}
+              >
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All access</SelectItem>
+                  <SelectItem value="admin">Instance admins</SelectItem>
+                  <SelectItem value="member">Members</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={status}
+                onValueChange={(v) => setStatus(v as typeof status)}
+              >
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          }
+        />
+      )}
+
+      {shown.length === 0 ? (
+        <EmptyState
+          icon={UserCog}
+          title="No matching users"
+          description="No account matches the current search and filters."
+        />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {shown.map((u) => (
+            <UserRow
+              key={u.userId}
+              user={u}
+              isSelf={u.userId === currentUserId}
+              defaultOpen={u.userId === focusUserId}
+            />
+          ))}
+        </div>
+      )}
 
       {pendingLinks.length > 0 && (
         <Card>
