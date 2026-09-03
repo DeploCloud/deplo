@@ -20,6 +20,7 @@ import {
   finishMigration,
   getMigrationRun,
   handOverMigrationSources,
+  identifyMigrationSource,
   importMigrationMembers,
   importMigrationProject,
   type ImportItemDTO,
@@ -35,6 +36,7 @@ import {
   type RevertResultDTO,
   scanMigrationSource,
   setMigrationMachineAddress,
+  type SourceIdentity,
 } from "@/lib/data/migration-import";
 import {
   requestStopMigrationRun,
@@ -212,9 +214,38 @@ const MigrationPlanRef = builder
         description:
           "The team or organization this token reads. A token belongs to one, so importing a second one means a second token.",
       }),
+      otherTeams: t.exposeStringList("otherTeams", {
+        nullable: true,
+        description:
+          "The panel's other teams, by name - the ones this token does not cover and that need one of their own. Null when the panel cannot say, which on Coolify it never can.",
+      }),
       projects: t.field({ type: [PlanProjectRef], resolve: (p) => p.projects }),
       servers: t.field({ type: [PlanServerRef], resolve: (p) => p.servers }),
       members: t.field({ type: [PlanMemberRef], resolve: (p) => p.members }),
+    }),
+  });
+
+const SourceIdentityRef = builder
+  .objectRef<SourceIdentity>("MigrationSourceTeam")
+  .implement({
+    description:
+      "Which team of the panel one token reads. A token belongs to exactly one team on both products, so bringing several over takes one token each.",
+    fields: (t) => ({
+      platform: t.field({
+        type: MigrationPlatformEnum,
+        resolve: (i) => i.platform,
+      }),
+      teamId: t.exposeString("teamId", {
+        nullable: true,
+        description:
+          "The team's own id over there, which is how two tokens of ONE team are told apart from two tokens of two teams. Null when the panel would not say.",
+      }),
+      teamName: t.exposeString("teamName", { nullable: true }),
+      otherTeams: t.exposeStringList("otherTeams", {
+        nullable: true,
+        description:
+          "The panel's other teams, by name, so the ones no token covers yet can be named. Null means the panel cannot say - always the case on Coolify, whose team listing is filtered down to the token's own team.",
+      }),
     }),
   });
 
@@ -610,6 +641,19 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
+  identifyMigrationSource: t.field({
+    type: SourceIdentityRef,
+    authScopes: { capability: "create_projects" },
+    description:
+      "WHICH team a token reads, without reading it all. A token covers one team of the panel, so bringing several over takes one token each, and this is what lets the wizard collect them without paying for a full scan per token. Refuses a token that cannot read values, exactly as the scan does. Writes nothing.",
+    args: { input: t.arg({ type: ConnectInputRef, required: true }) },
+    resolve: (_r, { input }) =>
+      identifyMigrationSource({
+        url: input.url,
+        apiKey: input.apiKey,
+        kind: input.kind ?? undefined,
+      }),
+  }),
   scanMigrationSource: t.field({
     type: MigrationPlanRef,
     authScopes: { capability: "create_projects" },
@@ -749,13 +793,19 @@ builder.mutationFields((t) => ({
       orgName: t.arg.string({ required: false }),
       targets: t.arg({ type: [RunTargetInput], required: true }),
       servers: t.arg({ type: [ServerChoiceInput], required: false }),
+      keepSources: t.arg.boolean({
+        required: false,
+        description:
+          "Another team of the SAME panel is still to come, so this run must leave Deplo's agents on the source machines - the next team reads the same disks, and an uninstall scheduled here would race the install that follows it. The last run of a series leaves this false, and it is that one that clears them. It also holds the takeover: the ports cannot be taken while a run says more teams are owed.",
+      }),
     },
-    resolve: (_r, { input, orgName, targets, servers }) =>
+    resolve: (_r, { input, orgName, targets, servers, keepSources }) =>
       startMigrationRun({
         url: input.url,
         apiKey: input.apiKey,
         kind: input.kind ?? undefined,
         orgName: orgName ?? null,
+        keepSources: keepSources ?? false,
         targets: targets.map((t2) => ({
           projectId: t2.projectId,
           projectName: t2.projectName,

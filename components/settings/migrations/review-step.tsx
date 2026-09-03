@@ -449,15 +449,13 @@ export function ReviewStep({
               </p>
             )}
           </div>
-          {(targetTeams.length > 1 || isInstanceAdmin) && (
-            <Button
-              variant="secondary"
-              disabled={retargeting}
-              onClick={() => setPickTeamOpen(true)}
-            >
-              Select another
-            </Button>
-          )}
+          <Button
+            variant="secondary"
+            disabled={retargeting}
+            onClick={() => setPickTeamOpen(true)}
+          >
+            Select another
+          </Button>
         </div>
 
         {/**
@@ -484,22 +482,25 @@ export function ReviewStep({
         onOpenChange={setPickTeamOpen}
         teams={targetTeams}
         activeId={teamId}
-        canCreate={isInstanceAdmin}
+        canCreate
         onSelect={(id) => onRetarget(id)}
         onCreate={() => setNewTeamOpen(true)}
       />
 
-      {isInstanceAdmin && (
-        // `redirect={false}`: creating a team switches you into it, and the
-        // dialog's usual trip to the overview would throw away the scan, the
-        // selection and the key that are only in this tab.
-        <CreateTeamDialog
-          open={newTeamOpen}
-          onOpenChange={setNewTeamOpen}
-          redirect={false}
-          onCreated={(id) => onRetarget(id)}
-        />
-      )}
+      {/* `redirect={false}`: creating a team switches you into it, and the
+          dialog's usual trip to the overview would throw away the scan, the
+          selection and the key that are only in this tab. Not instance-admin
+          gated: `createTeam` asks for no Capability, and the team switcher
+          offers it to everyone. */}
+      <CreateTeamDialog
+        open={newTeamOpen}
+        onOpenChange={setNewTeamOpen}
+        redirect={false}
+        // The panel's own team is what it is called over there, so that is the
+        // name it lands under here.
+        defaultName={plan.orgName ?? undefined}
+        onCreated={(id) => onRetarget(id)}
+      />
 
       <div className="flex justify-between">
         <Button variant="outline" onClick={onBack}>

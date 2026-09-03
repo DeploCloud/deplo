@@ -252,3 +252,42 @@ test("a key that has run out of requests says where to raise it", async () => {
   );
   __resetMigrationFetchForTest();
 });
+
+// A key is minted FOR one organization (Dokploy's own dialog picks one), and
+// `organization.all` is the list the dialog is filled from - so the ones a key
+// does not cover can be named instead of guessed at.
+test("a key names its own organization and the ones it does not cover", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+
+  __setMigrationFetchForTest(async (url) => {
+    const body = url.includes("organization.all")
+      ? [
+          { id: "org_1", name: "Idra Arts" },
+          { id: "org_2", name: "Acme" },
+          { id: "org_3", name: "" },
+        ]
+      : { id: "org_1", name: "Idra Arts" };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  const src = dokployClient(cred);
+  assert.deepEqual(await src.sourceTeam(), { id: "org_1", name: "Idra Arts" });
+  assert.deepEqual(await src.otherTeams(), ["Acme", "org_3"]);
+});
+
+// An older Dokploy has no such procedure, and not knowing must never fail an
+// import - or name teams that are not there.
+test("a Dokploy that will not list its organizations says so", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+
+  __setMigrationFetchForTest(
+    async () => new Response("Not found", { status: 404 }),
+  );
+
+  const src = dokployClient(cred);
+  assert.deepEqual(await src.sourceTeam(), { id: null, name: null });
+  assert.equal(await src.otherTeams(), null);
+});

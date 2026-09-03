@@ -2359,6 +2359,11 @@ type MigrationPlan {
   """
   orgName: String
 
+  """
+  The panel's other teams, by name - the ones this token does not cover and that need one of their own. Null when the panel cannot say, which on Coolify it never can.
+  """
+  otherTeams: [String!]
+
   """Which product answered at that address."""
   platform: MigrationPlatform
   projects: [MigrationPlanProject!]
@@ -2630,6 +2635,23 @@ input MigrationSourceInput {
   The panel's address. Deplo appends the API path itself, so paste the address you open in a browser.
   """
   url: String!
+}
+
+"""
+Which team of the panel one token reads. A token belongs to exactly one team on both products, so bringing several over takes one token each.
+"""
+type MigrationSourceTeam {
+  """
+  The panel's other teams, by name, so the ones no token covers yet can be named. Null means the panel cannot say - always the case on Coolify, whose team listing is filtered down to the token's own team.
+  """
+  otherTeams: [String!]
+  platform: MigrationPlatform
+
+  """
+  The team's own id over there, which is how two tokens of ONE team are told apart from two tokens of two teams. Null when the panel would not say.
+  """
+  teamId: String
+  teamName: String
 }
 
 input MintRegistrationLinkInput {
@@ -3009,6 +3031,11 @@ type Mutation {
   handOverMigrationSources(fromTeamId: String!): Int
 
   """
+  WHICH team a token reads, without reading it all. A token covers one team of the panel, so bringing several over takes one token each, and this is what lets the wizard collect them without paying for a full scan per token. Refuses a token that cannot read values, exactly as the scan does. Writes nothing.
+  """
+  identifyMigrationSource(input: MigrationSourceInput!): MigrationSourceTeam
+
+  """
   Bulk-import a .env-style blob. Every line lands as plain, so a key that already exists as a secret is skipped rather than downgraded.
   """
   importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): EnvImportResult
@@ -3240,7 +3267,13 @@ type Mutation {
   """
   Hand the machine to Deplo. The installer is waiting for this: it stops the other platform, inherits its certificates, moves Traefik onto 80/443 and the dashboard onto 3000, and then takes the other platform off the disk for good.
   """
-  requestTakeover(runId: String!): Takeover
+  requestTakeover(
+    """
+    The operator says this panel has no team left to bring over. Required only when the migration itself says one is still owed, because a token reads a single team and the cutover stops the panel for good.
+    """
+    noOtherTeams: Boolean
+    runId: String!
+  ): Takeover
 
   """
   Restore a default role to exactly what Deplo ships, for its members too. Returns true.
@@ -3583,7 +3616,17 @@ type Mutation {
   """
   Start a migration and hand it to the control plane. Returns the run id as soon as the plan is DURABLE, not when the migration is done: the loop lives here now, under the identity of whoever started it, so the tab can be closed, reloaded or replaced and the run does not notice. The panel's token is stored encrypted for the length of the run and wiped the moment it leaves `running` - a deliberate reversal of never storing it, made because the alternative is a migration that cannot survive a page reload.
   """
-  startMigration(input: MigrationSourceInput!, orgName: String, servers: [MigrationServerChoiceInput!], targets: [MigrationRunTargetInput!]!): String
+  startMigration(
+    input: MigrationSourceInput!
+
+    """
+    Another team of the SAME panel is still to come, so this run must leave Deplo's agents on the source machines - the next team reads the same disks, and an uninstall scheduled here would race the install that follows it. The last run of a series leaves this false, and it is that one that clears them. It also holds the takeover: the ports cannot be taken while a run says more teams are owed.
+    """
+    keepSources: Boolean
+    orgName: String
+    servers: [MigrationServerChoiceInput!]
+    targets: [MigrationRunTargetInput!]!
+  ): String
 
   """
   Options for `navigator.credentials.create`. Requires the account password.

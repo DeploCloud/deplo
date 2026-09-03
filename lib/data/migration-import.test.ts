@@ -73,6 +73,7 @@ import {
   drainMigrationSourceUninstalls,
   finishMigration,
   handOverMigrationSources,
+  identifyMigrationSource,
   importMigrationMembers,
   listMigrationTargetTeams,
   sweepFinishedMigrationMarks,
@@ -146,7 +147,11 @@ const COMPOSE_WITH_DOKPLOY_NETWORK = [
 /** Two projects, five services, one of everything worth exercising. */
 function defaultFixtures(): Fixtures {
   return {
-    "organization.active": { name: "Acme Inc" },
+    "organization.active": { id: "org_acme", name: "Acme Inc" },
+    "organization.all": [
+      { id: "org_acme", name: "Acme Inc" },
+      { id: "org_side", name: "Side Projects" },
+    ],
     "server.all": [
       { serverId: "dok-srv-1", name: "eu-1", ipAddress: "203.0.113.10" },
     ],
@@ -427,6 +432,25 @@ test("a private panel address is instance-admin only, and needs no flag", async 
     );
   const plan = await asOwner(() => scanMigrationSource(PRIVATE));
   assert.equal(plan.platform, "dokploy");
+});
+
+// A key reads ONE organization, so a panel with three needs three keys. This is
+// what the wizard asks per key while it collects them - a full scan per key is
+// hundreds of calls, and a fresh Dokploy key is rate-limited to ten a day.
+test("a key says which team it reads, and which it does not", async () => {
+  const who = await asOwner(() => identifyMigrationSource(CONNECT));
+
+  assert.equal(who.platform, "dokploy");
+  assert.equal(who.teamId, "org_acme");
+  assert.equal(who.teamName, "Acme Inc");
+  assert.deepEqual(who.otherTeams, ["Side Projects"]);
+  // Nothing was written: it is a question, asked before anything is chosen.
+  assert.deepEqual(await asOwner(() => listMigrationRuns()), []);
+});
+
+test("scan names the teams no key covers yet", async () => {
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
+  assert.deepEqual(plan.otherTeams, ["Side Projects"]);
 });
 
 test("scan describes the whole tree without writing anything", async () => {
@@ -1753,6 +1777,32 @@ test("finishing an import takes Deplo's agent back off the migration source", as
   );
 });
 
+// A token reads ONE team, so several teams of one panel are several runs over the
+// same machines. Between them the agents stay: the last run of the series is the
+// one that clears them.
+test("a run with more teams behind it leaves the agent where it is", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.80");
+  const runId = await asOwner(() =>
+    beginMigration({ url: URL_BASE, keepSources: true }),
+  );
+
+  await asOwner(() => finishMigration(runId));
+
+  assert.ok(
+    await asOwner(() => getServerById(id)),
+    "the next team of that panel has no way back to the disks",
+  );
+  const [row] = await db
+    .select({ next: serversTable.uninstallNextAt })
+    .from(serversTable)
+    .where(eq(serversTable.id, id));
+  assert.equal(
+    row?.next ?? null,
+    null,
+    "an uninstall is queued, so the machine will not follow the next team",
+  );
+});
+
 test("data that did not copy KEEPS the source, agent and all", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.71");
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
@@ -2966,6 +3016,38 @@ test("a change of target team takes the panel's machines with it", async () => {
     `select count(*)::int as n from server_teams where server_id = '${SERVER_1}' and team_id = '${TEAM_B}'`,
   );
   assert.equal(untouched.rows[0].n, 0);
+});
+
+// The hazard a queue of teams creates. A run that ends schedules the uninstall of
+// every source it used, and `handOverMigrationSources` will not move a machine
+// already queued for one - so team two would be installing an agent on a host
+// whose old one is still being taken off.
+test("a queued run's machines can still be handed to the next team", async () => {
+  await inBothTeams("mem_1_b", USER_1, ["view", "create_projects"]);
+  const { server: source } = await asOwner(() =>
+    addServer({
+      name: "dokploy-host",
+      host: "203.0.113.79",
+      importOnly: true,
+    }),
+  );
+  const runId = await asOwner(() =>
+    beginMigration({ url: URL_BASE, keepSources: true }),
+  );
+  await asOwner(() => finishMigration(runId));
+
+  const moved = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    handOverMigrationSources(TEAM_A),
+  );
+
+  assert.equal(moved, 1);
+  const grants = await db.execute(
+    `select team_id from server_teams where server_id = '${source.id}'`,
+  );
+  assert.deepEqual(
+    grants.rows.map((r) => r.team_id),
+    [TEAM_B],
+  );
 });
 
 test("a machine cannot be taken out of a team you may not migrate in", async () => {

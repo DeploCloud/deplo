@@ -265,6 +265,9 @@ export interface MigrationPlan {
   platform: MigrationPlatform;
   sourceUrl: string;
   orgName: string | null;
+  /** The panel's OTHER teams, so the wizard can say which ones this token does
+   *  not cover. Null when the panel cannot say - see {@link SourceIdentity}. */
+  otherTeams: string[] | null;
   projects: PlanProject[];
   servers: PlanServer[];
   members: PlanMember[];
@@ -605,6 +608,47 @@ function nameOf(
 /* Scan                                                               */
 /* ------------------------------------------------------------------ */
 
+/** What one token turns out to read. See {@link identifyMigrationSource}. */
+export interface SourceIdentity {
+  platform: MigrationPlatform;
+  /** The source team's own id, which is what tells two tokens of ONE team apart
+   *  from two tokens of two teams. Null when the panel would not say. */
+  teamId: string | null;
+  teamName: string | null;
+  /**
+   * The panel's other teams, by name - never the ones already added here, which
+   * only the caller knows. Null when the panel cannot say, which is always the
+   * case on Coolify, and means the wizard has to ask instead of listing.
+   */
+  otherTeams: string[] | null;
+}
+
+/**
+ * WHICH team a token reads, without reading it all. A token covers exactly one
+ * team of the panel on both products, so bringing several over takes one token
+ * each, and the wizard has to be able to collect them without paying for a full
+ * scan per token (a fresh Dokploy key is rate-limited to ten requests a day).
+ */
+export async function identifyMigrationSource(
+  input: ConnectInput,
+): Promise<SourceIdentity> {
+  await assertImportGate();
+  const c = await credentialFor(input);
+  // The same refusal the scan opens with, one token earlier: a token that cannot
+  // read values is worth catching while it is still one line in a list.
+  await sourceClient(c).assertReadable();
+  const [team, others] = await Promise.all([
+    sourceClient(c).sourceTeam(),
+    sourceClient(c).otherTeams(),
+  ]);
+  return {
+    platform: c.kind,
+    teamId: team.id,
+    teamName: team.name,
+    otherTeams: others,
+  };
+}
+
 /**
  * Read the source instance and describe what an import would do - without writing
  * anything.
@@ -618,8 +662,9 @@ export async function scanMigrationSource(
   // hides values silently would produce a migration that looks like it worked.
   await sourceClient(c).assertReadable();
 
-  const [orgName, servers, projects] = await Promise.all([
-    sourceClient(c).organizationName(),
+  const [sourceTeam, otherTeams, servers, projects] = await Promise.all([
+    sourceClient(c).sourceTeam(),
+    sourceClient(c).otherTeams(),
     sourceClient(c)
       .listServers()
       .catch(() => []),
@@ -866,7 +911,8 @@ export async function scanMigrationSource(
   return {
     platform: c.kind,
     sourceUrl: c.baseUrl,
-    orgName,
+    orgName: sourceTeam.name,
+    otherTeams,
     projects: planned,
     servers: await planMachines(c, teamId, servers, { probe: true }),
     members: await planMembers(c, teamId),
@@ -1318,6 +1364,8 @@ export async function beginMigration(input: {
   url: string;
   orgName?: string | null;
   kind?: MigrationPlatform;
+  /** More teams of this panel are still to come - see `migration_runs.keep_sources`. */
+  keepSources?: boolean;
 }): Promise<string> {
   const { teamId } = await assertImportGate();
   const user = await getCurrentUser();
@@ -1372,6 +1420,7 @@ export async function beginMigration(input: {
     sourceUrl: normalizeSourceBaseUrl(input.url),
     platform: input.kind ?? "dokploy",
     orgName: input.orgName?.trim() || null,
+    keepSources: input.keepSources ?? false,
     actor: user?.name ?? "someone",
     // The id as well as the display name: it is what says whose wizard opens on
     // this run again (`resumableMigration`), and the runner overwrites it
@@ -1751,10 +1800,17 @@ export async function finishMigration(runId: string): Promise<void> {
   // below dials hosts and can take a minute, and none of that is a reason to
   // keep a finished migration's apps frozen.
   if (closed.length > 0) await releaseMigrating(runId);
+  const [row] = await getDb()
+    .select({ keepSources: runsTable.keepSources })
+    .from(runsTable)
+    .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)))
+    .limit(1);
   // Swept whether or not THIS call is what ended the run. A run that already
   // failed still owns the agents it put on those machines, and leaving them there
   // is what made the next attempt find a machine that was "already connected".
-  await removeMigrationSources(runId, teamId);
+  // Unless another team of the same panel is next: it reads the same disks, and a
+  // scheduled uninstall would race the install that follows it.
+  if (!row?.keepSources) await removeMigrationSources(runId, teamId);
   await refreshCounts(runId, teamId);
 }
 

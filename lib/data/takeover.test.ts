@@ -68,13 +68,17 @@ const read = () =>
   runWithIdentity({ userId: ADMIN, teamId: TEAM_A }, takeoverStatus);
 
 /** A finished run, which is what taking the ports is allowed to follow. */
-async function seedFinishedRun(id: string, status = "done"): Promise<void> {
+async function seedFinishedRun(
+  id: string,
+  status = "done",
+  keepSources = false,
+): Promise<void> {
   await db.execute(
     `insert into migration_runs
        (id, team_id, source_url, platform, actor, status, created, skipped, failed,
-        manual, started_at, total_steps, done_steps, phase)
+        manual, started_at, total_steps, done_steps, phase, keep_sources)
      values ('${id}', '${TEAM_A}', 'http://panel.test:3000', 'dokploy', 'Tester',
-             '${status}', 1, 0, 0, 0, now(), 1, 1, 'done');`,
+             '${status}', 1, 0, 0, 0, now(), 1, 1, 'done', ${keepSources});`,
   );
 }
 
@@ -276,4 +280,23 @@ test("the ports are not handed over for a migration that never finished", async 
     /is running/,
   );
   assert.equal((await read())?.state, "pending");
+});
+
+// The cutover stops that panel for good and nothing here can start it again, so
+// a run that says another team is still owed holds the ports until the operator
+// overrules it on purpose.
+test("the ports wait for the teams the migration says are still owed", async () => {
+  await seedPending();
+  await seedFinishedRun("run_queued", "done", true);
+
+  await assert.rejects(
+    () => asUser(ADMIN, () => requestTakeover("run_queued")),
+    /still has teams to bring over/,
+  );
+  assert.equal((await read())?.state, "pending");
+
+  const after = await asUser(ADMIN, () =>
+    requestTakeover("run_queued", { noOtherTeams: true }),
+  );
+  assert.equal(after.state, "ready");
 });

@@ -53,8 +53,10 @@ const src = sourceClient(c);
 console.log(`platform    ${kind}`);
 
 console.log(`source      ${c.baseUrl}`);
+const team = await src.sourceTeam();
+console.log(`team        ${team.name ?? "(not reported)"}`);
 console.log(
-  `organization ${(await src.organizationName()) ?? "(not reported)"}`,
+  `other teams ${(await src.otherTeams())?.join(", ") || "(this panel will not say)"}`,
 );
 
 const servers = await src.listServers().catch(() => []);

@@ -10,7 +10,7 @@ import type {
   SourceCredential,
 } from "../source";
 import {
-  activeOrganizationName,
+  activeOrganization,
   getConvertedCompose,
   getEnvironment,
   getService,
@@ -18,6 +18,7 @@ import {
   listAppContainers,
   listMembers,
   listNetworks,
+  listOrganizations,
   listProjects,
   listSchedules,
   listServers,
@@ -153,7 +154,17 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     getResolvedCompose: (id) => getConvertedCompose(c, id),
     listServers: () => listServers(c),
     listMembers: () => listMembers(c),
-    organizationName: () => activeOrganizationName(c),
+    sourceTeam: () => activeOrganization(c),
+    // A key names ONE organization, so the others are worth naming: this is the
+    // list Dokploy itself shows when a key is minted.
+    otherTeams: async () => {
+      const [active, all] = await Promise.all([
+        activeOrganization(c),
+        listOrganizations(c),
+      ]);
+      if (!all) return null;
+      return all.filter((o) => o.id !== active.id).map((o) => o.name || o.id);
+    },
     listSchedules: (kind, id) => listSchedules(c, kind, id),
     // Dokploy shares variables at the project and the environment, never above.
     teamSharedEnv: async () => null,

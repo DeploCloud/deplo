@@ -166,10 +166,13 @@ export async function noteBrowserReached(): Promise<void> {
  * nothing brought across costs the operator their old panel's routing for
  * nothing, and the button being disabled is not a gate.
  */
-export async function requestTakeover(runId: string): Promise<TakeoverStatus> {
+export async function requestTakeover(
+  runId: string,
+  opts: { noOtherTeams?: boolean } = {},
+): Promise<TakeoverStatus> {
   await requireInstanceAdmin();
   const [run] = await getDb()
-    .select({ status: runsTable.status })
+    .select({ status: runsTable.status, keepSources: runsTable.keepSources })
     .from(runsTable)
     .where(eq(runsTable.id, runId));
   if (!run)
@@ -179,6 +182,13 @@ export async function requestTakeover(runId: string): Promise<TakeoverStatus> {
   if (run.status !== "done")
     throw new Error(
       `That migration is ${run.status}. Let it finish before handing Deplo the ports.`,
+    );
+  // The cutover stops that panel and its containers for good, and nothing here
+  // can start them again. A run that says another team is still owed is the one
+  // fact Deplo has about it, and the operator has to overrule it on purpose.
+  if (run.keepSources && !opts.noOtherTeams)
+    throw new Error(
+      "That migration still has teams to bring over from the panel. Finish them first: taking the ports stops it for good, and a token reads one team.",
     );
   return advance("ready", { runId });
 }

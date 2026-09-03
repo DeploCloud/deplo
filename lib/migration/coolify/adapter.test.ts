@@ -374,3 +374,15 @@ test("a pinned volume nothing in the stack mounts is not worth a line", async (t
   assert.deepEqual(state.volumes, [{ name: "gitea-data", mountPath: "/data" }]);
   assert.deepEqual(state.notes, []);
 });
+
+// A Coolify token is bound to the team it was minted in: `/v1/teams` is filtered
+// down to that one team, so the panel cannot even count the others. Answering
+// `null` rather than `[]` is what makes the wizard ask instead of claiming
+// nothing is missing.
+test("the token's own team is named, and the others cannot be", async (t) => {
+  serve(t, { "/api/v1/team": { id: 4, name: "Acme Corp" } });
+
+  const src = coolifyClient(cred);
+  assert.deepEqual(await src.sourceTeam(), { id: "4", name: "Acme Corp" });
+  assert.equal(await src.otherTeams(), null);
+});

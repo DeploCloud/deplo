@@ -278,21 +278,45 @@ export async function listMembers(
   return Array.isArray(rows) ? rows : [];
 }
 
+/** A better-auth organization row, of which only these two are read. */
+interface DokployOrganization {
+  id?: string | null;
+  name?: string | null;
+}
+
 /**
- * The name of the organization this key reads, so the wizard can say what it is
- * about to pull. Best-effort: an older instance has no such procedure, and not
- * knowing the name must not stop an import.
+ * The organization this key reads, so the wizard can say what it is about to pull
+ * and tell two keys of the same organization apart. Best-effort: an older
+ * instance has no such procedure, and not knowing must not stop an import.
  */
-export async function activeOrganizationName(
+export async function activeOrganization(
   c: SourceCredential,
-): Promise<string | null> {
+): Promise<{ id: string | null; name: string | null }> {
   try {
-    const org = await get<{ name?: string | null } | null>(
-      c,
-      "organization.active",
-    );
-    const name = org?.name?.trim();
-    return name ? name : null;
+    const org = await get<DokployOrganization | null>(c, "organization.active");
+    return {
+      id: org?.id?.trim() || null,
+      name: org?.name?.trim() || null,
+    };
+  } catch {
+    return { id: null, name: null };
+  }
+}
+
+/**
+ * Every organization the key's OWNER belongs to - the same list Dokploy shows
+ * when a key is minted, and a key names exactly one of them. Null when the panel
+ * would not say, which an older one will not.
+ */
+export async function listOrganizations(
+  c: SourceCredential,
+): Promise<{ id: string; name: string }[] | null> {
+  try {
+    const rows = await get<DokployOrganization[] | null>(c, "organization.all");
+    if (!Array.isArray(rows)) return null;
+    return rows
+      .map((o) => ({ id: o?.id?.trim() || "", name: o?.name?.trim() || "" }))
+      .filter((o) => o.id !== "");
   } catch {
     return null;
   }

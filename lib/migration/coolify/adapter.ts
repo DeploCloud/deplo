@@ -585,7 +585,16 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
     listMembers: async (): Promise<SourceMember[]> =>
       (await listTeamMembers(c)).map(coolifyMember),
 
-    organizationName: async () => (await currentTeam(c))?.name?.trim() || null,
+    sourceTeam: async () => {
+      const t = await currentTeam(c);
+      return {
+        id: t?.id != null ? String(t.id) : null,
+        name: t?.name?.trim() || null,
+      };
+    },
+    // `/v1/teams` is filtered down to the token's own team, so the others are not
+    // merely hidden from this token - they cannot be counted either.
+    otherTeams: async () => null,
 
     listSchedules: async (kind, id): Promise<SourceSchedule[]> => {
       const group = await resolveGroup(c, kind, id);

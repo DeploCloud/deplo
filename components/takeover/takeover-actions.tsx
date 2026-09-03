@@ -9,6 +9,7 @@ import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LeftoverDiskGraphic } from "@/components/takeover/leftover-disk-graphic";
@@ -29,8 +30,8 @@ const STATUS = /* GraphQL */ `
 `;
 
 const TAKE_PORTS = /* GraphQL */ `
-  mutation RequestTakeover($runId: String!) {
-    requestTakeover(runId: $runId) {
+  mutation RequestTakeover($runId: String!, $noOtherTeams: Boolean) {
+    requestTakeover(runId: $runId, noOtherTeams: $noOtherTeams) {
       state
     }
   }
@@ -65,6 +66,12 @@ export function TakeoverStep({
   finishedRunId: string | null;
 }) {
   const router = useRouter();
+  /**
+   * A token reads ONE team of that panel, and the panel cannot always list the
+   * others - Coolify never can. The cutover stops it for good, so this is a
+   * thing the operator says, not a thing Deplo can look up.
+   */
+  const [noOtherTeams, setNoOtherTeams] = React.useState(false);
 
   return (
     <Card>
@@ -95,6 +102,25 @@ export function TakeoverStep({
               back.
             </>
           }
+          extra={
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+              <Checkbox
+                checked={noOtherTeams}
+                onCheckedChange={(v) => setNoOtherTeams(v === true)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">
+                  I have no other teams on this {platformLabel}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  One token reads one team. Anything not brought over yet stays
+                  on a panel that stops answering.
+                </span>
+              </span>
+            </label>
+          }
+          confirmDisabled={!noOtherTeams}
           confirmText={platformLabel.toLowerCase()}
           confirmLabel="Take it over"
           variant="default"
@@ -102,7 +128,10 @@ export function TakeoverStep({
           optimistic
           onConfirm={async () => {
             if (!finishedRunId) return { ok: false as const, error: "" };
-            const res = await gqlAction(TAKE_PORTS, { runId: finishedRunId });
+            const res = await gqlAction(TAKE_PORTS, {
+              runId: finishedRunId,
+              noOtherTeams,
+            });
             // The state is the server's, and it is what swaps this whole screen
             // for the one that says the ports are moving.
             if (res.ok) router.refresh();

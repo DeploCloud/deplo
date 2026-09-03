@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,7 @@ export function CreateTeamDialog({
   onOpenChange,
   redirect = true,
   onCreated,
+  defaultName,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -38,10 +40,15 @@ export function CreateTeamDialog({
   /** Fired with the new team's id once it exists and is active - for a caller
    *  that has to react to landing in a different team. */
   onCreated?: (teamId: string) => void;
+  /** What the field opens with - the source team's name, when a migration is
+   *  creating the team that mirrors it. */
+  defaultName?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  const [name, setName] = React.useState("");
+  // Back to the seed rather than to empty, so a dialog that stays mounted still
+  // opens on the name its caller gave it.
+  const [name, setName] = React.useState(defaultName ?? "");
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,7 +65,7 @@ export function CreateTeamDialog({
       if (res.ok) {
         toast.success("Team created");
         onOpenChange(false);
-        setName("");
+        setName(defaultName ?? "");
         if (redirect) router.push("/");
         // Either way: `createTeam` switches the active team server-side, so
         // every read on the page behind this dialog is now about a different
@@ -76,7 +83,7 @@ export function CreateTeamDialog({
       open={open}
       onOpenChange={(o) => {
         onOpenChange(o);
-        if (!o) setName("");
+        if (!o) setName(defaultName ?? "");
       }}
     >
       <DialogContent>
@@ -107,7 +114,8 @@ export function CreateTeamDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !name.trim()}>
-              {pending ? "Creating…" : "Create team"}
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Create team
             </Button>
           </DialogFooter>
         </form>

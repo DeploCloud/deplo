@@ -685,6 +685,12 @@ already run. A **migration run** is the stored row plus the **report** it leaves
 (`migration_runs` + `migration_run_items`), readable from either tab in the same dialog.
 The wizard is five steps - Connect, Install, Review, People, Done - and Install is where the
 **migration source** gets its agent.
+A token of either panel reads exactly ONE team over there (Coolify binds it to the team it
+was minted in, a Dokploy key carries one `organizationId`), so a panel with three teams is
+three tokens and **three runs**, one after another, each landing in a Deplo team of its own.
+Connect collects them as a list; a run that is not the last of the series carries
+`keep_sources`, which is what stops it taking the agents off machines the next team still
+has to read.
 The whole domain is spelled **migration**, wire included (`scanMigrationSource`,
 `importMigrationProject`, `migrationRuns`, `lib/data/migration-import.ts`). The older `import`
 spelling was kept for a while on the argument that renaming a published schema would break the

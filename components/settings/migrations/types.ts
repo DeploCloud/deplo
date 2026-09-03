@@ -71,6 +71,9 @@ export interface Plan {
   platform: SourceKind;
   sourceUrl: string;
   orgName: string | null;
+  /** The panel's other teams, for the line that names the ones no token covers.
+   *  Null when the panel cannot say - see `./queue`. */
+  otherTeams: string[] | null;
   projects: PlanProject[];
   servers: PlanServer[];
   members: PlanMember[];

@@ -93,7 +93,18 @@ export interface MigrationSourceClient {
   getResolvedCompose(id: string): Promise<string | null>;
   listServers(): Promise<SourceServer[]>;
   listMembers(): Promise<SourceMember[]>;
-  organizationName(): Promise<string | null>;
+  /**
+   * The one team this credential reads. `id` is what tells two tokens of the same
+   * team apart from two tokens of two teams; both halves are null when the panel
+   * would not say.
+   */
+  sourceTeam(): Promise<{ id: string | null; name: string | null }>;
+  /**
+   * The teams on this panel this credential does NOT cover, by name, or null when
+   * the panel cannot say - Coolify filters `/v1/teams` down to the token's own
+   * team, so there it is never a list and the wizard has to ask.
+   */
+  otherTeams(): Promise<string[] | null>;
   listSchedules(kind: string, id: string): Promise<SourceSchedule[]>;
   /**
    * The panel's TEAM-level shared variables as a `KEY=value` blob, or null when it

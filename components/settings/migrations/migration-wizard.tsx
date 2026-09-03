@@ -11,6 +11,8 @@ import {
   ScrollText,
   Server as ServerIcon,
   TriangleAlert,
+  Users,
+  X,
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
@@ -18,6 +20,7 @@ import { docsUrl } from "@/lib/docs";
 import { formatBuildDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { KindCard } from "@/components/shared/kind-card";
@@ -47,6 +50,14 @@ import { MigrationConsole, RUN_LOG } from "./migration-console";
 import { StepShell } from "./step-shell";
 import { stepsFor, type StepId } from "./steps";
 import {
+  addTeam,
+  teamsAfter,
+  uncoveredTeams,
+  type QueuedTeam,
+  type SourceTeam,
+} from "./queue";
+import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
+import {
   importableOf,
   type ImportRun,
   type Invite,
@@ -65,6 +76,26 @@ import {
 /** Dokploy's own host has no server row over there; it is the empty id. */
 const OWN_HOST = "";
 
+/** Two names for one team, whatever anyone typed around them. */
+function sameTeamName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/**
+ * What a fresh plan arrives ticked with: everything Deplo can actually create.
+ * Anything already here is not, since re-importing it would only produce a page
+ * of "already here" rows.
+ */
+function defaultChoice(plan: Plan): Set<string> {
+  return new Set(
+    plan.projects.flatMap((p) =>
+      importableOf(p)
+        .filter((s) => s.status !== "exists")
+        .map((s) => s.sourceId),
+    ),
+  );
+}
+
 /**
  * The whole migration, in one call. It returns when the PLAN is durable, not
  * when the work is done - everything after that happens in the control plane,
@@ -76,12 +107,14 @@ const START = /* GraphQL */ `
     $orgName: String
     $targets: [MigrationRunTargetInput!]!
     $servers: [MigrationServerChoiceInput!]
+    $keepSources: Boolean
   ) {
     startMigration(
       input: $input
       orgName: $orgName
       targets: $targets
       servers: $servers
+      keepSources: $keepSources
     )
   }
 `;
@@ -101,12 +134,26 @@ function lastStep(path: string | null | undefined): string {
 /* GraphQL                                                            */
 /* ------------------------------------------------------------------ */
 
+/** Which team one token reads, without reading it all - what the list on Connect
+ *  is built from. */
+const IDENTIFY = /* GraphQL */ `
+  mutation IdentifyMigrationSource($input: MigrationSourceInput!) {
+    identifyMigrationSource(input: $input) {
+      platform
+      teamId
+      teamName
+      otherTeams
+    }
+  }
+`;
+
 const SCAN = /* GraphQL */ `
   mutation ScanMigrationSource($input: MigrationSourceInput!) {
     scanMigrationSource(input: $input) {
       platform
       sourceUrl
       orgName
+      otherTeams
       servers {
         sourceId
         name
@@ -385,6 +432,20 @@ export function MigrationWizard({
   const [url, setUrl] = React.useState(prefill?.url ?? "");
   const [apiKey, setApiKey] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
+  /**
+   * The panel's teams and the token that reads each, in the order they are
+   * brought over - a token reads exactly one team on both products. `at` is whose
+   * turn it is; both outlive one team's run, which is what makes this a queue.
+   */
+  const [queue, setQueue] = React.useState<QueuedTeam[]>([]);
+  const [at, setAt] = React.useState(0);
+  /** An `Add` in flight. */
+  const [adding, setAdding] = React.useState(false);
+  /** Every team the panel would name, so the ones no token covers can be listed.
+   *  Null from a panel that cannot say, which is Coolify always. */
+  const [panelTeams, setPanelTeams] = React.useState<string[] | null>(null);
+  /** The queued team waiting for a Deplo team of its own to be created. */
+  const [pendingTeam, setPendingTeam] = React.useState<number | null>(null);
   const [plan, setPlan] = React.useState<Plan | null>(null);
   /** Pinned by the person after a scan that could not identify the panel. */
   const [forcedKind, setForcedKind] = React.useState<SourceKind | null>(
@@ -463,11 +524,20 @@ export function MigrationWizard({
   const connectInput = React.useMemo(
     () => ({
       url,
-      apiKey,
+      // Whose turn it is, not what is in the field: the field is emptied the
+      // moment a token joins the list, and the People step still needs the key
+      // its team was read with.
+      apiKey: queue[at]?.apiKey || apiKey,
       kind: plan?.platform ?? null,
     }),
-    [url, apiKey, plan],
+    [url, apiKey, plan, queue, at],
   );
+
+  /** How many teams of this panel are still behind the one on screen. */
+  const teamsLeft = teamsAfter(queue, at);
+  /** The panel's teams no token here covers yet. Empty on a panel that will not
+   *  name them, where the wizard asks instead. */
+  const uncovered = uncoveredTeams(panelTeams, queue);
 
   /** What is known about the panel so far: what answered, or what was pinned. */
   const kind: SourceKind | null = plan?.platform ?? forcedKind;
@@ -489,14 +559,15 @@ export function MigrationWizard({
 
   /* ---- step 1: connect --------------------------------------------- */
 
-  async function scan(e: React.FormEvent) {
-    e.preventDefault();
+  /** Read the panel with ONE team's key. Every scan goes through here: the form's,
+   *  the queue's next team, and the re-read a change of target team needs. */
+  async function scanWith(key: string): Promise<Plan | null> {
     setScanning(true);
     setScanError(null);
     const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
       SCAN,
       {
-        input: { url, apiKey, kind: forcedKind },
+        input: { url, apiKey: key, kind: forcedKind },
       },
       (d) => d.scanMigrationSource,
     );
@@ -506,22 +577,13 @@ export function MigrationWizard({
       // IP allowlist or a token short of a permission, the fix is minutes away in
       // another tab, and a toast is gone before anyone gets back.
       setScanError(res.error);
-      return;
+      return null;
     }
-    if (!res.data) return;
+    if (!res.data) return null;
     const scanned = res.data;
     setPlan(scanned);
-    // Everything Deplo can actually create is picked; anything already here is
-    // not, since re-importing it would only produce a page of "already here" rows.
-    setChosen(
-      new Set(
-        scanned.projects.flatMap((p) =>
-          importableOf(p)
-            .filter((s) => s.status !== "exists")
-            .map((s) => s.sourceId),
-        ),
-      ),
-    );
+    if (scanned.otherTeams) setPanelTeams(scanned.otherTeams);
+    setChosen(defaultChoice(scanned));
     const defaults = landingDefaults(scanned, servers);
     setPlacements(defaults.placements);
     setServerMap(defaults.servers);
@@ -529,6 +591,60 @@ export function MigrationWizard({
     // behind this" gets answered - and which ends itself either way, so nobody
     // whose machines are already ours has a screen to click through.
     setStep("install");
+    return scanned;
+  }
+
+  /**
+   * The one button at the bottom of Connect, which does the one thing left to do:
+   * add the token that is typed, or start on the list once there is one.
+   */
+  async function submitConnect(e: React.FormEvent) {
+    e.preventDefault();
+    if (apiKey.trim() && queue.length > 0) return identifyAndAdd();
+    if (queue.length > 0) return goToTeam(0);
+    // One team and one token is the common case, and it stays one click: the key
+    // in the field IS the list then, named by what the scan read.
+    const key = apiKey;
+    const scanned = await scanWith(key);
+    if (scanned)
+      setQueue([
+        {
+          apiKey: key,
+          sourceTeamId: null,
+          name: scanned.orgName ?? "",
+          status: "waiting",
+        },
+      ]);
+  }
+
+  /** Put the typed token on the list, once the panel has said which team it reads. */
+  async function identifyAndAdd() {
+    setAdding(true);
+    setScanError(null);
+    const res = await gqlAction<
+      { identifyMigrationSource: SourceTeam },
+      SourceTeam
+    >(
+      IDENTIFY,
+      { input: { url, apiKey, kind: forcedKind } },
+      (d) => d.identifyMigrationSource,
+    );
+    setAdding(false);
+    if (!res.ok) {
+      setScanError(res.error);
+      return;
+    }
+    if (!res.data) return;
+    const next = addTeam(queue, res.data, apiKey);
+    if (next.error !== null) {
+      setScanError(next.error);
+      return;
+    }
+    setQueue(next.queue);
+    if (res.data.otherTeams) setPanelTeams(res.data.otherTeams);
+    // Out of the field the moment it is on the list: what holds it now is the
+    // team it belongs to.
+    setApiKey("");
   }
 
   /**
@@ -537,7 +653,7 @@ export function MigrationWizard({
    * here" and the domain notes are answers about a team, the ticks are not.
    */
   const retargetTeam = React.useCallback(
-    async (nextTeamId: string) => {
+    async (nextTeamId: string, withKey?: string): Promise<string | null> => {
       const from = targetTeamId;
       setRetargeting(true);
       setRetargetError(null);
@@ -550,7 +666,7 @@ export function MigrationWizard({
       if (!switched.ok) {
         setRetargeting(false);
         setRetargetError(switched.error);
-        return;
+        return switched.error;
       }
       setLanded({ from, to: nextTeamId });
       if (from !== nextTeamId) {
@@ -561,13 +677,15 @@ export function MigrationWizard({
         if (!moved.ok) {
           setRetargeting(false);
           setRetargetError(moved.error);
-          return;
+          return moved.error;
         }
       }
       router.refresh();
       const again = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
         SCAN,
-        { input: connectInput },
+        // A team of the queue arrives with its own key: the state that would hold
+        // it is set in the same tick as this call, so it is passed, not read.
+        { input: { ...connectInput, apiKey: withKey || connectInput.apiKey } },
         (d) => d.scanMigrationSource,
       );
       setRetargeting(false);
@@ -575,15 +693,21 @@ export function MigrationWizard({
         // Kept on the card, not toasted: the plan on screen now answers about the
         // team it was read in, and a toast is gone before that matters.
         setRetargetError(again.error);
-        return;
+        return again.error;
       }
-      if (!again.data) return;
+      if (!again.data) return "Deplo could not read the panel again.";
       setPlan(again.data);
+      // Nothing ticked means this plan is NEW to the wizard - the next team of the
+      // queue arriving, not a re-read of the one on screen - so it gets the same
+      // default a first scan gives.
+      const fresh = again.data;
+      setChosen((prev) => (prev.size > 0 ? prev : defaultChoice(fresh)));
       const defaults = landingDefaults(again.data, servers);
       // What was already chosen wins: a service the source has grown since the
       // first scan gets a default, nobody's review gets thrown away.
       setPlacements((prev) => ({ ...defaults.placements, ...prev }));
       setServerMap((prev) => ({ ...defaults.servers, ...prev }));
+      return null;
     },
     [connectInput, router, servers, targetTeamId],
   );
@@ -630,6 +754,10 @@ export function MigrationWizard({
         servers: Object.entries(landing.servers)
           .filter(([, to]) => to)
           .map(([from, to]) => ({ from, to })),
+        // Another team of this panel is queued behind this run, so it must leave
+        // Deplo's agents on the source machines: the next one reads the same
+        // disks. It also holds the takeover until the list is done.
+        keepSources: teamsLeft > 0,
       },
       (d) => d.startMigration,
     );
@@ -651,11 +779,10 @@ export function MigrationWizard({
   }
 
   /**
-   * Back to an empty wizard. The run is over and undone; nothing it made is
-   * here, and nothing it chose should be either - a plan half-applied is the one
-   * thing that must never be re-submitted by accident.
+   * Everything ONE team chose. Which teams are still to come is not one team's,
+   * and neither is the panel they all belong to, so both stay.
    */
-  const resetToStart = React.useCallback(() => {
+  const resetTeamState = React.useCallback(() => {
     setUndoing(false);
     setFailure(null);
     setPlan(null);
@@ -667,13 +794,89 @@ export function MigrationWizard({
     setPendingMachines({});
     attemptedMachines.current = new Set();
     setApiKey("");
-    setForcedKind(null);
     setScanError(null);
     setRetargetError(null);
     setLogOpen(false);
+    setInvites(null);
+    setInviteLink(null);
+  }, []);
+
+  /**
+   * Back to an empty wizard. The run is over and undone; nothing it made is
+   * here, and nothing it chose should be either - a plan half-applied is the one
+   * thing that must never be re-submitted by accident.
+   *
+   * The LIST survives on purpose: this is also where a stopped or failed team
+   * lands, and the teams behind it are still to come.
+   */
+  const resetToStart = React.useCallback(() => {
+    resetTeamState();
+    setForcedKind(null);
     setStep("connect");
     router.refresh();
-  }, [router]);
+  }, [resetTeamState, router]);
+
+  /** Nothing of this panel is wanted any more - another panel, or the way out. */
+  const forgetQueue = React.useCallback(() => {
+    setQueue([]);
+    setAt(0);
+    setPanelTeams(null);
+    setPendingTeam(null);
+  }, []);
+
+  /**
+   * Begin one team of the list: point Deplo at the team of its own it lands in,
+   * then read the panel with its key.
+   */
+  async function startTeam(i: number, teamHere?: string) {
+    const team = queue[i];
+    if (!team) return;
+    setAt(i);
+    resetTeamState();
+    if (!teamHere || teamHere === targetTeamId) {
+      await scanWith(team.apiKey);
+      return;
+    }
+    // Said out loud here: the card that carries this error is a step away from
+    // where the list left the operator standing.
+    const failed = await retargetTeam(teamHere, team.apiKey);
+    if (failed) return toast.error(failed);
+    setStep("install");
+  }
+
+  /**
+   * Where one team of the list lands: the Deplo team already named after it, or
+   * one created for it, because that is the separation they had over there. With
+   * a single team nothing moves - a lone migration lands where it always did.
+   */
+  function homeFor(team: QueuedTeam): string | undefined {
+    if (queue.length < 2 || !team.name) return undefined;
+    return targetTeams.find((t) => sameTeamName(t.name, team.name))?.id;
+  }
+
+  /** Team `i`, wherever it belongs - creating that team first when there is none. */
+  async function goToTeam(i: number) {
+    const team = queue[i];
+    if (!team) return;
+    const home = homeFor(team);
+    // No team of that name here yet: the dialog carries it, and creating it is
+    // the click that says yes. `at` only moves once there is somewhere to land.
+    if (!home && queue.length > 1 && team.name) {
+      setPendingTeam(i);
+      return;
+    }
+    await startTeam(i, home);
+  }
+
+  /** On to the next team of the panel. */
+  async function nextTeam() {
+    const i = at + 1;
+    if (!queue[i]) return;
+    await closeReport();
+    // The key dies with its turn.
+    setQueue((q) => q.map((e, j) => (j === at ? { ...e, apiKey: "" } : e)));
+    await goToTeam(i);
+  }
 
   /**
    * Stop, which means undo.
@@ -713,6 +916,12 @@ export function MigrationWizard({
       if (res.data.status === "running") return;
       // Whatever the page was rendered with is stale from here on.
       setSnapshot(null);
+      // The list says how each team went, so a report closed hours later still
+      // reads as "two over, one to go".
+      const outcome = res.data.status === "done" ? "done" : "failed";
+      setQueue((q) =>
+        q.map((e, i) => (i === at ? { ...e, status: outcome } : e)),
+      );
       if (res.data.status === "done") {
         // Inviting the source's members needs the member list, which came with
         // the plan and cannot be read back once the run has handed the API key
@@ -730,7 +939,7 @@ export function MigrationWizard({
         );
       resetToStart();
     },
-    [isInstanceAdmin, hasPlan, resetToStart],
+    [isInstanceAdmin, hasPlan, resetToStart, at],
   );
 
   /**
@@ -957,9 +1166,18 @@ export function MigrationWizard({
       {step === "done" ? (
         <DoneStep
           kind={kind}
+          teamNo={at + 1}
+          teamCount={queue.length}
+          nextName={teamsLeft > 0 ? (queue[at + 1]?.name ?? "") : null}
+          onNext={() => void nextTeam()}
+          uncovered={uncovered}
+          onAddTeam={() => setStep("connect")}
           onShowLog={() => setLogOpen(true)}
           onAgain={() => {
-            void closeReport().then(resetToStart);
+            void closeReport().then(() => {
+              forgetQueue();
+              resetToStart();
+            });
           }}
           finishLabel={takeoverStep ? "Take over the machine" : "Finish"}
           onFinish={() => {
@@ -1058,7 +1276,12 @@ export function MigrationWizard({
                   forcedKind={forcedKind}
                   setForcedKind={setForcedKind}
                   scanError={scanError}
-                  onSubmit={scan}
+                  queue={queue}
+                  uncovered={uncovered}
+                  adding={adding}
+                  onAdd={() => void identifyAndAdd()}
+                  onRemove={(i) => setQueue((q) => q.filter((_, j) => j !== i))}
+                  onSubmit={submitConnect}
                 />
               )}
 
@@ -1134,10 +1357,44 @@ export function MigrationWizard({
                 />
               )}
 
-              {!takenOver && step === "takeover" && takeoverStep}
+              {!takenOver &&
+                step === "takeover" &&
+                // Taking the ports stops that panel for good, so a team still on
+                // the list comes first. The server refuses it too - this is the
+                // half that says WHICH team is missing.
+                (teamsLeft > 0 ? (
+                  <TeamsLeftCard
+                    kind={kind}
+                    teams={queue.slice(at + 1).map((q) => q.name)}
+                    onNext={() => void nextTeam()}
+                  />
+                ) : (
+                  takeoverStep
+                ))}
             </div>
           </div>
         </div>
+      )}
+
+      {/**
+       * The team the next one of the list lands in, when this Deplo has none by
+       * that name. Mounted here rather than in the Review, which is a step past
+       * where the queue needs the answer.
+       */}
+      {pendingTeam != null && (
+        <CreateTeamDialog
+          open
+          redirect={false}
+          defaultName={queue[pendingTeam]?.name}
+          onOpenChange={(o) => {
+            if (!o) setPendingTeam(null);
+          }}
+          onCreated={(id) => {
+            const i = pendingTeam;
+            setPendingTeam(null);
+            void startTeam(i, id);
+          }}
+        />
       )}
 
       {/**
@@ -1169,6 +1426,11 @@ function ConnectStep({
   forcedKind,
   setForcedKind,
   scanError,
+  queue,
+  uncovered,
+  adding,
+  onAdd,
+  onRemove,
   onSubmit,
 }: {
   url: string;
@@ -1185,9 +1447,29 @@ function ConnectStep({
   forcedKind: SourceKind | null;
   setForcedKind: (v: SourceKind | null) => void;
   scanError: string | null;
+  /** The teams added so far - see `./queue`. */
+  queue: QueuedTeam[];
+  /** The panel's teams no token here covers, when the panel will name them. */
+  uncovered: string[];
+  adding: boolean;
+  onAdd: () => void;
+  onRemove: (i: number) => void;
   onSubmit: (e: React.FormEvent) => void;
 }) {
   const copy = copyFor(kind);
+  const busy = scanning || adding;
+  /**
+   * One button, and it does the one thing left to do: add what is typed, or set
+   * off down the list. A first token is both at once, which is what keeps the
+   * single-team migration at the one click it has always been.
+   */
+  const label = scanning
+    ? copy.scanBusy
+    : queue.length === 0
+      ? copy.scanIdle
+      : apiKey.trim()
+        ? `Add this ${copy.teamLabel}`
+        : `Continue with ${queue.length} ${copy.teamLabel}${queue.length === 1 ? "" : "s"}`;
   return (
     <StepShell
       title={copy.connectTitle}
@@ -1245,16 +1527,69 @@ function ConnectStep({
           >
             {copy.tokenLabel}
           </FieldLabel>
-          <Input
-            id="source-token"
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Paste the key"
-            autoComplete="off"
-            spellCheck={false}
-          />
+          {/* The field and its Add sit on one row, so the list below reads as
+              what the field feeds. Both h-9: a `sm` button here lands 4px short. */}
+          <div className="flex gap-2">
+            <Input
+              id="source-token"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Paste the key"
+              autoComplete="off"
+              spellCheck={false}
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              className="shrink-0"
+              disabled={busy || !url.trim() || !apiKey.trim()}
+              onClick={onAdd}
+            >
+              {adding && <Loader2 className="size-4 animate-spin" />}
+              Add
+            </Button>
+          </div>
         </div>
+
+        {queue.length > 0 && (
+          <div>
+            <p className="text-sm font-medium">Teams to bring over</p>
+            <ul className="mt-1 divide-y divide-border rounded-lg border border-border">
+              {queue.map((q, i) => (
+                <li
+                  key={`${q.sourceTeamId ?? ""}-${i}`}
+                  className="flex items-center gap-2 px-3 py-2 text-sm"
+                >
+                  <Users className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {q.name || `An unnamed ${copy.teamLabel}`}
+                  </span>
+                  {q.status === "done" && <Badge variant="success">Over</Badge>}
+                  {q.status === "failed" && (
+                    <Badge variant="destructive">Failed</Badge>
+                  )}
+                  {q.status === "waiting" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove ${q.name}`}
+                      onClick={() => onRemove(i)}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {uncovered.length > 0
+                ? `Not covered yet: ${uncovered.join(", ")}. Each needs its own ${copy.tokenLabel.toLowerCase()}.`
+                : `A ${copy.tokenLabel.toLowerCase()} reads one ${copy.teamLabel}. Add one per ${copy.teamLabel}.`}
+            </p>
+          </div>
+        )}
 
         {!takeover && (
           <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
@@ -1323,10 +1658,12 @@ function ConnectStep({
         <div className="flex justify-end">
           <Button
             type="submit"
-            disabled={scanning || !url.trim() || !apiKey.trim()}
+            disabled={
+              busy || !url.trim() || (queue.length === 0 && !apiKey.trim())
+            }
           >
-            {scanning && <Loader2 className="size-4 animate-spin" />}
-            {scanning ? copy.scanBusy : copy.scanIdle}
+            {busy && <Loader2 className="size-4 animate-spin" />}
+            {label}
           </Button>
         </div>
       </form>
@@ -1541,6 +1878,12 @@ function ElapsedLine({
  */
 function DoneStep({
   kind,
+  teamNo,
+  teamCount,
+  nextName,
+  onNext,
+  uncovered,
+  onAddTeam,
   onShowLog,
   onAgain,
   finishLabel,
@@ -1549,6 +1892,16 @@ function DoneStep({
 }: {
   /** Which panel this came from, for the drawing's label. */
   kind: SourceKind | null;
+  /** Which team of the list this was, and how many there are. */
+  teamNo: number;
+  teamCount: number;
+  /** The next team of the list, or null when this was the last one. */
+  nextName: string | null;
+  onNext: () => void;
+  /** Teams of the panel no token covers - only ever named on a panel that lists
+   *  them, which is Dokploy alone. */
+  uncovered: string[];
+  onAddTeam: () => void;
   /** The wizard's own console - the same one the panel opened while it ran. */
   onShowLog: () => void;
   /** Close the report and hand back an empty wizard, without leaving the page. */
@@ -1559,6 +1912,9 @@ function DoneStep({
   /** Uninstalling an agent is instance-admin, like every server action. */
   isInstanceAdmin: boolean;
 }) {
+  // Not the end of anything while a team is still waiting: no confetti, and no
+  // offer to take the agents off machines the next team is about to read.
+  const more = nextName != null;
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
       {/**
@@ -1566,17 +1922,36 @@ function DoneStep({
        * screen is still a burst thrown from the middle of the screen - which is where the
        * illustration is, so that is what it looks like it came out of.
        */}
-      <ConfettiBurst rain className="z-50" count={60} />
+      {!more && <ConfettiBurst rain className="z-50" count={60} />}
 
       <MigrationGraphic state="done" kind={kind} className="h-48 w-auto" />
 
       <div>
-        <h2 className="text-xl font-semibold">You&apos;re on Deplo</h2>
+        <h2 className="text-xl font-semibold">
+          {more
+            ? `Team ${teamNo} of ${teamCount} is on Deplo`
+            : "You're on Deplo"}
+        </h2>
         <p className="mt-1 text-sm text-balance text-muted-foreground">
-          Nothing is deployed yet. Open an app, check it over, and press Deploy
-          when you want the traffic.
+          {more
+            ? `${nextName} is next, and it lands in a team of its own. Nothing is deployed yet.`
+            : "Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."}
         </p>
       </div>
+
+      {/* Only a panel that lists its teams gets here - the operator is one key
+          short of a team they have not thought about. */}
+      {!more && uncovered.length > 0 && (
+        <div className="flex w-full items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-left text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+          <p className="min-w-0 flex-1 text-muted-foreground">
+            Still on that panel: {uncovered.join(", ")}.
+          </p>
+          <Button variant="secondary" size="sm" onClick={onAddTeam}>
+            Bring it over
+          </Button>
+        </div>
+      )}
 
       {/**
        * The two ends of the row, the way every footer in the app reads: what you might
@@ -1588,22 +1963,70 @@ function DoneStep({
             <ScrollText className="size-4" />
             Show log
           </Button>
-          <Button variant="outline" onClick={onAgain}>
-            <Repeat className="size-4" />
-            Migrate another
-          </Button>
+          {/* Another PANEL, which throws the list away - so not while it still
+              has teams on it. */}
+          {!more && (
+            <Button variant="outline" onClick={onAgain}>
+              <Repeat className="size-4" />
+              Migrate another
+            </Button>
+          )}
         </div>
-        <Button onClick={onFinish}>{finishLabel}</Button>
+        <Button onClick={more ? onNext : onFinish}>
+          {more ? `Bring ${nextName} over` : finishLabel}
+        </Button>
       </div>
 
       {/* Only ever shown when an agent really is still out there: finishing the
           run uninstalls them, so this is the line for the one that would not go
-          quietly. It brings its own card, so it sits outside the centred column. */}
-      {isInstanceAdmin && (
+          quietly. It brings its own card, so it sits outside the centred column.
+          Never while a team is still queued - those agents are its way in. */}
+      {isInstanceAdmin && !more && (
         <div className="w-full text-left">
           <RemoveMigrationSources />
         </div>
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Step - take over, while the list is not done                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the last step is until every team is over. The cutover stops that panel
+ * and its API for good, and a token reads one team - so a team still on the list
+ * would have nothing left to come from. The server refuses it too.
+ */
+function TeamsLeftCard({
+  kind,
+  teams,
+  onNext,
+}: {
+  kind: SourceKind | null;
+  /** The ones still to come, in order. */
+  teams: string[];
+  onNext: () => void;
+}) {
+  const copy = copyFor(kind);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <TriangleAlert className="size-4 text-warning" />
+          {teams.length === 1
+            ? "One team is still to come"
+            : `${teams.length} teams are still to come`}
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Taking the ports stops {copy.name} for good, and its API with it.
+          Bring {teams.join(", ")} over first.
+        </p>
+      </CardHeader>
+      <CardFooter className="justify-end border-t border-border pt-6">
+        <Button onClick={onNext}>Bring {teams[0]} over</Button>
+      </CardFooter>
+    </Card>
   );
 }

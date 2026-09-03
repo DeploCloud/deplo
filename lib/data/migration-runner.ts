@@ -100,6 +100,12 @@ export interface StartRunInput {
   }[];
   /** Dokploy machine id (`''` for its own host) to the Deplo server it lands on. */
   servers: { from: string; to: string }[];
+  /**
+   * Another team of the SAME panel is queued behind this run, so the agents on
+   * the source machines are not this run's to remove - the next team reads the
+   * same disks. See `migration_runs.keep_sources`.
+   */
+  keepSources?: boolean;
 }
 
 /**
@@ -123,6 +129,7 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
     url: input.url,
     orgName: input.orgName ?? null,
     kind: c.kind,
+    keepSources: input.keepSources ?? false,
   });
   const { currentIdentity } = await import("../auth/request-context");
   const { getCurrentUser } = await import("../auth");

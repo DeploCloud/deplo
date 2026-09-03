@@ -4,7 +4,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as React from "react";
 
 import { MigrationGraphic } from "./migration-graphic";
-import { copyFor, SOURCE_ART, SOURCE_COPY, SWAP_HALF_MS } from "./sources";
+import {
+  copyFor,
+  SOURCE_ART,
+  SOURCE_COPY,
+  SOURCE_KINDS,
+  SWAP_HALF_MS,
+} from "./sources";
 
 /**
  * The marks and the words. Only what the type checker cannot already prove.
@@ -71,4 +77,21 @@ test("a switched-off mark drops its brand colour and its layering", () => {
   assert.doesNotMatch(done, /fill-opacity/);
   assert.match(done, /text-border/);
   assert.ok(done.includes(SOURCE_ART.coolify.paths[0].d));
+});
+
+// The copy used to say a token "reads whatever its owner can see". It does not:
+// a Coolify token is bound to the team it was minted in and a Dokploy key
+// carries one organizationId - which is exactly what hid the other teams.
+test("the token help says a token reads one team", () => {
+  for (const kind of [...SOURCE_KINDS, "unknown" as const]) {
+    const copy = SOURCE_COPY[kind];
+    // Said in the panel's own word, and said as the limit it is.
+    assert.match(
+      copy.tokenInfo,
+      new RegExp(`(one|second) ${copy.teamLabel}`, "i"),
+      kind,
+    );
+    assert.doesNotMatch(copy.tokenInfo, /whatever its owner can see/i, kind);
+    assert.ok(copy.teamLabel.length > 0, kind);
+  }
 });

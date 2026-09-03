@@ -134,6 +134,9 @@ interface SourceCopy {
   /** Dokploy calls it a key, Coolify calls it a token. Use their word. */
   tokenLabel: string;
   tokenInfo: string;
+  /** What the panel calls the thing a token reads: Dokploy an organization,
+   *  Coolify a team. Pluralised with an s in both. */
+  teamLabel: string;
   /** The port it answers on, for the same-machine address the field's tooltip
    *  shows. The HOST half is read off this instance, never guessed. */
   privatePort: number;
@@ -156,7 +159,8 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     urlPlaceholder: "https://panel.acme.com",
     tokenLabel: "API token",
     tokenInfo:
-      "In Dokploy: Settings, Profile, API/CLI. In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked. It reads whatever its owner can see, so mint it from an account that sees everything you want to move.",
+      "In Dokploy: Settings, Profile, API/CLI. In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked. One token reads one team of the panel, so add one for each team you want to move.",
+    teamLabel: "team",
     privatePort: 3000,
     scanIdle: "Check this panel",
     scanBusy: "Reading the panel",
@@ -170,7 +174,8 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     urlPlaceholder: "https://dokploy.acme.com",
     tokenLabel: "API key",
     tokenInfo:
-      "In Dokploy: Settings, Profile, API/CLI. It reads whatever its owner can see, so mint it from an account that sees every project you want to move.",
+      "In Dokploy: Settings, Profile, API/CLI. A key is minted FOR one organization and reads only that one, so a second organization needs a second key - add one for each.",
+    teamLabel: "organization",
     privatePort: 3000,
     scanIdle: "Check this Dokploy",
     scanBusy: "Reading Dokploy",
@@ -184,7 +189,8 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     urlPlaceholder: "https://coolify.acme.com",
     tokenLabel: "API token",
     tokenInfo:
-      "In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked - without it the variables and database passwords arrive empty. Use an owner's or admin's token.",
+      "In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked - without it the variables and database passwords arrive empty. Use an owner's or admin's token. It is bound to the team it was minted in and reads only that one, so a second team needs a second token.",
+    teamLabel: "team",
     privatePort: 8000,
     scanIdle: "Check this Coolify",
     scanBusy: "Reading Coolify",

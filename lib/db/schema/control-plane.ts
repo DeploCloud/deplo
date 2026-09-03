@@ -2813,6 +2813,13 @@ export const migrationRuns = pgTable(
     /** Stop is a REQUEST: the thing that stops runs elsewhere and checks between steps. */
     stopRequested: boolean("stop_requested").notNull().default(false),
     /**
+     * More teams of the same panel are still to come, so this run must NOT take
+     * Deplo's agents back off the source machines when it ends - the next team
+     * reads the same disks. False on the last run of a series, which is the one
+     * that clears them.
+     */
+    keepSources: boolean("keep_sources").notNull().default(false),
+    /**
      * When the person who started it closed its report - and NULL for as long as
      * they have not.
      */
