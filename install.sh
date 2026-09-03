@@ -630,14 +630,21 @@ else
 fi
 
 # Resources --------------------------------------------------------------------
+# The recommendation is 4 cores, 4 GB and 30 GB, and it is about the APPS: Deplo
+# itself fits in far less, a machine that only fits Deplo is not worth renting.
 MEM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
-if [ "${MEM_MB:-0}" -ge 1800 ]; then ok "Memory: ${MEM_MB} MB"
-elif [ "${MEM_MB:-0}" -ge 900 ]; then pf_warn "Only ${MEM_MB} MB of RAM." "Deplo and Postgres fit, but builds will be tight. 2 GB is the comfortable floor."
-else pf_warn "Only ${MEM_MB} MB of RAM detected." "2 GB is the recommended minimum."; fi
+if [ "${MEM_MB:-0}" -ge 3800 ]; then ok "Memory: ${MEM_MB} MB"
+elif [ "${MEM_MB:-0}" -ge 1800 ]; then pf_warn "Only ${MEM_MB} MB of RAM." "Deplo runs, but 2 GB leaves almost nothing for the apps you deploy. 4 GB is the recommendation."
+else pf_warn "Only ${MEM_MB} MB of RAM detected." "Deplo and Postgres fit, but there is nothing left for a build or an app. 4 GB is the recommendation."; fi
+
+CPU_CORES="$(nproc 2>/dev/null || echo 0)"
+if [ "${CPU_CORES:-0}" -ge 4 ]; then ok "CPU: ${CPU_CORES} cores"
+elif [ "${CPU_CORES:-0}" -ge 1 ]; then pf_warn "Only ${CPU_CORES} CPU $(plural "$CPU_CORES" core)." "Builds take the whole machine. 4 cores is the recommendation."
+else skip "CPU: cannot tell how many cores this host has"; fi
 
 DISK_GB="$(df -PBG / 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}' || true)"
-if [ "${DISK_GB:-0}" -ge 20 ]; then ok "Disk: ${DISK_GB} GB free on /"
-elif [ "${DISK_GB:-0}" -ge 8 ]; then pf_warn "${DISK_GB} GB free on /." "Images and build caches grow fast; 20 GB is the comfortable floor."
+if [ "${DISK_GB:-0}" -ge 30 ]; then ok "Disk: ${DISK_GB} GB free on /"
+elif [ "${DISK_GB:-0}" -ge 8 ]; then pf_warn "${DISK_GB} GB free on /." "Images and build caches grow fast; 30 GB is the recommended minimum."
 else pf_fail "Only ${DISK_GB:-0} GB free on /." "Docker images alone need more than this. Free some space and re-run."; fi
 
 # Docker -----------------------------------------------------------------------

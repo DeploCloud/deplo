@@ -437,8 +437,8 @@ else
 fi
 
 DISK_GB="$(df -PBG / 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}' || true)"
-if [ "${DISK_GB:-0}" -ge 20 ]; then ok "Disk: ${DISK_GB} GB free on /"
-elif [ "${DISK_GB:-0}" -ge 5 ]; then pf_warn "${DISK_GB} GB free on /." "Images and build caches grow fast; 20 GB is the comfortable floor."
+if [ "${DISK_GB:-0}" -ge 30 ]; then ok "Disk: ${DISK_GB} GB free on /"
+elif [ "${DISK_GB:-0}" -ge 5 ]; then pf_warn "${DISK_GB} GB free on /." "Images and build caches grow fast; 30 GB is the recommended minimum."
 else pf_fail "Only ${DISK_GB:-0} GB free on /." "Free some space and re-run."; fi
 
 # The control plane, before anything is installed ------------------------------
