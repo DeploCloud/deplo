@@ -132,12 +132,49 @@ test("an agent too old to report its architecture is never used as a builder", (
   );
 });
 
-test("an offline or still-provisioning builder is skipped before it is dialed", () => {
-  for (const status of ["offline", "provisioning"] as const) {
+test("only an ONLINE builder is dialed - every other state is skipped", () => {
+  // `warning` is `dockerAvailable: false` and `error` is a trust or agent failure
+  // (classifyServerHealth), so both are hosts that cannot compile anything. Sending
+  // a build to one burns the deploy's time to fail at the far end.
+  for (const status of [
+    "offline",
+    "provisioning",
+    "error",
+    "warning",
+  ] as const) {
     const builder = srv({ id: "srv_build", buildOnly: true, status });
     assert.equal(
       pickBuildServer(app(), TARGET, [TARGET, builder]).serverId,
       null,
+      `a ${status} builder must not be picked`,
+    );
+    // And pinned to it by name, which is the case that used to reach the far end.
+    assert.equal(
+      pickBuildServer(app("srv_build"), TARGET, [TARGET, builder]).serverId,
+      null,
+      `a ${status} builder must not be used even when pinned`,
+    );
+  }
+  // Not vacuous: the same fixture online IS picked.
+  const healthy = srv({ id: "srv_build", buildOnly: true, status: "online" });
+  assert.equal(
+    pickBuildServer(app(), TARGET, [TARGET, healthy]).serverId,
+    "srv_build",
+  );
+});
+
+test("a fallback host that is not online is not asked either", () => {
+  for (const status of ["offline", "error", "warning"] as const) {
+    const host = srv({
+      id: "srv_panel",
+      ip: "10.0.0.1",
+      host: "10.0.0.1",
+      status,
+    });
+    assert.deepEqual(
+      pickBuildFallbacks(TARGET, [TARGET, host], SELF).map((s) => s.id),
+      [],
+      `a ${status} Deplo host is not a usable fallback`,
     );
   }
 });
@@ -444,6 +481,26 @@ const NAMES: Record<string, string> = {
   srv_panel: "eu-main-1",
 };
 const nameOf = (id: string) => NAMES[id] ?? id;
+
+test("no host is ever asked twice, even when the pin is itself in the pool", () => {
+  // The chain is tried in order, so a repeat would dial a host that just failed -
+  // and the app's own server must stay the LAST resort, never a link in it.
+  const pinned = srv({
+    id: "srv_build",
+    buildOnly: true,
+    buildFallback: true,
+  });
+  const plan = planBuildServers(
+    plannedApp("srv_build"),
+    TARGET,
+    [TARGET, pinned, DEPLO_HOST],
+    SELF,
+  );
+  assert.deepEqual(plan.chain, ["srv_build", "srv_panel"]);
+  assert.equal(new Set(plan.chain).size, plan.chain.length, "no duplicates");
+  assert.ok(!plan.chain.includes(TARGET.id), "the target is not in the chain");
+  assert.equal(plan.local, true);
+});
 
 test("the deploy log is silent for the default and loud when a setting did not apply", () => {
   assert.deepEqual(

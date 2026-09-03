@@ -192,8 +192,10 @@ export function canBuildFor(
   // exactly why it must be named here: a build ships this app's source and its
   // decrypted env to the builder, and that machine is not ours.
   if (builder.importOnly) return false;
-  if (builder.status === "offline" || builder.status === "provisioning")
-    return false;
+  // Only a host we can actually reach AND that has Docker: `warning` is
+  // `dockerAvailable: false` and `error` is a trust or agent failure, so neither
+  // can compile anything. See classifyServerHealth.
+  if (builder.status !== "online") return false;
   return builder.hostArch !== "" && builder.hostArch === target.hostArch;
 }
 
