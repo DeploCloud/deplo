@@ -40,6 +40,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import {
   ServerTeamAccess,
+  accessIsComplete,
   type ServerAccess,
   type TeamOption,
 } from "@/components/servers/server-team-access";
@@ -454,7 +455,10 @@ function AccessTab({
               onChange={setAccess}
               disabled={pending}
             />
-            <Button type="submit" disabled={pending || !accessDirty}>
+            <Button
+              type="submit"
+              disabled={pending || !accessDirty || !accessIsComplete(access)}
+            >
               Save access
             </Button>
           </form>

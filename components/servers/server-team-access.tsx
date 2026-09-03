@@ -19,6 +19,11 @@ export interface ServerAccess {
   teamIds: string[];
 }
 
+/** "Specific teams" with nothing ticked would lock every team out. */
+export function accessIsComplete(a: ServerAccess) {
+  return a.allTeams || a.teamIds.length > 0;
+}
+
 /**
  * Controlled editor for a server's "all teams / specific teams" choice. Pure UI:
  * the parent owns the value and persists it (addServer / setServerTeams).
