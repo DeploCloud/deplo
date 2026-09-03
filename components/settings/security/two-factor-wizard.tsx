@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Field, fieldControl, invalidField } from "@/components/ui/field-error";
 import { RevealInput } from "@/components/ui/password-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { OtpInput } from "@/components/ui/otp-input";
@@ -288,7 +289,7 @@ export function TwoFactorWizard({
                 </p>
               </div>
 
-              {error && (
+              {error && step !== "password" && (
                 <p
                   role="alert"
                   className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive"
@@ -299,13 +300,20 @@ export function TwoFactorWizard({
 
               {step === "password" && (
                 <div className="space-y-4">
-                  <RevealInput
-                    autoComplete="current-password"
-                    placeholder="Your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoFocus
-                  />
+                  <Field error={error}>
+                    <RevealInput
+                      autoComplete="current-password"
+                      placeholder="Your password"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setError(null);
+                      }}
+                      autoFocus
+                      aria-invalid={Boolean(error)}
+                      className={cn(fieldControl, error && invalidField)}
+                    />
+                  </Field>
                   <div className="rounded-lg border border-border bg-muted/30 p-3">
                     <p className="text-xs font-medium">
                       You will need an authenticator app on your phone
