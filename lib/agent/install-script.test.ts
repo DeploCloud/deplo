@@ -431,11 +431,26 @@ HTTPS_PORT=443; panel_url; echo
   );
 });
 
+test("the panel's router orders no certificate while the proxy waits on an interim port", async () => {
+  // Five failed HTTP-01 tries lock the name at Let's Encrypt for an hour, and a
+  // proxy on a loopback port cannot answer one - the cutover then had no cert.
+  const out = await bash(`set -euo pipefail
+${await shellFn("install.sh", "panel_router")}
+HTTPS_PORT=8443; panel_router deplo-panel deplo-cb00710b.nip.io
+HTTPS_PORT=443; panel_router deplo-panel deplo-cb00710b.nip.io
+`);
+  const [waiting, live] = out.split("          deplo-panel:\n").slice(1);
+  assert.match(waiting, /tls: \{\}/);
+  assert.doesNotMatch(waiting, /certResolver/);
+  assert.match(live, /certResolver: letsencrypt/);
+});
+
 test("the cutover moves the proxy and leaves the panel's container alone", async () => {
   const out = await bash(`set -euo pipefail
 exec 9>/dev/null
 write_traefik_compose() { echo "traefik bind=\${PROXY_BIND}\${HTTP_PORT}/\${HTTPS_PORT}"; }
 write_panel_compose() { echo "PANEL REWRITTEN"; }
+render_traefik_panel_config() { :; }
 takeover_up_stacks() { echo up; }
 ${await shellFn("install.sh", "takeover_apply_ports")}
 takeover_apply_ports 80 443

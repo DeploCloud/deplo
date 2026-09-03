@@ -1308,8 +1308,14 @@ setup_url() { printf '%s/setup?key=%s' "${1:-$PUBLIC_URL}" "$SETUP_KEY"; }
 # this is byte-for-byte what `withPanelRoute` re-renders, so the first edit from
 # the panel produces no spurious diff in the file an operator may be reading on
 # the host.
+# No ACME while the proxy waits on an interim port: it cannot answer the HTTP-01
+# challenge without :80, and five failed tries lock the name at Let's Encrypt for
+# an hour - exactly the hour the cutover then needs it. The default certificate
+# serves the loopback port meanwhile; the cutover re-renders with the resolver.
 panel_router() { # $1 router name, $2 host
-  printf '          %s:\n            rule: Host(`%s`)\n            entryPoints:\n              - websecure\n            service: deplo-panel\n            priority: 2\n            tls:\n              certResolver: letsencrypt\n' "$1" "$2"
+  local tls='            tls:\n              certResolver: letsencrypt\n'
+  [ "$HTTPS_PORT" = 443 ] || tls='            tls: {}\n'
+  printf '          %s:\n            rule: Host(`%s`)\n            entryPoints:\n              - websecure\n            service: deplo-panel\n            priority: 2\n'"$tls" "$1" "$2"
 }
 
 TRAEFIK_CONFIG_MOUNT="$(
@@ -1329,13 +1335,16 @@ TRAEFIK_FILE_PROVIDER="$(printf '      - --providers.file.directory=/deplo-dynam
 # still answers when the domain, its DNS or its certificate is what broke, and it
 # needs no proxy of its own to do it. Only when the panel IS that host is there
 # one router, because two identical rules at one priority is a conflict.
-TRAEFIK_PANEL_CONFIG="$(
-  printf 'configs:\n  deplo-panel:\n    content: |\n      http:\n        routers:\n'
-  panel_router deplo-panel "$PANEL_HOST"
-  [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || panel_router deplo-panel-fallback "$FALLBACK_HOST"
-  printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true\n'
-  printf '%s' "$TRAEFIK_DEFAULT_CERT_CONFIG"
-)"
+render_traefik_panel_config() {
+  TRAEFIK_PANEL_CONFIG="$(
+    printf 'configs:\n  deplo-panel:\n    content: |\n      http:\n        routers:\n'
+    panel_router deplo-panel "$PANEL_HOST"
+    [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || panel_router deplo-panel-fallback "$FALLBACK_HOST"
+    printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true\n'
+    printf '%s' "$TRAEFIK_DEFAULT_CERT_CONFIG"
+  )"
+}
+render_traefik_panel_config
 
 # ==============================================================================
 # 3. Traefik (always up; routes deployed apps, and the panel in domain mode)
@@ -1920,6 +1929,8 @@ takeover_apply_ports() { # $1 http, $2 https
   HTTPS_PORT="$2"
   # The real 80/443 are public; a rollback to the interim ones goes back to loopback.
   case "$1" in 80) PROXY_BIND="" ;; *) PROXY_BIND="127.0.0.1:" ;; esac
+  # The panel's router follows the port: the resolver only once :80 is Deplo's.
+  render_traefik_panel_config
   write_traefik_compose
   takeover_up_stacks
 }
