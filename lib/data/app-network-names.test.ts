@@ -11,9 +11,19 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
+import { eq } from "drizzle-orm";
+
+import {
+  activities,
+  appMounts,
+  domains as domainsTable,
+  envVars as envVarsTable,
+} from "../db/schema/control-plane";
+import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
 import { createApp } from "./apps";
+import { loadAppGraph } from "./app-graph-load";
 
 /**
  * The names a stack answers to on its network are minted here: the slug becomes
@@ -163,5 +173,141 @@ test("a `hostname:` from a variable is refused at the save, not at the deploy", 
         }),
       ),
     /filled in from a variable/,
+  );
+});
+
+const GENERATED_STACK = `services:
+  db:
+    image: postgres:17
+  web:
+    image: nginx:1.27
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://db:5432/app
+`;
+
+test("a generated stack is renamed around a taken name, and what named the service follows", async () => {
+  // Installing the same template twice in one Environment is the ordinary case,
+  // and refusing the second install lost the whole app. A compose Deplo generated
+  // is rewritten instead, the way the import already does it - and the primary
+  // route, the extra domain, the env and the config file move with the service.
+  await asUser1(() =>
+    createApp({
+      name: "first",
+      source: "compose",
+      repo: null,
+      compose: GENERATED_STACK,
+      deploy: false,
+    }),
+  );
+  const second = await asUser1(() =>
+    createApp({
+      name: "second",
+      source: "compose",
+      repo: null,
+      compose: GENERATED_STACK,
+      renameClashes: true,
+      composeService: "web",
+      composePort: 80,
+      extraDomains: [{ service: "db", port: 5432, host: "" }],
+      env: [
+        { key: "DB_HOST", value: "db" },
+        { key: "URL", value: "postgres://db:5432/x" },
+        { key: "POSTGRES_DB", value: "db" },
+      ],
+      mounts: [
+        {
+          filePath: "/etc/nginx/nginx.conf",
+          content: "proxy_pass http://db/;",
+        },
+      ],
+      deploy: false,
+    }),
+  );
+
+  const graph = (await loadAppGraph(second.id))!;
+  assert.match(graph.compose!, /^  second-db:/m);
+  assert.match(graph.compose!, /^  second-web:/m);
+  assert.doesNotMatch(graph.compose!, /^  (db|web):/m);
+  assert.match(graph.compose!, /- second-db$/m, "depends_on follows");
+  assert.match(
+    graph.compose!,
+    /DATABASE_URL: postgres:\/\/second-db:5432\/app/,
+    "the inline environment follows",
+  );
+  assert.equal(graph.mounts?.[0]?.content, "proxy_pass http://second-db/;");
+
+  const routes = await db
+    .select({ service: domainsTable.service, primary: domainsTable.isPrimary })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, second.id));
+  assert.equal(routes.find((r) => r.primary)?.service, "second-web");
+  assert.equal(routes.find((r) => !r.primary)?.service, "second-db");
+
+  const env = Object.fromEntries(
+    (
+      await db
+        .select({ key: envVarsTable.key, valueEnc: envVarsTable.valueEnc })
+        .from(envVarsTable)
+        .where(eq(envVarsTable.appId, second.id))
+    ).map((r) => [r.key, decryptSecret(r.valueEnc)]),
+  );
+  assert.equal(env.DB_HOST, "second-db");
+  assert.equal(env.URL, "postgres://second-db:5432/x");
+  assert.equal(env.POSTGRES_DB, "db", "a database NAME is not a hostname");
+
+  // The trail says it happened, or the compose reads as if the user wrote it so.
+  const trail = await db
+    .select({ message: activities.message })
+    .from(activities)
+    .where(eq(activities.appId, second.id));
+  assert.ok(
+    trail.some((r) => /already answered/.test(r.message)),
+    JSON.stringify(trail),
+  );
+});
+
+test("a generated stack nothing contests is left byte-identical", async () => {
+  const app = await asUser1(() =>
+    createApp({
+      name: "alone",
+      source: "compose",
+      repo: null,
+      compose: GENERATED_STACK,
+      renameClashes: true,
+      deploy: false,
+    }),
+  );
+  assert.equal((await loadAppGraph(app.id))!.compose, GENERATED_STACK);
+  const mounts = await db
+    .select({ appId: appMounts.appId })
+    .from(appMounts)
+    .where(eq(appMounts.appId, app.id));
+  assert.equal(mounts.length, 0);
+});
+
+test("a stack the user wrote is still refused, with the free name in the message", async () => {
+  await asUser1(() =>
+    createApp({
+      name: "first",
+      source: "compose",
+      repo: null,
+      compose: GENERATED_STACK,
+      deploy: false,
+    }),
+  );
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        createApp({
+          name: "second",
+          source: "compose",
+          repo: null,
+          compose: GENERATED_STACK,
+          deploy: false,
+        }),
+      ),
+    /`db` is already answered by first[\s\S]*`db-2` is free/,
   );
 });
