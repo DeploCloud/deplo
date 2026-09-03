@@ -247,17 +247,21 @@ function ServerCard({
           <span className="font-mono text-muted-foreground">{server.ip}</span>
           {/* Reads the SAME live observation as the health chip above - a stored
               traefikEnabled rendered on its own would keep claiming "on" for a host
-              that has been offline for weeks. */}
-          <ServerTraefikBadge
-            serverId={server.id}
-            fallback={{
-              status: server.status,
-              checkedAt: server.statusCheckedAt ?? null,
-              message: server.statusMessage ?? null,
-              traefikEnabled: server.traefikEnabled,
-              lastReachedAt: server.lastSeenAt ?? null,
-            }}
-          />
+              that has been offline for weeks. Only on a host that ROUTES: a build or
+              backup server is installed without a proxy on purpose, so "Traefik off"
+              there is a red badge for working as intended. */}
+          {serverUse(server) === "everything" && (
+            <ServerTraefikBadge
+              serverId={server.id}
+              fallback={{
+                status: server.status,
+                checkedAt: server.statusCheckedAt ?? null,
+                message: server.statusMessage ?? null,
+                traefikEnabled: server.traefikEnabled,
+                lastReachedAt: server.lastSeenAt ?? null,
+              }}
+            />
+          )}
           <AgentVersionBadge version={agentVersion} />
         </div>
         {/* Where a migration source's removal actually stands. Deplo takes its own
@@ -331,10 +335,10 @@ function ServerListRow({
         <ServerUseBadge use={serverUse(server)} />
       </TableCell>
       <TableCell>
-        {server.importOnly ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
+        {serverUse(server) === "everything" ? (
           <ServerTraefikBadge serverId={server.id} fallback={health} />
+        ) : (
+          <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
       <TableCell>
