@@ -653,6 +653,13 @@ installed catalog feature, never an App - deferred, see ADR-0013) · **active te
 **Environment** (never "env target"). If a concept isn't in the glossary, you're probably inventing
 language - reconsider, or note the gap.
 
+## Reporting your work
+
+**Say what you are about to do, then recap.** Before you start, one line on what you are about
+to do; brief updates while you work help the user follow along. Close with a short recap that
+stands on its own - what you found, what you did, and what is next - so a reader who only sees the
+last message has the full picture.
+
 ## Working rules
 
 - **Issues & PRDs = GitHub Issues in `DeploCloud/deplo` via the `gh` CLI** (`docs/agents/issue-tracker.md`);
