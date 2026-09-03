@@ -1580,6 +1580,10 @@ async function tryAgent(opts: {
           return { outcome: "failed", commitSha: "" };
       }
       if (builders.length > 0 && planBuilds(opts.plan)) {
+        // Claimed BEFORE the build, not only recorded after it: the in-flight count
+        // behind `leastBusy` reads this column, so an automatic pick that stays null
+        // while it runs makes every concurrent deploy choose the same builder.
+        await setDep(opts.depId, { buildServerId: builders[0]!.id });
         const leg = await buildOnBuildServer({
           ...opts,
           builders,
