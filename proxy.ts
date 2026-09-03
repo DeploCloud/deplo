@@ -2,6 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { templatesApiBase } from "@/templates/api-base";
 import { GRAVATAR_ORIGINS } from "@/lib/apps/avatar-shared";
 import { isWildcardDnsHost } from "@/lib/www-redirect";
+import {
+  ACTIVE_TEAM_COOKIE,
+  ACTIVE_TEAM_TTL_SECONDS,
+  TEAM_HEADER,
+  teamSlugFromPath,
+} from "@/lib/team-path";
 
 /**
  * Deplo proxy (Next.js 16 replacement for middleware). Real verification happens
@@ -121,8 +127,23 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
+  // The team in the URL is the team the request operates in, and this header is
+  // how it reaches lib/membership. Always set, so nothing a client sent gets in.
+  const teamSlug = teamSlugFromPath(pathname);
+  requestHeaders.set(TEAM_HEADER, teamSlug ?? "");
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+  // Keep "the last team visited" in step with the URL: it is what a bare `/` and
+  // the REST routes (upload, log stream) have to agree with.
+  if (teamSlug && request.cookies.get(ACTIVE_TEAM_COOKIE)?.value !== teamSlug) {
+    response.cookies.set(ACTIVE_TEAM_COOKIE, teamSlug, {
+      httpOnly: true,
+      secure: isHttps,
+      sameSite: "lax",
+      path: "/",
+      maxAge: ACTIVE_TEAM_TTL_SECONDS,
+    });
+  }
   response.headers.set("Content-Security-Policy", csp);
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
@@ -149,12 +170,10 @@ export const config = {
       // `.well-known` is excluded for the same reason `api` is: the OAuth discovery
       // documents (RFC 8414 / RFC 9728) are probed by a client that has no cookie yet and
       // no way to get one.
+      // Prefetches are NOT excluded: they render RSC payloads, and one that
+      // skipped this would resolve the team from the cookie, not the URL.
       source:
         "/((?!api|\\.well-known|_next/static|_next/image|favicon.ico|robots.txt|install|uninstall).*)",
-      missing: [
-        { type: "header", key: "next-router-prefetch" },
-        { type: "header", key: "purpose", value: "prefetch" },
-      ],
     },
   ],
 };

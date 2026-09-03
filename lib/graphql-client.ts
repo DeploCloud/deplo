@@ -22,6 +22,19 @@ import {
   reportServerUnreachable,
   ServerUnreachableError,
 } from "./server-connection";
+import { TEAM_HEADER, teamSlugFromPath } from "./team-path";
+
+/**
+ * The team the open page belongs to. `/api/graphql` is flat, so this header is
+ * what tells the server which team the request is for (lib/membership.ts).
+ */
+function teamHeader(): Record<string, string> {
+  const slug =
+    typeof location === "undefined"
+      ? null
+      : teamSlugFromPath(location.pathname);
+  return slug ? { [TEAM_HEADER]: slug } : {};
+}
 
 /** An abort is the caller's own doing, never a connection problem. */
 function isAbort(e: unknown): boolean {
@@ -93,7 +106,7 @@ export async function gql<TData = unknown>(
   try {
     res = await fetch("/api/graphql", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...teamHeader() },
       body: JSON.stringify({ query, variables }),
       credentials: "same-origin",
       signal,
@@ -141,6 +154,7 @@ export function gqlSubscribe<TData = unknown>(
         headers: {
           "content-type": "application/json",
           accept: "text/event-stream",
+          ...teamHeader(),
         },
         body: JSON.stringify({ query, variables }),
         credentials: "same-origin",

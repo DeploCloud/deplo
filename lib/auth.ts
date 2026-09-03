@@ -41,6 +41,11 @@ import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
 import { authRequestHeaders } from "./auth/request-headers";
 import {
+  ACTIVE_TEAM_COOKIE,
+  ACTIVE_TEAM_TTL_SECONDS,
+  pickTeamSlug,
+} from "./team-path";
+import {
   getAuth,
   requireAuth,
   sessionCookieNames,
@@ -64,12 +69,8 @@ import { assertPasswordNotPwned } from "./pwned-password";
  */
 const CREDENTIAL_ISSUER = createLocalAccountIssuer("credential");
 
-// Kept in sync with lib/membership.ts (ACTIVE_TEAM_COOKIE). Set here on
-// signup/setup so the new account lands with an active team immediately,
-// avoiding a circular import with the membership module.
-const ACTIVE_TEAM_COOKIE = "deplo_team";
-const ACTIVE_TEAM_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 year
-
+/** Signup/setup only: land the new account with an active team, without the
+ * circular import that calling `setActiveTeam` from here would need. */
 async function setActiveTeamCookie(teamId: string) {
   const store = await cookies();
   store.set(ACTIVE_TEAM_COOKIE, teamId, {
@@ -243,12 +244,6 @@ export async function createAccountWithTeam(
 
   const teamName = input.teamName.trim();
   if (!teamName) throw new Error("Team name is required");
-  const slugBase =
-    teamName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "team";
-
   // Straight off a form: the same gate `updateMyAvatar` applies.
   const image = input.image?.trim() || null;
   if (image && !isValidUserAvatarValue(image))
@@ -297,14 +292,12 @@ export async function createAccountWithTeam(
       .where(eq(sql`lower(${teamsTable.name})`, teamName.toLowerCase()))
       .limit(1);
     if (teamDup[0]) throw new Error("That team name is taken");
-    const takenSlugs = new Set(
+    const finalSlug = pickTeamSlug(
+      teamName,
       (await tx.select({ slug: teamsTable.slug }).from(teamsTable)).map(
         (r) => r.slug,
       ),
     );
-    let finalSlug = slugBase;
-    for (let i = 2; takenSlugs.has(finalSlug); i++)
-      finalSlug = `${slugBase}-${i}`;
 
     const team: Team = {
       id: `team_${randomBytes(8).toString("hex")}`,

@@ -29,14 +29,7 @@ import { recordActivity } from "./activity";
 import { teamAvatarUrl } from "../avatar";
 import { isValidTeamAvatarValue } from "../apps/avatar-shared";
 import type { Team } from "../types";
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+import { pickTeamSlug } from "../team-path";
 
 function rowToTeam(t: {
   id: string;
@@ -373,14 +366,12 @@ export async function createTeam(input: {
     throw new Error("Unsupported profile picture");
   const now = nowIso();
   const team = await getDb().transaction(async (tx) => {
-    const taken = new Set(
+    const slug = pickTeamSlug(
+      name,
       (await tx.select({ slug: teamsTable.slug }).from(teamsTable)).map(
         (r) => r.slug,
       ),
     );
-    const base = slugify(name) || "team";
-    let slug = base;
-    for (let i = 1; taken.has(slug); i++) slug = `${base}-${i}`;
     const t: Team = {
       id: newId("team"),
       name,

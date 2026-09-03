@@ -1,4 +1,5 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
+import { TEAM_HEADER } from "@/lib/team-path";
 import { authenticateToken, stampMcpUse } from "@/lib/data/tokens";
 import { runWithIdentity } from "@/lib/auth/request-context";
 import { getCurrentUser } from "@/lib/auth";
@@ -146,10 +147,7 @@ export async function POST(request: Request) {
 
   let identity;
   try {
-    identity = await authenticateToken(
-      raw,
-      request.headers.get("x-deplo-team"),
-    );
+    identity = await authenticateToken(raw, request.headers.get(TEAM_HEADER));
   } catch (e) {
     // An unmet two-factor policy THROWS rather than returning null. Surfacing it
     // as the 401 body beats a 500 that tells the operator nothing.

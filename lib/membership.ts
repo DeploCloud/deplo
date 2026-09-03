@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./db/client";
 import { holdsAPasskey, passkeyCountsForThisRequest } from "./passkey-policy";
@@ -33,6 +33,12 @@ import {
 } from "./membership-shared";
 import { currentIdentity, narrowedScope } from "./auth/request-context";
 import { requestIsHttps } from "./public-url";
+import {
+  ACTIVE_TEAM_COOKIE,
+  ACTIVE_TEAM_TTL_SECONDS,
+  TEAM_HEADER,
+  pickActiveTeam,
+} from "./team-path";
 // The leaf module: a role's reach, with no dependency back on this one.
 import { memberScopeFor, type NodeScope } from "./data/node-scope";
 
@@ -48,9 +54,6 @@ export {
  * `getActiveTeamId()` internally and filter their reads/writes by it; mutating
  * actions call `requireCapability(...)` to gate on the member's permissions.
  */
-
-const ACTIVE_TEAM_COOKIE = "deplo_team";
-const ACTIVE_TEAM_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
 /**
  * Reassemble the `capabilities` array for a set of memberships from the junction
@@ -260,9 +263,10 @@ function clampToToken(
 export const clampCapabilitiesToToken = clampToToken;
 
 /**
- * Resolve the active team id for the current request. Reads the `deplo_team`
- * cookie, validates it against the user's memberships, and falls back to the
- * user's first team.
+ * Resolve the active team id for the current request: the team named in the URL,
+ * else the last one visited (the `deplo_team` cookie), else the user's first.
+ * Both sources are validated against the memberships, so neither can name a team
+ * the user is not in - and both accept the team's id or its slug.
  */
 export const getActiveTeamId = cache(async (): Promise<string | null> => {
   const user = await getCurrentUser();
@@ -278,10 +282,15 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
       );
     return override.teamId;
   }
+  // The URL wins over the cookie: a link to an app opens THAT app, whatever team
+  // the browser last had. The header is set by proxy.ts from the first path
+  // segment, and by the browser's own GraphQL client for /api/graphql.
   const store = await cookies();
-  const cookieTeam = store.get(ACTIVE_TEAM_COOKIE)?.value;
-  if (cookieTeam && teams.some((t) => t.id === cookieTeam)) return cookieTeam;
-  return teams[0].id;
+  return pickActiveTeam(
+    teams,
+    (await headers()).get(TEAM_HEADER),
+    store.get(ACTIVE_TEAM_COOKIE)?.value,
+  ).id;
 });
 
 /**
@@ -616,5 +625,3 @@ export async function setActiveTeam(teamId: string): Promise<void> {
     maxAge: ACTIVE_TEAM_TTL_SECONDS,
   });
 }
-
-export { ACTIVE_TEAM_COOKIE };
