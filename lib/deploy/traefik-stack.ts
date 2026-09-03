@@ -103,10 +103,17 @@ const CERT_FILE = "deplo-certificates.yml";
 const PANEL_CONFIG = "deplo-panel";
 const PANEL_FILE = "deplo-panel.yml";
 /**
+ * The fallback certificate `install.sh` mints once and Traefik serves for any name
+ * no other certificate claims. Nothing here writes it - it is listed so removing
+ * the panel's route or the last custom certificate does not strip the file
+ * provider out from under it.
+ */
+const DEFAULT_CERT_CONFIG = "deplo-default-cert";
+/**
  * Every dynamic-config file Deplo owns. Membership decides one thing: whether the
  * file provider is still needed after one of them is removed.
  */
-const OUR_CONFIGS = [CERT_CONFIG, PANEL_CONFIG];
+const OUR_CONFIGS = [CERT_CONFIG, PANEL_CONFIG, DEFAULT_CERT_CONFIG];
 const DEPLO_DYNAMIC_DIR = "/deplo-dynamic";
 const FILE_DIRECTORY_FLAG = "--providers.file.directory=";
 const FILE_WATCH_FLAG = "--providers.file.watch=true";

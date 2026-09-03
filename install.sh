@@ -40,6 +40,9 @@ ENV_FILE="$DEPLO_DIR/.env"
 STATE_FILE="$DEPLO_DIR/.install-state"
 INSTALLER_URL="https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh"
 BACKUP_DIR="$DEPLO_DIR/backups"
+CERT_DIR="$DEPLO_DIR/traefik/certs"
+DEFAULT_CERT_PEM="$CERT_DIR/default.pem"
+DEFAULT_CERT_KEY="$CERT_DIR/default-key.pem"
 
 # ==== Deplo terminal UI ===================================== KEEP IN SYNC ====
 # One renderer for install.sh, install-agent.sh and uninstall.sh. It degrades on
@@ -383,6 +386,25 @@ ip_hex() {
   # `10#0$n` so a zero-padded or empty octet is not read as octal, which under
   # `set -e` would end the install on an arithmetic error.
   printf '%02x%02x%02x%02x' "$((10#0$1))" "$((10#0$2))" "$((10#0$3))" "$((10#0$4))"
+}
+
+# Traefik mints its own default certificate at EVERY start (measured), so both
+# things that remember one break on a restart: the fingerprint an agent pins at
+# enrollment, and the exception a browser accepted. Ours is minted once and kept.
+# Never fatal: without it Traefik falls back to its own, which is today's
+# behaviour.
+ensure_default_cert() {
+  [ -s "$DEFAULT_CERT_PEM" ] && [ -s "$DEFAULT_CERT_KEY" ] && return 0
+  mkdir -p "$CERT_DIR"
+  openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+    -keyout "$DEFAULT_CERT_KEY" -out "$DEFAULT_CERT_PEM" \
+    -subj "/CN=$FALLBACK_HOST" \
+    -addext "subjectAltName=DNS:$FALLBACK_HOST,IP:$TARGET_IP" >&9 2>&9 || {
+    rm -f "$DEFAULT_CERT_KEY" "$DEFAULT_CERT_PEM"
+    return 1
+  }
+  chmod 600 "$DEFAULT_CERT_KEY"
+  chmod 644 "$DEFAULT_CERT_PEM"
 }
 
 is_private_ip() {
@@ -1072,10 +1094,11 @@ configure_docker_address_pools
 phase "Workspace"
 
 step "Preparing $DEPLO_DIR and the 'deplo' network"
-mkdir -p "$DEPLO_DIR/traefik" "$DEPLO_DIR/data" "$DEPLO_DIR/acme"
+mkdir -p "$DEPLO_DIR/traefik" "$DEPLO_DIR/data" "$DEPLO_DIR/acme" "$CERT_DIR"
 docker network inspect deplo >/dev/null 2>&1 || docker network create deplo >&9 2>&9
 touch "$DEPLO_DIR/acme/acme.json"
 chmod 600 "$DEPLO_DIR/acme/acme.json"
+ensure_default_cert || warn "Could not mint the fallback certificate; Traefik will use its own, which changes at every restart."
 
 # Let's Encrypt sends expiry notices here, so admin@<the panel's own host> beats
 # a placeholder nobody reads - and beats admin@example.com, which Let's Encrypt
@@ -1227,7 +1250,18 @@ panel_router() { # $1 router name, $2 host
   printf '          %s:\n            rule: Host(`%s`)\n            entryPoints:\n              - websecure\n            service: deplo-panel\n            priority: 2\n            tls:\n              certResolver: letsencrypt\n' "$1" "$2"
 }
 
-TRAEFIK_CONFIG_MOUNT="$(printf '    configs:\n      - source: deplo-panel\n        target: /deplo-dynamic/deplo-panel.yml\n        mode: 256')"
+TRAEFIK_CONFIG_MOUNT="$(
+  printf '    configs:\n      - source: deplo-panel\n        target: /deplo-dynamic/deplo-panel.yml\n        mode: 256'
+  [ -s "$DEFAULT_CERT_PEM" ] && printf '\n      - source: deplo-default-cert\n        target: /deplo-dynamic/deplo-default-cert.yml\n        mode: 256'
+)"
+# Read from the mount below rather than inlined: a PEM nested two block scalars
+# deep is a file nobody can edit by hand without breaking it.
+TRAEFIK_DEFAULT_CERT_CONFIG=""
+TRAEFIK_CERT_MOUNT=""
+if [ -s "$DEFAULT_CERT_PEM" ]; then
+  TRAEFIK_DEFAULT_CERT_CONFIG="$(printf '  deplo-default-cert:\n    content: |\n      tls:\n        stores:\n          default:\n            defaultCertificate:\n              certFile: /deplo-certs/default.pem\n              keyFile: /deplo-certs/default-key.pem\n')"
+  TRAEFIK_CERT_MOUNT="$(printf '      - %s:/deplo-certs:ro' "$CERT_DIR")"
+fi
 TRAEFIK_FILE_PROVIDER="$(printf '      - --providers.file.directory=/deplo-dynamic\n      - --providers.file.watch=true')"
 # The generated host stays routed underneath the domain: it is the address that
 # still answers when the domain, its DNS or its certificate is what broke, and it
@@ -1237,7 +1271,8 @@ TRAEFIK_PANEL_CONFIG="$(
   printf 'configs:\n  deplo-panel:\n    content: |\n      http:\n        routers:\n'
   panel_router deplo-panel "$PANEL_HOST"
   [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || panel_router deplo-panel-fallback "$FALLBACK_HOST"
-  printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true'
+  printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true\n'
+  printf '%s' "$TRAEFIK_DEFAULT_CERT_CONFIG"
 )"
 
 # ==============================================================================
@@ -1286,6 +1321,7 @@ $TRAEFIK_FILE_PROVIDER
       - "$PROXY_BIND$HTTPS_PORT:443"
     volumes:
       - /opt/deplo/acme:/acme
+$TRAEFIK_CERT_MOUNT
     networks:
       - deplo
       - deplo-socket

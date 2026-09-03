@@ -456,6 +456,9 @@ const INSTALLED_WITH_PANEL = `services:
       - source: deplo-panel
         target: /deplo-dynamic/deplo-panel.yml
         mode: 256
+      - source: deplo-default-cert
+        target: /deplo-dynamic/deplo-default-cert.yml
+        mode: 256
 configs:
   deplo-panel:
     content: |
@@ -483,6 +486,14 @@ configs:
               servers:
                 - url: http://deplo:3000
               passHostHeader: true
+  deplo-default-cert:
+    content: |
+      tls:
+        stores:
+          default:
+            defaultCertificate:
+              certFile: /deplo-certs/default.pem
+              keyFile: /deplo-certs/default-key.pem
 networks:
   deplo:
     external: true
@@ -663,6 +674,25 @@ test("moving the panel's address rewrites only the rule", () => {
   assert.equal(route?.certResolver, "letsencrypt");
 });
 
+test("the fallback certificate survives every edit made from the panel", () => {
+  // Nothing here writes it - install.sh does, once - so an edit that dropped it
+  // would leave the browser re-accepting a new certificate after every restart,
+  // and an agent pinning one that no longer exists.
+  const certOf = (yaml_: string) =>
+    (parse(yaml_) as Doc & { configs?: Record<string, { content: string }> })
+      .configs?.["deplo-default-cert"]?.content;
+  const original = certOf(INSTALLED_WITH_PANEL);
+  assert.match(original ?? "", /defaultCertificate/);
+
+  const moved = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    domain: "new.example.com",
+  });
+  assert.equal(certOf(moved), original);
+  assert.equal(certOf(withTraefikCertificates(moved, [CERT])), original);
+  assert.equal(certOf(withPanelRoute(moved, null)), original);
+});
+
 test("the installer's two-router file survives a panel edit byte for byte", () => {
   // The KEEP IN SYNC contract with install.sh: re-rendering what it wrote must
   // reproduce it, or the first edit from the panel leaves an operator reading a
@@ -768,8 +798,25 @@ test("certificates and the panel share one file provider without evicting each o
     commandOf(noPanel).includes("--providers.file.directory=/deplo-dynamic"),
   );
 
-  // Only with both gone does the provider we added come back out.
-  const bare = withTraefikCertificates(noPanel, []);
+  // With both gone the fallback certificate still needs it, and it is what the
+  // browser and the agent's pin both remember across a restart.
+  const stillCert = withTraefikCertificates(noPanel, []);
+  assert.ok(
+    commandOf(stillCert).includes("--providers.file.directory=/deplo-dynamic"),
+    "the fallback certificate is served through the same provider",
+  );
+
+  // Only on a stack that never had one does the provider we added come back out.
+  const noFallback = INSTALLED_WITH_PANEL.replace(
+    /\n {2}deplo-default-cert:\n(?: {4}.*\n| {6,}.*\n)*/,
+    "\n",
+  );
+  assert.equal(
+    panelFileOf(noFallback).http.routers["deplo-panel"].service,
+    "deplo-panel",
+    "the fixture without the fallback is still a readable stack",
+  );
+  const bare = withTraefikCertificates(withPanelRoute(noFallback, null), []);
   assert.ok(
     !commandOf(bare).some((c) => c.startsWith("--providers.file.directory=")),
   );
