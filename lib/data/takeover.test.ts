@@ -161,6 +161,42 @@ test("the ladder only ever goes forward", async () => {
   );
 });
 
+test("a cutover that rolled back can be asked for again, and says why", async () => {
+  await seedPending();
+  await seedFinishedRun("run_1");
+  await asUser(ADMIN, () => requestTakeover("run_1"));
+
+  // The installer's report: the ports are back where they were, with the reason.
+  await asUser(ADMIN, () =>
+    markTakeoverProgress("failed", "Deplo did not answer after the move"),
+  );
+  let t = await read();
+  assert.equal(t?.state, "failed");
+  assert.equal(t?.error, "Deplo did not answer after the move");
+  assert.equal(t?.runId, "run_1", "the run that finished is still the one");
+
+  // Try again is the same request, and the reason goes with the failure.
+  await asUser(ADMIN, () => requestTakeover("run_1", { noOtherTeams: true }));
+  t = await read();
+  assert.equal(t?.state, "ready");
+  assert.equal(t?.error, null);
+
+  // Only a cutover in flight can fail; a finished one cannot.
+  await asUser(ADMIN, () => markTakeoverProgress("done"));
+  await assert.rejects(
+    () => asUser(ADMIN, () => markTakeoverProgress("failed", "late")),
+    /cannot move to "failed"/,
+  );
+});
+
+test("backing out is still open after a rollback", async () => {
+  await seedPending();
+  await asUser(ADMIN, () => requestTakeover(null, { discardData: true }));
+  await asUser(ADMIN, () => markTakeoverProgress("failed", "no free port"));
+  await asUser(ADMIN, () => cancelTakeover());
+  assert.equal((await read())?.state, "cancelled");
+});
+
 test("the dashboard opens only once the old platform is gone", async () => {
   const blocks = () =>
     runWithIdentity({ userId: ADMIN, teamId: TEAM_A }, takeoverBlocksDashboard);

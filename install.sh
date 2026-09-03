@@ -30,9 +30,10 @@
 #
 # On a machine that already runs Dokploy or Coolify the install is a TAKEOVER, or
 # it is nothing: two panels cannot share 80 and 443. Deplo installs on temporary
-# ports, the migration happens in the browser, and this window takes the ports
-# when the operator says so. Set DEPLO_TAKEOVER=dokploy|coolify to consent without
-# being asked; --yes deliberately does not.
+# ports, the migration happens in the browser, and a systemd unit this script
+# leaves behind (deplo-takeover.service, this script with --takeover-worker) takes
+# the ports when the operator says so. Set DEPLO_TAKEOVER=dokploy|coolify to
+# consent without being asked; --yes deliberately does not.
 set -Eeuo pipefail
 
 DEPLO_DIR="/opt/deplo"
@@ -319,8 +320,7 @@ usage() {
   printf '               DEPLO_SKIP_NET_CHECKS=1 (no outbound probes, no public-IP lookup),\n'
   printf '               DEPLO_TRACE=0 (transcript without the command trace),\n'
   printf '               DEPLO_IMAGE=<ref> (an image already on the host, no pull),\n'
-  printf '               DEPLO_TAKEOVER=dokploy|coolify (replace that panel without being asked),\n'
-  printf '               DEPLO_TAKEOVER_WAIT=<seconds> (how long this window waits, default 7200)\n\n'
+  printf '               DEPLO_TAKEOVER=dokploy|coolify (replace that panel without being asked)\n\n'
 }
 
 # --- flags --------------------------------------------------------------------
@@ -328,6 +328,9 @@ CHECK_ONLY=false
 ASSUME_YES=false
 FORCE=false
 WANT_HELP=false
+# The background half of a takeover, run by deplo-takeover.service: same script,
+# same steps, and at the end it waits for the dashboard instead of a person.
+TAKEOVER_WORKER=false
 # Kept verbatim for the sudo re-exec below, which happens after they are consumed.
 ORIG_ARGS=("$@")
 while [ $# -gt 0 ]; do
@@ -342,6 +345,7 @@ while [ $# -gt 0 ]; do
     --email)     ACME_EMAIL="${2:-}"; shift ;;
     --version)   DEPLO_VERSION="${2:-}"; shift ;;
     --log-file)  UI_LOG="${2:-}"; shift ;;
+    --takeover-worker) TAKEOVER_WORKER=true; ASSUME_YES=true ;;
     --help|-h)   WANT_HELP=true ;;
     *)
       ui_init
@@ -393,13 +397,20 @@ ip_hex() {
 # enrollment, and the exception a browser accepted. Ours is minted once and kept.
 # Never fatal: without it Traefik falls back to its own, which is today's
 # behaviour.
+# Named after the IP ONLY. Traefik treats a certificate it was handed as covering
+# every name in it - so one carrying the panel's host meant "no ACME certificate
+# generation required" and a dashboard that stayed self-signed for good (measured).
 ensure_default_cert() {
-  [ -s "$DEFAULT_CERT_PEM" ] && [ -s "$DEFAULT_CERT_KEY" ] && return 0
+  if [ -s "$DEFAULT_CERT_PEM" ] && [ -s "$DEFAULT_CERT_KEY" ]; then
+    openssl x509 -in "$DEFAULT_CERT_PEM" -noout -ext subjectAltName 2>/dev/null | grep -q 'DNS:' \
+      || return 0
+    rm -f "$DEFAULT_CERT_PEM" "$DEFAULT_CERT_KEY"
+  fi
   mkdir -p "$CERT_DIR"
   openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
     -keyout "$DEFAULT_CERT_KEY" -out "$DEFAULT_CERT_PEM" \
-    -subj "/CN=$FALLBACK_HOST" \
-    -addext "subjectAltName=DNS:$FALLBACK_HOST,IP:$TARGET_IP" >&9 2>&9 || {
+    -subj "/CN=Deplo" \
+    -addext "subjectAltName=IP:$TARGET_IP" >&9 2>&9 || {
     rm -f "$DEFAULT_CERT_KEY" "$DEFAULT_CERT_PEM"
     return 1
   }
@@ -556,6 +567,50 @@ state_set() {
 }
 state_get() { [ -f "$STATE_FILE" ] || return 0; sed -n "s/^$1=//p" "$STATE_FILE" | tail -n1; }
 
+# The half of a takeover that needs root on the host, kept alive by systemd so the
+# terminal can close: it waits for the dashboard, takes the ports, removes the old
+# panel, and is gone once the machine is Deplo's. Re-running this script by hand
+# only ever (re)installs it - the cutover itself is never done from a terminal.
+TAKEOVER_UNIT=/etc/systemd/system/deplo-takeover.service
+TAKEOVER_POLL_S=5
+
+takeover_unit_active() { systemctl is-active --quiet deplo-takeover 2>/dev/null; }
+
+takeover_unit_install() {
+  if [ ! -x "$DEPLO_DIR/install.sh" ]; then
+    err "This script is not at $DEPLO_DIR/install.sh, so nothing can take the ports later."
+    note "Download it there and re-run: curl -fsSL $INSTALLER_URL -o $DEPLO_DIR/install.sh"
+    return 1
+  fi
+  cat > "$TAKEOVER_UNIT" <<EOF
+[Unit]
+Description=Deplo takeover - takes the ports when the dashboard says so
+After=docker.service network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=HOME=/root
+ExecStart=$DEPLO_DIR/install.sh --takeover-worker --plain --quiet --log-file /var/log/deplo-takeover.log
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload >&9 2>&9
+  systemctl enable --now deplo-takeover >&9 2>&9
+}
+
+takeover_unit_remove() {
+  [ -f "$TAKEOVER_UNIT" ] || return 0
+  systemctl disable deplo-takeover >&9 2>&9 || true
+  rm -f "$TAKEOVER_UNIT"
+  systemctl daemon-reload >&9 2>&9 || true
+}
+
+
 # One question, on the terminal, never on the script's own stdin: this file may
 # be arriving there over a pipe, and taking it away would truncate the install.
 ask() {
@@ -586,6 +641,12 @@ fi
 
 MODE="install"
 [ -f "$ENV_FILE" ] && MODE="update"
+
+# The worker keeps the image the install chose: a re-run is an update, and an
+# update in the middle of a takeover is not what anyone asked for.
+if [ "$TAKEOVER_WORKER" = true ] && [ -z "${DEPLO_IMAGE:-}" ]; then
+  DEPLO_IMAGE="$(state_get image || true)"
+fi
 
 # An image already on the host, for an air-gapped install or a registry mirror.
 # Set it and the version lookup and the pull below are both skipped.
@@ -699,12 +760,17 @@ TAKEOVER=""
 TAKEOVER_PAST=0
 TAKEOVER_STATE="$(state_get takeover || true)"
 case "$TAKEOVER_STATE" in
-  pending | ready) TAKEOVER="$(state_get takeover_platform || true)" ;;
+  pending | ready | failed) TAKEOVER="$(state_get takeover_platform || true)" ;;
   done | removing)
     TAKEOVER="$(state_get takeover_platform || true)"
     TAKEOVER_PAST=1
     ;;
 esac
+if [ "$TAKEOVER_WORKER" = true ] && [ -z "$TAKEOVER" ]; then
+  ok "No takeover in progress on this machine."
+  takeover_unit_remove
+  exit 0
+fi
 
 if [ -z "$TAKEOVER" ] && [ "$MODE" = install ]; then
   FOREIGN="$(detect_foreign_platform)"
@@ -1227,19 +1293,15 @@ else
   PANEL_HOST="$FALLBACK_HOST"
 fi
 
-# Traefik terminates on 443; before a takeover moves the ports it is somewhere
-# else, and an address that left the port out would name the panel this one is
-# replacing.
-panel_url() {
-  case "$HTTPS_PORT" in
-    443) printf 'https://%s' "$PANEL_HOST" ;;
-    *) printf 'https://%s:%s' "$PANEL_HOST" "$HTTPS_PORT" ;;
-  esac
-}
+# The dashboard's one address, before and after a takeover. While another panel
+# still holds 443 Deplo's proxy sits on a loopback port nobody opens: the way in
+# is the same host over http, through that panel's proxy (takeover_side_door),
+# and the cutover changes nothing about the panel but who answers on 443.
+panel_url() { printf 'https://%s' "$PANEL_HOST"; }
 PUBLIC_URL="$(panel_url)"
 
 # The first-account link. Takes the base as an argument because during a takeover
-# $PUBLIC_URL is an interim port bound to loopback and the way in is the side door.
+# the way in is the side door.
 setup_url() { printf '%s/setup?key=%s' "${1:-$PUBLIC_URL}" "$SETUP_KEY"; }
 
 # One router per host, both onto the one service. Unquoted scalars on purpose:
@@ -1665,15 +1727,17 @@ takeover_field() {
   printf '%s' "$1" | sed -n "s/.*\"$2\":[[:space:]]*\"\{0,1\}\([^,\"}]*\)\"\{0,1\}.*/\1/p" | head -n1
 }
 
-takeover_post() {
+takeover_post() { # $1 state, $2 the reason (failed only)
+  local why
+  why="$(printf '%s' "${2:-}" | tr '\n\r\t' '   ' | sed 's/\\/\\\\/g; s/"/\\"/g')"
   curl -fsS --max-time 20 -X POST -H "Authorization: Bearer $HOST_TOKEN" \
-    -H 'Content-Type: application/json' -d "{\"state\":\"$1\"}" "$TAKEOVER_API" >&9 2>&9 || true
+    -H 'Content-Type: application/json' -d "{\"state\":\"$1\",\"error\":\"$why\"}" "$TAKEOVER_API" >&9 2>&9 || true
 }
 
 # A route dropped into the other platform's Traefik, which both watch and reload
 # on their own. Additive, and taken away again at the cutover.
 takeover_side_door() {
-  local dir="" entry="" proxy="" host="deplo-setup.$SERVER_IP.sslip.io"
+  local dir="" entry="" proxy="" host="$PANEL_HOST"
   # Their entrypoints are NOT called the same thing, and a router pinned to no
   # entrypoint at all binds to :443 too - where Dokploy's would order a
   # certificate for a name nobody is going to visit over https.
@@ -1713,24 +1777,6 @@ takeover_side_door_remove() {
   docker network disconnect deplo coolify-proxy >&9 2>&9 || true
 }
 
-# Every way into the panel, in the order they cost the operator something.
-takeover_unreachable_advice() {
-  local door
-  blank
-  warn "Nothing has opened Deplo yet."
-  note "Until the ports move its proxy is bound to loopback on purpose, so there is"
-  note "no login page of Deplo's on the internet yet. Two ways in:"
-  note "  1. Through $FOREIGN_LABEL's own proxy on port 80:"
-  # The side door answers with a sentence, not a URL, when that platform has no
-  # dynamic config dir here - appending the setup path to that would be nonsense.
-  door="$(takeover_side_door)"
-  case "$door" in http://*) door="$(setup_url "$door")" ;; esac
-  note "     $door"
-  note "  2. From your own machine, over SSH:"
-  note "     ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP"
-  note "     then open $(setup_url "http://localhost:$PANEL_PORT")"
-}
-
 # Everything the other platform put on this machine, by container name.
 foreign_containers() {
   docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^$TAKEOVER" || true
@@ -1748,7 +1794,9 @@ foreign_services() {
 # apart. Everything resolves to its id, so nothing is recorded or acted on twice.
 foreign_ids() {
   local c
-  for c in $(printf '%s\n%s\n' "$(foreign_containers)" "$(foreign_workloads)" | grep -v '^$' | sort -u); do
+  # `|| true`: an empty list (a second pass, after the first removed everything)
+  # is a `grep` that matched nothing, and under pipefail that read as a failure.
+  for c in $(printf '%s\n%s\n' "$(foreign_containers)" "$(foreign_workloads)" | grep -v '^$' | sort -u || true); do
     docker inspect --format '{{.Id}}' "$c" 2>/dev/null || true
   done | sort -u
 }
@@ -1831,10 +1879,11 @@ with open(dst, "w") as f:
 }
 
 # The pools were written during the install but NOT applied, because containers
-# were running (see configure_docker_address_pools). This is the window.
-apply_address_pools() {
-  grep -q '"default-address-pools"' /etc/docker/daemon.json 2>/dev/null || return 0
-  spin_start "Restarting Docker so its address pools apply"
+# were running (see configure_docker_address_pools). This is the window - and it
+# is also what puts Docker's embedded DNS back: measured, `docker swarm leave`
+# leaves every network alive across it answering SERVFAIL until the daemon restarts.
+restart_docker() {
+  spin_start "Restarting Docker"
   # A daemon restart starts every `restart: always` container again, including one
   # the migration deliberately stopped to read its volume. Note them down first and
   # put them back the way they were.
@@ -1850,26 +1899,35 @@ apply_address_pools() {
   for c in $was_down; do
     docker ps -q --no-trunc | grep -q "^$c" && docker stop "$c" >&9 2>&9 || true
   done
-  spin_ok "Docker restarted" "this host is no longer capped at ~31 networks"
+  spin_ok "Docker restarted" "address pools applied, DNS back"
 }
 
-# Recompute everything the published ports decide. Called with the real ports at
-# the cutover, and with the temporary ones again if it has to be rolled back.
-takeover_apply_ports() {
-  PANEL_PORT="$1"
-  HTTP_PORT="$2"
-  HTTPS_PORT="$3"
+# Recompute everything the proxy's published ports decide. Called with the real
+# ports at the cutover, and with the temporary ones again if it has to be rolled
+# back. The panel is NOT touched: its container, its loopback port and its address
+# stay what they were, which is what keeps a browser on it through the cutover.
+takeover_apply_ports() { # $1 http, $2 https
+  HTTP_PORT="$1"
+  HTTPS_PORT="$2"
   # The real 80/443 are public; a rollback to the interim ones goes back to loopback.
-  case "$2" in 80) PROXY_BIND="" ;; *) PROXY_BIND="127.0.0.1:" ;; esac
-  # `panel_url` covers both cases: with a domain, the address still has to carry
-  # the temporary HTTPS port until the real one comes free.
-  PUBLIC_URL="$(panel_url)"
-  DEPLO_EXPOSE="$(printf '    ports:\n      - "127.0.0.1:%s:3000"' "$PANEL_PORT")"
-  AGENT_BOOTSTRAP_URL="http://127.0.0.1:$PANEL_PORT"
-  TAKEOVER_API="$AGENT_BOOTSTRAP_URL/api/takeover"
+  case "$1" in 80) PROXY_BIND="" ;; *) PROXY_BIND="127.0.0.1:" ;; esac
   write_traefik_compose
-  write_panel_compose
   takeover_up_stacks
+}
+
+# The dashboard THROUGH the proxy on 443, which is the only proof that counts: the
+# panel itself never went down.
+panel_answers_on_443() {
+  curl -fsk -o /dev/null --max-time 4 --resolve "$PANEL_HOST:443:127.0.0.1" \
+    "https://$PANEL_HOST/api/health" </dev/null 2>/dev/null
+}
+wait_for_proxy() {
+  local tries="$1" i=0
+  while [ "$i" -lt "$tries" ]; do
+    panel_answers_on_443 && return 0
+    i=$((i + 1)); sleep 2
+  done
+  return 1
 }
 
 takeover_up_stacks() {
@@ -1931,11 +1989,11 @@ takeover_cutover() {
   spin_start "Stopping $FOREIGN_LABEL"
   foreign_stop
   takeover_side_door_remove
-  # A swarm takes a moment to give a published port back, and binding 3000 while
+  # A swarm takes a moment to give a published port back, and binding 80 while
   # it still holds it is how a cutover fails on a machine that was fine.
   local waited=0
   while [ "$waited" -lt 45 ]; do
-    port_in_use 80 || port_in_use 443 || port_in_use 3000 || break
+    port_in_use 80 || port_in_use 443 || break
     sleep 1
     waited=$((waited + 1))
   done
@@ -1943,38 +2001,33 @@ takeover_cutover() {
 
   inherit_acme
 
-  local OLD_PANEL="$PANEL_PORT" OLD_HTTP="$HTTP_PORT" OLD_HTTPS="$HTTPS_PORT"
-  spin_start "Moving Deplo onto 80 and 443"
-  takeover_apply_ports 3000 80 443
-  spin_ok "Ports moved" "Traefik on 80/443, the dashboard behind it"
-
-  apply_address_pools
-  # The restart takes both stacks down with it, and on the way back a leftover of
-  # theirs can win the race for :80 - which is how Traefik ends up dead on a
-  # machine whose cutover otherwise worked.
-  takeover_up_stacks
+  local OLD_HTTP="$HTTP_PORT" OLD_HTTPS="$HTTPS_PORT" why
+  spin_start "Moving Traefik onto 80 and 443"
+  takeover_apply_ports 80 443
+  # A leftover of theirs can win the race for :80 - which is how Traefik ends up
+  # dead on a machine whose cutover otherwise worked.
   ensure_proxy_bound
-
-  spin_start "Waiting for the dashboard on its own ports"
-  if wait_for_panel 60; then
-    spin_ok "Deplo answers on $PUBLIC_URL"
+  if wait_for_proxy 30; then
+    spin_ok "Ports moved" "Traefik on 80/443, the dashboard behind it"
     state_set takeover "done"
-    state_set takeover_panel_port "$PANEL_PORT"
     state_set takeover_http_port "$HTTP_PORT"
     state_set takeover_https_port "$HTTPS_PORT"
     takeover_post "done"
     return 0
   fi
-  spin_err "Deplo did not answer on $PUBLIC_URL after the move"
+  spin_err "The dashboard did not answer on $PUBLIC_URL after the move"
+  why="Traefik took ports 80 and 443 but did not answer for $PANEL_HOST within a minute. Logs on the host: docker logs deplo-traefik"
 
   # Back to where this started. Nothing of the other platform was removed, so
-  # putting the ports back IS the whole rollback.
+  # putting the ports back IS the whole rollback - side door included, or the
+  # wizard that offers Try again has no way to be reached.
   warn "Putting the ports back and starting $FOREIGN_LABEL again."
-  takeover_apply_ports "$OLD_PANEL" "$OLD_HTTP" "$OLD_HTTPS"
+  takeover_apply_ports "$OLD_HTTP" "$OLD_HTTPS"
   foreign_start
+  takeover_side_door >/dev/null
   err "The takeover was rolled back. $FOREIGN_LABEL is running again."
-  note "Logs: docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
   note "Transcript: $UI_LOG"
+  takeover_post failed "$why"
   return 1
 }
 
@@ -2089,8 +2142,11 @@ foreign_remove() {
 
   # Coolify's installer puts its own key in root's authorized_keys. Removing the
   # platform and leaving that behind leaves a removed panel with root on the box.
-  if [ "$TAKEOVER" = coolify ] && [ -f "$HOME/.ssh/authorized_keys" ]; then
-    if sed -i '/[[:space:]]coolify$/d' "$HOME/.ssh/authorized_keys" 2>&9; then
+  # root's, spelled out: under systemd there is no $HOME, and `set -u` would end
+  # the removal right here.
+  local keys="${HOME:-/root}/.ssh/authorized_keys"
+  if [ "$TAKEOVER" = coolify ] && [ -f "$keys" ]; then
+    if sed -i '/[[:space:]]coolify$/d' "$keys" 2>&9; then
       step "Took its SSH key out of authorized_keys"
     fi
   fi
@@ -2122,8 +2178,6 @@ foreign_remove() {
     note "some of them $FOREIGN_LABEL's. Look before you remove any:"
     note "  docker volume ls -f dangling=true && docker network ls -f dangling=true"
   fi
-  state_set takeover "removed"
-  takeover_post "removed"
 }
 
 # Backing out. The panel has already started the other platform's services again
@@ -2139,21 +2193,30 @@ takeover_uninstall() {
     rm -rf /var/lib/deplo-agent
   fi
   foreign_start
+  takeover_unit_remove
   rm -rf "$DEPLO_DIR"
   blank
   ok "Deplo is gone. $FOREIGN_LABEL is running again."
   note "Transcript: $UI_LOG"
 }
 
-# How long this window is willing to sit there. The migration itself is unbounded;
-# this is only how long we keep asking.
-TAKEOVER_POLL_S=5
-TAKEOVER_WAIT_MAX_S="${DEPLO_TAKEOVER_WAIT:-7200}"
-
-# The ports moved, so the other platform comes off the disk now. Landing on the
-# dashboard has to mean the machine is Deplo's and nothing else.
+# The ports moved, so the other platform comes off the disk now, and Docker is
+# restarted: for the address pools, and for its DNS (see restart_docker). Landing
+# on the dashboard has to mean the machine is Deplo's and nothing else.
 takeover_after_cutover() {
   foreign_remove
+  restart_docker
+  takeover_up_stacks
+  ensure_proxy_bound
+  spin_start "Waiting for the dashboard"
+  if wait_for_proxy 60; then
+    spin_ok "Deplo answers on $PUBLIC_URL"
+  else
+    spin_warn "The dashboard is not answering on $PUBLIC_URL yet" "docker logs deplo-traefik"
+  fi
+  state_set takeover "removed"
+  takeover_post "removed"
+  takeover_unit_remove
   blank
   printf ' %bNext%b\n' "$C_B" "$C_OFF"
   printf '   1  Open %b%s%b - the machine is Deplo'"'"'s now.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
@@ -2161,11 +2224,63 @@ takeover_after_cutover() {
   return 0
 }
 
-takeover_wait() {
-  local waited=0 said_unreachable=0 mute=0 said_mute=0 body state door
-  # Deplo is on loopback until the cutover, so this route through the other
-  # platform's proxy is the only way in that does not need SSH. Write it now.
-  door="$(takeover_side_door)"
+# The worker's whole life: ask the dashboard until it says so, then act. A cutover
+# that rolled back is reported and waited on again - Try again is `ready` once more.
+takeover_watch() {
+  local body state mute=0
+  spin_start "Waiting for the dashboard to ask for the machine"
+  while :; do
+    body="$(takeover_get)"
+    state="$(takeover_field "$body" state)"
+    case "$state" in
+      ready)
+        spin_kill
+        if takeover_cutover; then
+          takeover_after_cutover
+          closing_notes
+          return 0
+        fi
+        spin_start "Waiting for the dashboard to ask again"
+        ;;
+      cancelled)
+        spin_kill
+        blank
+        warn "The migration was cancelled from the dashboard."
+        takeover_side_door_remove
+        takeover_uninstall
+        return 0
+        ;;
+      done | removing)
+        spin_kill
+        takeover_after_cutover
+        closing_notes
+        return 0
+        ;;
+      removed)
+        spin_kill
+        ok "The takeover is already finished"
+        takeover_unit_remove
+        return 0
+        ;;
+    esac
+    # An EMPTY answer is the panel not talking at all, which has to be said once
+    # rather than left as a log that never moves.
+    if [ -z "$body" ]; then
+      mute=$((mute + TAKEOVER_POLL_S))
+      if [ "$mute" -eq 90 ]; then
+        warn "The dashboard is not answering on $AGENT_BOOTSTRAP_URL."
+        note "Its logs: docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
+      fi
+    else
+      mute=0
+    fi
+    sleep "$TAKEOVER_POLL_S"
+  done
+}
+
+# What a person is told, once, and then the terminal is theirs again.
+takeover_next() {
+  local door="$1"
   blank
   printf ' %bNext%b\n' "$C_B" "$C_OFF"
   case "$door" in
@@ -2174,77 +2289,15 @@ takeover_wait() {
       printf '      No SSH needed - it goes in through %s'"'"'s own proxy on port 80.\n' "$FOREIGN_LABEL"
       ;;
     *)
-      door=""
       printf '   1  From your own machine:  %bssh -L %s:localhost:%s root@%s%b\n' "$C_ACC" "$PANEL_PORT" "$PANEL_PORT" "$SERVER_IP" "$C_OFF"
       printf '      Then open %b%s%b and create your account.\n' "$C_ACC" "$(setup_url "http://localhost:$PANEL_PORT")" "$C_OFF"
       ;;
   esac
-  printf '   2  Bring your projects over from %s.\n' "$FOREIGN_LABEL"
-  printf '   3  Leave this window open - it takes the ports when you say so.\n\n'
-  note "Deplo answers on loopback only until it takes 80 and 443."
-  note "No certificate can issue until then, so the browser warns once."
-  [ -n "$door" ] && note "Over SSH instead: ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP"
-  note "Closing this window is safe: re-run $DEPLO_DIR/install.sh to pick it back up."
-
-  spin_start "Waiting for the migration"
-  while [ "$waited" -lt "$TAKEOVER_WAIT_MAX_S" ]; do
-    body="$(takeover_get)"
-    state="$(takeover_field "$body" state)"
-    case "$state" in
-      ready)
-        spin_kill
-        takeover_cutover || return 1
-        takeover_after_cutover
-        return 0
-        ;;
-      cancelled)
-        spin_kill
-        blank
-        warn "The migration was cancelled from the dashboard."
-        takeover_side_door_remove
-        takeover_uninstall
-        return 1
-        ;;
-      done | removing | removed)
-        # Somebody else carried it past this point - a second window, or a re-run.
-        spin_kill
-        ok "The takeover is already past this point"
-        return 0
-        ;;
-    esac
-    # An EMPTY answer is the panel not talking to this window at all, which is a
-    # different problem from a slow operator and has to say so - otherwise the
-    # only symptom is a spinner that never stops.
-    if [ -z "$body" ]; then
-      mute=$((mute + TAKEOVER_POLL_S))
-      if [ "$said_mute" = 0 ] && [ "$mute" -ge 90 ]; then
-        spin_kill
-        blank
-        warn "The dashboard is not answering this window."
-        note "It may still be starting. If this stays, its logs are:"
-        note "  docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
-        note "Re-run $DEPLO_DIR/install.sh once it is up."
-        said_mute=1
-        spin_start "Waiting for the migration"
-      fi
-    else
-      mute=0
-      # A panel nobody has ever opened is usually a closed port, not a slow operator.
-      if [ "$said_unreachable" = 0 ] && [ "$waited" -ge 90 ] &&
-        [ "$(takeover_field "$body" seenExternalRequest)" = false ]; then
-        spin_kill
-        takeover_unreachable_advice
-        said_unreachable=1
-        spin_start "Waiting for the migration"
-      fi
-    fi
-    sleep "$TAKEOVER_POLL_S"
-    waited=$((waited + TAKEOVER_POLL_S))
-  done
-  spin_kill
-  warn "Nothing happened for $((TAKEOVER_WAIT_MAX_S / 60)) minutes, so this window is done waiting."
-  note "The migration is not lost - re-run $DEPLO_DIR/install.sh when you are ready."
-  return 0
+  printf '   2  Bring your projects over from %s, or start clean.\n' "$FOREIGN_LABEL"
+  printf '      The dashboard takes the machine when you say so, and opens by itself after.\n\n'
+  note "This window can be closed. deplo-takeover.service does the rest on this host:"
+  note "  journalctl -u deplo-takeover -f"
+  case "$door" in http://*) note "Over SSH instead: ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP" ;; esac
 }
 
 # ==============================================================================
@@ -2256,8 +2309,23 @@ if [ "$MODE" = update ]; then
 else
   card_open "Deplo installed in ${TOTAL}s"
 fi
-card_kv "Dashboard" "$PUBLIC_URL"
-card_kv "Set up" "$(setup_url)"
+# During a takeover the way in is the side door, written now so the card can
+# print it; the address itself is the same before and after.
+TAKEOVER_DOOR=""
+if [ -n "$TAKEOVER" ] && [ "$TAKEOVER_PAST" = 0 ]; then
+  FOREIGN_LABEL="$(platform_label "$TAKEOVER")"
+  TAKEOVER_DOOR="$(takeover_side_door)"
+fi
+if [ -n "$TAKEOVER_DOOR" ]; then
+  card_kv "Dashboard" "$PUBLIC_URL, once the machine is Deplo's"
+  case "$TAKEOVER_DOOR" in
+    http://*) card_kv "Set up" "$(setup_url "$TAKEOVER_DOOR")" ;;
+    *) card_kv "Set up" "over SSH, see below" ;;
+  esac
+else
+  card_kv "Dashboard" "$PUBLIC_URL"
+  card_kv "Set up" "$(setup_url)"
+fi
 [ "$USE_DOMAIN" = true ] && card_kv "Backup address" "https://$FALLBACK_HOST"
 card_kv "Version" "$VERSION_LABEL"
 card_kv "Data dir" "$DEPLO_DIR"
@@ -2298,12 +2366,22 @@ closing_notes() {
 # and deploy an app on a machine whose ports still belong to another panel.
 if [ -n "$TAKEOVER" ]; then
   FOREIGN_LABEL="$(platform_label "$TAKEOVER")"
+  if [ "$TAKEOVER_WORKER" = true ]; then
+    takeover_watch
+    [ "$UI_LOG" = /dev/null ] || note "Transcript: $UI_LOG"
+    printf '\n'
+    exit 0
+  fi
+  # A person's run: make sure the unit is there, say where things stand, and go.
+  if takeover_unit_active; then
+    ok "deplo-takeover.service is watching the dashboard"
+  elif takeover_unit_install; then
+    ok "deplo-takeover.service installed" "it takes the ports when the dashboard says so"
+  fi
   case "$TAKEOVER_STATE" in
-    ready)
-      if takeover_cutover; then takeover_after_cutover; closing_notes; fi
-      ;;
-    done | removing) takeover_after_cutover; closing_notes ;;
-    *) if takeover_wait; then closing_notes; fi ;;
+    ready) note "The dashboard has asked for the machine; the ports are being moved now." ;;
+    done | removing) note "The ports are Deplo's; $FOREIGN_LABEL is being removed now." ;;
+    *) takeover_next "$TAKEOVER_DOOR" ;;
   esac
   [ "$UI_LOG" = /dev/null ] || note "Transcript: $UI_LOG"
   printf '\n'

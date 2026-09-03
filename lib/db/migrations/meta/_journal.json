@@ -1072,6 +1072,13 @@
       "when": 1788366352908,
       "tag": "0152_team_slug_is_an_address",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1788366353908,
+      "tag": "0153_takeover_error",
+      "breakpoints": true
     }
   ]
 }

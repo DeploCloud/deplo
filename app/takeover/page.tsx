@@ -30,6 +30,8 @@ export const metadata = { title: "Take over this machine" };
 export default async function TakeoverPage() {
   const status = await takeoverStatus();
   if (!status || status.state === "cancelled") redirect("/");
+  // The machine is Deplo's: there is nothing left here to show.
+  if (status.state === "removed") redirect("/");
 
   await requireUser();
   // Rendering this page IS the proof that a browser got through - see the
@@ -89,13 +91,16 @@ export default async function TakeoverPage() {
             state: status.state,
             finishedRunId: finished?.id ?? null,
             finalUrl: finalPanelUrl(),
+            error: status.error,
           }}
           // Everything came across and the report has been closed, so the last
           // step is the only one with anything left in it.
           startOnTakeover={finished != null && resumable == null}
         />
       </MigrationActivityProvider>
-      {(status.state === "pending" || status.state === "ready") && (
+      {(status.state === "pending" ||
+        status.state === "ready" ||
+        status.state === "failed") && (
         <TakeoverCancel platformLabel={copy.name} />
       )}
     </Screen>
@@ -124,9 +129,16 @@ function takeoverSourceUrl(platform: "dokploy" | "coolify"): string {
   return `http://${ip}:${platform === "coolify" ? 8000 : 3000}`;
 }
 
-/** Where this dashboard answers once the ports have moved. */
+/**
+ * Where this dashboard answers once the ports have moved: its host on 443, never
+ * a port this container was started with while another panel still held 443.
+ */
 function finalPanelUrl(): string {
   const pub = process.env.DEPLO_PUBLIC_URL?.trim() ?? "";
-  if (pub.startsWith("https://")) return pub;
+  try {
+    if (pub.startsWith("https://")) return `https://${new URL(pub).hostname}`;
+  } catch {
+    /* not an address: fall through to the generated host */
+  }
   return `https://${panelFallbackHost()}`;
 }

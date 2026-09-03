@@ -27,12 +27,14 @@ const SETTINGS_ID = "default";
 
 /**
  * `pending` the wizard has not finished · `ready` the operator asked for the
- * machine · `done` the ports are Deplo's · `removing` / `removed` the old
- * platform · `cancelled` the operator backed out and Deplo uninstalls itself.
+ * machine · `failed` the cutover rolled back and can be asked for again · `done`
+ * the ports are Deplo's · `removing` / `removed` the old platform · `cancelled`
+ * the operator backed out and Deplo uninstalls itself.
  */
 export const TAKEOVER_STATES = [
   "pending",
   "ready",
+  "failed",
   "done",
   "removing",
   "removed",
@@ -40,10 +42,11 @@ export const TAKEOVER_STATES = [
 ] as const;
 export type TakeoverState = (typeof TAKEOVER_STATES)[number];
 
-/** What may follow what. Nothing ever moves backwards. */
+/** What may follow what. Nothing ever moves backwards, except a rollback. */
 const NEXT: Record<TakeoverState, readonly TakeoverState[]> = {
   pending: ["ready", "cancelled"],
-  ready: ["done", "cancelled"],
+  ready: ["done", "failed", "cancelled"],
+  failed: ["ready", "cancelled"],
   done: ["removing"],
   removing: ["removed"],
   removed: [],
@@ -56,6 +59,8 @@ export interface TakeoverStatus {
   runId: string | null;
   /** Whether anything but the installer has ever reached this panel. */
   seenExternalRequest: boolean;
+  /** Why the last cutover rolled back, in the installer's words. */
+  error: string | null;
 }
 
 function isTakeoverState(v: unknown): v is TakeoverState {
@@ -77,6 +82,7 @@ export const takeoverStatus = cache(
         state: instanceSettings.takeoverState,
         runId: instanceSettings.takeoverRunId,
         seenAt: instanceSettings.takeoverSeenExternalAt,
+        error: instanceSettings.takeoverError,
       })
       .from(instanceSettings)
       .where(eq(instanceSettings.id, SETTINGS_ID));
@@ -87,6 +93,7 @@ export const takeoverStatus = cache(
       state: row.state,
       runId: row.runId,
       seenExternalRequest: Boolean(row.seenAt),
+      error: row.error,
     };
   },
 );
@@ -107,6 +114,7 @@ async function writeState(
     takeoverState: TakeoverState;
     takeoverRunId: string | null;
     takeoverSeenExternalAt: string;
+    takeoverError: string | null;
   }>,
 ): Promise<void> {
   const now = nowIso();
@@ -133,17 +141,23 @@ export async function ensureTakeoverFromEnv(): Promise<void> {
 }
 
 /** Move the state on, refusing anything the ladder does not allow. */
-async function advance(to: TakeoverState, opts: { runId?: string } = {}) {
+async function advance(
+  to: TakeoverState,
+  opts: { runId?: string; error?: string } = {},
+) {
   const current = await takeoverStatus();
   if (!current) throw new Error("This instance is not taking over a machine.");
   if (current.state === to) return current;
   if (!NEXT[current.state].includes(to))
     throw new Error(`A takeover at "${current.state}" cannot move to "${to}".`);
+  // The reason lives exactly as long as the failure it explains.
+  const error = to === "failed" ? (opts.error ?? "") : null;
   await writeState({
     takeoverState: to,
+    takeoverError: error,
     ...(opts.runId ? { takeoverRunId: opts.runId } : {}),
   });
-  return { ...current, state: to, runId: opts.runId ?? current.runId };
+  return { ...current, state: to, runId: opts.runId ?? current.runId, error };
 }
 
 /**
@@ -202,12 +216,14 @@ export async function requestTakeover(
 
 /**
  * The installer reporting in. Ungated because it arrives with the host bootstrap
- * token rather than a session, and it can only ever move the state forward.
+ * token rather than a session. `failed` is the one step back: the ports were put
+ * back where they were, and the reason is what the wizard shows next to Try again.
  */
 export async function markTakeoverProgress(
-  to: "done" | "removing" | "removed",
+  to: "done" | "removing" | "removed" | "failed",
+  error?: string,
 ): Promise<TakeoverStatus> {
-  return advance(to);
+  return advance(to, { error });
 }
 
 /**
@@ -223,7 +239,11 @@ export async function cancelTakeover(
   await requireInstanceAdmin();
   const current = await takeoverStatus();
   if (!current) throw new Error("This instance is not taking over a machine.");
-  if (current.state !== "pending" && current.state !== "ready")
+  if (
+    current.state !== "pending" &&
+    current.state !== "ready" &&
+    current.state !== "failed"
+  )
     throw new Error(
       "The ports are already Deplo's, so there is nothing to hand back.",
     );

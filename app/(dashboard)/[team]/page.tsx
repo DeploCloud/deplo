@@ -49,7 +49,11 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     project: projectParam,
     env: envParam,
     welcome,
+    takeover: takeoverParam,
   } = await props.searchParams;
+  const takenOverFrom = Array.isArray(takeoverParam)
+    ? takeoverParam[0]
+    : takeoverParam;
   const query = (Array.isArray(q) ? q[0] : q)?.toLowerCase() ?? "";
   const viewRaw = Array.isArray(viewParam) ? viewParam[0] : viewParam;
   const view = viewRaw === "list" ? "list" : "grid";
@@ -252,7 +256,10 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <WelcomeCelebration show={welcome === "1"} />
+      <WelcomeCelebration
+        show={welcome === "1"}
+        takeoverOf={takenOverFrom?.slice(0, 40) || null}
+      />
       {/* Drop a code archive anywhere here and it opens the wizard on Upload
           with the file already in hand. */}
       {canDeploy && (

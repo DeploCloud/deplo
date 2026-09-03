@@ -17,7 +17,7 @@ import {
 
 const TakeoverStateEnum = builder.enumType("TakeoverState", {
   description:
-    "pending = the migration is not finished. ready = the operator asked for the machine and the installer is moving the ports. done = the ports are Deplo's. removing / removed = the old platform is coming off the disk. cancelled = the operator backed out and Deplo is uninstalling itself.",
+    "pending = the migration is not finished. ready = the operator asked for the machine and the installer is moving the ports. failed = the cutover rolled back; `error` says why and it can be asked for again. done = the ports are Deplo's. removing / removed = the old platform is coming off the disk. cancelled = the operator backed out and Deplo is uninstalling itself.",
   values: TAKEOVER_STATES,
 });
 
@@ -39,6 +39,11 @@ const TakeoverRef = builder.objectRef<TakeoverStatus>("Takeover").implement({
     seenExternalRequest: t.exposeBoolean("seenExternalRequest", {
       description:
         "Whether anything but the installer has ever reached this panel. False means its port is probably closed, not that nobody has looked.",
+    }),
+    error: t.exposeString("error", {
+      nullable: true,
+      description:
+        "Why the last cutover rolled back, in the installer's words. Null unless the state is failed.",
     }),
   }),
 });

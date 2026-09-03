@@ -413,6 +413,152 @@ async function bash(body: string, extraPath?: string) {
   return stdout;
 }
 
+/* ------------------------------------------------------------------ */
+/* The takeover's cutover: one address, the proxy moves, the panel stays */
+/* ------------------------------------------------------------------ */
+
+test("the dashboard's address never carries the interim port", async () => {
+  const out = await bash(`set -euo pipefail
+PANEL_HOST=deplo-cb00710b.nip.io
+${await shellFn("install.sh", "panel_url")}
+HTTPS_PORT=8443; panel_url; echo
+HTTPS_PORT=443; panel_url; echo
+`);
+  assert.equal(
+    out,
+    "https://deplo-cb00710b.nip.io\nhttps://deplo-cb00710b.nip.io\n",
+    "the interim proxy port is loopback-only and no address anyone opens",
+  );
+});
+
+test("the cutover moves the proxy and leaves the panel's container alone", async () => {
+  const out = await bash(`set -euo pipefail
+exec 9>/dev/null
+write_traefik_compose() { echo "traefik bind=\${PROXY_BIND}\${HTTP_PORT}/\${HTTPS_PORT}"; }
+write_panel_compose() { echo "PANEL REWRITTEN"; }
+takeover_up_stacks() { echo up; }
+${await shellFn("install.sh", "takeover_apply_ports")}
+takeover_apply_ports 80 443
+takeover_apply_ports 8080 8443
+`);
+  assert.equal(
+    out,
+    "traefik bind=80/443\nup\ntraefik bind=127.0.0.1:8080/8443\nup\n",
+    "only the proxy is re-rendered: a panel recreated mid-cutover is the browser losing it",
+  );
+});
+
+test("the removal is followed by a Docker restart, and only then is the takeover over", async () => {
+  // `docker swarm leave` leaves every network alive across it with a dead
+  // embedded DNS (measured); the daemon restart after the removal is what fixes
+  // it, so `removed` - which is what sends the browser to the dashboard - has to
+  // come after it.
+  const out = await bash(`set -euo pipefail
+exec 9>/dev/null
+C_B=; C_OFF=; C_ACC=; PUBLIC_URL=https://x
+blank() { :; }; spin_start() { :; }; spin_ok() { :; }; spin_warn() { :; }
+foreign_remove() { echo foreign_remove; }
+restart_docker() { echo restart_docker; }
+takeover_up_stacks() { echo up; }
+ensure_proxy_bound() { echo proxy_bound; }
+wait_for_proxy() { echo "wait_for_proxy $1"; }
+state_set() { echo "state $1=$2"; }
+takeover_post() { echo "post $1"; }
+takeover_unit_remove() { echo unit_remove; }
+${await shellFn("install.sh", "takeover_after_cutover")}
+takeover_after_cutover
+`);
+  // The "Next" block it prints for the transcript is not part of the order.
+  const calls = out
+    .split("\n")
+    .filter((l) => l.trim() !== "" && !/^( Next|   [12]  )/.test(l));
+  assert.deepEqual(calls, [
+    "foreign_remove",
+    "restart_docker",
+    "up",
+    "proxy_bound",
+    "wait_for_proxy 60",
+    "state takeover=removed",
+    "post removed",
+    "unit_remove",
+  ]);
+});
+
+test("the unit runs this script as the worker and is enabled at once", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-unit-"));
+  await writeFile(join(dir, "install.sh"), "#!/bin/bash\n", { mode: 0o700 });
+  await writeFile(
+    join(dir, "systemctl"),
+    `#!/bin/bash\necho "$*" >> "$STUB_LOG"\n`,
+    { mode: 0o755 },
+  );
+  const log = join(dir, "systemctl.log");
+  const unit = join(dir, "unit.service");
+  const out = await bash(
+    `set -euo pipefail
+exec 9>/dev/null
+export STUB_LOG=${log}
+DEPLO_DIR=${dir}; TAKEOVER_UNIT=${unit}; INSTALLER_URL=x
+err() { echo "ERR $1"; }; note() { :; }
+${await shellFn("install.sh", "takeover_unit_install")}
+takeover_unit_install && echo installed
+`,
+    dir,
+  );
+  const text = await readFile(unit, "utf8");
+  const calls = (await readFile(log, "utf8")).trim().split("\n");
+  await rm(dir, { recursive: true, force: true });
+  assert.equal(out, "installed\n");
+  assert.match(
+    text,
+    new RegExp(`ExecStart=${dir}/install.sh --takeover-worker`),
+  );
+  assert.match(text, /Restart=on-failure/);
+  assert.match(text, /After=docker.service/);
+  assert.deepEqual(calls, ["daemon-reload", "enable --now deplo-takeover"]);
+});
+
+test("the unit is refused when this script is not on the host to run later", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-unit-"));
+  const out = await bash(`set -euo pipefail
+exec 9>/dev/null
+DEPLO_DIR=${dir}; TAKEOVER_UNIT=${dir}/unit.service; INSTALLER_URL=x
+err() { echo "ERR: $1"; }; note() { :; }
+${await shellFn("install.sh", "takeover_unit_install")}
+takeover_unit_install || echo refused
+`);
+  await rm(dir, { recursive: true, force: true });
+  assert.match(out, /^ERR: .*nothing can take the ports later/m);
+  assert.match(out, /refused/);
+});
+
+test("the fallback certificate names the IP only, never a host Traefik would order for", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-cert-"));
+  const san = (pem: string) =>
+    bash(
+      `openssl x509 -in ${pem} -noout -ext subjectAltName | tail -n +2 | tr -d ' \\n'`,
+    );
+  const fn = await shellFn("install.sh", "ensure_default_cert");
+  const env = `CERT_DIR=${dir}; DEFAULT_CERT_PEM=${dir}/default.pem; DEFAULT_CERT_KEY=${dir}/default-key.pem
+FALLBACK_HOST=deplo-cb00710b.nip.io; TARGET_IP=203.0.113.7; exec 9>/dev/null`;
+  await bash(`set -euo pipefail\n${env}\n${fn}\nensure_default_cert`);
+  assert.equal(await san(`${dir}/default.pem`), "IPAddress:203.0.113.7");
+
+  // Minted once: a second run keeps the file, which is the whole point of it.
+  const before = await readFile(`${dir}/default.pem`, "utf8");
+  await bash(`set -euo pipefail\n${env}\n${fn}\nensure_default_cert`);
+  assert.equal(await readFile(`${dir}/default.pem`, "utf8"), before);
+
+  // An earlier install minted one carrying the host, which made Traefik skip
+  // Let's Encrypt for it; an update re-mints that one.
+  await bash(`openssl req -x509 -newkey rsa:2048 -sha256 -days 1 -nodes \
+    -keyout ${dir}/default-key.pem -out ${dir}/default.pem -subj /CN=deplo-cb00710b.nip.io \
+    -addext "subjectAltName=DNS:deplo-cb00710b.nip.io,IP:203.0.113.7" 2>/dev/null`);
+  await bash(`set -euo pipefail\n${env}\n${fn}\nensure_default_cert`);
+  assert.equal(await san(`${dir}/default.pem`), "IPAddress:203.0.113.7");
+  await rm(dir, { recursive: true, force: true });
+});
+
 test("spin_ok renders the caller's detail AND the elapsed time", async () => {
   for (const file of ["install.sh", "install-agent.sh"]) {
     const out = await bash(`set -euo pipefail
@@ -602,14 +748,17 @@ for (const c of REMOVAL_CASES) {
       )
     ).join("\n");
 
+    // `unset HOME`: the removal runs from a systemd unit, which sets none, and a
+    // `set -u` script that reads it there ends at that line - the Coolify pass did.
     await bash(
       `set -euo pipefail
-export STUB_LOG=${log} HOME=${dir}
+export STUB_LOG=${log}
+unset HOME
 TAKEOVER=${c.platform}; FOREIGN_LABEL=${c.label}; exec 9>/dev/null
 blank() { :; }; phase() { :; }; step() { :; }; note() { :; }
 spin_start() { :; }; spin_ok() { :; }
 state_set() { :; }; takeover_post() { :; }
-${fns}
+${fns.replaceAll("${HOME:-/root}", dir)}
 platform_dir() { printf '%s' "${platform}"; }
 foreign_remove`,
       dir,

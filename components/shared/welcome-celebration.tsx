@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { ArrowUpRight, BookOpen, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
 
 import { DeploLogo } from "@/components/logo";
 import { ChannelMark } from "@/components/settings/channel-brand";
@@ -23,9 +24,16 @@ const SHOW_MS = 4000;
 
 /**
  * The end of first-run setup: the wizard lands here with `?welcome=1`, which is
- * stripped on arrival so a reload is a plain panel.
+ * stripped on arrival so a reload is a plain panel. A takeover lands here too,
+ * naming the panel it replaced in `?takeover=`, which becomes one toast.
  */
-export function WelcomeCelebration({ show }: { show: boolean }) {
+export function WelcomeCelebration({
+  show,
+  takeoverOf = null,
+}: {
+  show: boolean;
+  takeoverOf?: string | null;
+}) {
   // Latched at mount: stripping the flag below re-renders this with `show`
   // already false, which would take the dialog away mid-celebration.
   const [armed] = React.useState(show);
@@ -38,10 +46,17 @@ export function WelcomeCelebration({ show }: { show: boolean }) {
     // away before the burst is over.
     const url = new URL(window.location.href);
     url.searchParams.delete("welcome");
+    url.searchParams.delete("takeover");
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    if (takeoverOf)
+      toast.success(
+        `Deplo has taken over this machine. ${takeoverOf} is gone.`,
+        // Long enough to be read next to the celebration it lands with.
+        { duration: 10_000 },
+      );
     const timer = setTimeout(() => setConfetti(false), SHOW_MS);
     return () => clearTimeout(timer);
-  }, [armed]);
+  }, [armed, takeoverOf]);
 
   if (!armed) return null;
 

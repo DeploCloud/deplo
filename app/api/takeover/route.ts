@@ -32,27 +32,40 @@ export async function GET(request: Request) {
   });
 }
 
-/** The installer reporting where it is: the ports moved, or the removal. */
+/** How much of the installer's reason the wizard shows. */
+const ERROR_MAX = 500;
+
+/** The installer reporting where it is: the ports moved, the removal, or a rollback. */
 export async function POST(request: Request) {
   if (!authorized(request))
     return Response.json({ error: "unauthorized" }, { status: 401 });
 
-  let body: { state?: unknown };
+  let body: { state?: unknown; error?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }
   const state = body.state;
-  if (state !== "done" && state !== "removing" && state !== "removed")
+  if (
+    state !== "done" &&
+    state !== "removing" &&
+    state !== "removed" &&
+    state !== "failed"
+  )
     return Response.json(
-      { error: 'state must be "done", "removing" or "removed"' },
+      { error: 'state must be "done", "removing", "removed" or "failed"' },
       { status: 400 },
     );
+  const reason =
+    typeof body.error === "string" ? body.error.trim().slice(0, ERROR_MAX) : "";
 
   try {
-    const next: Extract<TakeoverState, "done" | "removing" | "removed"> = state;
-    return Response.json(await markTakeoverProgress(next));
+    const next: Extract<
+      TakeoverState,
+      "done" | "removing" | "removed" | "failed"
+    > = state;
+    return Response.json(await markTakeoverProgress(next, reason));
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : "refused" },

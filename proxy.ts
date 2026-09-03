@@ -69,6 +69,13 @@ export function proxy(request: NextRequest) {
   try {
     templatesOrigin = new URL(templatesApiBase()).origin;
   } catch {}
+  // The takeover screen is served over http through the old panel's proxy and
+  // asks its own https address whether it answers yet - same host, other scheme,
+  // so a different origin to a browser.
+  let ownOrigin = "";
+  try {
+    ownOrigin = new URL(process.env.DEPLO_PUBLIC_URL ?? "").origin;
+  } catch {}
   const nonce = generateNonce();
 
   const csp = [
@@ -88,7 +95,7 @@ export function proxy(request: NextRequest) {
       templatesOrigin ? ` ${templatesOrigin}` : ""
     }`,
     `font-src 'self' data:`,
-    `connect-src 'self'`,
+    `connect-src 'self'${ownOrigin ? ` ${ownOrigin}` : ""}`,
     `object-src 'none'`,
     `base-uri 'self'`,
     // github.com is allowed so the one-click GitHub App manifest flow can POST

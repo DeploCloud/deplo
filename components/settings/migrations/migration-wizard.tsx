@@ -92,6 +92,7 @@ function stepForHandover(
   state: Exclude<TakeoverState, "cancelled"> | undefined,
 ): StepId | null {
   if (!state || state === "pending") return null;
+  // `failed` lands on the step too: it is where Try again lives.
   return state === "removed" ? "done" : "takeover";
 }
 
@@ -466,6 +467,8 @@ export function MigrationWizard({
     finishedRunId: string | null;
     /** Where the dashboard answers once the ports have moved. */
     finalUrl: string;
+    /** Why the last cutover rolled back, when `state` is `failed`. */
+    error: string | null;
   } | null;
   /** What a takeover of this machine is walking into - a server component's
    *  output, so it arrives rendered. Not shown when nothing is being copied. */
@@ -1542,6 +1545,7 @@ export function MigrationWizard({
                   // null the server can only answer "no such migration" to.
                   finishedRunId={adoptedId ?? runId ?? takeover.finishedRunId}
                   finalUrl={takeover.finalUrl}
+                  error={takeover.error}
                 />
               )}
             </div>

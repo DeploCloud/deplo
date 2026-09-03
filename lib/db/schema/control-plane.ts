@@ -2654,8 +2654,10 @@ export const instanceSettings = pgTable("instance_settings", {
    * `DEPLO_TAKEOVER`, because only the installer can see the other platform.
    */
   takeoverPlatform: text("takeover_platform"),
-  /** `'pending'` | `'ready'` | `'done'` | `'removing'` | `'removed'` | `'cancelled'`. */
+  /** `'pending'` | `'ready'` | `'failed'` | `'done'` | `'removing'` | `'removed'` | `'cancelled'`. */
   takeoverState: text("takeover_state"),
+  /** Why the last cutover rolled back, verbatim from the installer. NULL otherwise. */
+  takeoverError: text("takeover_error"),
   /** The migration run that carried the machine over, for the report to link. */
   takeoverRunId: text("takeover_run_id"),
   /**

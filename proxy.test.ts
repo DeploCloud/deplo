@@ -77,6 +77,16 @@ test("with no proxy header at all, only the configured host counts as https", ()
   assert.doesNotMatch(other.csp, /upgrade-insecure-requests/);
 });
 
+test("a page served over http may still ask the panel's own https address", () => {
+  // The takeover screen rides the old panel's proxy over http and probes its own
+  // https origin to know when the ports have moved; same host, other scheme.
+  const { csp } = headersFor("http://deplo.example.com/login", {
+    host: "deplo.example.com",
+    "x-forwarded-proto": "http",
+  });
+  assert.match(csp, /connect-src 'self' https:\/\/deplo\.example\.com(;|$)/);
+});
+
 test("the generated host gets no HSTS, so its certificate warning stays skippable", () => {
   // HSTS is what takes "Proceed anyway" away from a browser, and no public CA
   // issues for nip.io - together that is a panel nobody can open.

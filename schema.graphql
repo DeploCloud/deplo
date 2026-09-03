@@ -5381,6 +5381,10 @@ type Subscription {
 The takeover this instance is in the middle of. Null on an ordinary install.
 """
 type Takeover {
+  """
+  Why the last cutover rolled back, in the installer's words. Null unless the state is failed.
+  """
+  error: String
   platform: TakeoverPlatform
   runId: String
 
@@ -5425,11 +5429,12 @@ type TakeoverPreflight {
 }
 
 """
-pending = the migration is not finished. ready = the operator asked for the machine and the installer is moving the ports. done = the ports are Deplo's. removing / removed = the old platform is coming off the disk. cancelled = the operator backed out and Deplo is uninstalling itself.
+pending = the migration is not finished. ready = the operator asked for the machine and the installer is moving the ports. failed = the cutover rolled back; `error` says why and it can be asked for again. done = the ports are Deplo's. removing / removed = the old platform is coming off the disk. cancelled = the operator backed out and Deplo is uninstalling itself.
 """
 enum TakeoverState {
   cancelled
   done
+  failed
   pending
   ready
   removed
