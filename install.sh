@@ -1753,7 +1753,11 @@ takeover_side_door() {
   # their proxy on the platform network and let it resolve the panel by name, the
   # same way ours does.
   docker network connect deplo "$proxy" >&9 2>&9 || true
-  cat > "$dir/deplo-setup.yml" <<YAML
+  # Written whole and only when it changes: their proxy reloads on every write,
+  # and a truncate-then-write made the route vanish for a second each time this
+  # ran again - which is every start of the worker.
+  local tmp; tmp="$(mktemp -p "$dir" .deplo-setup.XXXXXX)"
+  cat > "$tmp" <<YAML
 http:
   routers:
     deplo-setup:
@@ -1767,6 +1771,8 @@ http:
         servers:
           - url: http://deplo:3000
 YAML
+  if cmp -s "$tmp" "$dir/deplo-setup.yml" 2>/dev/null; then rm -f "$tmp"
+  else chmod 600 "$tmp"; mv -f "$tmp" "$dir/deplo-setup.yml"; fi
   printf 'http://%s' "$host"
 }
 
