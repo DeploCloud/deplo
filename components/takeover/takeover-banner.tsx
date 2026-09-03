@@ -15,9 +15,9 @@ export async function TakeoverBanner() {
   const name = SOURCE_COPY[status.platform].name;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-warning/40 bg-warning/[0.06] px-3 py-2 text-sm">
+    <div className="flex items-center gap-3 border-b border-warning/40 bg-warning/[0.06] px-4 py-2 text-sm sm:px-6">
       <HardDriveDownload className="size-4 shrink-0 text-warning" />
-      <span className="min-w-0">
+      <span className="min-w-0 truncate">
         {status.state === "removing"
           ? `${name} is being removed from this machine.`
           : `${name} is stopped but still on this machine, taking up disk.`}
@@ -25,7 +25,7 @@ export async function TakeoverBanner() {
       {status.state === "done" && (
         <Link
           href="/takeover"
-          className="font-medium underline underline-offset-4"
+          className="ml-auto shrink-0 font-medium underline underline-offset-4"
         >
           Remove it
         </Link>

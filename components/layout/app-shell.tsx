@@ -4,6 +4,7 @@ import { SidebarProvider } from "./sidebar-state";
 import { Topbar } from "./topbar";
 import { ShellFrame } from "./shell-frame";
 import { UpdateBanner } from "./update-banner";
+import { TakeoverBanner } from "@/components/takeover/takeover-banner";
 import { UpdateProvider } from "./update-state";
 import { NavigationHistoryTracker } from "./navigation-history";
 import { NavProgress } from "./nav-progress";
@@ -89,6 +90,7 @@ export function AppShell({
                     isAdmin={isAdmin}
                   />
                   <UpdateBanner />
+                  <TakeoverBanner />
                 </>
               }
             >

@@ -10,7 +10,6 @@ import { getBreadcrumbGraph } from "@/lib/data/breadcrumb";
 import { takeoverBlocksDashboard } from "@/lib/data/takeover";
 import { userHasPasskey } from "@/lib/passkey-policy";
 import { AppShell } from "@/components/layout/app-shell";
-import { TakeoverBanner } from "@/components/takeover/takeover-banner";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
 
 export default async function DashboardLayout({
@@ -72,7 +71,6 @@ export default async function DashboardLayout({
       isAdmin={isAdmin}
       hasPasskey={await userHasPasskey(user.id)}
     >
-      <TakeoverBanner />
       {children}
     </AppShell>
   );
