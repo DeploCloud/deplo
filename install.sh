@@ -2012,6 +2012,15 @@ foreign_remove() {
       # shellcheck disable=SC2086
       docker service rm $svcs >&9 2>&9 || true
     fi
+    # Its OWN infrastructure. Fixed names off the vendor's uninstall, not a
+    # pattern: once the services are gone nothing is left to read them off.
+    # https://docs.dokploy.com/docs/core/uninstall
+    docker volume rm -f dokploy dokploy-postgres dokploy-redis >&9 2>&9 || true
+    docker network rm dokploy-network >&9 2>&9 || true
+    # The swarm exists because Dokploy made this box a manager. Deplo runs plain
+    # compose, and leaving is what takes `ingress` with it.
+    step "Leaving the swarm it made"
+    docker swarm leave --force >&9 2>&9 || true
   fi
 
   spin_start "Removing what it left behind"
@@ -2025,10 +2034,12 @@ foreign_remove() {
   fi
   # Only the platform's OWN images: a workload's image may be the very one Deplo
   # just deployed from, and `docker rmi` on an image in use is a refusal anyway.
+  # Their uninstall reaches for `system prune -a --volumes` here; that would take
+  # everything the migration just brought across with it.
   docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
     | grep -E "^(ghcr\.io/)?(coollabsio|dokploy)/" | xargs -r docker rmi -f >&9 2>&9 || true
   rm -rf "$(platform_dir "$TAKEOVER")"
-  spin_ok "$FOREIGN_LABEL removed" "containers, images, its directory, and the volumes and networks they held"
+  spin_ok "$FOREIGN_LABEL removed" "containers, swarm, images, its directory, and the volumes and networks they held"
   # Volumes and networks are read off the containers being removed, so whatever it
   # made for an app it had already deleted is still here. Say so rather than delete
   # by name pattern, which is how a removal eats the apps just brought across.

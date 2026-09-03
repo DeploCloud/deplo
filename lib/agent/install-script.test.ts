@@ -526,3 +526,84 @@ done`,
     "a rollback must put every restart policy back and start only what was up",
   );
 });
+
+/** Every docker call the removal makes, in order. */
+const REMOVE_STUB = `#!/bin/bash
+printf '%s\\n' "$*" >> "$STUB_LOG"
+cmd="$1"; shift
+case "$cmd" in
+  ps) case "$*" in *-aq*) echo aaaabbbbcccc ;; *) echo dokploy-traefik ;; esac ;;
+  inspect)
+    fmt=""
+    while [ $# -gt 0 ]; do case "$1" in --format) fmt="$2"; shift 2 ;; *) shift ;; esac; done
+    case "$fmt" in
+      *.Id*) echo aaaabbbbcccc ;;
+      *managed*) echo true ;;
+      *working_dir*) echo ;;
+      *.Mounts*) echo dokploy-traefik-cfg; echo deplo-keep ;;
+      *NetworkSettings*) echo dokploy-network; echo bridge ;;
+    esac ;;
+  service) case "$1" in ls) echo dokploy; echo dokploy-postgres ;; esac ;;
+  images) echo dokploy/dokploy:latest; echo myapp:latest ;;
+esac
+exit 0
+`;
+
+test("removing Dokploy leaves the swarm and takes its own volumes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-remove-"));
+  const log = join(dir, "docker.log");
+  const platform = join(dir, "etc-dokploy");
+  await bash(`mkdir -p ${platform} && : > ${log}`);
+  await writeFile(join(dir, "docker"), REMOVE_STUB, { mode: 0o755 });
+
+  const fns = (
+    await Promise.all(
+      [
+        "foreign_containers",
+        "foreign_services",
+        "foreign_workloads",
+        "foreign_ids",
+        "foreign_volumes_of",
+        "foreign_networks_of",
+        "foreign_remove",
+      ].map((n) => shellFn("install.sh", n)),
+    )
+  ).join("\n");
+
+  await bash(
+    `set -euo pipefail
+export STUB_LOG=${log}
+TAKEOVER=dokploy; FOREIGN_LABEL=Dokploy; exec 9>/dev/null
+blank() { :; }; phase() { :; }; step() { :; }; note() { :; }
+spin_start() { :; }; spin_ok() { :; }
+state_set() { :; }; takeover_post() { :; }
+${fns}
+platform_dir() { printf '%s' "${platform}"; }
+foreign_remove`,
+    dir,
+  );
+
+  const calls = (await readFile(log, "utf8")).trim().split("\n");
+  await rm(dir, { recursive: true, force: true });
+
+  // https://docs.dokploy.com/docs/core/uninstall - the swarm is the one thing a
+  // container sweep can never reach, and `ingress` only goes with it.
+  assert.ok(
+    calls.includes("swarm leave --force"),
+    `the swarm is left behind: ${calls.join(" | ")}`,
+  );
+  assert.ok(
+    calls.includes("volume rm -f dokploy dokploy-postgres dokploy-redis"),
+  );
+  assert.ok(calls.includes("network rm dokploy-network"));
+  assert.ok(calls.includes("service rm dokploy dokploy-postgres"));
+  // Their uninstall prunes the whole daemon; here that is every app just migrated.
+  assert.ok(
+    !calls.some((c) => c.includes("prune")),
+    "the removal must never prune the daemon",
+  );
+  // Read off the container, and Deplo's own volume filtered out of it.
+  assert.ok(calls.includes("volume rm -f dokploy-traefik-cfg"));
+  assert.ok(!calls.some((c) => c.includes("deplo-keep")));
+  assert.ok(!calls.some((c) => c.includes("myapp:latest")));
+});
