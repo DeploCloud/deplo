@@ -9,8 +9,8 @@ export default function Loading() {
       aria-busy
       aria-label="Loading deployment"
     >
-      {/* Back to project (ghost, size sm) */}
-      <Skeleton className="-ml-2 h-8 w-36 rounded-md" />
+      {/* Back to deployments (ghost, size sm) */}
+      <Skeleton className="-ml-2 h-8 w-44 rounded-md" />
 
       {/* Summary card */}
       <Card>

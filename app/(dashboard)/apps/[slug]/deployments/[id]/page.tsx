@@ -67,9 +67,9 @@ export default async function DeploymentDetailPage(
         asChild
         className="-ml-2 text-muted-foreground"
       >
-        <Link href={`/apps/${slug}`}>
+        <Link href={`/apps/${slug}/deployments`}>
           <ArrowLeft className="size-4" />
-          Back to project
+          Back to deployments
         </Link>
       </Button>
 
