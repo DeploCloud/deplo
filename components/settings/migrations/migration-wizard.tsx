@@ -24,10 +24,7 @@ import { KindCard } from "@/components/shared/kind-card";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import {
-  WizardStepper,
-  type WizardStep,
-} from "@/components/shared/wizard-stepper";
+import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import {
   isDriven,
@@ -48,6 +45,7 @@ import { ReviewStep } from "./review-step";
 import { PeopleStep } from "./people-step";
 import { MigrationConsole, RUN_LOG } from "./migration-console";
 import { StepShell } from "./step-shell";
+import { stepsFor, type StepId } from "./steps";
 import {
   importableOf,
   type ImportRun,
@@ -63,32 +61,6 @@ import {
  * Migrating a Dokploy over, as one screen. The API key never leaves this
  * component's state.
  */
-
-type StepId = "connect" | "install" | "review" | "people" | "done";
-
-const STEP_LABEL: Record<StepId, string> = {
-  connect: "Connect",
-  install: "Install",
-  review: "Review",
-  people: "People",
-  done: "Done",
-};
-
-/**
- * The steps, and there is no longer a separate one for the data. `people` only for
- * an instance admin, because both of its actions are instance-admin gated and the
- * step would otherwise be a page of nothing.
- */
-function stepsFor(canInvite: boolean): WizardStep<StepId>[] {
-  const ids: StepId[] = [
-    "connect",
-    "install",
-    "review",
-    ...(canInvite ? (["people"] as StepId[]) : []),
-    "done",
-  ];
-  return ids.map((id) => ({ id, label: STEP_LABEL[id] }));
-}
 
 /** Dokploy's own host has no server row over there; it is the empty id. */
 const OWN_HOST = "";
@@ -367,6 +339,8 @@ export function MigrationWizard({
   resumable,
   sameMachineHost,
   prefill = null,
+  takeoverStep = null,
+  startOnTakeover = false,
 }: {
   teamId: string;
   teamName: string;
@@ -391,13 +365,23 @@ export function MigrationWizard({
    */
   prefill?: { url: string; kind: SourceKind } | null;
   /**
+   * Taking the ports, as the wizard's last step. Present only on the takeover
+   * screen, which is also what puts `Take over` in the rail.
+   */
+  takeoverStep?: React.ReactNode;
+  /** A takeover whose migration already finished and whose report was closed:
+   *  the only thing left is the last step, so open on it. */
+  startOnTakeover?: boolean;
+  /**
    * An address handed over from the History tab. The nonce is what makes
    * picking the same run twice still land in the field.
    */
 }) {
   const router = useRouter();
 
-  const [step, setStep] = React.useState<StepId>("connect");
+  const [step, setStep] = React.useState<StepId>(
+    startOnTakeover ? "takeover" : "connect",
+  );
   const [url, setUrl] = React.useState(prefill?.url ?? "");
   const [apiKey, setApiKey] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
@@ -499,8 +483,8 @@ export function MigrationWizard({
   );
 
   const STEPS = React.useMemo(
-    () => stepsFor(isInstanceAdmin),
-    [isInstanceAdmin],
+    () => stepsFor(isInstanceAdmin, takeoverStep != null),
+    [isInstanceAdmin, takeoverStep],
   );
 
   /* ---- step 1: connect --------------------------------------------- */
@@ -902,7 +886,7 @@ export function MigrationWizard({
   const pose: MigrationState =
     running || takenOver
       ? "moving"
-      : step === "done"
+      : step === "done" || step === "takeover"
         ? "done"
         : step === "review"
           ? "review"
@@ -977,8 +961,10 @@ export function MigrationWizard({
           onAgain={() => {
             void closeReport().then(resetToStart);
           }}
+          finishLabel={takeoverStep ? "Take over the machine" : "Finish"}
           onFinish={() => {
             void closeReport();
+            if (takeoverStep) return setStep("takeover");
             router.push("/");
           }}
           isInstanceAdmin={isInstanceAdmin}
@@ -1014,6 +1000,11 @@ export function MigrationWizard({
                   // Review is where the copy is started, and a copy needs an agent that ANSWERS on
                   // every machine. A gate the chrome around it does not honour is a suggestion.
                   if (s === "review") return plan != null && machinesReady;
+                  // Always open, and it is the card that says what is still
+                  // missing ("bring at least one project over first"): a rail
+                  // entry nobody can reach is how the old fixed panel earned
+                  // its place on the screen.
+                  if (s === "takeover") return true;
                   // People and the report are what the migration produces:
                   // neither is anywhere until there is a run.
                   return (adoptedId ?? runId) != null;
@@ -1142,6 +1133,8 @@ export function MigrationWizard({
                   onContinue={() => setStep("done")}
                 />
               )}
+
+              {!takenOver && step === "takeover" && takeoverStep}
             </div>
           </div>
         </div>
@@ -1199,8 +1192,16 @@ function ConnectStep({
     <StepShell
       title={copy.connectTitle}
       lead="Nothing is written on either side until you have seen what would come over."
+      // The takeover screen is the first thing a new instance shows, so its
+      // first step arrives the way the setup wizard's does.
+      stagger={takeover}
     >
-      <form className="grid gap-4" onSubmit={onSubmit}>
+      {/* Its own stagger, so the rows cascade rather than the whole form
+          arriving as one block behind the heading. */}
+      <form
+        className={cn("grid gap-4", takeover && "deplo-stagger")}
+        onSubmit={onSubmit}
+      >
         <div className="grid gap-2">
           {/**
            * "Panel address", not "Address".
@@ -1542,6 +1543,7 @@ function DoneStep({
   kind,
   onShowLog,
   onAgain,
+  finishLabel,
   onFinish,
   isInstanceAdmin,
 }: {
@@ -1551,6 +1553,8 @@ function DoneStep({
   onShowLog: () => void;
   /** Close the report and hand back an empty wizard, without leaving the page. */
   onAgain: () => void;
+  /** On a takeover the way on is the last step, not the dashboard. */
+  finishLabel: string;
   onFinish: () => void;
   /** Uninstalling an agent is instance-admin, like every server action. */
   isInstanceAdmin: boolean;
@@ -1589,7 +1593,7 @@ function DoneStep({
             Migrate another
           </Button>
         </div>
-        <Button onClick={onFinish}>Finish</Button>
+        <Button onClick={onFinish}>{finishLabel}</Button>
       </div>
 
       {/* Only ever shown when an agent really is still out there: finishing the
