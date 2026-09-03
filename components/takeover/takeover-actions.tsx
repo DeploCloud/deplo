@@ -65,6 +65,10 @@ export type TakeoverState =
 const POLL_MS = 3000;
 /** After this long without the final address answering, say how to get there. */
 const SLOW_MS = 60_000;
+/** How long this origin may stay silent before the final one is tried instead. */
+const DEAD_MS = 90_000;
+/** How long the final address gets to answer over https before it is opened anyway. */
+const CERT_GRACE_MS = 45_000;
 
 /** Where the browser lands once the machine is Deplo's: the home, celebrating. */
 export function takeoverLandingUrl(finalUrl: string, platformLabel: string) {
@@ -324,39 +328,56 @@ function TakeoverWaiting({
   React.useEffect(() => {
     let live = true;
     const started = Date.now();
+    let removedAt: number | null = null;
+    let deadSince: number | null = null;
     const id = setInterval(async () => {
       // The state, from wherever this page is still served from. A poll that
-      // fails is the ports moving, not an error to show.
+      // fails is the ports moving, or Docker restarting, not an error to show.
       try {
         const d = await gql<{ takeover: { state: TakeoverState } | null }>(
           STATUS,
         );
         if (!live) return;
+        deadSince = null;
         const s = d.takeover?.state;
-        if (s === "removed") {
-          window.location.replace(takeoverLandingUrl(finalUrl, platformLabel));
-          return;
-        }
-        if (s && s !== state) router.refresh();
+        if (s === "removed") removedAt ??= Date.now();
+        else if (s && s !== state) router.refresh();
       } catch {
-        /* the panel is restarting behind its new ports */
+        deadSince ??= Date.now();
       }
-      // The final address, once it answers over its own https, is where the rest
-      // of this happens. `no-cors` on purpose: the answer is opaque, and the only
-      // thing asked is whether the connection - certificate included - works.
-      if (live && !onFinalOrigin(finalUrl)) {
+      if (!live) return;
+      if (removedAt != null && onFinalOrigin(finalUrl)) {
+        window.location.replace(takeoverLandingUrl(finalUrl, platformLabel));
+        return;
+      }
+      // This page leaves its origin ONLY once the old panel is gone - the removal
+      // restarts Docker, and a page that moved onto the final address a moment
+      // earlier died with it - or when nothing here answers any more. Then the
+      // final address has to answer over its own https first: `no-cors` on
+      // purpose, the only thing asked is whether the connection, certificate
+      // included, works. A certificate that never comes stops nobody for long.
+      const since = removedAt ?? deadSince;
+      const leave =
+        since != null && (removedAt != null || Date.now() - since > DEAD_MS);
+      if (leave && !onFinalOrigin(finalUrl)) {
+        const target =
+          removedAt != null
+            ? takeoverLandingUrl(finalUrl, platformLabel)
+            : `${finalUrl}/takeover`;
         try {
           await fetch(`${finalUrl}/api/health`, {
             mode: "no-cors",
             cache: "no-store",
           });
-          if (live) window.location.replace(`${finalUrl}/takeover`);
+          if (live) window.location.replace(target);
           return;
         } catch {
-          /* not there yet, or its certificate is still being issued */
+          if (live && Date.now() - since > CERT_GRACE_MS)
+            window.location.replace(target);
+          return;
         }
-        if (live && Date.now() - started > SLOW_MS) setSlow(true);
       }
+      if (live && Date.now() - started > SLOW_MS) setSlow(true);
     }, POLL_MS);
     return () => {
       live = false;
