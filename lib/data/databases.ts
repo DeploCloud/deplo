@@ -808,7 +808,11 @@ export async function createDatabase(input: {
 
   // Provision the real container on the owning server's agent in the background;
   // flips to running/error.
-  void provisionDatabase(db, password).catch(async () => {
+  void provisionDatabase(db, password).catch(async (e: unknown) => {
+    const why = e instanceof Error ? e.message : String(e);
+    console.error(
+      `[deplo] database ${name} (${db.id}) failed to provision: ${why}`,
+    );
     // Mark the row errored, but only if it still exists (a concurrent delete may
     // have raced the floated provision; an UPDATE matching no row is a safe no-op).
     await getDb()
@@ -822,7 +826,7 @@ export async function createDatabase(input: {
       teamId,
       key: "database_failed",
       title: `Database ${name} could not be set up`,
-      body: "It was created but never finished provisioning on its server.",
+      body: `It was created but never finished provisioning on its server: ${why}`,
       path: "/storage",
     });
   });
