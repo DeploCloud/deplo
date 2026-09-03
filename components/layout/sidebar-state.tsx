@@ -8,8 +8,20 @@ const MAX_WIDTH = 420;
 // The default is also the floor: narrower than this the nav labels stop fitting.
 const DEFAULT_WIDTH = 240;
 
+// Past the floor the sidebar slides out instead of shrinking; two thirds hidden
+// is where letting it go stops being a resize and becomes a close.
+const CLOSE_AT = DEFAULT_WIDTH * 0.66;
+
 const clampWidth = (n: number) =>
   Math.min(MAX_WIDTH, Math.max(DEFAULT_WIDTH, n));
+
+/** One pointer position → resize, slide out, or snap shut. */
+export function resizeStep(clientX: number) {
+  if (clientX >= DEFAULT_WIDTH)
+    return { width: clampWidth(clientX), peek: 0, close: false };
+  const peek = DEFAULT_WIDTH - Math.max(0, clientX);
+  return { width: DEFAULT_WIDTH, peek, close: peek >= CLOSE_AT };
+}
 
 type SidebarState = {
   collapsed: boolean;
@@ -17,6 +29,8 @@ type SidebarState = {
   hydrated: boolean;
   width: number;
   dragging: boolean;
+  /** How far the panel is slid off-screen mid-drag, in px. */
+  peek: number;
   toggle: () => void;
   /** Pointer-drag on the sidebar's right edge; persists the width on release. */
   startResize: (e: React.PointerEvent) => void;
@@ -35,7 +49,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     hydrated: false,
     width: DEFAULT_WIDTH,
   });
-  const [dragging, setDragging] = React.useState(false);
+  const [drag, setDrag] = React.useState({ active: false, peek: 0 });
   const widthRef = React.useRef(DEFAULT_WIDTH);
 
   React.useEffect(() => {
@@ -71,22 +85,31 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   const startResize = React.useCallback((e: React.PointerEvent) => {
     e.preventDefault();
-    setDragging(true);
+    setDrag({ active: true, peek: 0 });
 
     function onMove(ev: PointerEvent) {
-      const w = clampWidth(ev.clientX);
-      widthRef.current = w;
-      setState((prev) => ({ ...prev, width: w }));
+      const { width, peek, close } = resizeStep(ev.clientX);
+      widthRef.current = width;
+      setState((prev) => ({ ...prev, width }));
+      if (close) finish(true);
+      else setDrag({ active: true, peek });
     }
-    function onUp() {
-      setDragging(false);
+    // Dropping `dragging` re-enables the transition, so the last stretch of the
+    // slide - back to the floor, or the rest of the way out - animates itself.
+    function finish(close: boolean) {
+      setDrag({ active: false, peek: 0 });
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      if (close) setState((prev) => ({ ...prev, collapsed: true }));
       try {
         window.localStorage.setItem(WIDTH_KEY, String(widthRef.current));
+        if (close) window.localStorage.setItem(COLLAPSE_KEY, "1");
       } catch {
         /* ignore */
       }
+    }
+    function onUp() {
+      finish(false);
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -106,8 +129,14 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   }, [toggle]);
 
   const value = React.useMemo<SidebarState>(
-    () => ({ ...state, dragging, toggle, startResize }),
-    [state, dragging, toggle, startResize],
+    () => ({
+      ...state,
+      dragging: drag.active,
+      peek: drag.peek,
+      toggle,
+      startResize,
+    }),
+    [state, drag, toggle, startResize],
   );
 
   return (

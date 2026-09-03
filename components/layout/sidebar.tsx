@@ -28,7 +28,8 @@ import { docsUrl } from "@/lib/docs";
  * Desktop sidebar. Collapsed flag and width come from SidebarProvider, which
  * persists them; the transition is suppressed during a drag and on first paint
  * so neither animates unexpectedly. Collapsing SLIDES the whole panel out: the
- * content keeps its width and translates, so nothing reflows on the way.
+ * content keeps its width and translates, so nothing reflows on the way - and a
+ * drag past the floor is the same slide, following the cursor (`peek`).
  */
 /** The two rows in the sidebar's footer wear one shape. */
 const FOOTER_LINK =
@@ -46,13 +47,13 @@ export function Sidebar({
 }) {
   // The footer stands down inside a drill-in; the nav there has its own way out.
   const { menu } = sidebarMenuFor(useFlatPathname());
-  const { collapsed, hydrated, width, dragging, toggle, startResize } =
+  const { collapsed, hydrated, width, peek, dragging, toggle, startResize } =
     useSidebar();
   return (
     <aside
       data-collapsed={collapsed}
       inert={collapsed}
-      style={{ width: collapsed ? 0 : width }}
+      style={{ width: collapsed ? 0 : width - peek }}
       className={cn(
         "sticky top-0 hidden h-screen shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block",
         hydrated && !dragging && "transition-[width] duration-200 ease-out",
@@ -62,7 +63,10 @@ export function Sidebar({
       <div
         style={{
           width,
-          transform: collapsed ? `translateX(-${width}px)` : undefined,
+          transform:
+            collapsed || peek
+              ? `translateX(-${collapsed ? width : peek}px)`
+              : undefined,
         }}
         className={cn(
           "flex h-full flex-col",
