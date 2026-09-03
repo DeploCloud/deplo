@@ -2261,6 +2261,9 @@ if [ "$MODE" != update ]; then
   printf '   3  Deploy your first app.\n\n'
 else
   printf '   Open %b%s%b - your apps kept running throughout.\n\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
+  # The card above truncates a long address, and an update is exactly when
+  # somebody is re-running this to find a setup link they lost.
+  note "No account yet? Create it at $(setup_url)"
 fi
 
 closing_notes
