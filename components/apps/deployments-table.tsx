@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "@/components/ui/link";
-import { useRouter } from "@/lib/nav";
+import { useRouter, useTeamSlug } from "@/lib/nav";
+import { withTeam } from "@/lib/team-path";
 import { toast } from "sonner";
 import {
   GitBranch,
@@ -311,6 +312,7 @@ export function DeploymentsTable({
   canRollbackApps?: boolean;
 }) {
   const router = useRouter();
+  const team = useTeamSlug();
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
   // Deleted deployments leave the table on the click - one row, the selection, or a
   // whole filtered sweep.
@@ -593,7 +595,9 @@ export function DeploymentsTable({
     if (window.getSelection()?.toString()) return;
     const href = `/apps/${d.appSlug}/deployments/${d.id}`;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
-      window.open(href, "_blank", "noopener,noreferrer");
+      // A new tab is not the router, so this is the one push that has to put the
+      // team on the path itself.
+      window.open(withTeam(href, team), "_blank", "noopener,noreferrer");
       return;
     }
     router.push(href);
