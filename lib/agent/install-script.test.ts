@@ -758,7 +758,6 @@ for (const c of REMOVAL_CASES) {
           "foreign_ids",
           "platform_own_volumes",
           "platform_own_networks",
-          "foreign_volumes_of",
           "foreign_networks_of",
           "remove_platform_dir",
           "remove_platform_dir_below",
@@ -797,8 +796,8 @@ foreign_remove`,
       !calls.some((x) => x.includes("prune")),
       "the removal must never prune the daemon",
     );
-    // Read off the container, and Deplo's own volume filtered out of it.
-    assert.ok(calls.includes("volume rm -f foreign-data"));
+    // An app's volume is the user's data: the removal never touches one.
+    assert.ok(!calls.some((x) => x.includes("foreign-data")));
     assert.ok(!calls.some((x) => x.includes("deplo-keep")));
     assert.ok(!calls.some((x) => x.includes("myapp:latest")));
     assert.equal(

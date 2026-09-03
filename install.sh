@@ -2109,13 +2109,6 @@ foreign_workloads() {
 # The named volumes those containers actually mount, and the networks they are
 # actually on - read off the containers rather than guessed from their names.
 # Anything Deplo owns is filtered out even so.
-foreign_volumes_of() {
-  local c
-  for c in "$@"; do
-    docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' 2>/dev/null || true
-  done | grep -vE '^(deplo|$)' | sort -u || true
-}
-
 foreign_networks_of() {
   local c
   for c in "$@"; do
@@ -2178,14 +2171,14 @@ foreign_remove() {
   blank
   phase "Removing $FOREIGN_LABEL"
 
-  local all vols nets svcs own_v own_n left_v left_n
+  local all nets svcs own_v own_n left_n
   state_set takeover "removing"
   takeover_post "removing"
   all="$(foreign_ids)"
 
   # Read what they hold BEFORE they are gone; an id no longer exists afterwards.
-  # shellcheck disable=SC2086
-  vols="$(foreign_volumes_of $all)"
+  # Their VOLUMES are the apps' data and stay: a copy the report got wrong is
+  # then still recoverable, and disk is cheaper than a byte lost.
   # shellcheck disable=SC2086
   nets="$(foreign_networks_of $all)"
 
@@ -2231,10 +2224,6 @@ foreign_remove() {
   fi
 
   spin_start "Removing what it left behind"
-  if [ -n "$vols" ]; then
-    # shellcheck disable=SC2086
-    docker volume rm -f $vols >&9 2>&9 || true
-  fi
   if [ -n "$nets" ]; then
     # shellcheck disable=SC2086
     docker network rm $nets >&9 2>&9 || true
@@ -2246,7 +2235,7 @@ foreign_remove() {
   docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
     | grep -E "^(ghcr\.io/)?(coollabsio|dokploy)/" | xargs -r docker rmi -f >&9 2>&9 || true
   remove_platform_dir "$(platform_dir "$TAKEOVER")"
-  spin_ok "$FOREIGN_LABEL removed" "containers, swarm, images, its directory, and the volumes and networks they held"
+  spin_ok "$FOREIGN_LABEL removed" "containers, swarm, images, its directory and networks; its apps' volumes are kept"
   # Volumes and networks are read off the containers being removed, so whatever it
   # made for an app it had already deleted is still here. Say so rather than delete
   # by name pattern, which is how a removal eats the apps just brought across.
