@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
+import { CopyButton } from "@/components/shared/copy-button";
 import { listAllServers, listAllServerTeamIds } from "@/lib/data/servers";
 import {
   deploHostSelfAddresses,
@@ -244,7 +245,10 @@ function ServerCard({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-          <span className="font-mono text-muted-foreground">{server.ip}</span>
+          <span className="flex items-center gap-0.5">
+            <span className="font-mono text-muted-foreground">{server.ip}</span>
+            <CopyButton value={server.ip} className="size-6" />
+          </span>
           {/* Reads the SAME live observation as the health chip above - a stored
               traefikEnabled rendered on its own would keep claiming "on" for a host
               that has been offline for weeks. Only on a host that ROUTES: a build or
