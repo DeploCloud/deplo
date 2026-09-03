@@ -1,4 +1,5 @@
 import "server-only";
+import { redeployDatabase } from "./databases";
 
 import { and, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 
@@ -1742,12 +1743,24 @@ async function startAndVerifyDatabase(
   try {
     await startStackOn(landed.targetServerId, landed.targetSlug);
   } catch (e) {
-    return {
-      ok: false,
-      message: `${after}${landed.targetName} would not start: ${
-        e instanceof Error ? e.message : "the host refused"
-      }`,
-    };
+    const why = e instanceof Error ? e.message : "the host refused";
+    if (!/no container/i.test(why))
+      return {
+        ok: false,
+        message: `${after}${landed.targetName} would not start: ${why}`,
+      };
+    // Its provisioning never finished (the image would not pull, the host was
+    // busy), so there is nothing to start: set it up now, on the copied volume.
+    try {
+      await redeployDatabase(landed.targetId);
+    } catch (e2) {
+      return {
+        ok: false,
+        message: `${after}${landed.targetName} was never set up on its server, and setting it up now failed: ${
+          e2 instanceof Error ? e2.message : "the host refused"
+        }`,
+      };
+    }
   }
 
   const conn = await connectAgent(landed.targetServerId);

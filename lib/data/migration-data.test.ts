@@ -1,3 +1,4 @@
+import { encryptSecret } from "../crypto";
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -288,6 +289,9 @@ let notFoundVolumes = new Set<string>();
 /** When false, the source's containers exist but nothing is running in them. */
 let sourceRunning = true;
 
+/** A database whose provisioning never finished: `start` finds no container. */
+let startRefusesNoContainer = false;
+
 /** Dokploy's own answer to `.stop` for a stack it never deployed: its 500. */
 let stopRefusal = "";
 
@@ -389,6 +393,14 @@ function fakeAgent(serverId: string) {
     },
     async startStack(slug: string) {
       say("start", slug);
+      if (startRefusesNoContainer) {
+        startRefusesNoContainer = false;
+        throw new Error(`service "${slug}" has no container to start`);
+      }
+      return { ok: true, error: "" };
+    },
+    async reroute(input: { slug: string }) {
+      say("reroute", input.slug);
       return { ok: true, error: "" };
     },
     async listInstances(_id: string, slug: string) {
@@ -524,6 +536,7 @@ beforeEach(async () => {
   importRefusal = "";
   notFoundVolumes = new Set();
   sourceRunning = true;
+  startRefusesNoContainer = false;
   stopRefusal = "";
   hostPaths = {
     srv_migration_host: { "/etc/dokploy/x": CONFIG_DIR },
@@ -635,7 +648,9 @@ beforeEach(async () => {
     port: 5432,
     username: "app",
     dbName: "blink",
-    connectionStringEnc: "v1..x.y.z",
+    connectionStringEnc: encryptSecret(
+      "postgres://app:pw@db-blink-db:5432/blink",
+    ),
     status: "running",
     serverId: SERVER_1,
     exposedPublicly: false,
@@ -1047,6 +1062,7 @@ test("a volume missing from a RUNNING service holds the deploy", async () => {
   await seedMigrationHostServer();
   notFoundVolumes.add("blink-web-abc_uploads");
   sourceRunning = true;
+  startRefusesNoContainer = false;
   const runId = await openRun();
 
   await asOwner(() =>
@@ -1109,6 +1125,7 @@ test("nothing is stopped on the source when the volumes are not on that machine"
   // the service over there and then found nothing to read - both sides down.
   notFoundVolumes.add("blink-db-abc_data");
   sourceRunning = true;
+  startRefusesNoContainer = false;
   const runId = await openRun();
   calls = [];
 
@@ -1155,6 +1172,7 @@ test("a volume that did not come across is counted failed, not skipped", async (
   // `failed: 0` over it reads as a clean migration.
   notFoundVolumes.add("blink-web-abc_uploads");
   sourceRunning = true;
+  startRefusesNoContainer = false;
   const runId = await openRun();
 
   const res = await asOwner(() =>
@@ -1221,6 +1239,46 @@ test("a database with nothing to copy is left RUNNING, not stopped", async () =>
     messages.some((m) => /up on the copied data/.test(m)),
     false,
     "nothing was copied, so nothing may claim it was",
+  );
+});
+
+test("a database whose container never came up is set up on the copied volume", async () => {
+  // Its provisioning failed before the copy (the image would not pull), so the
+  // start finds nothing. The data is in the volume: create the container on it
+  // instead of reporting "no container to start" as the end of the story.
+  await seedMigrationHostServer();
+  const runId = await openRun();
+  agentCalls = [];
+  startRefusesNoContainer = true;
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "postgres",
+      sourceId: "dok-pg-1",
+    }),
+  );
+
+  const said = await db.execute(
+    `select message from migration_run_items where run_id = '${runId}' and source_id = 'dok-pg-1' order by seq`,
+  );
+  assert.equal(
+    res.failed,
+    0,
+    said.rows.map((r) => r.message).join(" | ") + " " + agentCalls.join(" | "),
+  );
+  assert.ok(
+    agentCalls.includes(`${SERVER_1}:reroute:db-blink-db`),
+    agentCalls.join(" | "),
+  );
+  const items = await db.execute(
+    `select message from migration_run_items where run_id = '${runId}' and message like '%no container%'`,
+  );
+  assert.equal(
+    items.rows.length,
+    0,
+    "the missing container is fixed, not reported",
   );
 });
 
