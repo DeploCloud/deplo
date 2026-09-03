@@ -2253,6 +2253,7 @@ takeover_after_cutover() {
   restart_docker
   takeover_up_stacks
   ensure_proxy_bound
+  traefik_reconnect_docker
   spin_start "Waiting for the dashboard"
   if wait_for_proxy 60; then
     spin_ok "Deplo answers on $PUBLIC_URL"
@@ -2267,6 +2268,19 @@ takeover_after_cutover() {
   printf '   1  Open %b%s%b - the machine is Deplo'"'"'s now.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
   printf '   2  Deploy your apps and check them.\n\n'
   return 0
+}
+
+# After a daemon restart Traefik can come up before its socket proxy answers by
+# name, and its docker provider gives up for good after a minute of that: every
+# app then answered 404 while its labels were right. Once the proxy answers,
+# Traefik is started again so the provider connects (measured, Traefik v3.7).
+traefik_reconnect_docker() {
+  local i=0
+  until docker exec deplo-traefik wget -qO- --timeout=3 http://deplo-socket-proxy:2375/_ping >/dev/null 2>&1; do
+    i=$((i + 1)); [ "$i" -ge 30 ] && break
+    sleep 2
+  done
+  docker restart deplo-traefik >&9 2>&9 || true
 }
 
 # The worker's whole life: ask the dashboard until it says so, then act. A cutover
