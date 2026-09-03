@@ -12,12 +12,9 @@ import {
 } from "@/lib/data/migration-import";
 import { canExposePorts } from "@/lib/membership";
 import { panelFallbackHost, sameMachineHost } from "@/lib/deploy/domains";
+import { MigrationActivityProvider } from "@/components/layout/migration-activity";
 import { MigrationWizard } from "@/components/settings/migrations/migration-wizard";
-import {
-  TakeoverCancel,
-  TakeoverStep,
-  TakeoverWorking,
-} from "@/components/takeover/takeover-actions";
+import { TakeoverCancel } from "@/components/takeover/takeover-actions";
 import { TakeoverPreflight } from "@/components/takeover/takeover-preflight";
 import { SOURCE_COPY } from "@/components/settings/migrations/sources";
 import { DeploLogo } from "@/components/logo";
@@ -33,9 +30,6 @@ export const metadata = { title: "Take over this machine" };
 export default async function TakeoverPage() {
   const status = await takeoverStatus();
   if (!status || status.state === "cancelled") redirect("/");
-  // The takeover is over and the machine is Deplo's: the celebration the setup
-  // wizard could not show (this screen was in the way) belongs here.
-  if (status.state === "removed") redirect("/?welcome=1");
 
   await requireUser();
   // Rendering this page IS the proof that a browser got through - see the
@@ -44,20 +38,6 @@ export default async function TakeoverPage() {
 
   const copy = SOURCE_COPY[status.platform];
   const sourceUrl = takeoverSourceUrl(status.platform);
-
-  // The installer is moving the ports or taking the other panel off the disk.
-  // Nothing here is clickable while that happens, and this origin is about to
-  // stop answering, so the wizard is not drawn behind it.
-  if (status.state !== "pending")
-    return (
-      <Screen>
-        <TakeoverWorking
-          platformLabel={copy.name}
-          state={status.state}
-          finalUrl={finalPanelUrl()}
-        />
-      </Screen>
-    );
 
   const [
     team,
@@ -82,34 +62,42 @@ export default async function TakeoverPage() {
   // Something has to have come across before there is any point taking the ports.
   const finished = runs.find((r) => r.status === "done") ?? null;
 
-  const step = (
-    <TakeoverStep
-      platformLabel={copy.name}
-      finishedRunId={finished?.id ?? null}
-    />
-  );
-
   return (
     <Screen>
-      {admin && <TakeoverPreflight />}
-      <MigrationWizard
-        teamId={team.id}
-        teamName={team.name}
-        teamAvatarUrl={team.avatarUrl}
-        targetTeams={targetTeams}
-        servers={servers}
-        buildServers={buildServers}
-        resumable={resumable}
-        sameMachineHost={sameMachineHost()}
-        isInstanceAdmin={admin}
-        canExposePorts={mayExposePorts}
-        prefill={{ url: sourceUrl, kind: status.platform }}
-        takeoverStep={step}
-        // Everything came across and the report has been closed, so the last
-        // step is the only one with anything left in it.
-        startOnTakeover={finished != null && resumable == null}
-      />
-      <TakeoverCancel platformLabel={copy.name} />
+      {/* The live migration feed, which the dashboard shell provides everywhere
+          else. Without it this screen cannot see the run it just started. */}
+      <MigrationActivityProvider key={team.id}>
+        <MigrationWizard
+          teamId={team.id}
+          teamName={team.name}
+          teamAvatarUrl={team.avatarUrl}
+          targetTeams={targetTeams}
+          servers={servers}
+          buildServers={buildServers}
+          resumable={resumable}
+          sameMachineHost={sameMachineHost()}
+          isInstanceAdmin={admin}
+          canExposePorts={mayExposePorts}
+          prefill={{ url: sourceUrl, kind: status.platform }}
+          // Measured before anything moves, and only when something is going to
+          // be copied - it probes the agent, which the cutover is busy with.
+          preflight={
+            admin && status.state === "pending" ? <TakeoverPreflight /> : null
+          }
+          takeover={{
+            platformLabel: copy.name,
+            state: status.state,
+            finishedRunId: finished?.id ?? null,
+            finalUrl: finalPanelUrl(),
+          }}
+          // Everything came across and the report has been closed, so the last
+          // step is the only one with anything left in it.
+          startOnTakeover={finished != null && resumable == null}
+        />
+      </MigrationActivityProvider>
+      {(status.state === "pending" || status.state === "ready") && (
+        <TakeoverCancel platformLabel={copy.name} />
+      )}
     </Screen>
   );
 }

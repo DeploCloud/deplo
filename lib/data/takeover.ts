@@ -162,15 +162,22 @@ export async function noteBrowserReached(): Promise<void> {
  * The operator asked for the machine: the installer moves the ports and then
  * takes the other platform off the disk, in one go.
  *
- * A run that finished is the point of the whole thing: taking the ports with
- * nothing brought across costs the operator their old panel's routing for
- * nothing, and the button being disabled is not a gate.
+ * Either a run that finished, or `discardData` - the operator has chosen to keep
+ * nothing. Without one of the two, taking the ports would cost them their old
+ * panel's routing for nothing, and a disabled button is not a gate.
  */
 export async function requestTakeover(
-  runId: string,
-  opts: { noOtherTeams?: boolean } = {},
+  runId: string | null,
+  opts: { noOtherTeams?: boolean; discardData?: boolean } = {},
 ): Promise<TakeoverStatus> {
   await requireInstanceAdmin();
+  // Nothing is being brought across, so there is no run to check. The wizard's
+  // typed confirmation is what says this on purpose; this is the only door in.
+  if (opts.discardData) return advance("ready");
+  if (!runId)
+    throw new Error(
+      "That migration does not exist, so there is nothing to take the ports for.",
+    );
   const [run] = await getDb()
     .select({ status: runsTable.status, keepSources: runsTable.keepSources })
     .from(runsTable)

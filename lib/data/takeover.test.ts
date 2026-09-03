@@ -300,3 +300,33 @@ test("the ports wait for the teams the migration says are still owed", async () 
   );
   assert.equal(after.state, "ready");
 });
+
+/* ---- the clean install --------------------------------------------- */
+
+// The operator keeps nothing, so there is no run to wait for. Deleting the other
+// platform IS the errand, and this is the only door into it.
+test("a clean takeover reaches ready with no run at all", async () => {
+  await seedPending();
+  const after = await asUser(ADMIN, () =>
+    requestTakeover(null, { discardData: true }),
+  );
+  assert.equal(after.state, "ready");
+  assert.equal(after.runId, null);
+});
+
+test("neither a run nor discardData takes nobody's ports", async () => {
+  await seedPending();
+  await assert.rejects(
+    () => asUser(ADMIN, () => requestTakeover(null)),
+    /does not exist/,
+  );
+  assert.equal((await read())?.state, "pending");
+});
+
+test("a clean takeover is still an instance admin's", async () => {
+  await seedPending();
+  await assert.rejects(() =>
+    asUser(MEMBER, () => requestTakeover(null, { discardData: true })),
+  );
+  assert.equal((await read())?.state, "pending");
+});

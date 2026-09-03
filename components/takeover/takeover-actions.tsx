@@ -13,10 +13,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LeftoverDiskGraphic } from "@/components/takeover/leftover-disk-graphic";
+import type { TakeoverMode } from "@/components/settings/migrations/steps";
 
 /**
- * The three decisions a takeover asks a person for. Everything they set in motion
- * happens on the host, in the terminal window the installer is still sitting in.
+ * The last step of the takeover: the machine changes hands. Everything it sets in
+ * motion happens on the host, in the terminal window the installer is sitting in.
  */
 
 const STATUS = /* GraphQL */ `
@@ -30,8 +31,16 @@ const STATUS = /* GraphQL */ `
 `;
 
 const TAKE_PORTS = /* GraphQL */ `
-  mutation RequestTakeover($runId: String!, $noOtherTeams: Boolean) {
-    requestTakeover(runId: $runId, noOtherTeams: $noOtherTeams) {
+  mutation RequestTakeover(
+    $runId: String
+    $noOtherTeams: Boolean
+    $discardData: Boolean
+  ) {
+    requestTakeover(
+      runId: $runId
+      noOtherTeams: $noOtherTeams
+      discardData: $discardData
+    ) {
       state
     }
   }
@@ -49,90 +58,143 @@ const CANCEL = /* GraphQL */ `
 export type TakeoverState =
   "pending" | "ready" | "done" | "removing" | "removed" | "cancelled";
 
-/** How often the screen re-asks while the installer is doing something. */
+/** How often the step re-asks while the installer is doing something. */
 const POLL_MS = 3000;
 
 /**
- * The wizard's last step: the machine changes hands. One confirmation moves the
- * ports AND takes the other panel off the disk - landing on the dashboard has to
- * mean this is Deplo and nothing else.
+ * The wizard's last step. One confirmation moves the ports AND takes the other
+ * panel off the disk - landing on the dashboard has to mean this is Deplo and
+ * nothing else - and the wait that follows stays right here, in the step.
  */
 export function TakeoverStep({
   platformLabel,
+  mode,
+  state,
+  finishedRunId,
+  finalUrl,
+}: {
+  platformLabel: string;
+  /** Whether anything was brought across, which is what the confirmation says. */
+  mode: TakeoverMode;
+  /** How far the handover has got. Anything but `pending` is the installer working. */
+  state: Exclude<TakeoverState, "cancelled">;
+  /** The run that finished, on the path that had one. */
+  finishedRunId: string | null;
+  /** Where the dashboard answers once the ports have moved. */
+  finalUrl: string;
+}) {
+  if (state !== "pending")
+    return (
+      <TakeoverWaiting
+        platformLabel={platformLabel}
+        state={state}
+        finalUrl={finalUrl}
+      />
+    );
+  return (
+    <TakeoverConfirm
+      platformLabel={platformLabel}
+      mode={mode}
+      finishedRunId={finishedRunId}
+    />
+  );
+}
+
+/** The one decision, in the shape the rest of the app confirms a danger in. */
+function TakeoverConfirm({
+  platformLabel,
+  mode,
   finishedRunId,
 }: {
   platformLabel: string;
-  /** The last run that finished. Without one there is nothing to take over for. */
+  mode: TakeoverMode;
   finishedRunId: string | null;
 }) {
   const router = useRouter();
+  const clean = mode === "clean";
   /**
    * A token reads ONE team of that panel, and the panel cannot always list the
-   * others - Coolify never can. The cutover stops it for good, so this is a
-   * thing the operator says, not a thing Deplo can look up.
+   * others - Coolify never can. The cutover stops it for good, so this is a thing
+   * the operator says, not a thing Deplo can look up. On a clean takeover it is
+   * instead the acknowledgement that all of it dies.
    */
-  const [noOtherTeams, setNoOtherTeams] = React.useState(false);
+  const [understood, setUnderstood] = React.useState(false);
 
   return (
     <Card>
       <CardHeader className="items-center text-center">
         <LeftoverDiskGraphic className="mb-4 w-56" />
-        <CardTitle>Take over the machine</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Deplo takes ports 80, 443 and 3000 from {platformLabel}, inherits its
-          certificates, and takes it off this machine for good.
+        <CardTitle>
+          {clean ? `Delete ${platformLabel}` : "Take over the machine"}
+        </CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {clean
+            ? `Deplo takes ports 80, 443 and 3000, then ${platformLabel} and everything it runs here is deleted.`
+            : `Deplo takes ports 80, 443 and 3000 from ${platformLabel}, inherits its certificates, and takes it off this machine for good.`}
         </p>
       </CardHeader>
-      <CardFooter className="justify-end gap-3 border-t border-border pt-6">
-        {!finishedRunId && (
-          <span className="mr-auto text-sm text-muted-foreground">
-            Bring at least one project over first.
-          </span>
-        )}
+      <CardFooter className="justify-end border-t border-border pt-6">
         <ConfirmAction
           trigger={
-            <Button disabled={!finishedRunId}>Take over the machine</Button>
+            <Button>
+              {clean ? "Delete it and take over" : "Take over the machine"}
+            </Button>
           }
-          title={`Take the machine from ${platformLabel}?`}
+          title={
+            clean
+              ? `Delete ${platformLabel} from this machine?`
+              : `Take the machine from ${platformLabel}?`
+          }
           description={
-            <>
-              Deplo takes the ports, then {platformLabel} comes off this
-              machine: its containers, the workloads it ran, their volumes and
-              networks, its images and its directory. None of it can be brought
-              back.
-            </>
+            clean ? (
+              <>
+                {platformLabel} comes off this machine with everything on it:
+                its apps, their data, their volumes and networks, its teams, its
+                images and its directory. None of it can be brought back.
+              </>
+            ) : (
+              <>
+                Deplo takes the ports, then {platformLabel} comes off this
+                machine: its containers, the workloads it ran, their volumes and
+                networks, its images and its directory. None of it can be
+                brought back.
+              </>
+            )
           }
           extra={
             <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
               <Checkbox
-                checked={noOtherTeams}
-                onCheckedChange={(v) => setNoOtherTeams(v === true)}
+                checked={understood}
+                onCheckedChange={(v) => setUnderstood(v === true)}
                 className="mt-0.5"
               />
               <span>
                 <span className="font-medium">
-                  I have no other teams on this {platformLabel}
+                  {clean
+                    ? "I understand every app and all its data on this machine is destroyed"
+                    : `I have no other teams on this ${platformLabel}`}
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  One token reads one team. Anything not brought over yet stays
-                  on a panel that stops answering.
+                  {clean
+                    ? "Nothing was brought over, and nothing about it is kept anywhere."
+                    : "One token reads one team. Anything not brought over yet stays on a panel that stops answering."}
                 </span>
               </span>
             </label>
           }
-          confirmDisabled={!noOtherTeams}
+          confirmDisabled={!understood}
           confirmText={platformLabel.toLowerCase()}
-          confirmLabel="Take it over"
-          variant="default"
+          confirmLabel={clean ? "Delete it" : "Take it over"}
+          variant={clean ? "destructive" : "default"}
           successMessage="Moving the ports"
           optimistic
           onConfirm={async () => {
-            if (!finishedRunId) return { ok: false as const, error: "" };
             const res = await gqlAction(TAKE_PORTS, {
-              runId: finishedRunId,
-              noOtherTeams,
+              runId: clean ? null : finishedRunId,
+              noOtherTeams: clean ? null : understood,
+              discardData: clean,
             });
-            // The state is the server's, and it is what swaps this whole screen
+            // The state is the server's, and it is what swaps this step's body
             // for the one that says the ports are moving.
             if (res.ok) router.refresh();
             return res;
@@ -144,18 +206,16 @@ export function TakeoverStep({
 }
 
 /**
- * The screen while the installer works. It takes the whole page on purpose: the
- * ports are moving under it, so there is nothing left to click and this origin is
- * about to stop answering.
+ * The step while the installer works. Nothing here is clickable: the ports are
+ * moving under it, and this origin is about to stop answering.
  */
-export function TakeoverWorking({
+function TakeoverWaiting({
   platformLabel,
   state,
   finalUrl,
 }: {
   platformLabel: string;
-  state: Extract<TakeoverState, "ready" | "done" | "removing">;
-  /** Where the dashboard answers once the ports have moved. */
+  state: Exclude<TakeoverState, "cancelled" | "pending">;
   finalUrl: string;
 }) {
   const router = useRouter();

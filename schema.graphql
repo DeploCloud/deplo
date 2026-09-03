@@ -3274,10 +3274,19 @@ type Mutation {
   """
   requestTakeover(
     """
+    A clean install: nothing is brought across, and the other platform is deleted with everything on it. There is no run to check and nothing can be recovered.
+    """
+    discardData: Boolean
+
+    """
     The operator says this panel has no team left to bring over. Required only when the migration itself says one is still owed, because a token reads a single team and the cutover stops the panel for good.
     """
     noOtherTeams: Boolean
-    runId: String!
+
+    """
+    The migration that finished. Required unless `discardData` says nothing is being brought across.
+    """
+    runId: String
   ): Takeover
 
   """

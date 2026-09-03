@@ -20,7 +20,6 @@ import { docsUrl } from "@/lib/docs";
 import { formatBuildDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { KindCard } from "@/components/shared/kind-card";
@@ -46,9 +45,20 @@ import {
 import { RemoveMigrationSources } from "./remove-sources";
 import { ReviewStep } from "./review-step";
 import { PeopleStep } from "./people-step";
-import { MigrationConsole, RUN_LOG } from "./migration-console";
+import { MigrationConsole } from "./migration-console";
 import { StepShell } from "./step-shell";
-import { stepsFor, type StepId } from "./steps";
+import { ChooseStep } from "./choose-step";
+import {
+  reviewShows,
+  stepReachable,
+  stepsFor,
+  type StepId,
+  type TakeoverMode,
+} from "./steps";
+import {
+  TakeoverStep,
+  type TakeoverState,
+} from "@/components/takeover/takeover-actions";
 import {
   addTeam,
   teamsAfter,
@@ -75,6 +85,15 @@ import {
 
 /** Dokploy's own host has no server row over there; it is the empty id. */
 const OWN_HOST = "";
+
+/** The step a handover already under way pins the wizard to, or null while the
+ *  machine has not started changing hands. */
+function stepForHandover(
+  state: Exclude<TakeoverState, "cancelled"> | undefined,
+): StepId | null {
+  if (!state || state === "pending") return null;
+  return state === "removed" ? "done" : "takeover";
+}
 
 /** Two names for one team, whatever anyone typed around them. */
 function sameTeamName(a: string, b: string): boolean {
@@ -265,6 +284,29 @@ const MINT_LINK = /* GraphQL */ `
   }
 `;
 
+/** How a run ended, and what it did. The console asks for the lines; this is the
+ *  three numbers the report is made of. */
+const RUN_REPORT = /* GraphQL */ `
+  query MigrationReport($id: String!) {
+    migrationRun(id: $id) {
+      status
+      error
+      created
+      skipped
+      failed
+      manual
+    }
+  }
+`;
+
+/** What the finished run says about itself, kept for the report card. */
+interface RunReport {
+  created: number;
+  skipped: number;
+  failed: number;
+  manual: number;
+}
+
 /** Nothing has moved yet, or this tab does not know what has. */
 const NO_PROGRESS: MigrationProgress = { done: 0, total: 0, current: "" };
 
@@ -386,7 +428,8 @@ export function MigrationWizard({
   resumable,
   sameMachineHost,
   prefill = null,
-  takeoverStep = null,
+  takeover = null,
+  preflight = null,
   startOnTakeover = false,
 }: {
   teamId: string;
@@ -412,10 +455,21 @@ export function MigrationWizard({
    */
   prefill?: { url: string; kind: SourceKind } | null;
   /**
-   * Taking the ports, as the wizard's last step. Present only on the takeover
-   * screen, which is also what puts `Take over` in the rail.
+   * The machine being taken over, which is what puts `Choose` and `Take over` in
+   * the rail. Null on the ordinary Migrations screen.
    */
-  takeoverStep?: React.ReactNode;
+  takeover?: {
+    platformLabel: string;
+    /** How far the handover has got. `cancelled` never reaches this component. */
+    state: Exclude<TakeoverState, "cancelled">;
+    /** The run that finished, if the data was brought across. */
+    finishedRunId: string | null;
+    /** Where the dashboard answers once the ports have moved. */
+    finalUrl: string;
+  } | null;
+  /** What a takeover of this machine is walking into - a server component's
+   *  output, so it arrives rendered. Not shown when nothing is being copied. */
+  preflight?: React.ReactNode;
   /** A takeover whose migration already finished and whose report was closed:
    *  the only thing left is the last step, so open on it. */
   startOnTakeover?: boolean;
@@ -426,9 +480,36 @@ export function MigrationWizard({
 }) {
   const router = useRouter();
 
+  const isTakeover = takeover != null;
+  /**
+   * Whether the takeover brings the data across or deletes the old panel. Derived
+   * rather than stored: a run that exists already answers it, and before one does
+   * there is nothing yet to remember.
+   */
+  const [mode, setMode] = React.useState<TakeoverMode | null>(() => {
+    if (!isTakeover) return "migrate";
+    if (startOnTakeover || resumable != null || takeover.finishedRunId != null)
+      return "migrate";
+    // The handover is already under way and nothing came across, so this is the
+    // clean one - a reload mid-cutover must not ask the question again.
+    return takeover.state === "pending" ? null : "clean";
+  });
   const [step, setStep] = React.useState<StepId>(
-    startOnTakeover ? "takeover" : "connect",
+    () =>
+      stepForHandover(takeover?.state) ??
+      (mode == null ? "choose" : startOnTakeover ? "takeover" : "connect"),
   );
+  /**
+   * The handover is the server's, so the step follows it once it starts: a person
+   * who reloads mid-cutover lands on the step that is happening. Adjusted during
+   * the render, which is what React prescribes for state a prop invalidates.
+   */
+  const seenHandover = React.useRef(takeover?.state);
+  if (takeover && takeover.state !== seenHandover.current) {
+    seenHandover.current = takeover.state;
+    const forced = stepForHandover(takeover.state);
+    if (forced) setStep(forced);
+  }
   const [url, setUrl] = React.useState(prefill?.url ?? "");
   const [apiKey, setApiKey] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
@@ -479,6 +560,9 @@ export function MigrationWizard({
     resumable && resumable.status === "running" ? asActive(resumable) : null,
   );
   const [runId, setRunId] = React.useState<string | null>(null);
+  /** The run finished and this is what it did. What Review turns into, and the
+   *  one thing that opens every step after it. */
+  const [report, setReport] = React.useState<RunReport | null>(null);
   const [failure, setFailure] = React.useState<string | null>(null);
   /** The `startMigration` call is in flight. It is over in about a second,
    *  and from then on the run is the server's and the live feed is the truth. */
@@ -553,8 +637,8 @@ export function MigrationWizard({
   );
 
   const STEPS = React.useMemo(
-    () => stepsFor(isInstanceAdmin, takeoverStep != null),
-    [isInstanceAdmin, takeoverStep],
+    () => stepsFor(isInstanceAdmin, isTakeover, mode),
+    [isInstanceAdmin, isTakeover, mode],
   );
 
   /* ---- step 1: connect --------------------------------------------- */
@@ -718,7 +802,9 @@ export function MigrationWizard({
    * Hand the whole thing to the control plane and stop being the driver.
    */
   async function runImport() {
-    if (!plan || running) return;
+    // A run this tab already holds is never started twice: the server refuses it
+    // as somebody else's, which is what the second press used to produce.
+    if (!plan || running || runId) return;
     const targets = plan.projects.flatMap((p) =>
       importableOf(p)
         .filter((svc) => chosen.has(svc.sourceId))
@@ -787,6 +873,7 @@ export function MigrationWizard({
     setFailure(null);
     setPlan(null);
     setRunId(null);
+    setReport(null);
     setAdoptedId(null);
     setChosen(new Set());
     setPlacements({});
@@ -906,10 +993,11 @@ export function MigrationWizard({
     async (id: string) => {
       const res = await gqlAction<
         {
-          migrationRun: { status: string; error: string | null } | null;
+          migrationRun:
+            (RunReport & { status: string; error: string | null }) | null;
         },
-        { status: string; error: string | null } | null
-      >(RUN_LOG, { id }, (d) => d.migrationRun);
+        (RunReport & { status: string; error: string | null }) | null
+      >(RUN_REPORT, { id }, (d) => d.migrationRun);
       if (!res.ok || !res.data) return;
       // Still moving: the live feed owns the screen. Only the arrival path gets
       // here - the edge below fires when the feed has already gone quiet.
@@ -923,10 +1011,11 @@ export function MigrationWizard({
         q.map((e, i) => (i === at ? { ...e, status: outcome } : e)),
       );
       if (res.data.status === "done") {
-        // Inviting the source's members needs the member list, which came with
-        // the plan and cannot be read back once the run has handed the API key
-        // over. Arriving after the fact therefore goes straight to the report.
-        setStep(isInstanceAdmin && hasPlan ? "people" : "done");
+        // The step does NOT move: the report IS this step's finished state, and
+        // the way on is the person acknowledging it (see `acknowledgeReport`).
+        const { created, skipped, failed, manual } = res.data;
+        setReport({ created, skipped, failed, manual });
+        setStep("review");
         return;
       }
       // Stopped or failed - and either way the server has already taken it back
@@ -939,7 +1028,7 @@ export function MigrationWizard({
         );
       resetToStart();
     },
-    [isInstanceAdmin, hasPlan, resetToStart, at],
+    [resetToStart, at],
   );
 
   /**
@@ -1022,12 +1111,19 @@ export function MigrationWizard({
 
   const goToReview = React.useCallback(() => setStep("review"), []);
 
-  /* ---- render ------------------------------------------------------ */
-
   /**
-   * The panel, not the tree: the review step is showing a run rather than a plan.
+   * Leaving the report, which is the only door out of Review once a run has
+   * landed. Errors do not hold it shut - they are named and acknowledged - but
+   * nothing skips it, because it is where "what did not come across" is said.
    */
-  const moving = step === "review" && (running || failure !== null);
+  function acknowledgeReport() {
+    void closeReport();
+    setStep(
+      isInstanceAdmin && hasPlan ? "people" : isTakeover ? "takeover" : "done",
+    );
+  }
+
+  /* ---- render ------------------------------------------------------ */
 
   /**
    * Every machine behind that Dokploy answers Deplo - the same condition the
@@ -1089,6 +1185,34 @@ export function MigrationWizard({
    *  the run leaves the feed and the wizard resets. */
   const takenOver = resumed;
 
+  /**
+   * This tab holds a run the live feed has not shown it yet - the `startMigration`
+   * call has landed and the subscription has not caught up. Without it the wizard
+   * fell back to the plan with a live Start button, and pressing it again was
+   * refused as somebody else's run.
+   */
+  const awaitingRun =
+    runId != null && feed == null && report == null && failure == null;
+
+  /** What Review is showing: the report, the run, or the tree. */
+  const showing = reviewShows({
+    running,
+    runId: adoptedId ?? runId,
+    failure,
+    report: report != null,
+    plan: plan != null,
+  });
+  /** The panel, not the tree: Review is showing a run rather than a plan. */
+  const moving = step === "review" && showing === "moving";
+
+  // The feed is a decoration, never the only way forward: while this tab holds a
+  // run it cannot see, it asks. One small query every 3s, and only then.
+  React.useEffect(() => {
+    if (!awaitingRun || !runId) return;
+    const id = setInterval(() => void settleFinished(runId), 3000);
+    return () => clearInterval(id);
+  }, [awaitingRun, runId, settleFinished]);
+
   // One derived value drives the picture. A run in flight wins over the step -
   // driven here or watched from here - because the cable full of packets is the
   // truest thing on the screen at that moment.
@@ -1104,13 +1228,43 @@ export function MigrationWizard({
             : "connect";
 
   /** A run somebody started, driven from here or merely watched. */
-  const inFlight = running || takenOver;
+  const inFlight = running || takenOver || awaitingRun;
+
+  /** What the rail is allowed to open, and the only answer to that question. */
+  const reach = React.useCallback(
+    (s: StepId) =>
+      stepReachable(s, {
+        mode,
+        isTakeover,
+        plan: plan != null,
+        machinesReady,
+        runId: adoptedId ?? runId,
+        reportDone: report != null || startOnTakeover,
+        teamsLeft,
+        inFlight,
+        takeoverDone: takeover?.state === "removed",
+      }),
+    [
+      mode,
+      isTakeover,
+      plan,
+      machinesReady,
+      adoptedId,
+      runId,
+      report,
+      startOnTakeover,
+      teamsLeft,
+      inFlight,
+      takeover?.state,
+    ],
+  );
 
   // Armed from the moment there is something to lose. Not after Finish either - by
   // then the migration is over and every link on the report is somewhere you are
   // meant to go.
   const guarded =
     step !== "done" &&
+    report == null &&
     !inFlight &&
     (plan != null || url.trim() !== "" || apiKey.trim() !== "");
 
@@ -1166,26 +1320,22 @@ export function MigrationWizard({
       {step === "done" ? (
         <DoneStep
           kind={kind}
-          teamNo={at + 1}
-          teamCount={queue.length}
-          nextName={teamsLeft > 0 ? (queue[at + 1]?.name ?? "") : null}
-          onNext={() => void nextTeam()}
-          uncovered={uncovered}
-          onAddTeam={() => setStep("connect")}
-          onShowLog={() => setLogOpen(true)}
-          onAgain={() => {
-            void closeReport().then(() => {
-              forgetQueue();
-              resetToStart();
-            });
-          }}
-          finishLabel={takeoverStep ? "Take over the machine" : "Finish"}
+          panelUrl={takeover?.finalUrl ?? null}
+          onShowLog={(adoptedId ?? runId) ? () => setLogOpen(true) : null}
+          onAgain={
+            isTakeover
+              ? null
+              : () => {
+                  void closeReport().then(() => {
+                    forgetQueue();
+                    resetToStart();
+                  });
+                }
+          }
           onFinish={() => {
-            void closeReport();
-            if (takeoverStep) return setStep("takeover");
+            if (takeover) return window.location.assign(takeover.finalUrl);
             router.push("/");
           }}
-          isInstanceAdmin={isInstanceAdmin}
         />
       ) : (
         <div className="mx-auto flex w-full flex-col items-center gap-8">
@@ -1208,35 +1358,33 @@ export function MigrationWizard({
               <WizardStepper
                 steps={STEPS}
                 current={takenOver ? "review" : step}
-                reachable={(s) => {
-                  // The rail is inside the panel, so the lock cannot switch it off - it says so
-                  // itself instead: while a migration owns the screen, driven here or watched from
-                  // here, the only step there is is the one it is on.
-                  if (moving || takenOver) return s === "review";
-                  if (s === "connect") return true;
-                  if (s === "install") return plan != null;
-                  // Review is where the copy is started, and a copy needs an agent that ANSWERS on
-                  // every machine. A gate the chrome around it does not honour is a suggestion.
-                  if (s === "review") return plan != null && machinesReady;
-                  // Always open, and it is the card that says what is still
-                  // missing ("bring at least one project over first"): a rail
-                  // entry nobody can reach is how the old fixed panel earned
-                  // its place on the screen.
-                  if (s === "takeover") return true;
-                  // People and the report are what the migration produces:
-                  // neither is anywhere until there is a run.
-                  return (adoptedId ?? runId) != null;
-                }}
+                // `stepReachable` is the only answer, and both the rail and the
+                // bodies below ask it: a gate one of them does not honour is a
+                // suggestion.
+                reachable={reach}
                 onSelect={(s) => {
-                  // Nothing moves while the loop is mid-flight, or while a
-                  // stopped run is still waiting to be undone or kept.
-                  if (moving || takenOver) return;
+                  if (!reach(s)) return;
                   setStep(s);
                 }}
               />
             </div>
 
+            {/* Nothing is being copied on a clean takeover, so the room for a
+                second copy of every volume is not a question. */}
+            {mode !== "clean" && preflight}
+
             <div>
+              {!takenOver && step === "choose" && (
+                <ChooseStep
+                  kind={kind}
+                  mode={mode}
+                  onSelect={setMode}
+                  onContinue={() =>
+                    setStep(mode === "clean" ? "takeover" : "connect")
+                  }
+                />
+              )}
+
               {/* One panel, one run, whoever is looking: the person who started
                   it, the same person after a reload, the teammate who walked in
                   on it. The step they left is the step they get, Stop and all. */}
@@ -1299,9 +1447,32 @@ export function MigrationWizard({
                 />
               )}
 
+              {/* The report IS Review finished, so it comes first: a run that
+                  landed must not be paintable as a plan to start again. */}
               {!takenOver &&
                 step === "review" &&
-                plan &&
+                showing === "report" &&
+                report && (
+                  <ReportCard
+                    kind={kind}
+                    report={report}
+                    teamNo={at + 1}
+                    teamCount={queue.length}
+                    nextName={
+                      teamsLeft > 0 ? (queue[at + 1]?.name ?? "") : null
+                    }
+                    onNext={() => void nextTeam()}
+                    uncovered={uncovered}
+                    onAddTeam={() => setStep("connect")}
+                    onShowLog={() => setLogOpen(true)}
+                    onContinue={acknowledgeReport}
+                    isInstanceAdmin={isInstanceAdmin}
+                  />
+                )}
+
+              {!takenOver &&
+                step === "review" &&
+                showing !== "report" &&
                 (moving ? (
                   <MovingPanel
                     kind={kind}
@@ -1311,14 +1482,16 @@ export function MigrationWizard({
                     // yet, so there is no heartbeat to be missing.
                     heartbeatAt={new Date().toISOString()}
                     failure={failure}
-                    running={running}
+                    // A run this tab holds but cannot see yet is still a run: the
+                    // plan must not come back under it.
+                    running={running || awaitingRun}
                     undoing={false}
                     onShowLog={() => setLogOpen(true)}
                     // No Stop: this is the second the `startMigration` call
                     // is in flight, and there is no run id to stop yet.
                     onBack={() => setFailure(null)}
                   />
-                ) : (
+                ) : showing === "plan" && plan ? (
                   <ReviewStep
                     kind={kind}
                     plan={plan}
@@ -1340,7 +1513,7 @@ export function MigrationWizard({
                     onBack={() => setStep("install")}
                     onStart={() => void runImport()}
                   />
-                ))}
+                ) : null)}
 
               {!takenOver && step === "people" && (
                 <PeopleStep
@@ -1353,24 +1526,24 @@ export function MigrationWizard({
                   inviteLink={inviteLink}
                   minting={minting}
                   onMintLink={() => void mintInviteLink()}
-                  onContinue={() => setStep("done")}
+                  onContinue={() => setStep(isTakeover ? "takeover" : "done")}
                 />
               )}
 
-              {!takenOver &&
-                step === "takeover" &&
-                // Taking the ports stops that panel for good, so a team still on
-                // the list comes first. The server refuses it too - this is the
-                // half that says WHICH team is missing.
-                (teamsLeft > 0 ? (
-                  <TeamsLeftCard
-                    kind={kind}
-                    teams={queue.slice(at + 1).map((q) => q.name)}
-                    onNext={() => void nextTeam()}
-                  />
-                ) : (
-                  takeoverStep
-                ))}
+              {/* The rail is what keeps a person out of here until there is
+                  something to take over for; the step itself only ever asks. */}
+              {!takenOver && step === "takeover" && takeover && mode && (
+                <TakeoverStep
+                  platformLabel={takeover.platformLabel}
+                  mode={mode}
+                  state={takeover.state}
+                  // The run this tab drove wins: the page's own read of it is a
+                  // refresh away, and the ports must not be asked for with a
+                  // null the server can only answer "no such migration" to.
+                  finishedRunId={adoptedId ?? runId ?? takeover.finishedRunId}
+                  finalUrl={takeover.finalUrl}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1868,16 +2041,17 @@ function ElapsedLine({
 }
 
 /* ------------------------------------------------------------------ */
-/* Step - done                                                        */
+/* Step - review, once the run has landed                             */
 /* ------------------------------------------------------------------ */
 
 /**
- * The end, and the one step that breaks the two-column layout. Everywhere else the
- * illustration sits beside the thing you are doing, because there is a thing you
- * are doing.
+ * What Review turns into once the run is over: what came across, what did not,
+ * and the one way on. Nothing skips it - it is where "a person has to look at
+ * this" gets said, and an error is acknowledged rather than a dead end.
  */
-function DoneStep({
+function ReportCard({
   kind,
+  report,
   teamNo,
   teamCount,
   nextName,
@@ -1885,13 +2059,11 @@ function DoneStep({
   uncovered,
   onAddTeam,
   onShowLog,
-  onAgain,
-  finishLabel,
-  onFinish,
+  onContinue,
   isInstanceAdmin,
 }: {
-  /** Which panel this came from, for the drawing's label. */
   kind: SourceKind | null;
+  report: RunReport;
   /** Which team of the list this was, and how many there are. */
   teamNo: number;
   teamCount: number;
@@ -1904,45 +2076,57 @@ function DoneStep({
   onAddTeam: () => void;
   /** The wizard's own console - the same one the panel opened while it ran. */
   onShowLog: () => void;
-  /** Close the report and hand back an empty wizard, without leaving the page. */
-  onAgain: () => void;
-  /** On a takeover the way on is the last step, not the dashboard. */
-  finishLabel: string;
-  onFinish: () => void;
+  onContinue: () => void;
   /** Uninstalling an agent is instance-admin, like every server action. */
   isInstanceAdmin: boolean;
 }) {
-  // Not the end of anything while a team is still waiting: no confetti, and no
-  // offer to take the agents off machines the next team is about to read.
   const more = nextName != null;
+  const needsAPerson = report.failed + report.manual;
+
   return (
-    <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
-      {/**
-       * Over the WINDOW, not over the drawing. A burst thrown from the middle of the
-       * screen is still a burst thrown from the middle of the screen - which is where the
-       * illustration is, so that is what it looks like it came out of.
-       */}
-      {!more && <ConfettiBurst rain className="z-50" count={60} />}
-
-      <MigrationGraphic state="done" kind={kind} className="h-48 w-auto" />
-
-      <div>
-        <h2 className="text-xl font-semibold">
-          {more
-            ? `Team ${teamNo} of ${teamCount} is on Deplo`
-            : "You're on Deplo"}
-        </h2>
-        <p className="mt-1 text-sm text-balance text-muted-foreground">
-          {more
-            ? `${nextName} is next, and it lands in a team of its own. Nothing is deployed yet.`
-            : "Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."}
-        </p>
+    <StepShell
+      title={
+        more
+          ? `Team ${teamNo} of ${teamCount} is on Deplo`
+          : "Your projects are on Deplo"
+      }
+      lead={
+        more
+          ? `${nextName} is next, and it lands in a team of its own. Nothing is deployed yet.`
+          : "Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
+      }
+    >
+      <div className="flex flex-wrap gap-1.5">
+        <Badge variant="success">{report.created} created</Badge>
+        {report.skipped > 0 && (
+          <Badge variant="secondary">{report.skipped} already here</Badge>
+        )}
+        {report.manual > 0 && (
+          <Badge variant="warning">{report.manual} need a person</Badge>
+        )}
+        {report.failed > 0 && (
+          <Badge variant="destructive">{report.failed} refused</Badge>
+        )}
       </div>
+
+      {/* The acknowledgement's other half: the button says "I understand", so
+          this has to say what there is to understand. */}
+      {needsAPerson > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+          <p className="min-w-0 flex-1 text-muted-foreground">
+            {needsAPerson === 1
+              ? "One thing needs a person."
+              : `${needsAPerson} things need a person.`}{" "}
+            The log says which, and why.
+          </p>
+        </div>
+      )}
 
       {/* Only a panel that lists its teams gets here - the operator is one key
           short of a team they have not thought about. */}
       {!more && uncovered.length > 0 && (
-        <div className="flex w-full items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-left text-sm">
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 flex-1 text-muted-foreground">
             Still on that panel: {uncovered.join(", ")}.
@@ -1953,80 +2137,106 @@ function DoneStep({
         </div>
       )}
 
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button variant="outline" onClick={onShowLog}>
+          <ScrollText className="size-4" />
+          Show log
+        </Button>
+        <Button onClick={more ? onNext : onContinue}>
+          {more
+            ? `Bring ${nextName} over`
+            : needsAPerson > 0
+              ? "I understand, continue"
+              : "Continue"}
+        </Button>
+      </div>
+
+      {/* Only ever shown when an agent really is still out there: finishing the
+          run uninstalls them, so this is the line for the one that would not go
+          quietly. Never while a team is still queued - those agents are its way in. */}
+      {isInstanceAdmin && !more && <RemoveMigrationSources />}
+    </StepShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Step - done                                                        */
+/* ------------------------------------------------------------------ */
+
+/** How long the celebration is left up before the panel opens itself. */
+const REDIRECT_MS = 3000;
+
+/**
+ * The end, and the one step that breaks the two-column layout. Everywhere else the
+ * illustration sits beside the thing you are doing, because there is a thing you
+ * are doing.
+ */
+function DoneStep({
+  kind,
+  panelUrl,
+  onShowLog,
+  onAgain,
+  onFinish,
+}: {
+  /** Which panel this came from, for the drawing's label. */
+  kind: SourceKind | null;
+  /** Where the dashboard answers now, on a takeover. Null off one. */
+  panelUrl: string | null;
+  /** The wizard's own console. Null when nothing ran - a clean takeover. */
+  onShowLog: (() => void) | null;
+  /** Close the report and hand back an empty wizard. Null on a takeover: the
+   *  machine has changed hands, so there is no other panel to bring over. */
+  onAgain: (() => void) | null;
+  onFinish: () => void;
+}) {
+  // The machine has changed hands and this origin may already be gone, so the
+  // way on opens itself rather than waiting on a click nobody is here to make.
+  React.useEffect(() => {
+    if (!panelUrl) return;
+    const t = setTimeout(onFinish, REDIRECT_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelUrl]);
+
+  return (
+    <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
       {/**
-       * The two ends of the row, the way every footer in the app reads: what you might
-       * want to look at first on the left, the way out on the right.
+       * Over the WINDOW, not over the drawing. A burst thrown from the middle of the
+       * screen is still a burst thrown from the middle of the screen - which is where the
+       * illustration is, so that is what it looks like it came out of.
        */}
+      <ConfettiBurst rain className="z-50" count={60} />
+
+      <MigrationGraphic state="done" kind={kind} className="h-48 w-auto" />
+
+      <div>
+        <h2 className="text-xl font-semibold">
+          {panelUrl ? "This machine is Deplo's" : "You're on Deplo"}
+        </h2>
+        <p className="mt-1 text-sm text-balance text-muted-foreground">
+          {panelUrl
+            ? `Opening ${panelUrl}`
+            : "Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."}
+        </p>
+      </div>
+
       <div className="flex w-full flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={onShowLog}>
-            <ScrollText className="size-4" />
-            Show log
-          </Button>
-          {/* Another PANEL, which throws the list away - so not while it still
-              has teams on it. */}
-          {!more && (
+          {onShowLog && (
+            <Button variant="outline" onClick={onShowLog}>
+              <ScrollText className="size-4" />
+              Show log
+            </Button>
+          )}
+          {onAgain && (
             <Button variant="outline" onClick={onAgain}>
               <Repeat className="size-4" />
               Migrate another
             </Button>
           )}
         </div>
-        <Button onClick={more ? onNext : onFinish}>
-          {more ? `Bring ${nextName} over` : finishLabel}
-        </Button>
+        <Button onClick={onFinish}>{panelUrl ? "Open Deplo" : "Finish"}</Button>
       </div>
-
-      {/* Only ever shown when an agent really is still out there: finishing the
-          run uninstalls them, so this is the line for the one that would not go
-          quietly. It brings its own card, so it sits outside the centred column.
-          Never while a team is still queued - those agents are its way in. */}
-      {isInstanceAdmin && !more && (
-        <div className="w-full text-left">
-          <RemoveMigrationSources />
-        </div>
-      )}
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Step - take over, while the list is not done                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * What the last step is until every team is over. The cutover stops that panel
- * and its API for good, and a token reads one team - so a team still on the list
- * would have nothing left to come from. The server refuses it too.
- */
-function TeamsLeftCard({
-  kind,
-  teams,
-  onNext,
-}: {
-  kind: SourceKind | null;
-  /** The ones still to come, in order. */
-  teams: string[];
-  onNext: () => void;
-}) {
-  const copy = copyFor(kind);
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <TriangleAlert className="size-4 text-warning" />
-          {teams.length === 1
-            ? "One team is still to come"
-            : `${teams.length} teams are still to come`}
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Taking the ports stops {copy.name} for good, and its API with it.
-          Bring {teams.join(", ")} over first.
-        </p>
-      </CardHeader>
-      <CardFooter className="justify-end border-t border-border pt-6">
-        <Button onClick={onNext}>Bring {teams[0]} over</Button>
-      </CardFooter>
-    </Card>
   );
 }

@@ -41,7 +41,7 @@ import type { ReportItem } from "./types";
  * run through it too - it wants `status` and `error`, which are on it already -
  * so a field renamed in the schema breaks one query rather than two.
  */
-export const RUN_LOG = /* GraphQL */ `
+const RUN_LOG = /* GraphQL */ `
   query MigrationLog($id: String!) {
     migrationRun(id: $id) {
       id

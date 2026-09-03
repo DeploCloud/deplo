@@ -103,15 +103,27 @@ builder.mutationFields((t) => ({
     description:
       "Hand the machine to Deplo. The installer is waiting for this: it stops the other platform, inherits its certificates, moves Traefik onto 80/443 and the dashboard onto 3000, and then takes the other platform off the disk for good.",
     args: {
-      runId: t.arg.string({ required: true }),
+      runId: t.arg.string({
+        required: false,
+        description:
+          "The migration that finished. Required unless `discardData` says nothing is being brought across.",
+      }),
       noOtherTeams: t.arg.boolean({
         required: false,
         description:
           "The operator says this panel has no team left to bring over. Required only when the migration itself says one is still owed, because a token reads a single team and the cutover stops the panel for good.",
       }),
+      discardData: t.arg.boolean({
+        required: false,
+        description:
+          "A clean install: nothing is brought across, and the other platform is deleted with everything on it. There is no run to check and nothing can be recovered.",
+      }),
     },
-    resolve: (_r, { runId, noOtherTeams }) =>
-      requestTakeover(runId, { noOtherTeams: noOtherTeams ?? false }),
+    resolve: (_r, { runId, noOtherTeams, discardData }) =>
+      requestTakeover(runId ?? null, {
+        noOtherTeams: noOtherTeams ?? false,
+        discardData: discardData ?? false,
+      }),
   }),
   cancelTakeover: t.field({
     type: CancelResultRef,
