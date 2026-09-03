@@ -17,6 +17,10 @@ import {
   listNotificationChannels,
   saveNotificationChannel,
 } from "../data/notifications";
+import {
+  memberships as membershipsTable,
+  membershipCapabilities as membershipCapabilitiesTable,
+} from "../db/schema/control-plane";
 import { captureFetch, type FetchCapture } from "./fetch-capture-test-helpers";
 import { __resetCooldowns } from "./cooldown";
 import { dispatchAlertNow } from "./dispatch";
@@ -117,7 +121,9 @@ test("one alert reaches every enabled channel, in each one's own shape", async (
   assert.equal(capture.calls.length, 9);
   const by = (host: string) =>
     capture!.calls.find((c) => c.url.includes(host))!;
-  const link = "https://deplo.acme.com/apps/api";
+  // The team is on the link: whoever clicks it lands in the team the alert is
+  // about, not in whatever one their browser last had.
+  const link = "https://deplo.acme.com/alpha/apps/api";
   const body = "The build log has the error that stopped it.";
 
   // Discord is the one structured payload: an embed, not a line of text.
@@ -343,4 +349,53 @@ test("a repeated condition is deduped, and the state change gets through", async
     dedupe: { id: "server:srv_1", state: "online" },
   });
   assert.equal(capture.calls.length, 18, "the recovery edge is not suppressed");
+});
+
+test("the link names the team the alert is about", async () => {
+  // USER_1 joins beta and configures ITS channel: the alert is beta's, and the
+  // link has to say so - the dispatcher runs with no active team of its own.
+  const id = `mem_${USER_1}_${TEAM_B}`;
+  await db.insert(membershipsTable).values({
+    id,
+    userId: USER_1,
+    teamId: TEAM_B,
+    role: "owner",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  await db.insert(membershipCapabilitiesTable).values(
+    ["view", "manage_notifications"].map((capability) => ({
+      membershipId: id,
+      capability,
+    })),
+  );
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    saveNotificationChannel(null, {
+      kind: "webhook",
+      name: "",
+      enabled: true,
+      url: "https://ops/beta",
+      target: "",
+      emailFrom: "",
+      emailProvider: "resend",
+      smtpHost: "",
+      smtpPort: 587,
+      smtpUser: "",
+      alerts: ["deployment_failed"],
+    }),
+  );
+  capture = captureFetch();
+
+  await dispatchAlertNow({
+    teamId: TEAM_B,
+    key: "deployment_failed",
+    title: "shop failed to deploy",
+    body: "The build log has the error that stopped it.",
+    path: "/apps/shop",
+  });
+
+  assert.equal(capture.calls.length, 1);
+  assert.equal(
+    (capture.calls[0].body as { url: string }).url,
+    "https://deplo.acme.com/beta/apps/shop",
+  );
 });

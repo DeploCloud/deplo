@@ -117,6 +117,20 @@ export async function myTeamSlugOwning(
   );
 }
 
+/**
+ * A team's slug by id. Takes the id because its one caller is the alert dispatch
+ * (lib/notify/dispatch.ts), which runs with no active team and has to put the
+ * team into the link it sends. A slug is not a secret; nothing else is returned.
+ */
+export async function teamSlugById(teamId: string): Promise<string | null> {
+  const rows = await getDb()
+    .select({ slug: teamsTable.slug })
+    .from(teamsTable)
+    .where(eq(teamsTable.id, teamId))
+    .limit(1);
+  return rows[0]?.slug ?? null;
+}
+
 /** The active team, settings included. A team-wide read. */
 export async function getTeam(): Promise<Team> {
   await requireTeamWide("team settings");

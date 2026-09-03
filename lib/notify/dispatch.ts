@@ -3,6 +3,8 @@ import "server-only";
 // https://deplo.build/docs/guides/observability/notifications-and-alerts
 
 import { channelsForAlert } from "../data/notifications";
+import { teamSlugById } from "../data/teams";
+import { withTeam } from "../team-path";
 import { publicBaseUrl } from "../public-url";
 import { CHANNEL_TIMEOUT_MS, sendToChannel } from "./channels";
 import { shouldFire } from "./cooldown";
@@ -21,7 +23,11 @@ export interface Alert {
   title: string;
   /** One or two lines: the actionable detail. */
   body: string;
-  /** Dashboard path (`/apps/api`), made absolute if the panel URL is known. */
+  /**
+   * Dashboard path, written FLAT (`/apps/api`): the team is put on it and the
+   * panel's address in front of it, so the link opens in the right team for
+   * whoever clicks it, whatever team their browser last had.
+   */
   path?: string;
   /**
    * Identity + current state of a REPEATED condition, e.g.
@@ -55,11 +61,14 @@ export async function dispatchAlertNow(alert: Alert): Promise<void> {
     if (channels.length === 0) return;
 
     const base = publicBaseUrl();
+    // Nothing to look up unless there is a link to build; a team that has since
+    // been deleted answers null, and the flat path still redirects on arrival.
+    const slug = alert.path && base ? await teamSlugById(alert.teamId) : null;
     const msg = {
       key: alert.key,
       title: alert.title,
       body: alert.body,
-      url: alert.path && base ? `${base}${alert.path}` : null,
+      url: alert.path && base ? `${base}${withTeam(alert.path, slug)}` : null,
       ts: new Date().toISOString(),
     };
     // allSettled: a dead Discord webhook must not cost the email.
