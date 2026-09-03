@@ -19,7 +19,6 @@ import {
   ensureTakeoverFromEnv,
   markTakeoverProgress,
   noteBrowserReached,
-  requestPlatformRemoval,
   requestTakeover,
   takeoverBlocksDashboard,
   takeoverStatus,
@@ -148,29 +147,32 @@ test("the ladder only ever goes forward", async () => {
     "the ports have moved; there is nothing to hand back",
   );
 
-  await asUser(ADMIN, requestPlatformRemoval);
-  assert.equal((await read())?.state, "removing");
+  // The removal is the same confirmed action, so the installer reports it too.
+  await asUser(ADMIN, () => markTakeoverProgress("removing"));
   await asUser(ADMIN, () => markTakeoverProgress("removed"));
   assert.equal((await read())?.state, "removed");
   await assert.rejects(
-    () => asUser(ADMIN, requestPlatformRemoval),
+    () => asUser(ADMIN, () => markTakeoverProgress("removing")),
     /cannot move to "removing"/,
   );
 });
 
-test("the dashboard opens again once the ports are Deplo's", async () => {
+test("the dashboard opens only once the old platform is gone", async () => {
+  const blocks = () =>
+    runWithIdentity({ userId: ADMIN, teamId: TEAM_A }, takeoverBlocksDashboard);
   await seedPending();
   await seedFinishedRun("run_1");
   await asUser(ADMIN, () => requestTakeover("run_1"));
   await asUser(ADMIN, () => markTakeoverProgress("done"));
   assert.equal(
-    await runWithIdentity(
-      { userId: ADMIN, teamId: TEAM_A },
-      takeoverBlocksDashboard,
-    ),
-    false,
-    "the old platform is still on the disk, but nothing is in the way any more",
+    await blocks(),
+    true,
+    "the ports have moved but the other platform is still on the disk",
   );
+  await asUser(ADMIN, () => markTakeoverProgress("removing"));
+  assert.equal(await blocks(), true);
+  await asUser(ADMIN, () => markTakeoverProgress("removed"));
+  assert.equal(await blocks(), false, "now it is Deplo and nothing else");
 });
 
 test("only an instance admin decides any of it", async () => {

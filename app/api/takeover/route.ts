@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   });
 }
 
-/** The installer reporting what it finished: the ports, or the removal. */
+/** The installer reporting where it is: the ports moved, or the removal. */
 export async function POST(request: Request) {
   if (!authorized(request))
     return Response.json({ error: "unauthorized" }, { status: 401 });
@@ -44,14 +44,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }
   const state = body.state;
-  if (state !== "done" && state !== "removed")
+  if (state !== "done" && state !== "removing" && state !== "removed")
     return Response.json(
-      { error: 'state must be "done" or "removed"' },
+      { error: 'state must be "done", "removing" or "removed"' },
       { status: 400 },
     );
 
   try {
-    const next: Extract<TakeoverState, "done" | "removed"> = state;
+    const next: Extract<TakeoverState, "done" | "removing" | "removed"> = state;
     return Response.json(await markTakeoverProgress(next));
   } catch (e) {
     return Response.json(

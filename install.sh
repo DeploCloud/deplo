@@ -664,8 +664,8 @@ ours_holds_port() {
 }
 
 # A takeover already in flight keeps the ports it chose; a fresh one asks first.
-# Past the cutover the ports are already Deplo's and nothing below moves them,
-# but the other platform is still on the disk and removing it is a re-run away.
+# Past the cutover the ports are already Deplo's and nothing below moves them -
+# a re-run there only finishes the removal.
 TAKEOVER=""
 TAKEOVER_PAST=0
 TAKEOVER_STATE="$(state_get takeover || true)"
@@ -686,9 +686,8 @@ if [ -z "$TAKEOVER" ] && [ "$MODE" = install ]; then
     note "Deplo can only install here by taking its place: it brings your projects"
     note "across, then removes $FOREIGN_LABEL. Two panels cannot share 80 and 443."
     note "Nothing is touched until you have looked at what came over."
-    # The old panel staying on disk is the way back from a takeover that WORKED.
-    # A snapshot is the way back from the rest: a destination volume emptied for a
-    # copy that then failed, a disk that filled, the Docker restart at the cutover.
+    # A snapshot is the ONLY way back once the cutover has worked: the removal
+    # runs straight after it, so nothing of theirs is left to start again.
     note "Take a snapshot of this server first. It is one click at every provider,"
     note "and it covers what the takeover itself cannot put back."
     if [ "$CHECK_ONLY" = true ]; then
@@ -1936,8 +1935,8 @@ takeover_cutover() {
   return 1
 }
 
-# Everything of the other platform, gone. Only ever from `removing`, which is a
-# button in the panel behind a typed confirmation.
+# Everything of the other platform, gone. Runs straight after a cutover that
+# worked: the operator confirmed the ports AND this in one typed confirmation.
 #
 # Every target is found by a POSITIVE signal, never by a name pattern: the wrong
 # answer here deletes the apps Deplo has just brought across.
@@ -1983,11 +1982,30 @@ foreign_networks_of() {
   done | grep -vE '^(bridge|host|none|deplo|deplo-.*|.*_deplo.*|$)$' | sort -u || true
 }
 
+# The platform's OWN infrastructure, by exact name. Never a pattern: once its
+# services are gone nothing is left to read these off, and a name pattern is how
+# a removal eats the apps just brought across.
+platform_own_volumes() {
+  case "$1" in
+    dokploy) printf 'dokploy dokploy-postgres dokploy-redis' ;;
+    coolify) printf 'coolify-db coolify-redis' ;;
+  esac
+}
+
+platform_own_networks() {
+  case "$1" in
+    dokploy) printf 'dokploy-network' ;;
+    coolify) printf 'coolify' ;;
+  esac
+}
+
 foreign_remove() {
   blank
   phase "Removing $FOREIGN_LABEL"
 
-  local all vols nets svcs left_v left_n
+  local all vols nets svcs own_v own_n left_v left_n
+  state_set takeover "removing"
+  takeover_post "removing"
   all="$(foreign_ids)"
 
   # Read what they hold BEFORE they are gone; an id no longer exists afterwards.
@@ -2012,15 +2030,26 @@ foreign_remove() {
       # shellcheck disable=SC2086
       docker service rm $svcs >&9 2>&9 || true
     fi
-    # Its OWN infrastructure. Fixed names off the vendor's uninstall, not a
-    # pattern: once the services are gone nothing is left to read them off.
-    # https://docs.dokploy.com/docs/core/uninstall
-    docker volume rm -f dokploy dokploy-postgres dokploy-redis >&9 2>&9 || true
-    docker network rm dokploy-network >&9 2>&9 || true
     # The swarm exists because Dokploy made this box a manager. Deplo runs plain
     # compose, and leaving is what takes `ingress` with it.
+    # https://docs.dokploy.com/docs/core/uninstall
     step "Leaving the swarm it made"
     docker swarm leave --force >&9 2>&9 || true
+  fi
+
+  own_v="$(platform_own_volumes "$TAKEOVER")"
+  own_n="$(platform_own_networks "$TAKEOVER")"
+  # shellcheck disable=SC2086
+  [ -z "$own_v" ] || docker volume rm -f $own_v >&9 2>&9 || true
+  # shellcheck disable=SC2086
+  [ -z "$own_n" ] || docker network rm $own_n >&9 2>&9 || true
+
+  # Coolify's installer puts its own key in root's authorized_keys. Removing the
+  # platform and leaving that behind leaves a removed panel with root on the box.
+  if [ "$TAKEOVER" = coolify ] && [ -f "$HOME/.ssh/authorized_keys" ]; then
+    if sed -i '/[[:space:]]coolify$/d' "$HOME/.ssh/authorized_keys" 2>&9; then
+      step "Took its SSH key out of authorized_keys"
+    fi
   fi
 
   spin_start "Removing what it left behind"
@@ -2078,39 +2107,14 @@ takeover_uninstall() {
 TAKEOVER_POLL_S=5
 TAKEOVER_WAIT_MAX_S="${DEPLO_TAKEOVER_WAIT:-7200}"
 
-# After the ports move: the operator deploys their apps by hand and asks for the
-# removal when they are satisfied. Deplo never deploys anything for them.
+# The ports moved, so the other platform comes off the disk now. Landing on the
+# dashboard has to mean the machine is Deplo's and nothing else.
 takeover_after_cutover() {
-  local waited=0 state
+  foreign_remove
   blank
   printf ' %bNext%b\n' "$C_B" "$C_OFF"
-  printf '   1  Open %b%s%b - the ports are Deplo'"'"'s now.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
-  printf '   2  Deploy your apps yourself, one at a time, and check each one.\n'
-  printf '   3  When you are happy, remove %s from the dashboard.\n\n' "$FOREIGN_LABEL"
-  note "$FOREIGN_LABEL is stopped but still on the disk, volumes and all - that is your way back."
-  note "In no hurry? Close this window and re-run $DEPLO_DIR/install.sh to remove it later."
-
-  spin_start "Waiting in case you ask for $FOREIGN_LABEL to be removed"
-  while [ "$waited" -lt "$TAKEOVER_WAIT_MAX_S" ]; do
-    state="$(takeover_field "$(takeover_get)" state)"
-    case "$state" in
-      removing)
-        spin_kill
-        foreign_remove
-        return 0
-        ;;
-      removed)
-        spin_kill
-        ok "$FOREIGN_LABEL is already removed"
-        return 0
-        ;;
-    esac
-    sleep "$TAKEOVER_POLL_S"
-    waited=$((waited + TAKEOVER_POLL_S))
-  done
-  spin_kill
-  ok "$FOREIGN_LABEL is stopped and still on the disk"
-  note "Remove it whenever you like: re-run $DEPLO_DIR/install.sh and ask from the dashboard."
+  printf '   1  Open %b%s%b - the machine is Deplo'"'"'s now.\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
+  printf '   2  Deploy your apps and check them.\n\n'
   return 0
 }
 
@@ -2248,9 +2252,7 @@ closing_notes() {
 }
 
 # A takeover writes its own "Next" - the ordinary one would tell somebody to go
-# and deploy an app on a machine whose ports still belong to another panel. Past
-# the cutover it waits on the dashboard's "Remove" button, which is the one thing
-# left that only root on this host can do.
+# and deploy an app on a machine whose ports still belong to another panel.
 if [ -n "$TAKEOVER" ]; then
   FOREIGN_LABEL="$(platform_label "$TAKEOVER")"
   case "$TAKEOVER_STATE" in

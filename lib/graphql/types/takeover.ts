@@ -2,7 +2,6 @@ import { builder } from "../builder";
 import { MIGRATION_PLATFORMS } from "@/lib/migration/source";
 import {
   cancelTakeover,
-  requestPlatformRemoval,
   requestTakeover,
   takeoverPreflight,
   takeoverStatus,
@@ -18,7 +17,7 @@ import {
 
 const TakeoverStateEnum = builder.enumType("TakeoverState", {
   description:
-    "pending = the migration is not finished. ready = the operator asked for the ports and the installer is moving them. done = they are Deplo's, and the old platform is stopped but still on the disk. removing / removed = it is being taken off. cancelled = the operator backed out and Deplo is uninstalling itself.",
+    "pending = the migration is not finished. ready = the operator asked for the machine and the installer is moving the ports. done = the ports are Deplo's. removing / removed = the old platform is coming off the disk. cancelled = the operator backed out and Deplo is uninstalling itself.",
   values: TAKEOVER_STATES,
 });
 
@@ -102,16 +101,9 @@ builder.mutationFields((t) => ({
     type: TakeoverRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Hand the machine's ports to Deplo. The installer is waiting for this: it stops the other platform, inherits its certificates, moves Traefik onto 80/443 and the dashboard onto 3000. Nothing is deployed and nothing is removed.",
+      "Hand the machine to Deplo. The installer is waiting for this: it stops the other platform, inherits its certificates, moves Traefik onto 80/443 and the dashboard onto 3000, and then takes the other platform off the disk for good.",
     args: { runId: t.arg.string({ required: true }) },
     resolve: (_r, { runId }) => requestTakeover(runId),
-  }),
-  requestPlatformRemoval: t.field({
-    type: TakeoverRef,
-    authScopes: { instanceAdmin: true },
-    description:
-      "Take the old platform off this machine for good - containers, volumes, networks, images and its directory. Only offered once the ports are Deplo's, so the operator has already had the chance to deploy their apps and check them.",
-    resolve: () => requestPlatformRemoval(),
   }),
   cancelTakeover: t.field({
     type: CancelResultRef,

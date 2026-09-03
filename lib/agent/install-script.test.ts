@@ -532,7 +532,7 @@ const REMOVE_STUB = `#!/bin/bash
 printf '%s\\n' "$*" >> "$STUB_LOG"
 cmd="$1"; shift
 case "$cmd" in
-  ps) case "$*" in *-aq*) echo aaaabbbbcccc ;; *) echo dokploy-traefik ;; esac ;;
+  ps) case "$*" in *-aq*) echo aaaabbbbcccc ;; *) echo the-old-panel ;; esac ;;
   inspect)
     fmt=""
     while [ $# -gt 0 ]; do case "$1" in --format) fmt="$2"; shift 2 ;; *) shift ;; esac; done
@@ -540,70 +540,104 @@ case "$cmd" in
       *.Id*) echo aaaabbbbcccc ;;
       *managed*) echo true ;;
       *working_dir*) echo ;;
-      *.Mounts*) echo dokploy-traefik-cfg; echo deplo-keep ;;
-      *NetworkSettings*) echo dokploy-network; echo bridge ;;
+      *.Mounts*) echo foreign-data; echo deplo-keep ;;
+      *NetworkSettings*) echo old-panel-net; echo bridge ;;
     esac ;;
   service) case "$1" in ls) echo dokploy; echo dokploy-postgres ;; esac ;;
-  images) echo dokploy/dokploy:latest; echo myapp:latest ;;
+  images) echo dokploy/dokploy:latest; echo coollabsio/coolify:latest; echo myapp:latest ;;
 esac
 exit 0
 `;
 
-test("removing Dokploy leaves the swarm and takes its own volumes", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "deplo-remove-"));
-  const log = join(dir, "docker.log");
-  const platform = join(dir, "etc-dokploy");
-  await bash(`mkdir -p ${platform} && : > ${log}`);
-  await writeFile(join(dir, "docker"), REMOVE_STUB, { mode: 0o755 });
+const REMOVAL_CASES = [
+  {
+    platform: "dokploy",
+    label: "Dokploy",
+    // https://docs.dokploy.com/docs/core/uninstall - the swarm is the one thing
+    // a container sweep can never reach, and `ingress` only goes with it.
+    expected: [
+      "service rm dokploy dokploy-postgres",
+      "swarm leave --force",
+      "volume rm -f dokploy dokploy-postgres dokploy-redis",
+      "network rm dokploy-network",
+    ],
+    key: false,
+  },
+  {
+    platform: "coolify",
+    label: "Coolify",
+    expected: ["volume rm -f coolify-db coolify-redis", "network rm coolify"],
+    // Its installer writes a key into root's authorized_keys; a removal that
+    // leaves it there leaves a removed panel with root on the box.
+    key: true,
+  },
+];
 
-  const fns = (
-    await Promise.all(
-      [
-        "foreign_containers",
-        "foreign_services",
-        "foreign_workloads",
-        "foreign_ids",
-        "foreign_volumes_of",
-        "foreign_networks_of",
-        "foreign_remove",
-      ].map((n) => shellFn("install.sh", n)),
-    )
-  ).join("\n");
+for (const c of REMOVAL_CASES) {
+  test(`removing ${c.label} takes its own infrastructure too`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "deplo-remove-"));
+    const log = join(dir, "docker.log");
+    const platform = join(dir, "platform-dir");
+    const keys = join(dir, ".ssh", "authorized_keys");
+    await bash(`mkdir -p ${platform} ${dir}/.ssh && : > ${log}`);
+    await writeFile(
+      keys,
+      "ssh-ed25519 AAAAmine admin@acme.com\nssh-ed25519 AAAAtheirs coolify\n",
+    );
+    await writeFile(join(dir, "docker"), REMOVE_STUB, { mode: 0o755 });
 
-  await bash(
-    `set -euo pipefail
-export STUB_LOG=${log}
-TAKEOVER=dokploy; FOREIGN_LABEL=Dokploy; exec 9>/dev/null
+    const fns = (
+      await Promise.all(
+        [
+          "foreign_containers",
+          "foreign_services",
+          "foreign_workloads",
+          "foreign_ids",
+          "platform_own_volumes",
+          "platform_own_networks",
+          "foreign_volumes_of",
+          "foreign_networks_of",
+          "foreign_remove",
+        ].map((n) => shellFn("install.sh", n)),
+      )
+    ).join("\n");
+
+    await bash(
+      `set -euo pipefail
+export STUB_LOG=${log} HOME=${dir}
+TAKEOVER=${c.platform}; FOREIGN_LABEL=${c.label}; exec 9>/dev/null
 blank() { :; }; phase() { :; }; step() { :; }; note() { :; }
 spin_start() { :; }; spin_ok() { :; }
 state_set() { :; }; takeover_post() { :; }
 ${fns}
 platform_dir() { printf '%s' "${platform}"; }
 foreign_remove`,
-    dir,
-  );
+      dir,
+    );
 
-  const calls = (await readFile(log, "utf8")).trim().split("\n");
-  await rm(dir, { recursive: true, force: true });
+    const calls = (await readFile(log, "utf8")).trim().split("\n");
+    const left = await readFile(keys, "utf8");
+    await rm(dir, { recursive: true, force: true });
 
-  // https://docs.dokploy.com/docs/core/uninstall - the swarm is the one thing a
-  // container sweep can never reach, and `ingress` only goes with it.
-  assert.ok(
-    calls.includes("swarm leave --force"),
-    `the swarm is left behind: ${calls.join(" | ")}`,
-  );
-  assert.ok(
-    calls.includes("volume rm -f dokploy dokploy-postgres dokploy-redis"),
-  );
-  assert.ok(calls.includes("network rm dokploy-network"));
-  assert.ok(calls.includes("service rm dokploy dokploy-postgres"));
-  // Their uninstall prunes the whole daemon; here that is every app just migrated.
-  assert.ok(
-    !calls.some((c) => c.includes("prune")),
-    "the removal must never prune the daemon",
-  );
-  // Read off the container, and Deplo's own volume filtered out of it.
-  assert.ok(calls.includes("volume rm -f dokploy-traefik-cfg"));
-  assert.ok(!calls.some((c) => c.includes("deplo-keep")));
-  assert.ok(!calls.some((c) => c.includes("myapp:latest")));
-});
+    for (const want of c.expected)
+      assert.ok(
+        calls.includes(want),
+        `missing "${want}": ${calls.join(" | ")}`,
+      );
+    // Their uninstall prunes the whole daemon; here that is every app just migrated.
+    assert.ok(
+      !calls.some((x) => x.includes("prune")),
+      "the removal must never prune the daemon",
+    );
+    // Read off the container, and Deplo's own volume filtered out of it.
+    assert.ok(calls.includes("volume rm -f foreign-data"));
+    assert.ok(!calls.some((x) => x.includes("deplo-keep")));
+    assert.ok(!calls.some((x) => x.includes("myapp:latest")));
+    assert.equal(
+      left.includes("AAAAtheirs"),
+      !c.key,
+      "only the removed platform's own key comes out of authorized_keys",
+    );
+    assert.ok(left.includes("AAAAmine"), "nobody else's key is touched");
+  });
+}

@@ -3238,12 +3238,7 @@ type Mutation {
   reorderProjects(projectIds: [ID!]!): Boolean
 
   """
-  Take the old platform off this machine for good - containers, volumes, networks, images and its directory. Only offered once the ports are Deplo's, so the operator has already had the chance to deploy their apps and check them.
-  """
-  requestPlatformRemoval: Takeover
-
-  """
-  Hand the machine's ports to Deplo. The installer is waiting for this: it stops the other platform, inherits its certificates, moves Traefik onto 80/443 and the dashboard onto 3000. Nothing is deployed and nothing is removed.
+  Hand the machine to Deplo. The installer is waiting for this: it stops the other platform, inherits its certificates, moves Traefik onto 80/443 and the dashboard onto 3000, and then takes the other platform off the disk for good.
   """
   requestTakeover(runId: String!): Takeover
 
@@ -5363,7 +5358,7 @@ type TakeoverPreflight {
 }
 
 """
-pending = the migration is not finished. ready = the operator asked for the ports and the installer is moving them. done = they are Deplo's, and the old platform is stopped but still on the disk. removing / removed = it is being taken off. cancelled = the operator backed out and Deplo is uninstalling itself.
+pending = the migration is not finished. ready = the operator asked for the machine and the installer is moving the ports. done = the ports are Deplo's. removing / removed = the old platform is coming off the disk. cancelled = the operator backed out and Deplo is uninstalling itself.
 """
 enum TakeoverState {
   cancelled

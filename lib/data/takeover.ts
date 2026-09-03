@@ -3,7 +3,7 @@ import "server-only";
 // https://deplo.build/docs/guides/take-over-your-vps
 
 import { cache } from "react";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -27,8 +27,8 @@ const SETTINGS_ID = "default";
 
 /**
  * `pending` the wizard has not finished · `ready` the operator asked for the
- * ports · `done` they are Deplo's · `removing` / `removed` the old platform ·
- * `cancelled` the operator backed out and the installer is uninstalling Deplo.
+ * machine · `done` the ports are Deplo's · `removing` / `removed` the old
+ * platform · `cancelled` the operator backed out and Deplo uninstalls itself.
  */
 export const TAKEOVER_STATES = [
   "pending",
@@ -91,10 +91,14 @@ export const takeoverStatus = cache(
   },
 );
 
-/** True while the dashboard must give way to the takeover screen. */
+/**
+ * True while the dashboard must give way to the takeover screen - which is until
+ * the old platform is off the machine. Landing on the dashboard is the moment
+ * this is Deplo and nothing else, so nothing half-done is behind it.
+ */
 export async function takeoverBlocksDashboard(): Promise<boolean> {
   const t = await takeoverStatus();
-  return t?.state === "pending" || t?.state === "ready";
+  return t != null && t.state !== "removed" && t.state !== "cancelled";
 }
 
 async function writeState(
@@ -155,7 +159,8 @@ export async function noteBrowserReached(): Promise<void> {
 }
 
 /**
- * The operator asked for the ports. The installer takes it from here.
+ * The operator asked for the machine: the installer moves the ports and then
+ * takes the other platform off the disk, in one go.
  *
  * A run that finished is the point of the whole thing: taking the ports with
  * nothing brought across costs the operator their old panel's routing for
@@ -178,18 +183,12 @@ export async function requestTakeover(runId: string): Promise<TakeoverStatus> {
   return advance("ready", { runId });
 }
 
-/** The operator asked for the old platform to go. The installer does the removal. */
-export async function requestPlatformRemoval(): Promise<TakeoverStatus> {
-  await requireInstanceAdmin();
-  return advance("removing");
-}
-
 /**
  * The installer reporting in. Ungated because it arrives with the host bootstrap
  * token rather than a session, and it can only ever move the state forward.
  */
 export async function markTakeoverProgress(
-  to: "done" | "removed",
+  to: "done" | "removing" | "removed",
 ): Promise<TakeoverStatus> {
   return advance(to);
 }
