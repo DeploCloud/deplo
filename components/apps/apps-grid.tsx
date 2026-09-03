@@ -146,7 +146,12 @@ function SelectionActionBar({
 }) {
   if (selection.count === 0) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
+    <div
+      // Not canvas: a press on the bar's own chrome must not clear the selection
+      // it acts on (use-card-selection).
+      data-selection-bar=""
+      className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4"
+    >
       <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
         <span className="text-sm font-medium whitespace-nowrap">
           {selection.count} selected
@@ -609,7 +614,6 @@ function SortableGrid({
     selected,
     marqueeRef,
     canvasRef,
-    onCanvasPointerDown,
     onItemClick,
     clear: clearSelection,
     selectAll,
@@ -1132,11 +1136,10 @@ function SortableGrid({
       }}
     >
       <>
-        {/* The canvas: a relative, tall surface so there's empty space to start
-            a marquee, and the coordinate space the marquee hit-tests against. */}
+        {/* The canvas: the coordinate space the marquee is drawn in and hit-tests
+            against. The drag starts anywhere in the page area (see the hook). */}
         <div
           ref={canvasRef}
-          onPointerDown={onCanvasPointerDown}
           // select-none so sweeping a marquee across the section labels /
           // breadcrumb doesn't also start a native text selection.
           className="relative min-h-[60vh] space-y-6 select-none"

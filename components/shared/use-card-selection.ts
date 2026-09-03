@@ -18,8 +18,6 @@ export interface CardSelection {
   marqueeRef: React.RefObject<HTMLDivElement | null>;
   /** Attach to the selection canvas: it owns the coordinate space + hit-testing. */
   canvasRef: React.RefObject<HTMLDivElement | null>;
-  /** Start a marquee on empty-canvas press (ignored on cards/controls/right-click). */
-  onCanvasPointerDown: (e: React.PointerEvent) => void;
   /** Handle a modifier click on a card. Returns true when it consumed the click
    *  (selection changed → caller should NOT navigate). */
   onItemClick: (
@@ -100,94 +98,116 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
     [],
   );
 
-  const onCanvasPointerDown = React.useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return; // left button only (right-click → context menu)
-    // Marquee is a mouse/trackpad gesture; on touch a press is a scroll or a
-    // long-press context menu, so leave those alone.
-    if (e.pointerType !== "mouse") return;
-    const target = e.target as HTMLElement;
-    // A press on a menu or modal a card opened is portalled out of the canvas'
-    // DOM but still bubbles here through the React tree; it must never rubber-
-    // band the grid underneath it (see lib/portal-event-scope.ts).
-    if (!e.currentTarget.contains(target)) return;
-    // Presses on a card or any interactive control belong to dnd-kit / the link
-    // / the menu, never start a marquee there.
-    if (
-      target.closest("[data-card-id]") ||
-      target.closest("[data-card-actions]") ||
-      target.closest("a, button, input, [role='menuitem']")
-    ) {
-      return;
-    }
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const additive = e.metaKey || e.ctrlKey || e.shiftKey;
-    const base = additive ? new Set(selectedRef.current) : new Set<string>();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    if (!additive) setSelected(new Set());
-
-    // Snapshot the canvas + every card rect ONCE at press: they don't change during a
-    // marquee (no scroll/resize/reflow happens mid-gesture), so the per-move work is
-    // just arithmetic, no querySelectorAll and no getBoundingClientRect-per-card
-    const crect = canvas.getBoundingClientRect();
-    const cardRects: { id: string; r: DOMRect }[] = [];
-    // Only ids the caller offered: a card it left out is one it will not act on
-    // (a row a migration is still writing), and the marquee is the one path that
-    // could still put it in the selection.
-    const selectable = new Set(idsRef.current);
-    canvas.querySelectorAll<HTMLElement>("[data-card-id]").forEach((el) => {
-      const id = el.getAttribute("data-card-id");
-      if (id && selectable.has(id))
-        cardRects.push({ id, r: el.getBoundingClientRect() });
-    });
-
-    // The 4px threshold gates only the START (so a plain click stays a click).
-    // Once a drag has begun, every move recomputes, even back under 4px, so
-    // the box and selection collapse correctly if the user drags back to origin.
-    let started = false;
-    const onMove = (ev: PointerEvent) => {
-      const x1 = Math.min(startX, ev.clientX);
-      const x2 = Math.max(startX, ev.clientX);
-      const y1 = Math.min(startY, ev.clientY);
-      const y2 = Math.max(startY, ev.clientY);
-      if (!started && x2 - x1 < 4 && y2 - y1 < 4) return;
-      started = true;
-      // Position the box imperatively - no setState, so the grid and its N cards
-      // are NOT re-rendered on every pointermove.
-      const box = marqueeRef.current;
-      if (box) {
-        box.style.display = "block";
-        box.style.left = `${x1 - crect.left}px`;
-        box.style.top = `${y1 - crect.top}px`;
-        box.style.width = `${x2 - x1}px`;
-        box.style.height = `${y2 - y1}px`;
+  // The marquee starts anywhere in the page area - the whole region right of the
+  // sidebar and under the header, gutters and page header included - not only over
+  // the grid, so listen on the region rather than on the canvas itself.
+  React.useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      if (e.button !== 0) return; // left button only (right-click -> context menu)
+      // Marquee is a mouse/trackpad gesture; on touch a press is a scroll or a
+      // long-press context menu, so leave those alone.
+      if (e.pointerType !== "mouse") return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const region =
+        canvas.closest<HTMLElement>("[data-selection-region]") ?? canvas;
+      const target = e.target as HTMLElement;
+      // A menu or modal a card opened is portalled to the body: it is outside the
+      // region and must never rubber-band the grid underneath it.
+      if (!region.contains(target)) return;
+      // Presses on a card or any interactive control belong to dnd-kit / the link
+      // / the menu, never start a marquee there.
+      if (
+        target.closest("[data-card-id]") ||
+        target.closest("[data-card-actions]") ||
+        target.closest("[data-selection-bar]") ||
+        target.closest(
+          "a, button, input, textarea, select, label, [role='menuitem'], [role='tab'], [role='combobox'], [contenteditable='true']",
+        )
+      ) {
+        return;
       }
-      const hit = new Set(base);
-      for (const { id, r } of cardRects) {
-        if (r.left < x2 && r.right > x1 && r.top < y2 && r.bottom > y1) {
-          hit.add(id);
+
+      const additive = e.metaKey || e.ctrlKey || e.shiftKey;
+      const base = additive ? new Set(selectedRef.current) : new Set<string>();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      if (!additive) setSelected(new Set());
+
+      // Snapshot the canvas + every card rect ONCE at press: they don't change during a
+      // marquee (no scroll/resize/reflow happens mid-gesture), so the per-move work is
+      // just arithmetic, no querySelectorAll and no getBoundingClientRect-per-card
+      const crect = canvas.getBoundingClientRect();
+      // The box stays inside the region: a drag that runs past it must not paint
+      // over the sidebar.
+      const rrect = region.getBoundingClientRect();
+      const cardRects: { id: string; r: DOMRect }[] = [];
+      // Only ids the caller offered: a card it left out is one it will not act on
+      // (a row a migration is still writing), and the marquee is the one path that
+      // could still put it in the selection.
+      const selectable = new Set(idsRef.current);
+      canvas.querySelectorAll<HTMLElement>("[data-card-id]").forEach((el) => {
+        const id = el.getAttribute("data-card-id");
+        if (id && selectable.has(id))
+          cardRects.push({ id, r: el.getBoundingClientRect() });
+      });
+
+      // The 4px threshold gates only the START (so a plain click stays a click).
+      // Once a drag has begun, every move recomputes, even back under 4px, so
+      // the box and selection collapse correctly if the user drags back to origin.
+      let started = false;
+      const onMove = (ev: PointerEvent) => {
+        const px = Math.min(Math.max(ev.clientX, rrect.left), rrect.right);
+        const py = Math.min(Math.max(ev.clientY, rrect.top), rrect.bottom);
+        const x1 = Math.min(startX, px);
+        const x2 = Math.max(startX, px);
+        const y1 = Math.min(startY, py);
+        const y2 = Math.max(startY, py);
+        if (!started && x2 - x1 < 4 && y2 - y1 < 4) return;
+        if (!started) {
+          started = true;
+          // The region holds prose the canvas' own select-none doesn't cover;
+          // drop what the first few pixels highlighted and stop it growing.
+          region.style.userSelect = "none";
+          window.getSelection()?.removeAllRanges();
         }
-      }
-      // Skip the re-render (and the cascade to every card) when the hit set is
-      // unchanged from the last move - common while dragging within one cell.
-      setSelected((prev) => (sameMembers(prev, hit) ? prev : hit));
-    };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (marqueeRef.current) marqueeRef.current.style.display = "none";
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+        // Position the box imperatively - no setState, so the grid and its N cards
+        // are NOT re-rendered on every pointermove.
+        const box = marqueeRef.current;
+        if (box) {
+          box.style.display = "block";
+          box.style.left = `${x1 - crect.left}px`;
+          box.style.top = `${y1 - crect.top}px`;
+          box.style.width = `${x2 - x1}px`;
+          box.style.height = `${y2 - y1}px`;
+        }
+        const hit = new Set(base);
+        for (const { id, r } of cardRects) {
+          if (r.left < x2 && r.right > x1 && r.top < y2 && r.bottom > y1) {
+            hit.add(id);
+          }
+        }
+        // Skip the re-render (and the cascade to every card) when the hit set is
+        // unchanged from the last move - common while dragging within one cell.
+        setSelected((prev) => (sameMembers(prev, hit) ? prev : hit));
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        region.style.userSelect = "";
+        if (marqueeRef.current) marqueeRef.current.style.display = "none";
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
   }, []);
 
   return {
     selected,
     marqueeRef,
     canvasRef,
-    onCanvasPointerDown,
     onItemClick,
     clear,
     selectAll,

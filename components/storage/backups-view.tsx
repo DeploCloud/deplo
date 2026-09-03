@@ -94,7 +94,6 @@ export function BackupsView({
     selected,
     marqueeRef,
     canvasRef,
-    onCanvasPointerDown,
     onItemClick,
     clear: clearSelection,
     selectAll,
@@ -187,11 +186,7 @@ export function BackupsView({
         }
       />
 
-      <SelectionCanvas
-        canvasRef={canvasRef}
-        marqueeRef={marqueeRef}
-        onPointerDown={onCanvasPointerDown}
-      >
+      <SelectionCanvas canvasRef={canvasRef} marqueeRef={marqueeRef}>
         {filtered.length === 0 ? (
           <EmptyState
             icon={CalendarClock}

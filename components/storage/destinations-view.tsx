@@ -120,7 +120,6 @@ export function DestinationsView({
     selected,
     marqueeRef,
     canvasRef,
-    onCanvasPointerDown,
     onItemClick,
     clear: clearSelection,
     selectAll,
@@ -207,11 +206,7 @@ export function DestinationsView({
         }
       />
 
-      <SelectionCanvas
-        canvasRef={canvasRef}
-        marqueeRef={marqueeRef}
-        onPointerDown={onCanvasPointerDown}
-      >
+      <SelectionCanvas canvasRef={canvasRef} marqueeRef={marqueeRef}>
         {filtered.length === 0 && pending.length === 0 ? (
           <EmptyState
             icon={HardDrive}
