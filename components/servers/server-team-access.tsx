@@ -94,11 +94,9 @@ export function ServerTeamAccess({
           )}
         </div>
       )}
-      {!value.allTeams && teams.length > 0 && (
+      {!value.allTeams && selected.size > 0 && (
         <p className="text-xs text-muted-foreground">
-          {selected.size === 0
-            ? "No teams selected, no team can deploy here until you pick at least one."
-            : `${selected.size} team${selected.size === 1 ? "" : "s"} selected.`}
+          {`${selected.size} team${selected.size === 1 ? "" : "s"} selected.`}
         </p>
       )}
     </div>
