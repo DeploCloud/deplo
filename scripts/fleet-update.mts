@@ -3,7 +3,7 @@
  * in the order docs/agents/fleet-rollout.md §4 requires. `.mts` because a `.ts`
  * compiles as CJS and rejects the top-level await below.
  */
-import { inArray, sql } from "drizzle-orm";
+import { count, inArray, sql } from "drizzle-orm";
 
 import { listAllServers, markServerSeen } from "../lib/data/servers";
 import { getDb } from "../lib/db/client";
@@ -46,13 +46,31 @@ async function busyServerIds(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.serverId).filter(Boolean));
 }
 
+/**
+ * How many Apps each server carries, which is the blast radius §4 orders the
+ * rollout by. Without it the "canary" was whichever row the list happened to
+ * return first - a 3-App host, while a 0-App one sat later in the queue.
+ */
+async function appsPerServer(): Promise<Map<string, number>> {
+  const rows = await getDb()
+    .select({ serverId: apps.serverId, n: count() })
+    .from(apps)
+    .groupBy(apps.serverId);
+  return new Map(rows.map((r) => [r.serverId ?? "", Number(r.n)]));
+}
+
 const all = await listAllServers();
 // A MIGRATION SOURCE is not fleet: it is somebody else's machine, registered by the
 // import wizard to be read once and then let go (ADR-0025).
 const provisioned = all.filter(
   (s) => Boolean(s.agent?.certFingerprint) && !s.importOnly,
 );
-const remotes = provisioned.filter((s) => s.ip !== localIp);
+const load = await appsPerServer();
+// Fewest Apps first, so the canary is the smallest real host that can disprove
+// the release - see docs/agents/fleet-rollout.md §4.
+const remotes = provisioned
+  .filter((s) => s.ip !== localIp)
+  .sort((a, b) => (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0));
 const agentZero = provisioned.filter((s) => s.ip === localIp);
 // Canary first, then the other remotes, then this host.
 const order = [...remotes, ...agentZero].filter((s) => !only || s.id === only);
@@ -77,7 +95,7 @@ for (const [i, s] of order.entries()) {
       : i === 0
         ? "canary"
         : "remote";
-  const label = `${s.name} (${s.ip}, ${role})`;
+  const label = `${s.name} (${s.ip}, ${role}, ${load.get(s.id) ?? 0} apps)`;
 
   if (busy.has(s.id)) {
     console.log(

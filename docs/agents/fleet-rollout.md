@@ -100,9 +100,10 @@ At time of writing this fleet is:
 
 | order      | server      | id                     | apps | note                                   |
 | ---------- | ----------- | ---------------------- | ---- | -------------------------------------- |
-| 1 (canary) | `neon-s1`   | `srv_f47d8cba7db4c813` | 2    | fewest Apps                            |
-| 2          | `neon-s2`   | `srv_07b0be4ab9ef9533` | 3    |                                        |
-| 3 (last)   | `eu-main-1` | `srv_3667cf1973005952` | 66   | **agent 0** - `ip` = `DEPLO_SERVER_IP` |
+| 1 (canary) | `eu-east-1` | `srv_c265c2a57656547a` | 0    | fewest Apps                            |
+| 2          | `neon-s1`   | `srv_f47d8cba7db4c813` | 2    |                                        |
+| 3          | `neon-s2`   | `srv_07b0be4ab9ef9533` | 3    |                                        |
+| 4 (last)   | `eu-main-1` | `srv_3667cf1973005952` | 10   | **agent 0** - `ip` = `DEPLO_SERVER_IP` |
 
 **Why agent 0 goes last.** It runs the control plane itself. A bad agent there takes out the
 _observer_ as well as the observed: the process that would tell you the rollout went wrong, that
@@ -175,6 +176,25 @@ scripts from the repo root with:
   `tsconfig.json`, so run from `/root/projects/deplo`, not from a scratch directory.
 - The repo is CJS: **no top-level `await`** in the script (esbuild errors out). Wrap the body in
   `async function main() { … }` and call it.
+
+### `scripts/fleet-update.mts` flags
+
+```sh
+/usr/bin/node --env-file=.env --require ./lib/test/server-only-shim.cjs --import tsx \
+  scripts/fleet-update.mts --dry-run
+/usr/bin/node --env-file=.env --require ./lib/test/server-only-shim.cjs --import tsx \
+  scripts/fleet-update.mts --only=srv_… --expect=<capability>
+```
+
+- `--dry-run` touches no agent. Run it first, every time: it also prints the order.
+- **`--expect=<capability>` is mandatory while the tag is pinned** (see the rule in the memory
+  and §1). Two different binaries both report `0.1.0`, so the version can never prove the swap
+  took; the capability the new commit adds is the only evidence. **If the commit adds none,
+  adding one is part of the rollout, not an extra** - without it the script's confirm loop
+  compares `0.1.0` to `0.1.0`, decides nothing changed, and reports the host as already done.
+- `--only=<server id>` restricts the run to one server, which is how you drive §4's order by
+  hand. The script sorts remotes by App count on its own, so the plain run is already
+  canary-first; `--only` is for pausing between hosts.
 
 ## 7. The footgun: the infra seam does not write `agent_version`
 
