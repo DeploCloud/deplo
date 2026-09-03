@@ -207,9 +207,14 @@ const SUCCESS_SHAPES: RegExp[] = [
   /\bready in\s+\d/i,
 ];
 
-/** Warn shapes that are not a level tag. Deprecation notices are the whole list:
- *  the word appears in deprecation notices and nowhere else. */
-const WARN_SHAPES: RegExp[] = [/\bdeprecat(?:ed|ion|ing)\b/i, /[‼⚠]/];
+/** Warn shapes that are not a level tag: a deprecation notice, and a producer
+ *  COUNTING the warnings it found (BuildKit's `7 warnings found (use docker
+ *  --debug to expand):`, which led its own list while reading as info). */
+const WARN_SHAPES: RegExp[] = [
+  /\bdeprecat(?:ed|ion|ing)\b/i,
+  /[‼⚠]/,
+  /\b[1-9]\d*\s+warnings?\s+found\b/i,
+];
 
 /**
  * An HTTP method somewhere on the line followed by a 3-digit token - the shape of

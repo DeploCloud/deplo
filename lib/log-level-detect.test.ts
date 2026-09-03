@@ -156,6 +156,19 @@ test("warn shapes that are not a tag", () => {
   });
 });
 
+// The header BuildKit prints over its lint block. Nothing in it is a level word,
+// so it read as info while the block it introduces is the warnings themselves.
+test("a producer counting the warnings it found", () => {
+  expect({
+    " 7 warnings found (use docker --debug to expand):": "warn",
+    " 1 warning found (use docker --debug to expand):": "warn",
+    // A count of zero is the producer saying it found none.
+    "0 warnings found": "info",
+    // Not a count: nothing was found, it is being looked for.
+    "no warnings found": "info",
+  });
+});
+
 test("info is the default, and the default is most lines", () => {
   expect({
     "Starting application": "info",
