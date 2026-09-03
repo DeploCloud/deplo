@@ -78,11 +78,28 @@ export function NotificationsPanel({
     React.useState<NotificationChannelInstance | null>(null);
   // A removed channel leaves the grid on the click; the count above it follows,
   // because a list that shed a row and a badge that still counts it disagree.
-  const {
-    visible: channels,
-    remove,
-    restore,
-  } = useOptimisticRemove(initial, (c) => c.id);
+  const { visible, remove, restore } = useOptimisticRemove(
+    initial,
+    (c) => c.id,
+  );
+  // A card switch flips on the click; the entry retires once the refresh behind
+  // it serves the same value, so a change made elsewhere is never masked.
+  const [pendingEnabled, setPendingEnabled] = React.useState<
+    Record<string, boolean>
+  >({});
+  const stale = Object.keys(pendingEnabled).filter((id) => {
+    const served = initial.find((c) => c.id === id);
+    return !served || served.enabled === pendingEnabled[id];
+  });
+  if (stale.length > 0)
+    setPendingEnabled((p) =>
+      Object.fromEntries(
+        Object.entries(p).filter(([id]) => !stale.includes(id)),
+      ),
+    );
+  const channels = visible.map((c) =>
+    c.id in pendingEnabled ? { ...c, enabled: pendingEnabled[c.id] } : c,
+  );
 
   const onCount = channels.filter((c) => c.enabled).length;
   const dirty = JSON.stringify({ draft, secrets }) !== snapshot;
@@ -167,57 +184,37 @@ export function NotificationsPanel({
     }
   }
 
-  /**
-   * Turning a channel on. Only browser push does anything beyond flipping the
-   * flag: it has to ask this device for permission and register a worker, and
-   * that has to succeed before the switch is allowed to look on.
-   */
+  /** The modal's switch. */
   async function toggle(on: boolean) {
     if (!draft) return;
-    if (draft.kind !== "push" || !on) {
-      patchDraft({ enabled: on });
+    if (draft.kind === "push" && on && !(await registerPush(vapidPublicKey)))
       return;
-    }
-    // A service worker needs a secure context. Say so, instead of failing with
-    // a browser console message nobody will read.
-    if (
-      typeof window === "undefined" ||
-      !("serviceWorker" in navigator) ||
-      !("PushManager" in window) ||
-      !window.isSecureContext
-    ) {
-      toast.error("Browser push needs this panel to be served over https");
+    patchDraft({ enabled: on });
+  }
+
+  /** The card's switch: the same flip, saved on the spot. */
+  async function setEnabled(
+    instance: NotificationChannelInstance,
+    on: boolean,
+  ) {
+    if (instance.kind === "push" && on && !(await registerPush(vapidPublicKey)))
       return;
-    }
-    if ((await Notification.requestPermission()) !== "granted") {
-      toast.error("Your browser blocked notifications for this site");
-      return;
-    }
-    try {
-      const reg = await navigator.serviceWorker.register("/sw.js");
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: vapidPublicKey,
+    setPendingEnabled((p) => ({ ...p, [instance.id]: on }));
+    const res = await gqlAction(
+      `mutation($id: ID, $input: JSON!) { saveNotificationChannel(id: $id, input: $input) }`,
+      // Empty secrets keep the stored ones, so a flip never retypes a token.
+      { id: instance.id, input: { ...instance, enabled: on, secrets: {} } },
+    );
+    if (!res.ok) {
+      setPendingEnabled((p) => {
+        const next = { ...p };
+        delete next[instance.id];
+        return next;
       });
-      const json = sub.toJSON();
-      const res = await gqlAction(
-        `mutation($endpoint: String!, $p256dh: String!, $auth: String!) {
-           subscribeWebPush(endpoint: $endpoint, p256dh: $p256dh, auth: $auth)
-         }`,
-        {
-          endpoint: sub.endpoint,
-          p256dh: json.keys?.p256dh ?? "",
-          auth: json.keys?.auth ?? "",
-        },
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      patchDraft({ enabled: true });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(res.error);
+      return;
     }
+    router.refresh();
   }
 
   const brand = draft ? CHANNEL_BRAND[draft.kind] : null;
@@ -290,6 +287,7 @@ export function NotificationsPanel({
                     canManage={canManage}
                     onOpen={() => openChannel(instance)}
                     onDelete={() => setDeleting(instance)}
+                    onToggle={(on) => void setEnabled(instance, on)}
                   />
                 ))}
               </div>
@@ -527,6 +525,54 @@ export function NotificationsPanel({
 }
 
 /**
+ * Turning browser push on: this device has to grant permission and register a
+ * worker before the flag is worth anything. True when it did.
+ */
+async function registerPush(vapidPublicKey: string): Promise<boolean> {
+  // A service worker needs a secure context. Say so, instead of failing with
+  // a browser console message nobody will read.
+  if (
+    typeof window === "undefined" ||
+    !("serviceWorker" in navigator) ||
+    !("PushManager" in window) ||
+    !window.isSecureContext
+  ) {
+    toast.error("Browser push needs this panel to be served over https");
+    return false;
+  }
+  if ((await Notification.requestPermission()) !== "granted") {
+    toast.error("Your browser blocked notifications for this site");
+    return false;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidPublicKey,
+    });
+    const json = sub.toJSON();
+    const res = await gqlAction(
+      `mutation($endpoint: String!, $p256dh: String!, $auth: String!) {
+         subscribeWebPush(endpoint: $endpoint, p256dh: $p256dh, auth: $auth)
+       }`,
+      {
+        endpoint: sub.endpoint,
+        p256dh: json.keys?.p256dh ?? "",
+        auth: json.keys?.auth ?? "",
+      },
+    );
+    if (!res.ok) {
+      toast.error(res.error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e));
+    return false;
+  }
+}
+
+/**
  * One choice in the Add picker. The featured three stand up (mark above the
  * name, centred, taller) so the eye lands on them first; the rest keep the
  * compact row shape, which is what makes "the rest" read as a list.
@@ -591,11 +637,13 @@ function ChannelRow({
   canManage,
   onOpen,
   onDelete,
+  onToggle,
 }: {
   instance: NotificationChannelInstance;
   canManage: boolean;
   onOpen: () => void;
   onDelete: () => void;
+  onToggle: (on: boolean) => void;
 }) {
   const brand = CHANNEL_BRAND[instance.kind];
   // A stored channel's secrets are already set, so the row asks for nothing extra.
@@ -608,8 +656,9 @@ function ChannelRow({
   // Only the states that need doing something about. A healthy channel says
   // nothing here: the dot on the right already reports it, and a count of how
   // many alerts are ticked is a number nobody acts on from this row.
+  // "Off" is not among them: the switch on the right already says it.
   const status = !instance.enabled
-    ? "Off"
+    ? ""
     : !ready
       ? "Needs setup"
       : noAlerts
@@ -653,19 +702,15 @@ function ChannelRow({
             )}
           </span>
         </span>
-        <span
-          aria-hidden
-          className="size-2 shrink-0 rounded-full"
-          style={{
-            backgroundColor:
-              instance.enabled && ready && !noAlerts ? brand.bg : "transparent",
-            boxShadow:
-              instance.enabled && ready && !noAlerts
-                ? undefined
-                : "inset 0 0 0 1.5px var(--border)",
-          }}
-        />
       </button>
+      {/* Outside the button: the switch is its own control, and nesting one in
+          another would make every flip open the modal too. */}
+      <Switch
+        checked={instance.enabled}
+        disabled={!canManage}
+        aria-label={`Turn ${instance.name || brand.label} ${instance.enabled ? "off" : "on"}`}
+        onCheckedChange={onToggle}
+      />
       {canManage && (
         <Button
           variant="ghost"
