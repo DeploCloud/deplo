@@ -19,11 +19,18 @@ export async function copyText(value: string): Promise<boolean> {
   ta.style.position = "fixed";
   ta.style.top = "0";
   ta.style.opacity = "0";
-  document.body.appendChild(ta);
+  // Inside the focus trap, never on <body>: an open dialog or menu pulls the focus
+  // straight back out of a stray textarea, and the selection dies with it.
+  const host =
+    (active === document.body ? null : active?.parentElement) ?? document.body;
+  host.appendChild(ta);
   let ok = false;
   try {
+    ta.focus();
     ta.select();
-    ok = document.execCommand("copy");
+    // `execCommand` answers true even when something took the selection back, so
+    // holding the focus is the only proof the copy was real.
+    ok = document.activeElement === ta && document.execCommand("copy");
   } catch {
     ok = false;
   } finally {
