@@ -595,14 +595,20 @@ export async function planMigrationDataMove(
     const inPlace = (b: PairedHostMount) =>
       sourceServer === landed.targetServerId && b.sourcePath === b.targetPath;
     const owners = binds.length ? await ownersOn(landed.targetServerId) : [];
-    const shared = binds.flatMap((b) => {
-      if (inPlace(b)) return [];
+    const shared: string[] = [];
+    for (const b of binds) {
+      if (inPlace(b)) continue;
       const clash = owners.find(
         (o) =>
           o.appId !== landed.targetId && pathsOverlap(o.path, b.targetPath),
       );
-      return clash ? [sharedPathNote(clash, b.targetPath)] : [];
-    });
+      if (!clash) continue;
+      shared.push(
+        (await runTwinFor(c, input.runId, svc, clash.appId))
+          ? `${b.targetPath} is shared with ${clash.name}, which mounts the same directory on {panel} - it is copied once, for both.`
+          : sharedPathNote(clash, b.targetPath),
+      );
+    }
     // Said HERE, before anything is stopped: a machine Deplo cannot read is a machine
     // whose data cannot move at all, and the review screen is where that has to be read
     // - not the cutover, with the old platform already down.
@@ -706,6 +712,49 @@ async function hostPathOwners(
 /** Equal, inside, or containing: any of the three and a wipe takes the other one out. */
 function pathsOverlap(a: string, b: string): boolean {
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+/**
+ * Is the app that owns a clashing path another service of THIS run, from the
+ * same source machine as `svc`? Then it is the same directory over there, and one
+ * copy fills it for both - not a stranger's data about to be wiped.
+ */
+async function runTwinFor(
+  c: SourceCredential,
+  runId: string,
+  svc: SourceService,
+  ownerAppId: string,
+): Promise<boolean> {
+  const targets = await runTargets(runId);
+  const sourceId = [...targets].find(
+    ([, t]) => t.targetKind === "app" && t.targetId === ownerAppId,
+  )?.[0];
+  if (!sourceId || sourceId === svc.id) return false;
+  const other = (await sourceServices(c)).find((s) => s.id === sourceId);
+  return other != null && other.serverId === svc.serverId;
+}
+
+/** A host path this run already filled - itself or a parent of it. */
+async function copiedInRun(
+  runId: string,
+  targetPath: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ message: itemsTable.message })
+    .from(itemsTable)
+    .where(
+      and(
+        eq(itemsTable.runId, runId),
+        eq(itemsTable.sourceKind, "volume"),
+        eq(itemsTable.outcome, "created"),
+      ),
+    );
+  return rows.some((r) => {
+    const m = /^Copied .* into (\S+) \(/.exec(r.message ?? "");
+    return (
+      m != null && (m[1] === targetPath || targetPath.startsWith(`${m[1]}/`))
+    );
+  });
 }
 
 function sharedPathNote(
@@ -1385,7 +1434,22 @@ async function runMoveMigrationServiceData(
       const clash = bindOwners.find((o) =>
         pathsOverlap(o.path, bind.targetPath),
       );
-      if (clash) {
+      if (clash && (await runTwinFor(c, input.runId, svc, clash.appId))) {
+        // The same directory on the same source machine, mounted by two services
+        // of this run: whichever comes first fills it, the other keeps it.
+        if (await copiedInRun(input.runId, bind.targetPath)) {
+          await appendRunItem(input.runId, panel, {
+            path,
+            sourceKind: "volume",
+            sourceName: bind.sourcePath,
+            outcome: "skipped",
+            targetKind: landed.targetKind,
+            targetId: landed.targetId,
+            message: `${bind.targetPath} is shared with ${clash.name} and was already copied for it in this run.`,
+          });
+          continue;
+        }
+      } else if (clash) {
         notCopied++;
         const message = sharedPathNote(clash, bind.targetPath);
         notes.push(message);

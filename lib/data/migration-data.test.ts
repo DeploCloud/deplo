@@ -432,7 +432,7 @@ async function seedRunItems(
 ): Promise<void> {
   for (const [i, r] of rows.entries())
     await db.insert(itemsTable).values({
-      id: `dimi_seed_${i}`,
+      id: `dimi_seed_${i}_${r.sourceId}`,
       runId,
       path: `Blink / production / ${r.sourceName}`,
       sourceKind: r.sourceKind,
@@ -1566,6 +1566,87 @@ test("the plan does not call a bind already in place a clash", async () => {
     web.notes.some((n) => /also mounted/.test(n)),
     false,
     web.notes.join(" | "),
+  );
+});
+
+test("two services of one run that bind one directory share it, copied once", async () => {
+  // Both apps mount /etc/dokploy/x on the same source machine. That is one
+  // directory over there, so it is one directory here: the first copy fills it,
+  // the second keeps it - neither is a stranger's data about to be wiped.
+  await seedMigrationHostServer();
+  await seedApp(db, { id: "prj_neighbour", teamId: TEAM_A, slug: "neighbour" });
+  await db.execute(
+    "update apps set name = 'neighbour' where id = 'prj_neighbour'",
+  );
+  await db.insert(appVolumesTable).values({
+    appId: "prj_neighbour",
+    position: 0,
+    volumeId: "vol_neighbour",
+    type: "host",
+    name: "shared",
+    service: null,
+    projectPath: null,
+    hostPath: "/etc/dokploy/x",
+    mountPath: "/app/config.json",
+    readOnly: true,
+    propagation: null,
+  });
+  const runId = await openRun();
+  await seedRunItems(runId, [
+    {
+      sourceKind: "application",
+      sourceId: "dok-app-ghost",
+      sourceName: "neighbour",
+      targetKind: "app",
+      targetId: "prj_neighbour",
+    },
+  ]);
+
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId }),
+  );
+  const web = plan.find((s) => s.sourceName === "blink-web")!;
+  assert.match(web.notes.join(" "), /shared with neighbour/);
+  assert.doesNotMatch(web.notes.join(" "), /erase/);
+
+  const first = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(first.failed, 0, JSON.stringify(first));
+  let items = await db.execute(
+    `select outcome, message from migration_run_items where run_id = '${runId}' and source_name = '/etc/dokploy/x'`,
+  );
+  assert.deepEqual(
+    items.rows.map((r) => r.outcome),
+    ["created"],
+    JSON.stringify(items.rows),
+  );
+
+  // The same directory again, for the other service: already here.
+  await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  items = await db.execute(
+    `select outcome, message from migration_run_items where run_id = '${runId}' and source_name = '/etc/dokploy/x' order by seq`,
+  );
+  assert.deepEqual(
+    items.rows.map((r) => r.outcome),
+    ["created", "skipped"],
+    JSON.stringify(items.rows),
+  );
+  assert.match(
+    String(items.rows[1].message),
+    /already copied for it in this run/,
   );
 });
 
