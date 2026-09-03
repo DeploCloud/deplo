@@ -173,7 +173,7 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     dataCopyError: row.dataCopyError ?? "",
     migrationRunId: row.migrationRunId ?? null,
     buildServerId: row.buildServerId ?? null,
-    buildFallbackLocal: row.buildFallbackLocal ?? true,
+    buildFallback: row.buildFallback ?? true,
     logo: row.logo,
     // Derived, and read back defensively: an id this binary's catalog doesn't
     // know (a row written by a newer Deplo) reads as "no framework" rather than
@@ -463,7 +463,7 @@ export function appToRow(p: App): AppInsert {
     dataCopyError: p.dataCopyError ?? "",
     migrationRunId: p.migrationRunId ?? null,
     buildServerId: p.buildServerId ?? null,
-    buildFallbackLocal: p.buildFallbackLocal ?? true,
+    buildFallback: p.buildFallback ?? true,
     logo: p.logo ?? null,
     framework: p.framework ?? null,
     frameworkOverride: p.frameworkOverride ?? null,

@@ -99,6 +99,7 @@ function srv(over: Partial<Server> = {}): Server {
     allTeams: true,
     storageOnly: false,
     buildOnly: false,
+    buildFallback: null,
     importOnly: false,
     uninstallPending: false,
     uninstallError: "",

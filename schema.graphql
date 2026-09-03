@@ -175,9 +175,9 @@ type App {
   autoDeploy: Boolean
 
   """
-  Build on this app's own server when the build server cannot be reached, saying so in the deploy log. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.
+  Build somewhere else when this app's build server cannot be reached, saying so in the deploy log: the servers marked as a build fallback (the Deplo host by default), then the app's own server. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.
   """
-  buildFallbackLocal: Boolean
+  buildFallback: Boolean
 
   """
   The server that BUILDS this app's image, when that is not `serverId`. Null is Automatic: a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs. Setting it to `serverId` means 'always build on this app's own server'. Ignored by a compose stack and a docker-image source, neither of which Deplo builds.
@@ -682,6 +682,11 @@ input BuildConfigInput {
 
 """One entry in the 'Build on' picker: a host this team may compile on."""
 type BuildServerChoice {
+  """
+  Whether this host takes over when an app's own build server cannot be reached. True on the Deplo host by default; setServerBuildFallback is what changes it.
+  """
+  buildFallback: Boolean
+
   """
   True for a host dedicated to building (it runs no apps). False for an ordinary server that would build for this app in addition to hosting its own.
   """
@@ -3420,9 +3425,9 @@ type Mutation {
   setAppAutoDeploy(id: String!, value: Boolean!): App
 
   """
-  Choose which server BUILDS this app. Null buildServerId is Automatic (a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs); passing the app's own server id means 'always build here'. buildFallbackLocal decides what happens when the build server is unreachable: build on the app's own server (the default) or fail the deploy. Changing either never starts a deploy.
+  Choose which server BUILDS this app. Null buildServerId is Automatic (a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs); passing the app's own server id means 'always build here'. buildFallback decides what happens when that host cannot compile: try the fleet's build fallbacks and then the app's own server (the default), or fail the deploy. Changing either never starts a deploy.
   """
-  setAppBuildServer(buildFallbackLocal: Boolean, buildServerId: String, id: String!): App
+  setAppBuildServer(buildFallback: Boolean, buildServerId: String, id: String!): App
 
   """
   Set (or clear, with null) the extra flags appended to this app's `docker compose up`. Rejects anything that isn't a plain flag, and any flag that would choose the project, stack file or env-file.
@@ -3566,6 +3571,11 @@ type Mutation {
   Turn saving server metrics on the control plane on or off. Turning it off also drops the buffered history.
   """
   setSaveMetrics(enabled: Boolean!): MonitoringSettings
+
+  """
+  Whether this host may compile for an app whose own build server could not be reached (the app's own server stays the last resort). Omit the flag to go back to automatic: the Deplo host builds as a fallback, no other server does. Refused on a host with no Docker of ours to build with.
+  """
+  setServerBuildFallback(buildFallback: Boolean, id: String!): Server
 
   """
   Include ONE server in the scheduled sweep, or leave it out, without touching any other host's membership. This is what a server's own Cleanup tab writes: sending the whole exclusion list from a per-host page would rewrite every other host from a stale snapshot. Manual `runDockerCleanupNow` ignores the list either way.
@@ -4871,6 +4881,11 @@ type Server {
   True (the default) when every team may target this server. False restricts it to `teams` (Settings → Servers → Team access).
   """
   allTeams: Boolean
+
+  """
+  Whether this host compiles for an app whose own build server could not be reached. On by default for the Deplo host and off for every other server, until setServerBuildFallback says otherwise. An app opts out of the whole chain with setAppBuildServer's buildFallback.
+  """
+  buildFallback: Boolean
   cpuCores: Int
   createdAt: String
 

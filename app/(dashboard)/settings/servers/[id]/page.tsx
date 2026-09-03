@@ -16,6 +16,7 @@ import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import {
   deploHostSelfAddresses,
+  isBuildFallbackServer,
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
@@ -67,7 +68,8 @@ export default async function ServerDetailPage(
   // Fills in capacity specs for a server that has never been measured, reusing
   // the same helper the list page uses; no per-second polling.
   const [hydrated] = await hydrateServerSpecs([server]);
-  const isDeploHost = isDeploHostServer(server, deploHostSelfAddresses());
+  const self = deploHostSelfAddresses();
+  const isDeploHost = isDeploHostServer(server, self);
   const teams: TeamOption[] = teamsRaw.map((t) => ({
     id: t.id,
     name: t.name,
@@ -145,6 +147,7 @@ export default async function ServerDetailPage(
             // Never "import": a migration source 404s above, so the summary's
             // three-role union still holds here.
             role: serverRole(hydrated) as "everything" | "build" | "storage",
+            buildFallback: isBuildFallbackServer(hydrated, self),
             isDeploHost,
             provisioning: hydrated.status === "provisioning",
             agentVersion,

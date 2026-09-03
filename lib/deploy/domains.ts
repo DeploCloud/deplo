@@ -189,12 +189,23 @@ export function deploHostSelfAddresses(): Set<string> {
  */
 export function isDeploHostServer(
   server: { ip?: string; host?: string },
-  self: Set<string> = deploHostSelfAddresses(),
+  self: ReadonlySet<string> = deploHostSelfAddresses(),
 ): boolean {
   if (self.size === 0) return false;
   const ip = server.ip?.trim().toLowerCase();
   const host = server.host?.trim().toLowerCase();
   return (!!ip && self.has(ip)) || (!!host && self.has(host));
+}
+
+/**
+ * Whether a host compiles for an app whose own build server could not. `null` is
+ * automatic: the Deplo host, which every install has, and nothing else.
+ */
+export function isBuildFallbackServer(
+  server: { buildFallback: boolean | null; ip?: string; host?: string },
+  self: ReadonlySet<string> = deploHostSelfAddresses(),
+): boolean {
+  return server.buildFallback ?? isDeploHostServer(server, self);
 }
 
 /**

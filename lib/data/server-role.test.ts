@@ -15,6 +15,7 @@ import {
 } from "./app-graph-test-helpers";
 import {
   setServerRole,
+  setServerBuildFallback,
   serverRole,
   getServerById,
   listServerChoices,
@@ -220,5 +221,72 @@ test("a build-only server is still a legal builder, unlike a migration source", 
       (await listBuildServerChoices()).some((c) => c.id === SERVER_1),
       "a build-only server must stay in the build picker - that is what it is for",
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Build fallback                                                      */
+/* ------------------------------------------------------------------ */
+
+test("the Deplo host is a build fallback with nobody configuring anything", async () => {
+  // SERVER_1 answers on 10.0.0.1, which is what the panel says it is.
+  process.env.DEPLO_SERVER_IP = "10.0.0.1";
+  try {
+    await asOwner(async () => {
+      const panel = (await listBuildServerChoices()).find(
+        (c) => c.id === SERVER_1,
+      );
+      assert.equal(panel?.isDeploHost, true);
+      assert.equal(panel?.buildFallback, true);
+
+      // And it can be taken out, which is the point of storing the answer.
+      await setServerBuildFallback(SERVER_1, false);
+      assert.equal(
+        (await listBuildServerChoices()).find((c) => c.id === SERVER_1)
+          ?.buildFallback,
+        false,
+      );
+      // Back to automatic, which is on again for this host.
+      await setServerBuildFallback(SERVER_1, null);
+      assert.equal((await getServerById(SERVER_1))!.buildFallback, null);
+    });
+  } finally {
+    delete process.env.DEPLO_SERVER_IP;
+  }
+});
+
+test("an ordinary server joins the pool only when it is marked", async () => {
+  process.env.DEPLO_SERVER_IP = "203.0.113.1";
+  try {
+    await asOwner(async () => {
+      assert.equal(
+        (await listBuildServerChoices()).find((c) => c.id === SERVER_1)
+          ?.buildFallback,
+        false,
+        "a remote must not build for other servers until someone says so",
+      );
+      await setServerBuildFallback(SERVER_1, true);
+      assert.equal(
+        (await listBuildServerChoices()).find((c) => c.id === SERVER_1)
+          ?.buildFallback,
+        true,
+      );
+    });
+  } finally {
+    delete process.env.DEPLO_SERVER_IP;
+  }
+});
+
+test("a backups-only host cannot be marked as a build fallback", async () => {
+  await asOwner(async () => {
+    await setServerRole(SERVER_1, "storage");
+    await assert.rejects(
+      () => setServerBuildFallback(SERVER_1, true),
+      /backups only/,
+      "a host with no Docker was accepted as a builder",
+    );
+    // Turning it OFF stays legal: the answer is stored either way.
+    await setServerBuildFallback(SERVER_1, false);
+    assert.equal((await getServerById(SERVER_1))!.buildFallback, false);
   });
 });

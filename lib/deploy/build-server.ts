@@ -7,6 +7,11 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { deployments as deploymentsTable } from "../db/schema/control-plane";
 import { listServersForTeam } from "../data/servers";
+import {
+  deploHostSelfAddresses,
+  isBuildFallbackServer,
+  isDeploHostServer,
+} from "./domains";
 import type { App, Server } from "../types";
 
 /**
@@ -21,6 +26,20 @@ export type BuildServerChoice =
       serverId: null;
       reason: "own-server" | "none-available" | "arch-mismatch";
     };
+
+/** Every host this deploy may compile on, in the order they are tried. */
+export interface BuildPlan {
+  /** The app's own choice first, then the fleet's build fallbacks. */
+  chain: string[];
+  /** Whether the app's own server may build it, once every host above failed. */
+  local: boolean;
+  /** Why the build is not happening where the app's setting says, when it is not. */
+  missed: {
+    reason: "none-available" | "arch-mismatch";
+    /** Whether the app names that server itself, as opposed to Automatic. */
+    pinned: boolean;
+  } | null;
+}
 
 /**
  * The pure decision. Precedence, in order: 1. A setting that silently routes
@@ -55,14 +74,104 @@ export function pickBuildServer(
   );
   if (usable.length === 0) return { serverId: null, reason: "none-available" };
 
-  // Fewest builds in flight, and on a tie the one added first.
-  const best = usable.reduce((a, b) => {
+  return {
+    serverId: leastBusy(usable, inFlightByServer).id,
+    reason: "automatic",
+  };
+}
+
+/** Fewest builds in flight, and on a tie the one added first. */
+function leastBusy(
+  servers: readonly Server[],
+  inFlightByServer: ReadonlyMap<string, number>,
+): Server {
+  return servers.reduce((a, b) => {
     const na = inFlightByServer.get(a.id) ?? 0;
     const nb = inFlightByServer.get(b.id) ?? 0;
     if (na !== nb) return na < nb ? a : b;
     return a.createdAt <= b.createdAt ? a : b;
   });
-  return { serverId: best.id, reason: "automatic" };
+}
+
+/**
+ * The fleet's build fallbacks for one target, in the order they are tried: the
+ * Deplo host first (it is the default one), then the operator's own picks.
+ */
+export function pickBuildFallbacks(
+  target: Pick<Server, "id" | "hostArch">,
+  candidates: readonly Server[],
+  self: ReadonlySet<string>,
+  inFlightByServer: ReadonlyMap<string, number> = new Map(),
+  exclude?: string | null,
+): Server[] {
+  const rank = (s: Server) => (isDeploHostServer(s, self) ? 0 : 1);
+  const load = (s: Server) => inFlightByServer.get(s.id) ?? 0;
+  return candidates
+    .filter(
+      (s) =>
+        s.id !== exclude &&
+        isBuildFallbackServer(s, self) &&
+        canBuildFor(s, target),
+    )
+    .sort(
+      (a, b) =>
+        rank(a) - rank(b) ||
+        load(a) - load(b) ||
+        a.createdAt.localeCompare(b.createdAt),
+    );
+}
+
+/**
+ * Every host this deploy may compile on. The app's own choice, then the fleet's
+ * fallbacks, then the server the app runs on - and the per-app switch is what
+ * decides whether anything after the first entry exists at all.
+ */
+export function planBuildServers(
+  app: Pick<App, "serverId" | "buildServerId" | "buildFallback">,
+  target: Pick<Server, "id" | "hostArch">,
+  candidates: readonly Server[],
+  self: ReadonlySet<string> = deploHostSelfAddresses(),
+  inFlightByServer: ReadonlyMap<string, number> = new Map(),
+): BuildPlan {
+  const primary = pickBuildServer(app, target, candidates, inFlightByServer);
+  const fallbacks = (exclude?: string) =>
+    pickBuildFallbacks(target, candidates, self, inFlightByServer, exclude).map(
+      (s) => s.id,
+    );
+
+  if (primary.serverId !== null) {
+    return {
+      chain: app.buildFallback
+        ? [primary.serverId, ...fallbacks(primary.serverId)]
+        : [primary.serverId],
+      local: app.buildFallback,
+      missed: null,
+    };
+  }
+  // Nothing was going to build elsewhere: an app pinned to its own server, or a
+  // fleet with no build server at all. No fallback question to answer.
+  if (
+    primary.reason === "own-server" ||
+    !buildsElsewhere(app, target, candidates)
+  )
+    return { chain: [], local: true, missed: null };
+
+  const missed = { reason: primary.reason, pinned: !!app.buildServerId };
+  if (!app.buildFallback) return { chain: [], local: false, missed };
+  return { chain: fallbacks(), local: true, missed };
+}
+
+/** Whether this app meant to compile somewhere other than where it runs. */
+function buildsElsewhere(
+  app: Pick<App, "serverId" | "buildServerId">,
+  target: Pick<Server, "id">,
+  candidates: readonly Server[],
+): boolean {
+  if (app.buildServerId)
+    return (
+      app.buildServerId !== app.serverId && app.buildServerId !== target.id
+    );
+  return candidates.some((s) => s.buildOnly && s.id !== target.id);
 }
 
 /**
@@ -89,21 +198,22 @@ export function canBuildFor(
 }
 
 /**
- * {@link pickBuildServer} against the live fleet: the servers the app's team can
+ * {@link planBuildServers} against the live fleet: the servers the app's team can
  * reach, and how many builds each is already running.
  */
-export async function resolveBuildServer(
-  app: Pick<App, "serverId" | "buildServerId" | "teamId">,
+export async function resolveBuildPlan(
+  app: Pick<App, "serverId" | "buildServerId" | "buildFallback" | "teamId">,
   target: Server,
-): Promise<BuildServerChoice> {
-  // Nothing to pin to and nothing to pick from: skip both queries entirely, which
-  // is the single-server fleet, i.e. most of them.
+): Promise<BuildPlan> {
+  // Nothing to pin to and nothing to pick from: skip the second query entirely,
+  // which is the single-server fleet, i.e. most of them.
   const candidates = await listServersForTeam(app.teamId);
+  const self = deploHostSelfAddresses();
   const usableIds = candidates
     .filter((s) => s.id !== target.id && !s.storageOnly && !s.importOnly)
     .map((s) => s.id);
   if (usableIds.length === 0) {
-    return pickBuildServer(app, target, candidates);
+    return planBuildServers(app, target, candidates, self);
   }
   const rows = await getDb()
     .select({ serverId: deploymentsTable.buildServerId })
@@ -119,39 +229,49 @@ export async function resolveBuildServer(
     if (r.serverId)
       inFlight.set(r.serverId, (inFlight.get(r.serverId) ?? 0) + 1);
   }
-  return pickBuildServer(app, target, candidates, inFlight);
+  return planBuildServers(app, target, candidates, self, inFlight);
 }
 
 /**
- * The one-line explanation of a build server choice, for the deploy log.
+ * What the deploy log says about where this app compiles, so nobody has to guess
+ * which machine ran the build - or why it was not the one they picked.
  */
-export function buildServerLogLine(
-  choice: BuildServerChoice,
-  builderName: string,
+export function buildPlanLines(
+  plan: BuildPlan,
+  serverName: (serverId: string) => string,
   targetName: string,
-): { level: "info" | "warn"; text: string } | null {
-  switch (choice.reason) {
-    case "pinned":
-    case "automatic":
-      return {
-        level: "info",
-        text: `Building on ${builderName}, then releasing on ${targetName}`,
-      };
-    case "arch-mismatch":
-      return {
-        level: "warn",
-        text:
-          `The build server chosen for this app has a different CPU architecture than ${targetName}, ` +
-          `so an image built there could not run here. Building on ${targetName} instead.`,
-      };
-    case "none-available":
-      // Reached when a pin no longer resolves. Worth one line: the setting still
-      // names a server, and the deploy quietly did something else.
-      return {
-        level: "warn",
-        text: `The build server chosen for this app is unavailable. Building on ${targetName} instead.`,
-      };
-    case "own-server":
-      return null;
+): { level: "info" | "warn" | "error"; text: string }[] {
+  const head = plan.chain[0];
+  if (!plan.missed) {
+    return head
+      ? [
+          {
+            level: "info",
+            text: `Building on ${serverName(head)}, then releasing on ${targetName}`,
+          },
+        ]
+      : [];
   }
+  const why = !plan.missed.pinned
+    ? "No build server in this fleet can take this build right now."
+    : plan.missed.reason === "arch-mismatch"
+      ? `The build server chosen for this app has a different CPU architecture than ${targetName}, so an image built there could not run here.`
+      : "The build server chosen for this app is unavailable.";
+  if (head)
+    return [
+      {
+        level: "warn",
+        text: `${why} Building on ${serverName(head)} instead.`,
+      },
+    ];
+  if (plan.local)
+    return [
+      { level: "warn", text: `${why} Building on ${targetName} instead.` },
+    ];
+  return [
+    {
+      level: "error",
+      text: `${why} This app is set not to build anywhere else, so the running version was not touched.`,
+    },
+  ];
 }

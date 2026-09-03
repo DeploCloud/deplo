@@ -14,6 +14,7 @@ import { assembleServer, serverToRow } from "./infra-rows";
 import { appCapabilities } from "./node-access";
 import {
   deploHostSelfAddresses,
+  isBuildFallbackServer,
   isDeploHostServer,
   resolveServerIp,
 } from "../deploy/domains";
@@ -196,6 +197,7 @@ export async function listBuildServerChoices(): Promise<
     name: string;
     hostArch: string;
     buildOnly: boolean;
+    buildFallback: boolean;
     isDeploHost: boolean;
   }[]
 > {
@@ -208,6 +210,7 @@ export async function listBuildServerChoices(): Promise<
       name: s.name,
       hostArch: s.hostArch,
       buildOnly: s.buildOnly,
+      buildFallback: isBuildFallbackServer(s, self),
       isDeploHost: isDeploHostServer(s, self),
     }));
 }
@@ -378,6 +381,8 @@ export async function addServer(
     // the one that skips Docker, and a host with no Docker cannot build.
     storageOnly: !importOnly && (input.storageOnly ?? false),
     buildOnly: !importOnly && !input.storageOnly && (input.buildOnly ?? false),
+    // Automatic: the Deplo host builds as a fallback, a new remote does not.
+    buildFallback: null,
     importOnly,
     // Nothing is being taken off anything yet: a migration source earns its
     // uninstall when its migration finishes.
@@ -496,6 +501,7 @@ export async function ensureDeploHostServer(): Promise<void> {
     allTeams: true,
     storageOnly: false,
     buildOnly: false,
+    buildFallback: null,
     importOnly: false,
     uninstallPending: false,
     uninstallError: "",
@@ -1250,6 +1256,45 @@ export async function setServerRole(
       : role === "storage"
         ? `Set server ${server.name} to hold backups only`
         : `Set server ${server.name} to run apps again`,
+    user.name,
+    null,
+    teamId,
+  );
+  return (await getServerById(id))!;
+}
+
+/**
+ * Whether this host compiles for an app whose own build server could not be
+ * reached. `null` is automatic: the Deplo host builds as a fallback, no other
+ * server does - and the app's own server stays the last resort either way.
+ */
+export async function setServerBuildFallback(
+  id: string,
+  buildFallback: boolean | null,
+): Promise<Server> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const server = await getServerById(id);
+  if (!server) throw new Error("Server not found");
+  if (buildFallback) {
+    assertNotMigrationSource(server);
+    if (server.storageOnly)
+      throw new Error(
+        `${server.name} holds backups only - it has no Docker to build with.`,
+      );
+  }
+  await getDb()
+    .update(serversTable)
+    .set({ buildFallback })
+    .where(eq(serversTable.id, id));
+  await recordActivity(
+    "server",
+    buildFallback === null
+      ? `Left ${server.name} to decide its build fallback automatically`
+      : buildFallback
+        ? `Set server ${server.name} to build as a fallback`
+        : `Stopped server ${server.name} from building as a fallback`,
     user.name,
     null,
     teamId,

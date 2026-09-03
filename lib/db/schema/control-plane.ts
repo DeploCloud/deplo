@@ -650,6 +650,9 @@ export const servers = pgTable(
     // A server bought purely to COMPILE: Docker is installed, Traefik is not, and no
     // app of any team runs here.
     buildOnly: boolean("build_only").notNull().default(false),
+    // Whether this host may compile for an app whose build server could not. NULL is
+    // automatic, which is the Deplo host and nothing else (migration 0151).
+    buildFallback: boolean("build_fallback"),
     // A server registered ONLY to import from another platform: Docker is there (it is
     // that platform's host), Traefik is not, the shared `deplo` network is not, and
     // nothing of ours ever runs here.
@@ -755,9 +758,9 @@ export const apps = pgTable(
     buildServerId: text("build_server_id").references(() => servers.id, {
       onDelete: "set null",
     }),
-    // When the build server is unreachable, build on this app's own server instead and
-    // say so in the deploy log.
-    buildFallbackLocal: boolean("build_fallback_local").notNull().default(true),
+    // When the build server cannot compile this app, try the fleet's build fallbacks
+    // and then the app's own server, saying so in the deploy log.
+    buildFallback: boolean("build_fallback").notNull().default(true),
     logo: text("logo"),
     // The JavaScript framework Deplo recognised in this app's own source ("nextjs",
     // "astro", …; see lib/apps/framework-catalog.ts), or NULL when none was found / the

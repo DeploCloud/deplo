@@ -153,7 +153,7 @@ export default async function AppAdvancedSettingsPage(
                     ?.hostArch ?? ""
                 }
                 buildServerId={project.buildServerId ?? null}
-                buildFallbackLocal={project.buildFallbackLocal}
+                buildFallback={project.buildFallback}
                 choices={buildServerChoices}
               />
             )}

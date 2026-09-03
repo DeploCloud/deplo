@@ -1031,7 +1031,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     // Choosing a builder is an Advanced setting and the create flow does not ask;
     // a bulk import does, because it is placing the whole fleet at once.
     buildServerId,
-    buildFallbackLocal: true,
+    buildFallback: true,
     // Defaulted from a template's logo (a /templates path); ignore anything that
     // isn't a valid inline logo so a crafted create payload can't store a URL.
     logo: input.logo && isValidLogoValue(input.logo) ? input.logo : null,
@@ -1448,12 +1448,13 @@ export async function clearAppBuildCache(id: string): Promise<void> {
 }
 
 /**
- * Choose where this app COMPILES, and what happens when that host is unreachable.
+ * Choose where this app COMPILES, and what happens when that host cannot.
  *
  * `buildServerId` null is Automatic: use a build-only server if the fleet has one
  * this team can reach whose architecture matches, otherwise build where the app
  * runs. Passing the app's OWN server id is the explicit opt-out - "always build
- * here" - and is stored as that id rather than a sentinel.
+ * here" - and is stored as that id rather than a sentinel. `buildFallback` false
+ * fails the deploy instead of moving the build to another host.
  *
  * Validated against the servers this team can actually reach, so a crafted request
  * cannot point an app's build (with its source and decrypted env) at a host the
@@ -1464,7 +1465,7 @@ export async function clearAppBuildCache(id: string): Promise<void> {
  */
 export async function setAppBuildServer(
   id: string,
-  input: { buildServerId: string | null; buildFallbackLocal?: boolean },
+  input: { buildServerId: string | null; buildFallback?: boolean },
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
@@ -1488,9 +1489,9 @@ export async function setAppBuildServer(
     .update(appsTable)
     .set({
       buildServerId,
-      ...(input.buildFallbackLocal === undefined
+      ...(input.buildFallback === undefined
         ? {}
-        : { buildFallbackLocal: input.buildFallbackLocal }),
+        : { buildFallback: input.buildFallback }),
       updatedAt: nowIso(),
     })
     .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));

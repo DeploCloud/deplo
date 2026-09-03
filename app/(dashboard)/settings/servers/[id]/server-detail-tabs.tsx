@@ -74,6 +74,8 @@ export type ServerSummary = {
    *  settable on a host that HAS Docker; one installed without it stays on
    *  "storage" until its install command is re-run. */
   role: "everything" | "build" | "storage";
+  /** Whether this host compiles for an app whose own build server is down. */
+  buildFallback: boolean;
   isDeploHost: boolean;
   provisioning: boolean;
   /** null when the agent has never reported one. */

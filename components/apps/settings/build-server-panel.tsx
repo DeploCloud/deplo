@@ -23,6 +23,8 @@ export interface BuildServerChoice {
   hostArch: string;
   /** True for a host dedicated to building; false for an ordinary server. */
   buildOnly: boolean;
+  /** True when this host builds for an app whose own build server is down. */
+  buildFallback: boolean;
   isDeploHost: boolean;
 }
 
@@ -42,7 +44,7 @@ export function BuildServerPanel({
   serverName,
   serverArch,
   buildServerId,
-  buildFallbackLocal,
+  buildFallback,
   choices,
 }: {
   appId: string;
@@ -51,7 +53,7 @@ export function BuildServerPanel({
   serverName: string;
   serverArch: string;
   buildServerId: string | null;
-  buildFallbackLocal: boolean;
+  buildFallback: boolean;
   choices: BuildServerChoice[];
 }) {
   const router = useRouter();
@@ -63,7 +65,7 @@ export function BuildServerPanel({
         ? SELF
         : buildServerId,
   );
-  const [fallback, setFallback] = React.useState(buildFallbackLocal);
+  const [fallback, setFallback] = React.useState(buildFallback);
 
   // Everything except the app's own server, which is the SELF option above.
   const others = choices.filter((c) => c.id !== serverId);
@@ -73,17 +75,22 @@ export function BuildServerPanel({
   // "Automatic" on a fleet with no build server is a setting that does nothing, and
   // silently doing nothing is what makes people distrust a control.
   const autoWouldUse = others.some((c) => c.buildOnly && compatible(c));
+  // Where a build actually goes when the chosen server cannot take it. The Deplo
+  // host first, exactly as the deploy resolves it (lib/deploy/build-server.ts).
+  const fallbackName = others
+    .filter((c) => c.buildFallback && compatible(c) && c.id !== value)
+    .sort((a, b) => Number(b.isDeploHost) - Number(a.isDeploHost))[0]?.name;
 
   function save(next: { buildServerId: string | null; fallback: boolean }) {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!, $buildServerId: String, $buildFallbackLocal: Boolean) {
-          setAppBuildServer(id: $id, buildServerId: $buildServerId, buildFallbackLocal: $buildFallbackLocal) { id }
+        `mutation($id: String!, $buildServerId: String, $buildFallback: Boolean) {
+          setAppBuildServer(id: $id, buildServerId: $buildServerId, buildFallback: $buildFallback) { id }
         }`,
         {
           id: appId,
           buildServerId: next.buildServerId,
-          buildFallbackLocal: next.fallback,
+          buildFallback: next.fallback,
         },
       );
       if (res.ok) {
@@ -99,7 +106,7 @@ export function BuildServerPanel({
               ? SELF
               : buildServerId,
         );
-        setFallback(buildFallbackLocal);
+        setFallback(buildFallback);
         toast.error(res.error);
       }
     });
@@ -184,20 +191,29 @@ export function BuildServerPanel({
       {buildsElsewhere && (
         <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
           <div className="space-y-0.5">
-            <p className="text-sm font-medium">
-              Build here if that server is down
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              Build somewhere else if that server is down
+              <InfoTip
+                content={
+                  <>
+                    Servers are marked as a build fallback in Settings →
+                    Servers. The Deplo host is one until you say otherwise.
+                  </>
+                }
+                docs="build.serversHowItWorks"
+              />
             </p>
             <p className="text-xs text-muted-foreground">
               {fallback
-                ? `A deploy still ships, building on ${serverName} instead.`
-                : `The deploy fails instead. ${serverName} is never asked to build.`}
+                ? `A deploy still ships, building on ${fallbackName ?? serverName} instead.`
+                : `The deploy fails instead. Nothing else is asked to build.`}
             </p>
           </div>
           <Switch
             checked={fallback}
             onCheckedChange={toggleFallback}
             disabled={saving}
-            aria-label="Build here if the build server is down"
+            aria-label="Build somewhere else if the build server is down"
           />
         </div>
       )}

@@ -9,7 +9,7 @@ import yaml from "../yaml";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getServerById } from "../data/servers";
 import { copyImageBetween } from "../data/volume-migration";
-import { resolveBuildServer, buildServerLogLine } from "./build-server";
+import { resolveBuildPlan, buildPlanLines } from "./build-server";
 import { getDb } from "../db/client";
 import { withKeyedLock } from "../data/keyed-mutex";
 import {
@@ -220,6 +220,8 @@ async function setDep(
   if (patch.buildDurationMs !== undefined)
     set.buildDurationMs = patch.buildDurationMs;
   if (patch.imageRef !== undefined) set.imageRef = patch.imageRef;
+  if (patch.buildServerId !== undefined)
+    set.buildServerId = patch.buildServerId;
   const rows = await getDb()
     .update(deploymentsTable)
     .set(set)
@@ -1311,68 +1313,36 @@ function planBuilds(plan: AgentBuildPlan): boolean {
 }
 
 /**
- * The build server for a deploy about to be queued, or null for "build where it
+ * The host a deploy about to be queued will compile on, or null for "build where it
  * runs". Choosing where to compile must not be able to stop an app from shipping.
  */
 async function resolveBuildServerFor(
-  project: { teamId: string; serverId: string; buildServerId?: string | null },
+  project: {
+    teamId: string;
+    serverId: string;
+    buildServerId?: string | null;
+    buildFallback: boolean;
+  },
   deployServerId: string,
   depId: string,
 ): Promise<string | null> {
   try {
     const target = await getServerById(deployServerId);
     if (!target) return null;
-    const choice = await resolveBuildServer(
+    const plan = await resolveBuildPlan(
       {
         teamId: project.teamId,
         serverId: project.serverId,
         buildServerId: project.buildServerId ?? null,
+        buildFallback: project.buildFallback,
       },
       target,
     );
-    return choice.serverId;
+    return plan.chain[0] ?? null;
   } catch (e) {
     console.error(`[deplo] build server lookup failed for ${depId}:`, e);
     return null;
   }
-}
-
-/**
- * The one line the deploy log gets about where this app compiled, derived from the
- * row rather than re-run - the decision was made at enqueue time and the row is
- * the authority on it, exactly as it is for `serverId`.
- */
-async function explainBuildServer(
-  project: { serverId: string; buildServerId?: string | null },
-  dep: { buildServerId: string | null },
-  target: { id: string; name: string; hostArch: string },
-): Promise<{ level: LogLine["level"]; text: string } | null> {
-  if (dep.buildServerId) {
-    const builder = await getServerById(dep.buildServerId);
-    return buildServerLogLine(
-      {
-        serverId: dep.buildServerId,
-        reason: project.buildServerId ? "pinned" : "automatic",
-      },
-      builder?.name ?? dep.buildServerId,
-      target.name,
-    );
-  }
-  const pinned = project.buildServerId;
-  if (!pinned || pinned === project.serverId || pinned === target.id)
-    return null;
-  // The pin did not apply. One extra lookup, only on this rare path, so the message
-  // can name the actual reason instead of a shrug.
-  const server = await getServerById(pinned);
-  const reason =
-    server && server.hostArch !== target.hostArch
-      ? "arch-mismatch"
-      : "none-available";
-  return buildServerLogLine(
-    { serverId: null, reason },
-    server?.name ?? pinned,
-    target.name,
-  );
 }
 
 /**
@@ -1404,16 +1374,17 @@ function agentDownReason(e: unknown): string {
 }
 
 /**
- * The build half of a split deploy: compile on the build server, then stream the
- * image to the host that will run it.
+ * The build half of a split deploy: compile on the first build server that answers,
+ * then stream the image to the host that will run it.
  */
 async function buildOnBuildServer(opts: {
   depId: string;
   serverId: string;
-  buildServerId: string;
-  buildServerName?: string;
+  /** The hosts to try, in order (lib/deploy/build-server.ts). */
+  builders: { id: string; name: string }[];
   targetServerName?: string;
-  buildFallbackLocal?: boolean;
+  /** Build on the target itself once every host above could not be reached. */
+  localAllowed: boolean;
   project: { id: string; deployKey: string; composeUpArgs: string | null };
   imageRef: string;
   composeYaml: string;
@@ -1423,71 +1394,81 @@ async function buildOnBuildServer(opts: {
   plan: AgentBuildPlan;
   noCache?: boolean;
   sink: (level: LogLine["level"], text: string) => void;
-}): Promise<{ outcome: "built" | "fallback" | "failed"; commitSha: string }> {
-  const builderName = opts.buildServerName ?? "the build server";
+}): Promise<{
+  outcome: "built" | "fallback" | "failed";
+  commitSha: string;
+  /** The host that actually compiled it, for the deployment row. */
+  builtOn?: string;
+}> {
   const targetName = opts.targetServerName ?? "the app's server";
 
+  let builder: { id: string; name: string } | null = null;
   let commitSha = "";
-  try {
-    const built = await runAgentDeploy({
-      serverId: opts.buildServerId,
-      deployId: opts.depId,
-      slug: opts.project.deployKey,
-      appId: opts.project.id,
-      imageRef: opts.imageRef,
-      // The builder writes no stack and starts nothing, so the rendered compose is inert
-      // there.
-      composeYaml: opts.composeYaml,
-      network: opts.network,
-      env: opts.env,
-      plan: opts.plan,
-      noCache: opts.noCache,
-      buildOnly: true,
-      sink: { log: opts.sink },
-    });
-    if (!built.ready) return { outcome: "failed", commitSha: built.commitSha };
-    commitSha = built.commitSha;
-  } catch (e) {
-    if (agentIsDown(e)) {
-      console.error(
-        `[deplo] build server ${opts.buildServerId} unavailable:`,
-        e,
-      );
-      const why = agentDownReason(e);
-      if (opts.buildFallbackLocal !== false) {
-        opts.sink(
-          "warn",
-          `${builderName} could not be reached (${why}). Building on ${targetName} instead.`,
-        );
+  for (const [i, candidate] of opts.builders.entries()) {
+    try {
+      const built = await runAgentDeploy({
+        serverId: candidate.id,
+        deployId: opts.depId,
+        slug: opts.project.deployKey,
+        appId: opts.project.id,
+        imageRef: opts.imageRef,
+        // The builder writes no stack and starts nothing, so the rendered compose is inert
+        // there.
+        composeYaml: opts.composeYaml,
+        network: opts.network,
+        env: opts.env,
+        plan: opts.plan,
+        noCache: opts.noCache,
+        buildOnly: true,
+        sink: { log: opts.sink },
+      });
+      if (!built.ready)
+        return { outcome: "failed", commitSha: built.commitSha };
+      commitSha = built.commitSha;
+      builder = candidate;
+      break;
+    } catch (e) {
+      if (!agentIsDown(e)) throw e;
+      // A host that did not answer is the whole reason the rest of the chain exists;
+      // a build that RAN and failed is this app's own failure and stops here.
+      console.error(`[deplo] build server ${candidate.id} unavailable:`, e);
+      const why = `${candidate.name} could not be reached (${agentDownReason(e)}).`;
+      const next = opts.builders[i + 1];
+      if (next) {
+        opts.sink("warn", `${why} Building on ${next.name} instead.`);
+        continue;
+      }
+      if (opts.localAllowed) {
+        opts.sink("warn", `${why} Building on ${targetName} instead.`);
         return { outcome: "fallback", commitSha: "" };
       }
       opts.sink(
         "error",
-        `${builderName} could not be reached (${why}), and this app is set not to ` +
-          `build on ${targetName}. The running version was not touched.`,
+        `${why} This app is set not to build on ${targetName}, so the running ` +
+          `version was not touched.`,
       );
       return { outcome: "failed", commitSha: "" };
     }
-    throw e;
   }
+  if (!builder) return { outcome: "fallback", commitSha: "" };
 
   // The image exists on the builder and nowhere else. From here a failure is a
   // failure: the build already happened, and repeating it on a host chosen for
   // being small is the outcome the build server exists to avoid.
   try {
     const bytes = await relayBuiltImage(
-      opts.buildServerId,
+      builder.id,
       opts.serverId,
       opts.imageRef,
     );
     opts.sink(
       "info",
-      `Copied ${formatBytes(bytes)} from ${builderName} to ${targetName}`,
+      `Copied ${formatBytes(bytes)} from ${builder.name} to ${targetName}`,
     );
-    return { outcome: "built", commitSha };
+    return { outcome: "built", commitSha, builtOn: builder.id };
   } catch (e) {
     console.error(
-      `[deplo] image copy ${opts.buildServerId} -> ${opts.serverId} failed:`,
+      `[deplo] image copy ${builder.id} -> ${opts.serverId} failed:`,
       e,
     );
     // AgentVolumeCopyUnsupportedError's text is ours ("update the agent on the
@@ -1499,7 +1480,7 @@ async function buildOnBuildServer(opts: {
         : "the transfer did not complete";
     opts.sink(
       "error",
-      `Could not copy the built image from ${builderName} to ${targetName}: ${why}. ` +
+      `Could not copy the built image from ${builder.name} to ${targetName}: ${why}. ` +
         `The running version was not touched.`,
     );
     return { outcome: "failed", commitSha };
@@ -1545,15 +1526,15 @@ async function tryAgent(opts: {
   noCache?: boolean;
   /** Recreate the containers even if the stack is unchanged ("Rebuild container"). */
   forceRecreate?: boolean;
-  /** The BUILD SERVER this deploy compiles on, when that is not `serverId`. Null
-   *  (the ordinary case) builds and runs on the same host, exactly as before. */
-  buildServerId?: string | null;
-  /** Human name of the build server, for the log lines. */
-  buildServerName?: string;
+  /** The BUILD SERVERS this deploy may compile on, in order. Empty (the ordinary
+   *  case) builds and runs on the same host, exactly as before. */
+  builders?: { id: string; name: string }[];
   /** Human name of the target server, for the log lines. */
   targetServerName?: string;
-  /** Build on the target instead when the build server cannot be reached. */
-  buildFallbackLocal?: boolean;
+  /** Build on the target itself once no build server could be reached. */
+  localAllowed?: boolean;
+  /** The lines explaining that choice, logged only when a build actually runs. */
+  planLines?: { level: LogLine["level"]; text: string }[];
 }): Promise<AgentAttempt> {
   // Serialize the agent bring-up against deleteApp/deleteApps on the app's lifecycle
   // lock (the same mutex the databases use for provision/delete).
@@ -1587,14 +1568,22 @@ async function tryAgent(opts: {
     let plan = opts.plan;
     let builtCommitSha = "";
     try {
-      if (
-        opts.buildServerId &&
-        opts.buildServerId !== opts.serverId &&
-        planBuilds(opts.plan)
-      ) {
+      const builders = (opts.builders ?? []).filter(
+        (b) => b.id !== opts.serverId,
+      );
+      if (planBuilds(opts.plan)) {
+        for (const line of opts.planLines ?? [])
+          log(opts.depId, line.level, line.text);
+        // Nowhere left to build and this app refuses its own server: stopping here is
+        // the setting doing what it says, so nothing is rendered or shipped.
+        if (builders.length === 0 && opts.localAllowed === false)
+          return { outcome: "failed", commitSha: "" };
+      }
+      if (builders.length > 0 && planBuilds(opts.plan)) {
         const leg = await buildOnBuildServer({
           ...opts,
-          buildServerId: opts.buildServerId,
+          builders,
+          localAllowed: opts.localAllowed !== false,
           sink: (level: LogLine["level"], text: string) =>
             log(opts.depId, level, text),
         });
@@ -1602,11 +1591,15 @@ async function tryAgent(opts: {
           return { outcome: "failed", commitSha: leg.commitSha };
         if (leg.outcome === "built") {
           builtCommitSha = leg.commitSha;
+          // The row records where the source and the decrypted env actually went,
+          // which is not always the host the deploy was queued against.
+          if (leg.builtOn)
+            await setDep(opts.depId, { buildServerId: leg.builtOn });
           // The target now holds the image and runs it exactly as a ROLLBACK does:
           // a local tag, in no registry, so pulling it could only ever fail.
           plan = { kind: "image", image: opts.imageRef, pull: false };
         }
-        // outcome "fallback": the builder was unreachable and this app allows a
+        // outcome "fallback": no build server could be reached and this app allows a
         // local build. `plan` is untouched, so the target builds it itself.
       }
 
@@ -1799,19 +1792,30 @@ async function runDeployment(depId: string): Promise<void> {
     // the choice was made when the deploy was queued and the row is what the queue
     // already drained on.
     const targetServer = await getServerById(serverId);
-    const buildServer = dep.buildServerId
-      ? await getServerById(dep.buildServerId)
-      : null;
+    const targetServerName = targetServer?.name ?? "the app's server";
+    // Re-resolved rather than read off the row: the row holds ONE host, and a build
+    // that cannot happen there has to know what comes next. A rollback re-runs an
+    // image and builds nothing, so it asks for no chain at all.
+    const buildPlan =
+      targetServer && !dep.rollbackOf
+        ? await resolveBuildPlan(project, targetServer)
+        : { chain: [], local: true, missed: null };
+    const builders = await Promise.all(
+      buildPlan.chain.map(async (id) => ({
+        id,
+        name: (await getServerById(id))?.name ?? id,
+      })),
+    );
     const buildServerOpts = {
-      buildServerId: dep.buildServerId,
-      buildServerName: buildServer?.name,
-      targetServerName: targetServer?.name ?? "the app's server",
-      buildFallbackLocal: project.buildFallbackLocal,
+      builders,
+      localAllowed: buildPlan.local,
+      targetServerName,
+      planLines: buildPlanLines(
+        buildPlan,
+        (id) => builders.find((b) => b.id === id)?.name ?? id,
+        targetServerName,
+      ),
     };
-    if (targetServer) {
-      const line = await explainBuildServer(project, dep, targetServer);
-      if (line) log(depId, line.level, line.text);
-    }
 
     // Per-server build-method capability gate. Gate on the advertised capability and
     // fail with an actionable "update the agent" message instead (mirrors the
@@ -1822,7 +1826,7 @@ async function runDeployment(depId: string): Promise<void> {
     // The capability belongs to whichever host actually RUNS the builder. With a
     // build server that is the builder, not the target: gating the target on a
     // method it will never invoke would refuse a deploy for the wrong host's age.
-    const capServerId = dep.buildServerId || serverId;
+    const capServerId = builders[0]?.id ?? serverId;
     if (requiredCapability) {
       try {
         const hello = await agentPreflight(capServerId);
@@ -1844,7 +1848,7 @@ async function runDeployment(depId: string): Promise<void> {
         }
       } catch (e) {
         // An unreachable BUILD SERVER is not decided here.
-        if (!dep.buildServerId) {
+        if (!builders[0]) {
           log(
             depId,
             "error",

@@ -13,6 +13,7 @@ import {
   updateServerAgent,
   setServerTeams,
   setServerDeployConcurrency,
+  setServerBuildFallback,
   setServerRole,
   serverRole,
   updateServerAddress,
@@ -43,6 +44,7 @@ import {
 } from "@/lib/data/server-certificates";
 import {
   deploHostSelfAddresses,
+  isBuildFallbackServer,
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { refreshAgentVersion } from "@/lib/data/updates";
@@ -143,6 +145,11 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     hostArch: t.exposeString("hostArch", {
       description:
         'This host\'s CPU architecture ("amd64" | "arm64"), observed from the agent. Empty when the agent is too old to report it. A build server can only build for a host of the SAME architecture.',
+    }),
+    buildFallback: t.boolean({
+      description:
+        "Whether this host compiles for an app whose own build server could not be reached. On by default for the Deplo host and off for every other server, until setServerBuildFallback says otherwise. An app opts out of the whole chain with setAppBuildServer's buildFallback.",
+      resolve: (s) => isBuildFallbackServer(s, deploHostSelfAddresses()),
     }),
     teams: t.field({
       type: [TeamRef],
@@ -472,6 +479,7 @@ const BuildServerChoiceRef = builder
     name: string;
     hostArch: string;
     buildOnly: boolean;
+    buildFallback: boolean;
     isDeploHost: boolean;
   }>("BuildServerChoice")
   .implement({
@@ -487,6 +495,10 @@ const BuildServerChoiceRef = builder
       buildOnly: t.exposeBoolean("buildOnly", {
         description:
           "True for a host dedicated to building (it runs no apps). False for an ordinary server that would build for this app in addition to hosting its own.",
+      }),
+      buildFallback: t.exposeBoolean("buildFallback", {
+        description:
+          "Whether this host takes over when an app's own build server cannot be reached. True on the Deplo host by default; setServerBuildFallback is what changes it.",
       }),
       isDeploHost: t.exposeBoolean("isDeploHost", {
         description:
@@ -643,6 +655,18 @@ builder.mutationFields((t) => ({
       role: t.arg.string({ required: true }),
     },
     resolve: (_r, { id, role }) => setServerRole(id, role as ServerRole),
+  }),
+  setServerBuildFallback: t.field({
+    type: ServerRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Whether this host may compile for an app whose own build server could not be reached (the app's own server stays the last resort). Omit the flag to go back to automatic: the Deplo host builds as a fallback, no other server does. Refused on a host with no Docker of ours to build with.",
+    args: {
+      id: t.arg.string({ required: true }),
+      buildFallback: t.arg.boolean({ required: false }),
+    },
+    resolve: (_r, { id, buildFallback }) =>
+      setServerBuildFallback(id, buildFallback ?? null),
   }),
   setServerTeams: t.field({
     type: ServerRef,

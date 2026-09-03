@@ -141,6 +141,7 @@ async function main() {
       allTeams: true,
       storageOnly: false,
       buildOnly: false,
+      buildFallback: null,
       importOnly: false,
       uninstallPending: false,
       uninstallError: "",

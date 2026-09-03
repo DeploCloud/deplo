@@ -72,6 +72,7 @@ async function seedProvisioning(
       allTeams: true,
       storageOnly: false,
       buildOnly: false,
+      buildFallback: null,
       importOnly: false,
       hostArch: "amd64",
       uninstallPending: false,

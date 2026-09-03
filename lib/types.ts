@@ -445,6 +445,11 @@ export interface Server {
    */
   buildOnly: boolean;
   /**
+   * Whether this host compiles for an app whose own build server could not. null is
+   * automatic, which is the Deplo host and nothing else.
+   */
+  buildFallback: boolean | null;
+  /**
    * A server registered ONLY to import from another platform - the host the
    * migration reads its volumes from, nothing else.
    */
@@ -849,11 +854,11 @@ export interface App {
    */
   buildServerId?: ID | null;
   /**
-   * Build on this app's own server when the build server is unreachable, saying so
-   * in the deploy log. true by default; false for whoever picked a small deploy
-   * server on purpose and would rather fail than have a build land on it.
+   * Build somewhere else when this app's build server cannot: the fleet's build
+   * fallbacks first, then the app's own server. true by default; false fails the
+   * deploy instead, for whoever picked a small deploy server on purpose.
    */
-  buildFallbackLocal: boolean;
+  buildFallback: boolean;
   /**
    * Display logo for the project (a URL or local /templates/<x> path). Defaulted
    * from the template's logo when deployed from one, editable from settings.

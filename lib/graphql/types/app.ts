@@ -275,10 +275,10 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         "The server that BUILDS this app's image, when that is not `serverId`. Null is Automatic: a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs. Setting it to `serverId` means 'always build on this app's own server'. Ignored by a compose stack and a docker-image source, neither of which Deplo builds.",
       resolve: (p) => p.buildServerId ?? null,
     }),
-    buildFallbackLocal: t.boolean({
+    buildFallback: t.boolean({
       description:
-        "Build on this app's own server when the build server cannot be reached, saying so in the deploy log. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.",
-      resolve: (p) => p.buildFallbackLocal,
+        "Build somewhere else when this app's build server cannot be reached, saying so in the deploy log: the servers marked as a build fallback (the Deplo host by default), then the app's own server. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.",
+      resolve: (p) => p.buildFallback,
     }),
     logo: t.exposeString("logo", { nullable: true }),
     dataCopyError: t.exposeString("dataCopyError", {
@@ -953,16 +953,16 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "configure_apps" },
     description:
-      "Choose which server BUILDS this app. Null buildServerId is Automatic (a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs); passing the app's own server id means 'always build here'. buildFallbackLocal decides what happens when the build server is unreachable: build on the app's own server (the default) or fail the deploy. Changing either never starts a deploy.",
+      "Choose which server BUILDS this app. Null buildServerId is Automatic (a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs); passing the app's own server id means 'always build here'. buildFallback decides what happens when that host cannot compile: try the fleet's build fallbacks and then the app's own server (the default), or fail the deploy. Changing either never starts a deploy.",
     args: {
       id: t.arg.string({ required: true }),
       buildServerId: t.arg.string({ required: false }),
-      buildFallbackLocal: t.arg.boolean({ required: false }),
+      buildFallback: t.arg.boolean({ required: false }),
     },
-    resolve: async (_r, { id, buildServerId, buildFallbackLocal }) => {
+    resolve: async (_r, { id, buildServerId, buildFallback }) => {
       await setAppBuildServer(id, {
         buildServerId: buildServerId ?? null,
-        buildFallbackLocal: buildFallbackLocal ?? undefined,
+        buildFallback: buildFallback ?? undefined,
       });
       return reloadApp(id);
     },

@@ -30,6 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -971,7 +972,72 @@ function ServerRolePanel({ server }: { server: ServerSummary }) {
             </Button>
           </div>
         </form>
+        {server.role !== "storage" && <BuildFallbackRow server={server} />}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Whether this host takes over a build when the app's own build server cannot be
+ * reached. On for the Deplo host until someone says otherwise.
+ */
+function BuildFallbackRow({ server }: { server: ServerSummary }) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const [on, setOn] = React.useState(server.buildFallback);
+
+  function toggle(next: boolean) {
+    setOn(next);
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation SetServerBuildFallback($id: String!, $buildFallback: Boolean) {
+          setServerBuildFallback(id: $id, buildFallback: $buildFallback) { id }
+        }`,
+        { id: server.id, buildFallback: next },
+      );
+      if (!res.ok) {
+        setOn(server.buildFallback);
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        next
+          ? `${server.name} will build as a fallback`
+          : `${server.name} will not build as a fallback`,
+      );
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
+      <div>
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          Build as a fallback
+          <InfoTip
+            content={
+              <>
+                When an app&apos;s build server cannot be reached, this host
+                compiles for it instead. Only apps whose own server has the same
+                CPU architecture.
+              </>
+            }
+            docs="build.serversHowItWorks"
+          />
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {on
+            ? "Compiles for apps whose own build server is down."
+            : "Never asked to build for another server's apps."}
+        </p>
+      </div>
+      <Switch
+        checked={on}
+        onCheckedChange={toggle}
+        disabled={pending}
+        aria-label="Build as a fallback"
+      />
+    </div>
   );
 }

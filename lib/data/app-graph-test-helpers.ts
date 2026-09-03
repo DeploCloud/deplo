@@ -99,7 +99,7 @@ export interface SeedAppOpts {
   /** Pin the app to a build server (seed that server row first). */
   buildServerId?: string | null;
   /** Turn OFF "build here if the build server is unreachable". */
-  buildFallbackLocal?: boolean;
+  buildFallback?: boolean;
   healthCheck?: HealthCheck | null;
 }
 
@@ -120,7 +120,7 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     dataCopyError: "",
     migrationRunId: null,
     buildServerId: opts.buildServerId ?? null,
-    buildFallbackLocal: opts.buildFallbackLocal ?? true,
+    buildFallback: opts.buildFallback ?? true,
     logo: null,
     frameworkOverride: null,
     framework: null,

@@ -57,6 +57,7 @@ const SERVER_FIELDS = {
   importOnly: true,
   uninstallPending: true,
   uninstallError: true,
+  buildFallback: true,
   hostArch: true,
   deployConcurrency: true,
   createdAt: true,
@@ -85,6 +86,7 @@ export function serverToRow(s: Server): ServerInsert {
     allTeams: s.allTeams,
     storageOnly: s.storageOnly,
     buildOnly: s.buildOnly,
+    buildFallback: s.buildFallback,
     importOnly: s.importOnly,
     // The retry state itself (attempts, next_at, run_id) is written by targeted
     // UPDATEs, never from a DTO round trip - a full row write from a shape that cannot
@@ -130,6 +132,9 @@ export function assembleServer(row: ServerRow): Server {
     allTeams: row.allTeams,
     storageOnly: row.storageOnly ?? false,
     buildOnly: row.buildOnly ?? false,
+    // NULL is automatic, not false: the Deplo host is a fallback until someone says
+    // otherwise, and every row predating the column is still un-answered.
+    buildFallback: row.buildFallback ?? null,
     importOnly: row.importOnly ?? false,
     uninstallPending: row.uninstallNextAt !== null,
     uninstallError: row.uninstallError ?? "",

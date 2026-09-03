@@ -48,6 +48,7 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     allTeams: opts.allTeams ?? true,
     storageOnly: opts.storageOnly ?? false,
     buildOnly: opts.buildOnly ?? false,
+    buildFallback: opts.buildFallback ?? null,
     importOnly: opts.importOnly ?? false,
     uninstallPending: opts.uninstallPending ?? false,
     uninstallError: opts.uninstallError ?? "",
