@@ -104,6 +104,7 @@ export function PasswordField({
   id?: string;
   value: string;
   onChange: (value: string) => void;
+  /** `null` drops the label entirely - for a field its own heading names. */
   label?: React.ReactNode;
   /** Longer explanation, shown as the label's info tooltip (never as helper text). */
   info?: React.ReactNode;
@@ -118,6 +119,9 @@ export function PasswordField({
 }) {
   const generatedId = React.useId();
   const fieldId = id ?? generatedId;
+  // `label={null}`: the section heading already names the field, so a label
+  // under it would say "Password" twice.
+  const labelled = label !== null;
   const [visible, setVisible] = React.useState(false);
   const [hintOpen, setHintOpen] = React.useState(false);
 
@@ -130,9 +134,11 @@ export function PasswordField({
 
   return (
     <div className={cn("space-y-2", className)}>
-      <FieldLabel htmlFor={fieldId} info={info} docs={docs}>
-        {label}
-      </FieldLabel>
+      {labelled && (
+        <FieldLabel htmlFor={fieldId} info={info} docs={docs}>
+          {label}
+        </FieldLabel>
+      )}
       <Popover open={open} onOpenChange={setHintOpen}>
         <PopoverAnchor asChild>
           {/* Focus is watched on the wrapper, not the input: clicking the reveal
@@ -160,6 +166,7 @@ export function PasswordField({
               required={required}
               disabled={disabled}
               autoFocus={autoFocus}
+              aria-label={labelled ? undefined : "Password"}
               aria-describedby={open ? `${fieldId}-strength` : undefined}
             />
             <RevealToggle

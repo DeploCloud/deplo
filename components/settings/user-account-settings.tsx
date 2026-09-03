@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  AlertCircle,
   AlertTriangle,
   Ban,
   Crown,
@@ -234,6 +235,19 @@ export function UserAccountSettings({
   // owner's, so for those two the whole section would be dead buttons.
   const showDanger = !isSelf && !isOwner;
 
+  /** Why a grant is stuck on, in its own tooltip rather than a line below it. */
+  const withAdminNote = (text: string) =>
+    admin ? (
+      <>
+        {text}
+        <span className="mt-1.5 block">
+          Always on for an instance admin - it applies once that switch is off.
+        </span>
+      </>
+    ) : (
+      text
+    );
+
   const dirty =
     admin !== savedGrants.isInstanceAdmin ||
     exposePorts !== savedGrants.canExposePorts ||
@@ -462,29 +476,26 @@ export function UserAccountSettings({
               }
               docs="instance.admin"
             >
-              <ToggleRow
-                title="Instance admin"
-                info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold both advanced grants implicitly."
-                docs="instance.admin"
-                checked={admin}
-                disabled={isSelf || ownerFlagsLocked}
-                onChange={setAdmin}
-              />
-              {/* WHY the switch above is dead. A state, not field help, so it
-                  stays on screen rather than hiding behind an icon. */}
-              {(ownerFlagsLocked || isSelf) && (
-                <p
-                  className={
-                    ownerFlagsLocked
-                      ? "text-xs text-warning"
-                      : "text-xs text-muted-foreground"
-                  }
-                >
-                  {ownerFlagsLocked
-                    ? "The instance owner is always an instance admin - transfer ownership first."
-                    : "You can't change your own admin status - another instance admin has to."}
-                </p>
-              )}
+              {/* WHY the switch is dead. A state, not field help, so it stays
+                  on screen rather than hiding behind an icon. */}
+              <div>
+                <ToggleRow
+                  title="Instance admin"
+                  info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold both advanced grants implicitly."
+                  docs="instance.admin"
+                  checked={admin}
+                  disabled={isSelf || ownerFlagsLocked}
+                  onChange={setAdmin}
+                  attached={ownerFlagsLocked || isSelf}
+                />
+                {(ownerFlagsLocked || isSelf) && (
+                  <RowNotice tone={ownerFlagsLocked ? "warning" : "muted"}>
+                    {ownerFlagsLocked
+                      ? "The instance owner is always an instance admin - transfer ownership first."
+                      : "You can't change your own admin status - another instance admin has to."}
+                  </RowNotice>
+                )}
+              </div>
 
               <Accordion
                 type="single"
@@ -499,7 +510,9 @@ export function UserAccountSettings({
                   <AccordionContent className="space-y-2 pt-1 pb-1">
                     <ToggleRow
                       title="Publish ports"
-                      info="Let a compose stack bind a port on the server itself, with a service's ports:. Public domains and routes don't need this."
+                      info={withAdminNote(
+                        "Let a compose stack bind a port on the server itself, with a service's ports:. Public domains and routes don't need this.",
+                      )}
                       docs="hostAccess.ports"
                       checked={admin || exposePorts}
                       disabled={admin || ownerLocked}
@@ -507,29 +520,28 @@ export function UserAccountSettings({
                     />
                     <ToggleRow
                       title="Bind server folders"
-                      info="Let this account point an app at a folder that already exists on the server (the Bind kind in an app's Storage settings)."
+                      info={withAdminNote(
+                        "Let this account point an app at a folder that already exists on the server (the Bind kind in an app's Storage settings).",
+                      )}
                       docs="hostAccess.gated"
                       checked={admin || mountHostVolumes}
                       disabled={admin || ownerLocked}
                       onChange={setMountHostVolumes}
                     />
-                    {admin && (
-                      <p className="text-xs text-muted-foreground">
-                        On because this account is an instance admin - these two
-                        only matter once that switch is off.
-                      </p>
-                    )}
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
             </Section>
 
-            <Section icon={KeyRound} title="Password">
+            <Section
+              icon={KeyRound}
+              title="Password"
+              info="Optional: leave it blank to keep the current one. A new password applies the moment you save, and nobody is emailed about it, so hand it over yourself."
+              docs="team.password"
+            >
               <PasswordField
                 id="reset-pw"
-                label="New password (optional)"
-                info="Leave blank to keep the current password. A new one replaces theirs the moment you save, and nobody is emailed about it, so hand it over yourself."
-                docs="team.password"
+                label={null}
                 value={password}
                 onChange={setPassword}
                 disabled={ownerLocked}
@@ -541,53 +553,31 @@ export function UserAccountSettings({
               />
             </Section>
 
-            {(twoFactorEnabled || passkeyCount > 0) &&
-              !isSelf &&
-              !ownerLocked && (
-                <Section icon={ShieldOff} title="Second factors">
-                  {twoFactorEnabled && (
-                    <ActionRow
-                      title="Reset two-factor"
-                      info="For someone who lost their phone and their recovery codes. Their account goes back to password only, and they can set it up again. Nothing else changes: not their password, not their sessions."
-                      docs="team.twoFactor"
-                      action={
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={pending}
-                          onClick={() => setConfirmResetTwoFactor(true)}
-                        >
-                          <ShieldOff className="size-4" />
-                          Reset
-                        </Button>
-                      }
-                    />
-                  )}
-                  {/**
-                   * Separate from the reset above on purpose: the phone and the laptop are lost
-                   * independently, and clearing a dead authenticator is no reason to take away a
-                   * passkey that still works.
-                   */}
-                  {passkeyCount > 0 && (
-                    <ActionRow
-                      title="Remove passkeys"
-                      info="For someone whose device is gone. Until it is removed, a dead passkey still satisfies their team's two-factor policy, so nobody can tell them to enrol anything. Nothing else changes: not their password, not their sessions."
-                      docs="team.passkeys"
-                      action={
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={pending}
-                          onClick={() => setConfirmResetPasskeys(true)}
-                        >
-                          <Fingerprint className="size-4" />
-                          Remove
-                        </Button>
-                      }
-                    />
-                  )}
-                </Section>
-              )}
+            {/**
+             * Separate from the two-factor reset in the danger zone on purpose: the phone and
+             * the laptop are lost independently, and clearing a dead authenticator is no reason
+             * to take away a passkey that still works.
+             */}
+            {passkeyCount > 0 && !isSelf && !ownerLocked && (
+              <Section icon={ShieldOff} title="Second factors">
+                <ActionRow
+                  title="Remove passkeys"
+                  info="For someone whose device is gone. Until it is removed, a dead passkey still satisfies their team's two-factor policy, so nobody can tell them to enrol anything. Nothing else changes: not their password, not their sessions."
+                  docs="team.passkeys"
+                  action={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => setConfirmResetPasskeys(true)}
+                    >
+                      <Fingerprint className="size-4" />
+                      Remove
+                    </Button>
+                  }
+                />
+              </Section>
+            )}
 
             {showDanger && (
               <Section
@@ -597,6 +587,25 @@ export function UserAccountSettings({
                 info="Unlike everything above, these apply the moment you confirm them - they don't wait for Save changes."
                 docs="instance.users"
               >
+                {twoFactorEnabled && (
+                  <ActionRow
+                    title="Reset two-factor"
+                    info="For someone who lost their phone and their recovery codes. Their account goes back to password only and they can set it up again. Nothing else changes: not their password, not their sessions."
+                    docs="team.twoFactor"
+                    action={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        disabled={pending}
+                        onClick={() => setConfirmResetTwoFactor(true)}
+                      >
+                        <ShieldOff className="size-4" />
+                        Reset
+                      </Button>
+                    }
+                  />
+                )}
                 <ActionRow
                   title={suspended ? "Reactivate account" : "Suspend account"}
                   info={
@@ -711,9 +720,8 @@ export function UserAccountSettings({
         open={confirmResetTwoFactor}
         onOpenChange={setConfirmResetTwoFactor}
         title={`Reset two-factor for @${user.username}?`}
-        description="Their next sign-in asks for the password only, and their old authenticator entry and recovery codes stop working. Do this when they have lost the phone AND the codes - check it is really them asking."
+        description="Their authenticator and recovery codes stop working, and the next sign-in is password only. Check it is really them asking."
         confirmLabel="Reset two-factor"
-        variant="default"
         successMessage="Two-factor reset"
         optimistic
         onConfirm={resetTwoFactor}
@@ -814,9 +822,8 @@ function EditorSkeleton({ withDanger }: { withDanger: boolean }) {
         <TextLine box="h-6" bar="h-4 w-28" />
       </SkeletonSection>
 
-      {/* Password: heading, then the label (leading-none, so 14px) + input. */}
+      {/* Password: heading, then the bare input. */}
       <SkeletonSection>
-        <TextLine box="h-3.5" bar="h-3 w-40" />
         <Skeleton className="h-9 w-full" />
       </SkeletonSection>
 
@@ -943,14 +950,17 @@ function Row({
   info,
   docs,
   control,
+  attached,
 }: {
   title: string;
   info: React.ReactNode;
   docs?: DocsTopic;
   control: React.ReactNode;
+  /** A {@link RowNotice} follows - drop the bottom edge so they read as one box. */
+  attached?: boolean;
 }) {
   return (
-    <div className={ROW_SHELL}>
+    <div className={cn(ROW_SHELL, attached && "rounded-b-none")}>
       <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
         <span className="truncate">{title}</span>
         <InfoTip content={info} docs={docs} label={`About ${title}`} />
@@ -970,6 +980,7 @@ function ToggleRow({
   checked,
   disabled,
   onChange,
+  attached,
 }: {
   title: string;
   info: React.ReactNode;
@@ -977,12 +988,14 @@ function ToggleRow({
   checked: boolean;
   disabled?: boolean;
   onChange: (v: boolean) => void;
+  attached?: boolean;
 }) {
   return (
     <Row
       title={title}
       info={info}
       docs={docs}
+      attached={attached}
       control={
         // The title is a <p>, not a <label>, so the switch carries the name
         // itself, otherwise it announces as a bare "switch, off".
@@ -994,6 +1007,32 @@ function ToggleRow({
         />
       }
     />
+  );
+}
+
+/**
+ * Why the row above is locked, in the sign-in page's alert shape: same border,
+ * same tinted slab, glued under the row so it reads as part of it.
+ */
+function RowNotice({
+  tone,
+  children,
+}: {
+  tone: "warning" | "muted";
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-b-lg border border-t-0 px-3 py-2 text-xs",
+        tone === "warning"
+          ? "border-warning/40 bg-warning/10 text-warning"
+          : "border-border bg-muted/40 text-muted-foreground",
+      )}
+    >
+      <AlertCircle className="size-3.5 shrink-0" />
+      {children}
+    </div>
   );
 }
 
