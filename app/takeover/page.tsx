@@ -30,8 +30,13 @@ export const metadata = { title: "Take over this machine" };
 export default async function TakeoverPage() {
   const status = await takeoverStatus();
   if (!status || status.state === "cancelled") redirect("/");
-  // The machine is Deplo's: there is nothing left here to show.
-  if (status.state === "removed") redirect("/");
+  // The machine is Deplo's: there is nothing left here to show. Land the way
+  // the step itself does, celebration included - a refresh mid-removal can
+  // reach this before the step's own poll sees `removed`.
+  if (status.state === "removed")
+    redirect(
+      `/?welcome=1&takeover=${encodeURIComponent(SOURCE_COPY[status.platform].name)}`,
+    );
 
   await requireUser();
   // Rendering this page IS the proof that a browser got through - see the
