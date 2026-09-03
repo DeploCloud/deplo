@@ -19,14 +19,13 @@ import {
   AVATAR_ATTRIBUTION,
   AVATAR_IMAGE_TYPES,
   AVATAR_PACKS,
+  AVATAR_VARIANTS,
   type AvatarChoice,
   DEFAULT_PACK,
   facePath,
   GRAVATAR_VALUE,
-  INITIALS_PRESETS,
   MAX_AVATAR_STRING_LEN,
   packRow,
-  rowSeeds,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 
@@ -42,18 +41,14 @@ export type AvatarSources = {
   /** What is in use now - `avatarChoiceFromUrl` where the picture is saved,
    *  `avatarChoiceFromValue` where a form still holds the raw value. */
   choice: AvatarChoice;
-  /** Seeds every generated face: their user id, or the handle they are typing
-   *  during onboarding. What they preview is what gets saved. */
-  seed: string;
   /** Their initials, which ARE the seed of an `initials` picture: DiceBear reads
    *  the letters out of it ("Ada Lovelace" and "AL" both draw AL). */
   letters: string;
   /** Their Gravatar address when the instance allows it, so the card previews
    *  the real thing. Absent = the source is not offered. */
   gravatar?: string | null;
-  /** A TEAM has no packs to browse: its picture is the letters of its name or a
-   *  file, so the dialog shows those two and nothing else. */
-  simple?: boolean;
+  /** A TEAM: the same packs, its own copy, and no Gravatar to offer. */
+  team?: boolean;
 };
 
 export function AvatarPicker({
@@ -99,29 +94,17 @@ export function AvatarPicker({
   const [ownChoosing, setOwnChoosing] = React.useState(false);
   const choosing = controlled ? controlled.open : ownChoosing;
   const setChoosing = controlled ? controlled.onOpenChange : setOwnChoosing;
-  const [previews, setPreviews] = React.useState<string[] | null>(null);
-  const seed = sources?.seed;
   const letters = sources?.letters;
   React.useEffect(() => {
-    if (!preload || !seed || !letters) return;
-    const rolled = rollPreviewSeeds(seed);
-    // Rolled once on mount and kept: a memo would re-roll whenever React
-    // discards it, and the faces would change under the person picking one.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPreviews(rolled);
+    if (!preload || !letters) return;
     // Fetched now, not on the click: the dialog would otherwise open onto empty
     // circles and fill them in one by one.
-    for (const url of [
-      ...AVATAR_PACKS.flatMap((pack, i) => [
-        facePath(pack.style, pack.preset, rolled[i]!),
-        ...rowSeeds(seed).map((s) => facePath(pack.style, pack.preset, s)),
-      ]),
-      ...INITIALS_PRESETS.map(({ id }) => facePath("initials", id, letters)),
-    ]) {
-      const img = new window.Image();
-      img.src = url;
-    }
-  }, [preload, seed, letters]);
+    for (const pack of AVATAR_PACKS)
+      for (const tile of packRow(pack, letters)) {
+        const img = new window.Image();
+        img.src = facePath(tile.style, tile.preset, tile.seed);
+      }
+  }, [preload, letters]);
   const busy = pending || disabled;
 
   function commit(image: string | null) {
@@ -158,7 +141,6 @@ export function AvatarPicker({
           onOpenChange={setChoosing}
           sources={sources}
           busy={Boolean(busy)}
-          previews={previews}
           dragging={dragging}
           onDragOver={(e) => {
             e.preventDefault();
@@ -322,15 +304,6 @@ function FaceTile({
   );
 }
 
-/** One picture per pack, drawn when the picker mounts - never during a render,
- *  which is why it takes an effect and not a `useMemo`. */
-function rollPreviewSeeds(seed: string): string[] {
-  const seeds = rowSeeds(seed);
-  return AVATAR_PACKS.map(
-    () => seeds[Math.floor(Math.random() * seeds.length)]!,
-  );
-}
-
 /** Where a picture comes from when it is not one of the packs. */
 function SourceCard({
   visual,
@@ -385,7 +358,6 @@ function AvatarSourceDialog({
   onOpenChange,
   sources,
   busy,
-  previews,
   dragging,
   onPick,
   onUpload,
@@ -397,8 +369,6 @@ function AvatarSourceDialog({
   onOpenChange: (open: boolean) => void;
   sources: AvatarSources;
   busy: boolean;
-  /** One preview picture per pack, rolled by the caller as it mounts. */
-  previews: string[] | null;
   dragging: boolean;
   onPick: (value: string | null) => void;
   onUpload: () => void;
@@ -406,18 +376,13 @@ function AvatarSourceDialog({
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
-  const { choice, seed, letters, gravatar } = sources;
+  const { choice, letters, gravatar } = sources;
   const worn = choice.kind === "generated" ? choice : null;
-  const seeds = rowSeeds(seed);
   const [pack, setPack] = React.useState(() =>
     worn && worn.style !== "initials"
       ? (AVATAR_PACKS.find((p) => p.style === worn.style) ?? DEFAULT_PACK)
       : DEFAULT_PACK,
   );
-  // The chips show the pack, not a particular picture, so the caller rolls one
-  // per pack on the way in. Before the first roll, a plain rotation.
-  const chipSeeds =
-    previews ?? AVATAR_PACKS.map((_, i) => seeds[i % seeds.length]!);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -429,16 +394,16 @@ function AvatarSourceDialog({
       >
         <DialogHeader>
           <DialogTitle>
-            {sources.simple ? "Team picture" : "Profile picture"}
+            {sources.team ? "Team picture" : "Profile picture"}
           </DialogTitle>
           <DialogDescription>
-            {sources.simple
+            {sources.team
               ? "Stands before the team's name everywhere it appears. Pick one, or upload your own."
               : "Stands next to your name everywhere in Deplo. Pick one, or upload your own."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-4 gap-2">
-          {packRow(pack, seed, letters).map((tile) => (
+          {packRow(pack, letters).map((tile) => (
             <FaceTile
               key={`${tile.preset}:${tile.seed}`}
               src={facePath(tile.style, tile.preset, tile.seed)}
@@ -463,25 +428,23 @@ function AvatarSourceDialog({
             />
           ))}
         </div>
-        {sources.simple ? null : (
-          <div className="flex justify-center gap-2">
-            {AVATAR_PACKS.map((p, i) => (
-              <FaceTile
-                key={p.style}
-                small
-                src={facePath(
-                  p.style,
-                  p.preset,
-                  p.style === "initials" ? letters : chipSeeds[i]!,
-                )}
-                label={p.label}
-                disabled={busy}
-                selected={p.style === pack.style}
-                onClick={() => setPack(p)}
-              />
-            ))}
-          </div>
-        )}
+        <div className="flex justify-center gap-2">
+          {AVATAR_PACKS.map((p) => (
+            <FaceTile
+              key={p.style}
+              small
+              src={facePath(
+                p.style,
+                p.preset,
+                p.style === "initials" ? letters : AVATAR_VARIANTS[0],
+              )}
+              label={p.label}
+              disabled={busy}
+              selected={p.style === pack.style}
+              onClick={() => setPack(p)}
+            />
+          ))}
+        </div>
         <div className="grid gap-2">
           {gravatar ? (
             <SourceCard
@@ -527,29 +490,27 @@ function AvatarSourceDialog({
             onClick={onUpload}
           />
         </div>
-        {sources.simple ? null : (
-          <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-            Pictures by DiceBear. {AVATAR_ATTRIBUTION.style} is a remix of{" "}
-            <a
-              href={AVATAR_ATTRIBUTION.sourceUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              {AVATAR_ATTRIBUTION.source}
-            </a>{" "}
-            by {AVATAR_ATTRIBUTION.creator},{" "}
-            <a
-              href={AVATAR_ATTRIBUTION.licenseUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              {AVATAR_ATTRIBUTION.license}
-            </a>
-            .
-          </p>
-        )}
+        <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+          Pictures by DiceBear. {AVATAR_ATTRIBUTION.style} is a remix of{" "}
+          <a
+            href={AVATAR_ATTRIBUTION.sourceUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            {AVATAR_ATTRIBUTION.source}
+          </a>{" "}
+          by {AVATAR_ATTRIBUTION.creator},{" "}
+          <a
+            href={AVATAR_ATTRIBUTION.licenseUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            {AVATAR_ATTRIBUTION.license}
+          </a>
+          .
+        </p>
       </DialogContent>
     </Dialog>
   );

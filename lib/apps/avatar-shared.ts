@@ -57,8 +57,7 @@ export function isValidAvatarValue(value: string): boolean {
 
 /**
  * A person picks where their picture comes from, so `users.image` holds either an
- * uploaded data-URI or one of these markers. No value at all is the first pack,
- * seeded with their own id.
+ * uploaded data-URI or one of these markers. No value at all is their letters.
  */
 export const GRAVATAR_VALUE = "gravatar";
 /** The plain monogram - the one drawn by the app itself, not by DiceBear. */
@@ -133,21 +132,9 @@ export function isValidPreset(style: AvatarStyle, preset: string): boolean {
   return (AVATAR_STYLES[style] as readonly string[]).includes(preset);
 }
 
-/** The example faces every pack is offered in, beside the person's own. Fixed,
- *  not random: the tile you picked is still there next time, and cached. */
-export const EXAMPLE_SEEDS = ["nova", "orbit", "quasar", "rune"] as const;
-
-/** How many pictures a pack's row shows: the seed-generated one plus three. */
-export const AVATAR_ROW = 4;
-
-/** The row for one pack: the seed-generated one first, then the examples.
- *  Deduped, so somebody wearing an example does not see it twice. */
-export function rowSeeds(ownSeed: string): string[] {
-  return [ownSeed, ...EXAMPLE_SEEDS.filter((s) => s !== ownSeed)].slice(
-    0,
-    AVATAR_ROW,
-  );
-}
+/** The four pictures every pack is drawn in - the same four for every person and
+ *  every team. Nothing is generated from an id or a name. */
+export const AVATAR_VARIANTS = ["nova", "orbit", "quasar", "rune"] as const;
 
 /**
  * A name, as a seed: DiceBear's initials style reads the letters out of it
@@ -187,13 +174,11 @@ export type AvatarTile = {
 };
 
 /**
- * The four pictures a pack offers. The initials pack varies the PALETTE on one
- * seed - the letters are the name, there is nothing else in it to vary - and
- * every other pack varies the seed on one palette.
+ * The four pictures a pack offers. The initials pack varies the PALETTE over the
+ * name's own letters; every other pack is four fixed variants.
  */
 export function packRow(
   pack: { style: AvatarStyle; preset: string; label: string },
-  ownSeed: string,
   letters: string,
 ): AvatarTile[] {
   if (pack.style === "initials")
@@ -204,11 +189,11 @@ export function packRow(
       label,
       derived: id === "default",
     }));
-  return rowSeeds(ownSeed).map((seed) => ({
+  return AVATAR_VARIANTS.map((seed, i) => ({
     style: pack.style,
     preset: pack.preset,
     seed,
-    label: `${pack.label}, ${seed === ownSeed ? "yours" : seed}`,
+    label: `${pack.label} ${i + 1}`,
     derived: false,
   }));
 }

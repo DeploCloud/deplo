@@ -63,11 +63,10 @@ export function TeamForm({
           label="Change the team picture"
           hasImage={Boolean(avatarUrl)}
           sources={{
-            simple: true,
+            team: true,
             choice: avatarChoiceFromUrl(avatarUrl),
             // The SAVED name, like the picture beside it: the field is editable
-            // and the tile must not drift as it is typed.
-            seed: avatarSeedFromName(initialName),
+            // and the letters must not drift as it is typed.
             letters: avatarSeedFromName(initialName),
           }}
           preview={teamMark}

@@ -13,11 +13,9 @@ import {
   avatarChoiceFromValue,
   avatarPreviewUrl,
   AVATAR_PACKS,
-  AVATAR_ROW,
-  EXAMPLE_SEEDS,
+  AVATAR_VARIANTS,
   INITIALS_PRESETS,
   packRow,
-  rowSeeds,
 } from "../apps/avatar-shared";
 import {
   seedIdentity,
@@ -303,15 +301,14 @@ test("a name with no picture falls back to its letters, drawn by DiceBear", () =
   );
 });
 
-test("the initials pack varies the palette, every other one the seed", () => {
+test("the initials pack varies the palette, every other one is four fixed variants", () => {
   // The bug this pins: the letters ARE the name, so a row of four SEEDS there
   // draws four strangers instead of four palettes.
   const initials = packRow(
     { style: "initials", preset: "default", label: "Initials" },
-    "usr_abc",
     "AL",
   );
-  assert.equal(initials.length, AVATAR_ROW);
+  assert.equal(initials.length, 4);
   assert.deepEqual(
     initials.map((t) => t.preset),
     INITIALS_PRESETS.map((p) => p.id),
@@ -321,26 +318,31 @@ test("the initials pack varies the palette, every other one the seed", () => {
 
   const faces = packRow(
     { style: "pixelbot", preset: "terminal", label: "Pixelbot Terminal" },
-    "usr_abc",
     "AL",
   );
-  assert.equal(faces.length, AVATAR_ROW);
   assert.equal(new Set(faces.map((t) => t.preset)).size, 1, "one palette only");
-  assert.equal(new Set(faces.map((t) => t.seed)).size, AVATAR_ROW);
-  assert.equal(faces[0]!.seed, "usr_abc", "their own leads");
+  assert.deepEqual(
+    faces.map((t) => t.seed),
+    [...AVATAR_VARIANTS],
+  );
   assert.equal(faces.filter((t) => t.derived).length, 0);
 });
 
-test("every pack offers the same four pictures, and never one twice", () => {
-  // The seed-generated one leads the row; picking an example must not double it.
-  const mine = rowSeeds(MEMBER);
-  assert.equal(mine.length, AVATAR_ROW);
-  assert.equal(mine[0], MEMBER);
-  assert.equal(new Set(mine).size, AVATAR_ROW);
-
-  const onAnExample = rowSeeds(EXAMPLE_SEEDS[0]);
-  assert.equal(new Set(onAnExample).size, AVATAR_ROW, "no duplicate tile");
-  assert.equal(onAnExample[0], EXAMPLE_SEEDS[0], "what they wear leads");
+test("nothing in a pack's row is generated from who is looking", () => {
+  // No picture is derived from an id or a name any more: two people opening the
+  // picker are offered the identical four, which is what makes them cacheable.
+  for (const pack of AVATAR_PACKS) {
+    const mine = packRow(pack, "AL");
+    const theirs = packRow(pack, "AL");
+    assert.equal(mine.length, 4, `${pack.style} offers four`);
+    assert.deepEqual(mine, theirs);
+    if (pack.style !== "initials")
+      assert.deepEqual(
+        packRow(pack, "ZZ").map((t) => t.seed),
+        mine.map((t) => t.seed),
+        `${pack.style} does not read the name`,
+      );
+  }
 });
 
 /* ------------------------------------------------------------------ */

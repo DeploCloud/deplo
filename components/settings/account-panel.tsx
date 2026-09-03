@@ -130,9 +130,6 @@ function ProfileCard({
           hasImage={Boolean(user.avatarUrl?.startsWith("data:"))}
           sources={{
             choice,
-            // Always their own id: seeding off what they last picked would
-            // reshuffle the row under the click that picked it.
-            seed: user.id,
             letters: avatarInitials(user.name, user.username),
             gravatar,
           }}

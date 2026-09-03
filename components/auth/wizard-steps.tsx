@@ -196,7 +196,6 @@ export function AccountStep({
           hasImage={Boolean(draft.image)}
           sources={{
             choice: pictureChoice,
-            seed: handle || "deplo",
             letters: avatarInitials(draft.name, handle),
           }}
           onSave={async (next) => {
@@ -359,9 +358,8 @@ export function TeamStep({
           label="Add a team picture"
           hasImage={Boolean(draft.image)}
           sources={{
-            simple: true,
+            team: true,
             choice: avatarChoiceFromValue(draft.image),
-            seed: avatarSeedFromName(draft.name),
             letters: avatarSeedFromName(draft.name),
           }}
           onSave={async (image) => {
