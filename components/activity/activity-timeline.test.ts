@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
+  ActivityRow,
   foldRuns,
   mentionAt,
   monthKey,
@@ -135,4 +138,40 @@ test("foldRuns never folds across a month heading", () => {
     monthKey(runs[0]!.item.createdAt),
     monthKey(runs[1]!.item.createdAt),
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* The header line                                                     */
+/* ------------------------------------------------------------------ */
+
+/** The class list of the row's first line - the `summary` of a folded run, or
+ *  the actor `p` of a row standing alone. */
+function headerClass(item: ActivityItem, repeats?: string[]): string {
+  const html = renderToStaticMarkup(
+    createElement(ActivityRow, { item, repeats }),
+  );
+  return /<(?:summary|p) class="([^"]*)"/.exec(html)?.[1] ?? "";
+}
+
+test("the header line is the same height folded, unfolded or alone", () => {
+  // Unfolding a run used to move its own first line: the geometry hung off
+  // `:not([open])`, so opening one shifted the text off the marker's centre.
+  const one = headerClass(row({ id: "a" }));
+  const run = headerClass(row({ id: "b" }), [
+    "2026-08-26T14:32:11.000Z",
+    "2026-08-26T14:30:00.000Z",
+  ]);
+  for (const cls of [one, run]) {
+    assert.match(cls, /(^|\s)min-h-8(\s|$)/, `no marker height in "${cls}"`);
+    assert.match(cls, /(^|\s)content-center(\s|$)/, `not centred in "${cls}"`);
+    assert.doesNotMatch(cls, /\[open\]/, `open-conditional geometry: "${cls}"`);
+  }
+});
+
+test("the compact row rides its own smaller marker", () => {
+  const compact = renderToStaticMarkup(
+    createElement(ActivityRow, { item: row({ id: "a" }), size: "md" }),
+  );
+  assert.match(compact, /min-h-6/, "the Overview card's marker is size-6");
+  assert.doesNotMatch(compact, /min-h-8/);
 });

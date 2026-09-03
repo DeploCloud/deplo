@@ -143,9 +143,11 @@ export function ActivityFeed({
           ) : (
             <>
               <Skeleton className="size-8 shrink-0 rounded-full" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-4 w-64" />
+              <div className="min-w-0 flex-1">
+                <div className="flex min-h-8 items-center">
+                  <Skeleton className="h-4 w-40" />
+                </div>
+                <Skeleton className="mt-1 h-4 w-64" />
               </div>
             </>
           )}

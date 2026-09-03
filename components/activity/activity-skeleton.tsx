@@ -37,9 +37,13 @@ export function ActivitySkeleton() {
         {ROWS.map((width, i) => (
           <li key={i} className="relative flex items-start gap-3">
             <Skeleton className="relative z-10 size-8 shrink-0 rounded-full ring-4 ring-background" />
-            <div className="min-w-0 flex-1 space-y-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className={cn("h-4", width)} />
+            {/* The actor line rides the marker's centre, exactly as a real row's
+                does, so the feed does not jump when it lands. */}
+            <div className="min-w-0 flex-1">
+              <div className="flex min-h-8 items-center">
+                <Skeleton className="h-4 w-40" />
+              </div>
+              <Skeleton className={cn("mt-1 h-4", width)} />
             </div>
           </li>
         ))}

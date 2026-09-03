@@ -273,6 +273,13 @@ export function ActivityRow({
   // there is a page's width for it. In a card the sentence wraps, and a stamp
   // pinned right lands in the middle of it.
   const stampAtEnd = size === "lg";
+  // The first line always keeps the marker's height and rides its centre, folded
+  // run or not: unfolding a row must move nothing, and every row's actor line
+  // sits at the same height beside its own face.
+  const headerLine = cn(
+    "flex flex-wrap content-center items-baseline gap-x-1.5 text-sm",
+    size === "lg" ? "min-h-8" : "min-h-6",
+  );
   const header = (
     <>
       {showActor &&
@@ -315,13 +322,8 @@ export function ActivityRow({
           <details open className="group">
             <summary
               className={cn(
-                "flex cursor-pointer list-none flex-wrap items-baseline gap-x-1.5 text-sm [&::-webkit-details-marker]:hidden",
-                // Shut, this line IS the row: centre it on the marker rather
-                // than leave the avatar hanging below one line of text.
-                "transition-[min-height] group-[:not([open])]:items-center",
-                size === "lg"
-                  ? "group-[:not([open])]:min-h-8"
-                  : "group-[:not([open])]:min-h-6",
+                headerLine,
+                "cursor-pointer list-none [&::-webkit-details-marker]:hidden",
               )}
             >
               {header}
@@ -343,9 +345,7 @@ export function ActivityRow({
           </details>
         ) : (
           <>
-            <p className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
-              {header}
-            </p>
+            <p className={headerLine}>{header}</p>
             {stampAtEnd ? (
               <p className="mt-1 flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
                 <span className="min-w-0">{sentence}</span>
