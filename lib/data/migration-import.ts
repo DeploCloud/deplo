@@ -678,6 +678,20 @@ export async function scanMigrationSource(
   const mayExposePorts = await canExposePorts();
   const foreignHosts = await hostnamesOwnedElsewhere(teamId);
 
+  // Which source machines ARE Deplo servers, for the address note below. Read
+  // once and lazily: the listing is a call to the panel.
+  let machineIds: Map<string, string | null> | null = null;
+  const machineServer = async (sourceServerId: string) => {
+    if (!machineIds)
+      machineIds = new Map(
+        (await planMachines(c, teamId, servers)).map((m) => [
+          m.sourceId,
+          m.deploServerId,
+        ]),
+      );
+    return machineIds.get(sourceServerId) ?? null;
+  };
+
   const planned: PlanProject[] = [];
   for (const p of projects) {
     const projectKey = p.name.trim().toLowerCase();
@@ -818,12 +832,17 @@ export async function scanMigrationSource(
           line.notes.push(...domains.notes);
           // Said BEFORE anyone presses import, because it is the one thing about a
           // migrated app that is not the same afterwards: the address. The route
-          // survives; the name cannot (it carries the source server's IP).
+          // survives; the name cannot (it carries the source server's IP) - unless
+          // that machine is a Deplo server, where it still resolves.
+          const onDeploServer =
+            (await machineServer(line.sourceServerId)) != null;
           for (const host of new Set(
             domains.value.filter((d) => d.generated).map((d) => d.host),
           ))
             line.notes.push(
-              `${host} is {panel}'s own temporary address - Deplo cannot take it, so this app gets a temporary address of Deplo's instead, with the same routes.`,
+              onDeploServer
+                ? `${host} is {panel}'s own temporary address. It names this machine, so it stays when the app lands here; anywhere else the app gets a temporary address of Deplo's instead, with the same routes.`
+                : `${host} is {panel}'s own temporary address - Deplo cannot take it, so this app gets a temporary address of Deplo's instead, with the same routes.`,
             );
           for (const host of line.domains)
             if (foreignHosts.has(host))
@@ -2354,6 +2373,7 @@ async function runImportMigrationProject(
               serverId:
                 placed.get(svc.id)?.serverId ?? serverMap.get(sourceServerId),
               buildServerId: placed.get(svc.id)?.buildServerId ?? null,
+              sourceHost: await hostOfMachine(sourceServerId),
               dbHosts,
               shared,
             },
@@ -2716,6 +2736,8 @@ async function importAppService(
     environmentId: string;
     serverId: string | undefined;
     buildServerId: string | null;
+    /** The Deplo server that IS the machine it ran on, when there is one. */
+    sourceHost: string | null;
     /** Old database hostname -> the one Deplo gave it, for the connection strings
      *  this app's variables still spell out. */
     dbHosts: Map<string, string>;
@@ -2902,6 +2924,14 @@ async function importAppService(
     compose: isCompose ? yamlText : null,
   });
   notes.push(...domains.notes);
+  // Landing on the machine it ran on (a takeover): the generated name still
+  // points here, so the address people already have keeps working.
+  if (
+    home.sourceHost != null &&
+    home.sourceHost === (await landingServerId(home.serverId))
+  )
+    for (const d of domains.value)
+      if (d.generated && !/(^|\.)localhost$/i.test(d.host)) d.generated = false;
   // The app's own address wins the primary slot over a temporary one, whatever order
   // the source kept them in: a throwaway host is first over there simply because
   // Dokploy minted it first, and promoting it here would demote the name people

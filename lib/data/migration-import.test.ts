@@ -1272,6 +1272,46 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
   );
 });
 
+test("on a takeover the throwaway address stays, because it names this machine", async () => {
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  // The landing server IS the machine Dokploy answers on.
+  await db
+    .update(serversTable)
+    .set({ ip: "dokploy.acme.test", host: "dokploy.acme.test" })
+    .where(eq(serversTable.id, SERVER_1));
+
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
+  const line = plan.projects
+    .flatMap((p) => p.environments)
+    .flatMap((e) => e.services)
+    .find((s) => s.name === "blink-web")!;
+  assert.match(line.notes.join(" "), /stays when the app lands here/);
+
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const apps = await db.select().from(appsTable);
+  const web = apps.find((a) => a.name === "blink-web")!;
+  const doms = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, web.id));
+  assert.ok(
+    doms.some((d) => d.name === "blink-web-abc.traefik.me"),
+    doms.map((d) => d.name).join(", "),
+  );
+  assert.equal(
+    doms.some((d) => d.name.endsWith(".nip.io")),
+    false,
+  );
+  const report = await asOwner(() => getMigrationRun(runId));
+  assert.doesNotMatch(
+    report!.items.map((i) => i.message ?? "").join(" "),
+    /temporary address/,
+  );
+});
+
 // Dismissing is per app and it is what CLEARS the provenance - the message
 // exists for that column, and the import report keeps the permanent record.
 test("dismissing the notice clears it for that app only", async () => {
