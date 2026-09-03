@@ -1433,6 +1433,31 @@ YAML
 sed -i '/^$/d' "$DEPLO_DIR/traefik/docker-compose.yml"
 }
 
+# The interim ports were picked at preflight and are bound only now, minutes
+# later: the other panel's proxy can have started in between and taken one.
+# Measured: Coolify's proxy comes up on its first deploy and holds 8080.
+takeover_repick_ports() {
+  [ -n "$TAKEOVER" ] && [ "$TAKEOVER_PAST" = 0 ] || return 0
+  local moved=0 p
+  for p in HTTP_PORT HTTPS_PORT PANEL_PORT; do
+    if port_in_use "${!p}" && ! ours_holds_port "${!p}"; then
+      case "$p" in
+        HTTP_PORT) HTTP_PORT="$(first_free_port 8080 8081 8090)" ;;
+        HTTPS_PORT) HTTPS_PORT="$(first_free_port 8443 8444 9443)" ;;
+        PANEL_PORT) PANEL_PORT="$(first_free_port 3000 3001 3002 3003)" ;;
+      esac
+      moved=1
+    fi
+  done
+  [ "$moved" = 1 ] || return 0
+  warn "A port picked at preflight was taken meanwhile - Deplo now waits on :$PANEL_PORT, proxy on $HTTP_PORT/$HTTPS_PORT."
+  state_set takeover_panel_port "$PANEL_PORT"
+  state_set takeover_http_port "$HTTP_PORT"
+  state_set takeover_https_port "$HTTPS_PORT"
+  DEPLO_EXPOSE="$(printf '    ports:\n      - "127.0.0.1:%s:3000"' "$PANEL_PORT")"
+  render_traefik_panel_config
+}
+takeover_repick_ports
 write_traefik_compose
 TRAEFIK_NOTE="$HTTP_PORT/$HTTPS_PORT, Let's Encrypt for $PANEL_HOST"
 spin_start "Starting Traefik and its socket proxy"
