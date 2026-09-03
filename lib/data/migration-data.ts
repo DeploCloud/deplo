@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -321,7 +321,10 @@ interface Landed {
 }
 
 /**
- * What this import run actually created: source service id → the Deplo resource.
+ * What this import run landed on: source service id → the Deplo resource. A
+ * service the run SKIPPED because it was already here is a target too - running
+ * the import again is how newer data comes across, and read as "not created" a
+ * second pass copied nothing, finished clean and took the agent off the source.
  */
 async function runTargets(
   runId: string,
@@ -340,9 +343,41 @@ async function runTargets(
     string,
     { targetKind: "app" | "database"; targetId: string }
   >();
+  // A skipped target counts only when a migration made it: somebody's own app
+  // or database is never a place a copy may wipe and refill.
+  const migrated = async (kind: "app" | "database", ids: string[]) => {
+    if (ids.length === 0) return new Set<string>();
+    const table = kind === "app" ? appsTable : databasesTable;
+    const hits = await getDb()
+      .select({ id: table.id })
+      .from(table)
+      .where(and(inArray(table.id, ids), isNotNull(table.migrationRunId)));
+    return new Set(hits.map((h) => h.id));
+  };
+  const skippedApps = await migrated(
+    "app",
+    rows
+      .filter(
+        (r) => r.outcome === "skipped" && r.targetKind === "app" && r.targetId,
+      )
+      .map((r) => r.targetId!),
+  );
+  const skippedDbs = await migrated(
+    "database",
+    rows
+      .filter(
+        (r) =>
+          r.outcome === "skipped" && r.targetKind === "database" && r.targetId,
+      )
+      .map((r) => r.targetId!),
+  );
   for (const r of rows) {
-    if (r.outcome !== "created" || !r.sourceId || !r.targetId) continue;
+    if (!r.sourceId || !r.targetId) continue;
     if (r.targetKind !== "app" && r.targetKind !== "database") continue;
+    if (r.outcome === "skipped") {
+      const ok = r.targetKind === "app" ? skippedApps : skippedDbs;
+      if (!ok.has(r.targetId)) continue;
+    } else if (r.outcome !== "created") continue;
     out.set(r.sourceId, { targetKind: r.targetKind, targetId: r.targetId });
   }
   return out;
@@ -697,7 +732,7 @@ function missingVolumeMessage(
  * Write down that the SOURCE service is now stopped over there. Backing out of a
  * takeover reads exactly these rows to start them again.
  */
-async function recordSourceStopped(
+export async function recordSourceStopped(
   runId: string,
   serviceId: string,
   kind: string,
@@ -841,6 +876,105 @@ const inFlightCopies = new Map<string, AbortController>();
 /** Cut the copy this run has open, if it has one. Safe to call when it has not. */
 export function abortRunCopy(runId: string): void {
   inFlightCopies.get(runId)?.abort();
+}
+
+/**
+ * Every service this run landed on whose data is NOT here yet, marked so: the
+ * data phase ended before it reached them (a fault outside the per-service loop,
+ * a Stop), and unmarked they came up on empty storage with nothing refusing.
+ * Returns how many were marked now.
+ */
+export async function markRunTargetsUncopied(
+  runId: string,
+  why: string,
+): Promise<number> {
+  const rows = await getDb()
+    .select({
+      path: itemsTable.path,
+      sourceKind: itemsTable.sourceKind,
+      sourceId: itemsTable.sourceId,
+      sourceName: itemsTable.sourceName,
+      targetKind: itemsTable.targetKind,
+      targetId: itemsTable.targetId,
+      outcome: itemsTable.outcome,
+    })
+    .from(itemsTable)
+    .where(eq(itemsTable.runId, runId));
+  const seen = new Set<string>();
+  let marked = 0;
+  for (const r of rows) {
+    if (r.outcome !== "created" && r.outcome !== "skipped") continue;
+    if (r.targetKind !== "app" && r.targetKind !== "database") continue;
+    if (!r.targetId || seen.has(r.targetId)) continue;
+    seen.add(r.targetId);
+    const { dataAlreadyCopiedInto, markDataCopyFailed } =
+      await import("./data-copy");
+    if (await dataAlreadyCopiedInto(runId, r.targetId)) continue;
+    const table = r.targetKind === "app" ? appsTable : databasesTable;
+    const [cur] = await getDb()
+      .select({ err: table.dataCopyError })
+      .from(table)
+      .where(eq(table.id, r.targetId))
+      .limit(1);
+    if (!cur || cur.err) continue;
+    const reason = `${r.sourceName}'s data was not copied: ${why}`;
+    await markDataCopyFailed({ kind: r.targetKind, id: r.targetId }, reason);
+    await appendRunItem(runId, "the panel", {
+      path: r.path,
+      sourceKind: r.sourceKind,
+      sourceId: r.sourceId,
+      sourceName: r.sourceName,
+      outcome: "failed",
+      targetKind: r.targetKind,
+      targetId: r.targetId,
+      message: `${reason}. It refuses to deploy until the data is brought over, or "Deploy anyway" accepts starting without it.`,
+    });
+    marked++;
+  }
+  return marked;
+}
+
+/**
+ * Start again, on the source panel, every service this run stopped to copy it.
+ * Best effort and said per service: a source that will not start is a line, not
+ * a throw, because whoever is backing out still needs the rest to happen.
+ */
+export async function restartSourcesStoppedByRun(
+  runId: string,
+  c: SourceCredential,
+): Promise<{ restarted: number; left: string[] }> {
+  const stopped = await getDb()
+    .select({
+      serviceId: targetsTable.serviceId,
+      kind: targetsTable.stoppedKind,
+      name: targetsTable.projectName,
+    })
+    .from(targetsTable)
+    .where(
+      and(eq(targetsTable.runId, runId), isNotNull(targetsTable.stoppedAt)),
+    );
+  let restarted = 0;
+  const left: string[] = [];
+  for (const t of stopped) {
+    try {
+      await sourceClient(c).startService(t.kind ?? "application", t.serviceId);
+      await getDb()
+        .update(targetsTable)
+        .set({ stoppedAt: null, stoppedKind: null })
+        .where(
+          and(
+            eq(targetsTable.runId, runId),
+            eq(targetsTable.serviceId, t.serviceId),
+          ),
+        );
+      restarted++;
+    } catch (e) {
+      left.push(
+        `${t.name}: ${e instanceof Error ? e.message : "would not start"}`,
+      );
+    }
+  }
+  return { restarted, left };
 }
 
 export async function moveMigrationServiceData(
@@ -1325,7 +1459,35 @@ async function runMoveMigrationServiceData(
   // is not the claim anyone cares about - "the engine reads them" is. It is brought
   // back up even when NOTHING was copied: the copy stopped it, and a service that
   // had no data to move is not a reason to leave somebody's database down.
-  if (landed.targetKind === "database" && failed === 0) {
+  // A service Deplo stopped over there for a copy that then moved NOTHING goes
+  // back up over there: it is the only place its data is, and "stopped on the
+  // old panel, empty on the new one" is the outcome this exists to prevent.
+  if (stoppedThere && state.running && moved === 0 && failed + notCopied > 0) {
+    try {
+      await sourceClient(c).startService(input.sourceKind, input.sourceId);
+      await getDb()
+        .update(targetsTable)
+        .set({ stoppedAt: null, stoppedKind: null })
+        .where(
+          and(
+            eq(targetsTable.runId, input.runId),
+            eq(targetsTable.serviceId, input.sourceId),
+          ),
+        );
+      notes.push(
+        `${svc.name} was started again on {panel}, since none of its data came across.`,
+      );
+    } catch (e) {
+      notes.push(
+        `${svc.name} is still stopped on {panel} (${e instanceof Error ? e.message : "it would not start"}). Start it there yourself until the copy succeeds.`,
+      );
+    }
+  }
+
+  // ...but never on a volume that is known to hold NOTHING of the source's: a
+  // running source whose data is elsewhere would come up as a fresh engine that
+  // apps then write into, and the recopy later wipes those writes.
+  if (landed.targetKind === "database" && failed === 0 && notCopied === 0) {
     const verdict = await startAndVerifyDatabase(landed, teamId, moved > 0);
     await appendRunItem(input.runId, panel, {
       path,

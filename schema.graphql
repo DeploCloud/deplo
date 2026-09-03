@@ -3274,6 +3274,11 @@ type Mutation {
   """
   requestTakeover(
     """
+    The operator accepts that the services `dataLoss` names lose their data: their copy failed, and the cutover deletes the old panel's volumes. Refused without it while `dataLoss` is not empty.
+    """
+    acceptDataLoss: Boolean
+
+    """
     A clean install: nothing is brought across, and the other platform is deleted with everything on it. There is no run to check and nothing can be recovered.
     """
     discardData: Boolean
@@ -5381,6 +5386,11 @@ type Subscription {
 The takeover this instance is in the middle of. Null on an ordinary install.
 """
 type Takeover {
+  """
+  Services of the run that arrived without their data. The cutover deletes the old panel's copy, so requestTakeover refuses unless acceptDataLoss says so.
+  """
+  dataLoss: [String!]
+
   """
   Why the last cutover rolled back, in the installer's words. Null unless the state is failed.
   """

@@ -2910,3 +2910,65 @@ test("a stack says which registries it pulls from", () => {
   );
   assert.deepEqual(composeRegistryNotes("not: yaml: at all: ["), []);
 });
+
+test("adaptComposeForDeplo strips the keys a panel's own compose dialect adds", () => {
+  const source = `services:
+  app:
+    image: searxng/searxng
+    exclude_from_hc: true
+    volumes:
+      - type: bind
+        source: ./settings.yml
+        target: /etc/searxng/settings.yml
+        content: |
+          use_default_settings: true
+      - type: bind
+        source: ./data
+        target: /data
+        is_directory: true
+      - cache:/var/cache
+volumes:
+  cache: {}
+`;
+  const { compose, changes } = adaptComposeForDeplo(source);
+  assert.doesNotMatch(compose, /exclude_from_hc|content:|is_directory/);
+  assert.match(compose, /target: \/etc\/searxng\/settings\.yml/);
+  assert.ok(changes.some((c) => /exclude_from_hc/.test(c)));
+  assert.ok(changes.some((c) => /inline file key/.test(c)));
+  // A stack with none of them is untouched and says nothing.
+  assert.deepEqual(
+    adaptComposeForDeplo("services:\n  a:\n    image: alpine\n").changes,
+    [],
+  );
+});
+
+test("an image app's command is said, not stored where nothing reads it", () => {
+  const image = mapBuildSettings(
+    app({
+      sourceType: "docker",
+      dockerImage: "bitnami/redis",
+      command: "redis-server --appendonly yes",
+    }),
+  );
+  assert.equal(image.value.startCommand, undefined);
+  assert.match(
+    image.notes.join(" "),
+    /Ran with the command "redis-server --appendonly yes"/,
+  );
+  const built = mapBuildSettings(
+    app({ buildType: "nixpacks", command: "node server.js" }),
+  );
+  assert.equal(built.value.startCommand, "node server.js");
+});
+
+test("the panel's build-step overrides reach the build settings", () => {
+  const { value } = mapBuildSettings(
+    app({
+      buildType: "nixpacks",
+      installCommand: "pnpm i",
+      buildCommand: "pnpm build",
+    }),
+  );
+  assert.equal(value.installCommand, "pnpm i");
+  assert.equal(value.buildCommand, "pnpm build");
+});

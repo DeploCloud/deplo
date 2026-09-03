@@ -3,6 +3,7 @@ import { MIGRATION_PLATFORMS } from "@/lib/migration/source";
 import {
   cancelTakeover,
   requestTakeover,
+  takeoverDataLoss,
   takeoverPreflight,
   takeoverStatus,
   TAKEOVER_STATES,
@@ -44,6 +45,11 @@ const TakeoverRef = builder.objectRef<TakeoverStatus>("Takeover").implement({
       nullable: true,
       description:
         "Why the last cutover rolled back, in the installer's words. Null unless the state is failed.",
+    }),
+    dataLoss: t.stringList({
+      description:
+        "Services of the run that arrived without their data. The cutover deletes the old panel's copy, so requestTakeover refuses unless acceptDataLoss says so.",
+      resolve: async (s) => (s.runId ? takeoverDataLoss(s.runId) : []),
     }),
   }),
 });
@@ -123,11 +129,17 @@ builder.mutationFields((t) => ({
         description:
           "A clean install: nothing is brought across, and the other platform is deleted with everything on it. There is no run to check and nothing can be recovered.",
       }),
+      acceptDataLoss: t.arg.boolean({
+        required: false,
+        description:
+          "The operator accepts that the services `dataLoss` names lose their data: their copy failed, and the cutover deletes the old panel's volumes. Refused without it while `dataLoss` is not empty.",
+      }),
     },
-    resolve: (_r, { runId, noOtherTeams, discardData }) =>
+    resolve: (_r, { runId, noOtherTeams, discardData, acceptDataLoss }) =>
       requestTakeover(runId ?? null, {
         noOtherTeams: noOtherTeams ?? false,
         discardData: discardData ?? false,
+        acceptDataLoss: acceptDataLoss ?? false,
       }),
   }),
   cancelTakeover: t.field({

@@ -189,7 +189,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     urlPlaceholder: "https://coolify.acme.com",
     tokenLabel: "API token",
     tokenInfo:
-      "In Coolify: Keys & Tokens, API tokens, with read:sensitive ticked - without it the variables and database passwords arrive empty. Use an owner's or admin's token. It is bound to the team it was minted in and reads only that one, so a second team needs a second token.",
+      "In Coolify: Keys & Tokens, API tokens, from an owner or admin, with read and read:sensitive ticked. One token reads one team, so add one for each.",
     teamLabel: "team",
     privatePort: 8000,
     scanIdle: "Check this Coolify",

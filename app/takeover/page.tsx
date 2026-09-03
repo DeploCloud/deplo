@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth";
 import { isInstanceAdmin } from "@/lib/membership";
-import { noteBrowserReached, takeoverStatus } from "@/lib/data/takeover";
+import {
+  noteBrowserReached,
+  takeoverDataLoss,
+  takeoverStatus,
+} from "@/lib/data/takeover";
 import { getTeamIdentity } from "@/lib/data/teams";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import {
@@ -68,6 +72,8 @@ export default async function TakeoverPage() {
 
   // Something has to have come across before there is any point taking the ports.
   const finished = runs.find((r) => r.status === "done") ?? null;
+  // What that run could NOT copy: the cutover deletes the old panel's copy.
+  const dataLoss = finished ? await takeoverDataLoss(finished.id) : [];
 
   return (
     <Screen>
@@ -97,6 +103,7 @@ export default async function TakeoverPage() {
             finishedRunId: finished?.id ?? null,
             finalUrl: finalPanelUrl(),
             error: status.error,
+            dataLoss,
           }}
           // Everything came across and the report has been closed, so the last
           // step is the only one with anything left in it.
@@ -106,7 +113,10 @@ export default async function TakeoverPage() {
       {(status.state === "pending" ||
         status.state === "ready" ||
         status.state === "failed") && (
-        <TakeoverCancel platformLabel={copy.name} />
+        <TakeoverCancel
+          platformLabel={copy.name}
+          tokenLabel={copy.tokenLabel}
+        />
       )}
     </Screen>
   );

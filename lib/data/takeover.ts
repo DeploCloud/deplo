@@ -3,12 +3,15 @@ import "server-only";
 // https://deplo.build/docs/guides/take-over-your-vps
 
 import { cache } from "react";
-import { eq, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
+  apps as appsTable,
+  databases as databasesTable,
   instanceSettings,
   migrationRuns as runsTable,
+  migrationRunItems as itemsTable,
   migrationRunTargets as targetsTable,
 } from "../db/schema/control-plane";
 import { decryptSecretOrThrow } from "../crypto";
@@ -149,7 +152,11 @@ async function advance(
   if (!current) throw new Error("This instance is not taking over a machine.");
   if (current.state === to) return current;
   if (!NEXT[current.state].includes(to))
-    throw new Error(`A takeover at "${current.state}" cannot move to "${to}".`);
+    throw new Error(
+      current.state === "removed" || current.state === "cancelled"
+        ? "This takeover is already over."
+        : "The takeover has already moved on. Reload the page to see where it is.",
+    );
   // The reason lives exactly as long as the failure it explains.
   const error = to === "failed" ? (opts.error ?? "") : null;
   await writeState({
@@ -180,11 +187,90 @@ export async function noteBrowserReached(): Promise<void> {
  * nothing. Without one of the two, taking the ports would cost them their old
  * panel's routing for nothing, and a disabled button is not a gate.
  */
+/**
+ * The services of a run that arrived WITHOUT their data - a copy that failed -
+ * named the way the report names them. The cutover removes the old panel's
+ * volumes, so for these the old panel holds the only copy there is.
+ */
+export async function takeoverDataLoss(runId: string): Promise<string[]> {
+  // The report is history; the marker on the resource is the state, and a copy
+  // run again clears it. So: every service the run landed on that is STILL marked.
+  const rows = await getDb()
+    .select({
+      name: itemsTable.sourceName,
+      kind: itemsTable.targetKind,
+      target: itemsTable.targetId,
+    })
+    .from(itemsTable)
+    .where(
+      and(
+        eq(itemsTable.runId, runId),
+        inArray(itemsTable.targetKind, ["app", "database"]),
+        inArray(itemsTable.outcome, ["created", "skipped", "failed"]),
+      ),
+    );
+  const ids = (kind: string) => [
+    ...new Set(
+      rows.filter((r) => r.kind === kind && r.target).map((r) => r.target!),
+    ),
+  ];
+  const marked = new Set<string>();
+  const appIds = ids("app");
+  if (appIds.length > 0)
+    for (const a of await getDb()
+      .select({ id: appsTable.id })
+      .from(appsTable)
+      .where(
+        and(inArray(appsTable.id, appIds), ne(appsTable.dataCopyError, "")),
+      ))
+      marked.add(a.id);
+  const dbIds = ids("database");
+  if (dbIds.length > 0)
+    for (const d of await getDb()
+      .select({ id: databasesTable.id })
+      .from(databasesTable)
+      .where(
+        and(
+          inArray(databasesTable.id, dbIds),
+          ne(databasesTable.dataCopyError, ""),
+        ),
+      ))
+      marked.add(d.id);
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const r of rows) {
+    if (!r.target || !marked.has(r.target) || seen.has(r.target)) continue;
+    seen.add(r.target);
+    names.push(r.name);
+  }
+  return names;
+}
+
+/** A migration still moving, in ANY team: the machine is one, the runs are per team. */
+async function migrationInFlight(): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ id: runsTable.id })
+    .from(runsTable)
+    .where(eq(runsTable.status, "running"))
+    .limit(1);
+  return Boolean(row);
+}
+
 export async function requestTakeover(
   runId: string | null,
-  opts: { noOtherTeams?: boolean; discardData?: boolean } = {},
+  opts: {
+    noOtherTeams?: boolean;
+    discardData?: boolean;
+    acceptDataLoss?: boolean;
+  } = {},
 ): Promise<TakeoverStatus> {
   await requireInstanceAdmin();
+  // The cutover stops every container of the old panel: under a copy still in
+  // flight that is data half way across and a source that never comes back.
+  if (await migrationInFlight())
+    throw new Error(
+      "A migration is still running. Wait for it to finish, or stop it, before taking the machine.",
+    );
   // Nothing is being brought across, so there is no run to check. The wizard's
   // typed confirmation is what says this on purpose; this is the only door in.
   if (opts.discardData) return advance("ready");
@@ -210,6 +296,13 @@ export async function requestTakeover(
   if (run.keepSources && !opts.noOtherTeams)
     throw new Error(
       "That migration still has teams to bring over from the panel. Finish them first: taking the ports stops it for good, and a token reads one team.",
+    );
+  // A copy that failed leaves the old panel holding the only data there is, and
+  // the cutover deletes it. Never on a default: the operator says so by name.
+  const lost = await takeoverDataLoss(runId);
+  if (lost.length > 0 && !opts.acceptDataLoss)
+    throw new Error(
+      `${lost.length} ${lost.length === 1 ? "service" : "services"} arrived without ${lost.length === 1 ? "its" : "their"} data (${lost.join(", ")}). Taking over deletes the old panel's copy, so copy the data again first, or confirm that it may be lost.`,
     );
   return advance("ready", { runId });
 }
@@ -246,6 +339,12 @@ export async function cancelTakeover(
   )
     throw new Error(
       "The ports are already Deplo's, so there is nothing to hand back.",
+    );
+  // Backing out starts the panel's services again - under a copy still reading
+  // one of them that is a tar of a live volume reported as "Copied".
+  if (await migrationInFlight())
+    throw new Error(
+      "A migration is still running. Stop it first, then cancel the takeover.",
     );
 
   const outcome = await restartStoppedSources(apiKey);

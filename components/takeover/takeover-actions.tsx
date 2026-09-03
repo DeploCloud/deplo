@@ -30,11 +30,13 @@ const TAKE_PORTS = /* GraphQL */ `
     $runId: String
     $noOtherTeams: Boolean
     $discardData: Boolean
+    $acceptDataLoss: Boolean
   ) {
     requestTakeover(
       runId: $runId
       noOtherTeams: $noOtherTeams
       discardData: $discardData
+      acceptDataLoss: $acceptDataLoss
     ) {
       state
     }
@@ -81,6 +83,7 @@ export function TakeoverStep({
   error,
   finishedRunId,
   finalUrl,
+  dataLoss = [],
 }: {
   platformLabel: string;
   /** Whether anything was brought across, which is what the confirmation says. */
@@ -93,6 +96,8 @@ export function TakeoverStep({
   finishedRunId: string | null;
   /** Where the dashboard answers once the ports have moved. */
   finalUrl: string;
+  /** Services whose data did not come across: the old panel holds the only copy. */
+  dataLoss?: string[];
 }) {
   if (state !== "pending" && state !== "failed")
     return (
@@ -108,6 +113,7 @@ export function TakeoverStep({
       mode={mode}
       finishedRunId={finishedRunId}
       error={state === "failed" ? (error ?? "") : null}
+      dataLoss={dataLoss}
     />
   );
 }
@@ -118,16 +124,21 @@ function TakeoverConfirm({
   mode,
   finishedRunId,
   error,
+  dataLoss,
 }: {
   platformLabel: string;
   mode: TakeoverMode;
   finishedRunId: string | null;
   /** Non-null when the last attempt rolled back: the card offers Try again instead. */
   error: string | null;
+  dataLoss: string[];
 }) {
   const router = useRouter();
   const [retrying, setRetrying] = React.useState(false);
   const clean = mode === "clean";
+  /** The copy of these failed; taking over deletes the only copy left. */
+  const lossy = !clean && dataLoss.length > 0;
+  const [lossAccepted, setLossAccepted] = React.useState(false);
   /**
    * A token reads ONE team of that panel, and the panel cannot always list the
    * others - Coolify never can. The cutover stops it for good, so this is a thing
@@ -140,13 +151,18 @@ function TakeoverConfirm({
     runId: clean ? null : finishedRunId,
     noOtherTeams: clean ? null : agreed,
     discardData: clean,
+    acceptDataLoss: lossy ? lossAccepted : null,
   });
 
   // The operator already confirmed once; the machine is back on the old panel
   // and the only question left is whether to try again.
   async function retry() {
     setRetrying(true);
-    const res = await gqlAction(TAKE_PORTS, args(true));
+    // The operator already ticked every box before the attempt that rolled back.
+    const res = await gqlAction(TAKE_PORTS, {
+      ...args(true),
+      acceptDataLoss: lossy ? true : null,
+    });
     if (!res.ok) {
       setRetrying(false);
       toast.error(res.error);
@@ -218,27 +234,48 @@ function TakeoverConfirm({
               )
             }
             extra={
-              <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-                <Checkbox
-                  checked={understood}
-                  onCheckedChange={(v) => setUnderstood(v === true)}
-                  className="mt-0.5"
-                />
-                <span>
-                  <span className="font-medium">
-                    {clean
-                      ? "I understand every app and all its data on this machine is destroyed"
-                      : `I have no other teams on this ${platformLabel}`}
+              <div className="grid gap-2">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                  <Checkbox
+                    checked={understood}
+                    onCheckedChange={(v) => setUnderstood(v === true)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium">
+                      {clean
+                        ? "I understand every app and all its data on this machine is destroyed"
+                        : `I have no other teams on this ${platformLabel}`}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {clean
+                        ? "Nothing was brought over, and nothing about it is kept anywhere."
+                        : "One token reads one team. Anything not brought over yet stays on a panel that stops answering."}
+                    </span>
                   </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {clean
-                      ? "Nothing was brought over, and nothing about it is kept anywhere."
-                      : "One token reads one team. Anything not brought over yet stays on a panel that stops answering."}
-                  </span>
-                </span>
-              </label>
+                </label>
+                {lossy && (
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                    <Checkbox
+                      checked={lossAccepted}
+                      onCheckedChange={(v) => setLossAccepted(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium">
+                        {dataLoss.length === 1
+                          ? `${dataLoss[0]} loses its data`
+                          : `${dataLoss.length} services lose their data: ${dataLoss.join(", ")}`}
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {`The copy failed, so ${platformLabel} still holds the only copy, and taking over deletes it. Go back to Review to copy the data again instead.`}
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </div>
             }
-            confirmDisabled={!understood}
+            confirmDisabled={!understood || (lossy && !lossAccepted)}
             confirmText={platformLabel.toLowerCase()}
             confirmLabel={clean ? "Delete it" : "Take it over"}
             variant={clean ? "destructive" : "default"}
@@ -331,7 +368,7 @@ function TakeoverWaiting({
     return (
       <Working
         title={`Removing ${platformLabel}`}
-        body="Its containers, volumes, networks, images, directory and swarm are being taken off this machine. The dashboard opens by itself when it is gone."
+        body={`${platformLabel} and everything it ran are being removed from this machine. The dashboard opens by itself when it is gone.`}
       />
     );
 
@@ -340,9 +377,9 @@ function TakeoverWaiting({
       title="Moving the ports"
       body={
         <>
-          {platformLabel} is being stopped, its certificates inherited, and
-          Traefik moved onto 80 and 443. This page follows the dashboard to its
-          own address by itself.
+          {platformLabel} is being stopped and Deplo is taking its place on the
+          web ports. This page follows the dashboard to its own address by
+          itself.
           {slow && (
             <>
               <br />
@@ -365,7 +402,14 @@ function TakeoverWaiting({
  * screen exists for, but reachable from every step - somebody who changes their
  * mind on step two should not have to finish first.
  */
-export function TakeoverCancel({ platformLabel }: { platformLabel: string }) {
+export function TakeoverCancel({
+  platformLabel,
+  tokenLabel,
+}: {
+  platformLabel: string;
+  /** Their word for it: Dokploy mints keys, Coolify tokens. */
+  tokenLabel: string;
+}) {
   const [cancelKey, setCancelKey] = React.useState("");
   const [cancelling, setCancelling] = React.useState(false);
 
@@ -395,12 +439,12 @@ export function TakeoverCancel({ platformLabel }: { platformLabel: string }) {
             Cancel and remove Deplo
           </Button>
         }
-        title="Cancel the migration?"
+        title={`Remove Deplo and go back to ${platformLabel}?`}
         description={`Everything Deplo created here is removed, your services are started again on ${platformLabel}, and Deplo comes off this machine. ${platformLabel} keeps all of its data.`}
         extra={
           <div className="grid gap-1.5">
             <Label htmlFor="cancel-key">
-              {platformLabel} API token, to start them again
+              {tokenLabel}, to start them again
             </Label>
             <Input
               id="cancel-key"
@@ -408,11 +452,11 @@ export function TakeoverCancel({ platformLabel }: { platformLabel: string }) {
               autoComplete="off"
               value={cancelKey}
               onChange={(e) => setCancelKey(e.target.value)}
-              placeholder="The same one you pasted before"
+              placeholder={`Paste the ${tokenLabel}`}
             />
           </div>
         }
-        confirmLabel="Cancel it"
+        confirmLabel="Remove Deplo"
         optimistic
         onConfirm={async () => {
           const res = await gqlAction<

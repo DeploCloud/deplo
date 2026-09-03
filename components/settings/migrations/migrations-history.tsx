@@ -90,7 +90,7 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge variant="secondary">{r.created} created</Badge>
                     {r.manual > 0 && (
-                      <Badge variant="warning">{r.manual} to check</Badge>
+                      <Badge variant="warning">{r.manual} need you</Badge>
                     )}
                     {r.failed > 0 && (
                       <Badge variant="destructive">{r.failed} failed</Badge>

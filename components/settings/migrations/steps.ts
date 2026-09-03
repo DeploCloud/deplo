@@ -80,8 +80,9 @@ export function stepReachable(s: StepId, at: StepProgress): boolean {
       return at.plan;
     case "review":
       return at.plan && at.machinesReady;
+    // The members live in the scan, so a reload with no plan has nobody to show.
     case "people":
-      return at.reportDone;
+      return at.reportDone && at.plan;
     // Taking the ports stops that panel for good, so a team still queued comes
     // first. A clean takeover has nothing to wait for.
     case "takeover":

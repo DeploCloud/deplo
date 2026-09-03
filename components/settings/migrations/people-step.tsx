@@ -67,7 +67,7 @@ export function PeopleStep({
         <EmptyState
           icon={UserPlus}
           title="Nobody else to bring over"
-          description={`That ${copyFor(kind).name} had no other members.`}
+          description={`${copyFor(kind).name} listed no other members for this team.`}
         />
       ) : (
         // Two columns at most: the wizard's column is a fixed measure now, so

@@ -1029,3 +1029,82 @@ test("a file storage says where it is on the host", () => {
   assert.equal(mounts[0]!.type, "file");
   assert.equal(mounts[0]!.hostPath, "/srv/mxb1/single.conf");
 });
+
+/* ---- what the audit of 4 set 2026 found dropped or doubled --------------- */
+
+test("a compose build pack pointed at a repository keeps the repository", () => {
+  const { value } = coolifyCompose({
+    ...APP,
+    uuid: "cmp-1",
+    build_pack: "dockercompose",
+    docker_compose_raw: "services:\n  web:\n    build: .\n",
+    docker_compose_location: "/docker-compose.yml",
+    base_directory: "/apps/web",
+  });
+  assert.equal(value.sourceType, "git");
+  assert.equal(value.customGitUrl, "https://github.com/acme/web");
+  assert.equal(value.customGitBranch, "main");
+  assert.equal(value.composePath, "/docker-compose.yml");
+  // No repository, no build: the raw file is the whole stack.
+  const { value: raw } = coolifyCompose({
+    uuid: "cmp-2",
+    name: "kv",
+    docker_compose_raw: "services:\n  kv:\n    image: alpine\n",
+  });
+  assert.equal(raw.sourceType, "raw");
+});
+
+test("the base directory is the build path once, never the context twice", () => {
+  const a = coolifyApplication(
+    { ...APP, build_pack: "dockerfile", base_directory: "/apps/web" },
+    { serverId: "srv-1", environmentId: "2" },
+  );
+  assert.equal(a.customGitBuildPath, "/apps/web");
+  assert.equal(a.dockerContextPath, null);
+});
+
+test("a publish directory only means static when the app is static", () => {
+  const stale = coolifyApplication(
+    { ...APP, build_pack: "nixpacks", publish_directory: "/dist" },
+    { serverId: "srv-1", environmentId: "2" },
+  );
+  assert.equal(stale.publishDirectory, null);
+  const site = coolifyApplication(
+    { ...APP, build_pack: "static", publish_directory: "/dist" },
+    { serverId: "srv-1", environmentId: "2" },
+  );
+  assert.equal(site.publishDirectory, "/dist");
+});
+
+test("the panel's own proxy labels are dropped, a middleware somebody wrote is named", () => {
+  const labels = [
+    "traefik.enable=true",
+    "traefik.http.routers.app-1-https.rule=Host(`web.acme.com`)",
+    "traefik.http.services.app-1-https.loadbalancer.server.port=3000",
+    "traefik.http.middlewares.gzip.compress=true",
+    "traefik.http.middlewares.office.ipallowlist.sourcerange=10.0.0.0/8",
+    "caddy_0=https://web.acme.com",
+    "com.acme.tier=gold",
+  ].join("\n");
+  const notes = coolifyNotes({
+    ...APP,
+    custom_labels: Buffer.from(labels).toString("base64"),
+  });
+  const line = notes.find((n) => /label/.test(n)) ?? "";
+  assert.match(line, /ipallowlist/);
+  assert.match(line, /com\.acme\.tier/);
+  assert.doesNotMatch(line, /traefik\.enable|routers\.app-1|gzip|caddy_0/);
+});
+
+test("Coolify's build-step overrides come across", () => {
+  const a = coolifyApplication(
+    {
+      ...APP,
+      install_command: "pnpm i --frozen-lockfile",
+      build_command: "pnpm build:prod",
+    },
+    { serverId: "srv-1", environmentId: "2" },
+  );
+  assert.equal(a.installCommand, "pnpm i --frozen-lockfile");
+  assert.equal(a.buildCommand, "pnpm build:prod");
+});

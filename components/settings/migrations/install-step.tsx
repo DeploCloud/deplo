@@ -525,8 +525,11 @@ export function InstallStep({
     });
 
   // ---- and then move on ---------------------------------------------
+  // Only when it BECOMES settled here: a person who came back to this step
+  // (Back from Review, Change address) must not be thrown forward again.
+  const settledOnMount = React.useRef(settled);
   React.useEffect(() => {
-    if (!settled) return;
+    if (!settled || settledOnMount.current) return;
     const t = setTimeout(onDone, SETTLE_MS);
     return () => clearTimeout(t);
   }, [settled, onDone]);
@@ -539,7 +542,7 @@ export function InstallStep({
       lead={
         settled
           ? "Deplo can read the disks it needs."
-          : "Deplo needs its agent on each machine to read your data. It takes it back off when the migration is done."
+          : "Sign in to each machine as root and paste its line. Deplo needs its agent there to read your data, and takes it back off when the migration is done."
       }
     >
       <div className="divide-y divide-border/60 rounded-lg border border-border">

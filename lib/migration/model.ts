@@ -114,6 +114,12 @@ export interface SourceApplication {
   enableSubmodules?: boolean | null;
   replicas?: number | null;
   command?: string | null;
+  /** Build-step overrides where the panel has them (Coolify); null = detect. */
+  installCommand?: string | null;
+  buildCommand?: string | null;
+  /** Preview deployments' base domain and their own variables, where the panel has them. */
+  previewWildcard?: string | null;
+  previewEnv?: string | null;
   // docker source
   dockerImage?: string | null;
   registryUrl?: string | null;

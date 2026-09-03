@@ -22,6 +22,8 @@ import {
   apps as appsTable,
   databases as databasesTable,
   migrationRunItems as itemsTable,
+  migrationRunDbHosts as dbHostsTable,
+  migrationRunTargets as targetsTable,
   migrationRuns as runsTable,
   migrationSourceAddresses as sourceAddressesTable,
   domains as domainsTable,
@@ -1405,7 +1407,12 @@ export async function beginMigration(input: {
 
   const interrupted = await db
     .update(runsTable)
-    .set({ status: "failed", error: "Interrupted", finishedAt: now })
+    .set({
+      status: "failed",
+      error:
+        "Stopped answering, so it was marked failed when the next migration started. Whatever it created is still here - the log says what.",
+      finishedAt: now,
+    })
     .where(and(eq(runsTable.teamId, teamId), eq(runsTable.status, "running")))
     .returning({ id: runsTable.id });
   // A run nobody is running must not go on holding its services hostage: this is
@@ -1860,6 +1867,10 @@ export async function refreshCounts(
  * report for the whole project, in the order things happened.
  */
 class Report {
+  /** The run these lines belong to, for the tables that hang off it. */
+  get id(): string | null {
+    return this.runId;
+  }
   constructor(
     private readonly runId: string | null,
     /** The source product's name. A mapper writes `{panel}`; this is what it
@@ -2147,8 +2158,15 @@ async function runImportMigrationProject(
 
   // What a database was called on the other side, and what it answers to here.
   // Filled in as the databases land and read by every app imported after them,
-  // which is why the databases of an environment are imported first.
+  // which is why the databases of an environment are imported first - and kept
+  // with the RUN, so an app in a later project sees the databases of an earlier one.
   const dbHosts = new Map<string, string>();
+  if (report.id)
+    for (const h of await getDb()
+      .select({ from: dbHostsTable.sourceHost, to: dbHostsTable.targetHost })
+      .from(dbHostsTable)
+      .where(eq(dbHostsTable.runId, report.id)))
+      dbHosts.set(h.from, h.to);
 
   const projectId = await ensureProject(source, report);
   if (!projectId)
@@ -2354,6 +2372,7 @@ async function runImportMigrationProject(
             name,
             {
               serverId,
+              projectName: source.name,
               environmentId,
               // The port the review settled on, or the source's own when it said
               // nothing. `null` is a decision ("publish nothing"), not a silence.
@@ -3664,6 +3683,8 @@ async function importDatabaseService(
     exposedPort?: number | null;
     mayExposePorts: boolean;
     sourceIsTargetHost: boolean;
+    /** The project it came from, which names a namesake database apart. */
+    projectName?: string;
     /** Filled in with `old host -> new host`, for the apps that name it. */
     dbHosts: Map<string, string>;
   },
@@ -3685,26 +3706,53 @@ async function importDatabaseService(
   }
   const spec = mapped.value;
 
-  const clash = await getDb()
-    .select({ id: databasesTable.id })
-    .from(databasesTable)
-    .where(
-      and(
-        eq(databasesTable.teamId, await requireActiveTeamId()),
-        sql`lower(${databasesTable.name}) = ${spec.name.trim().toLowerCase()}`,
-      ),
-    );
-  if (clash.length > 0) {
+  // A database's name is one per team here, and "postgres" is in every project
+  // over there. The SAME environment is the same database (a second run, which
+  // is how newer data comes across); anywhere else it is a namesake, and it
+  // gets a name of its own rather than a skip that never copies its data.
+  const teamId = await requireActiveTeamId();
+  const taken = async (candidate: string) =>
+    (
+      await getDb()
+        .select({
+          id: databasesTable.id,
+          environmentId: databasesTable.environmentId,
+        })
+        .from(databasesTable)
+        .where(
+          and(
+            eq(databasesTable.teamId, teamId),
+            sql`lower(${databasesTable.name}) = ${candidate.trim().toLowerCase()}`,
+          ),
+        )
+    )[0];
+  const clash = await taken(spec.name);
+  if (clash && clash.environmentId === opts.environmentId) {
     await report.add({
       sourceKind: svc.kind,
       sourceId: svc.id,
       sourceName: name,
       outcome: "skipped",
       targetKind: "database",
-      targetId: clash[0].id,
-      message: "A database with this name is already in this team.",
+      targetId: clash.id,
+      message:
+        "A database with this name is already in this environment, so it is the one that is kept - its data is copied again in this same import.",
     });
     return;
+  }
+  if (clash) {
+    const suffix =
+      (opts.projectName ?? "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "2";
+    const base = `${spec.name.trim()}-${suffix}`;
+    let candidate = base;
+    for (let n = 2; await taken(candidate); n++) candidate = `${base}-${n}`;
+    notes.push(
+      `This team already has a database called ${spec.name}, so this one is ${candidate}.`,
+    );
+    spec.name = candidate;
   }
 
   // The password is carried over on purpose (see mapDatabase), and as a GENERATED
@@ -3768,6 +3816,18 @@ async function importDatabaseService(
   if (!created && publishPort != null && opts.sourceIsTargetHost) {
     try {
       await sourceClient(c).stopService(svc.kind, svc.id);
+      // Written down like the data phase's own stops: backing out starts again
+      // exactly what Deplo stopped, and this one used to be forgotten.
+      if (report.id)
+        await getDb()
+          .update(targetsTable)
+          .set({ stoppedKind: svc.kind, stoppedAt: nowIso() })
+          .where(
+            and(
+              eq(targetsTable.runId, report.id),
+              eq(targetsTable.serviceId, svc.id),
+            ),
+          );
       created = await attempt({ ...withPassword, ...withPort });
     } catch {
       /* Dokploy would not stop it; the data phase tries again and says so. */
@@ -3869,7 +3929,25 @@ async function importDatabaseService(
   // Both names an app can reach it by: the container's label (Dokploy) and the
   // service's own id, which is what Coolify hands out as the internal URL.
   for (const from of [row.appName, svc.id])
-    if (from?.trim()) opts.dbHosts.set(from.trim(), created.host);
+    if (from?.trim()) {
+      opts.dbHosts.set(from.trim(), created.host);
+      if (report.id)
+        await getDb()
+          .insert(dbHostsTable)
+          .values({
+            runId: report.id,
+            sourceHost: from.trim(),
+            targetHost: created.host,
+            environmentId: opts.environmentId,
+          })
+          .onConflictDoUpdate({
+            target: [dbHostsTable.runId, dbHostsTable.sourceHost],
+            set: {
+              targetHost: created.host,
+              environmentId: opts.environmentId,
+            },
+          });
+    }
   await report.notes(
     svc.kind,
     name,

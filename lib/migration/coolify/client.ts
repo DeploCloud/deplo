@@ -447,8 +447,10 @@ export async function listEnvironments(
   c: SourceCredential,
   projectUuid: string,
 ): Promise<CoolifyEnvironment[]> {
+  // Never swallowed: a project whose environments cannot be read is a project
+  // whose every resource would vanish from the scan without a word.
   return asArray<CoolifyEnvironment>(
-    await getOr<unknown>(c, `projects/${projectUuid}/environments`, []),
+    await get<unknown>(c, `projects/${projectUuid}/environments`),
   );
 }
 

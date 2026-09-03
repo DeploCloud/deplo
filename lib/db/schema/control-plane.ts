@@ -2853,6 +2853,25 @@ export const migrationRuns = pgTable(
  * imported with something left to do by hand. A LIST under a run, so a child table
  * (never a JSONB column).
  */
+/**
+ * `old host -> new host` for every database a run created, kept across the
+ * projects of that run: an app in a later project that names a database of an
+ * earlier one has to be rewritten too, and a per-project map never saw it.
+ */
+export const migrationRunDbHosts = pgTable(
+  "migration_run_db_hosts",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => migrationRuns.id, { onDelete: "cascade" }),
+    sourceHost: text("source_host").notNull(),
+    targetHost: text("target_host").notNull(),
+    /** The Environment the database landed in - a rewrite across two is a note. */
+    environmentId: text("environment_id"),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.sourceHost] })],
+);
+
 export const migrationRunItems = pgTable(
   "migration_run_items",
   {

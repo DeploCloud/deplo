@@ -2143,7 +2143,7 @@ test("a run left open by a closed tab is closed as interrupted by the next one",
   const runs = await asOwner(() => listMigrationRuns());
   const old = runs.find((r) => r.id === abandoned)!;
   assert.equal(old.status, "failed");
-  assert.equal(old.error, "Interrupted");
+  assert.match(old.error ?? "", /^Stopped answering/);
   assert.equal(runs.filter((r) => r.status === "running").length, 1);
 });
 

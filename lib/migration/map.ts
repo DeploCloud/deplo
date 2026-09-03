@@ -249,6 +249,39 @@ const DOKPLOY_NETWORK = "dokploy-network";
  * and the top-level `x-*` blocks the services merge from. An anchor is where the
  * value really lives, so a rewrite that skips it edits a copy.
  */
+/**
+ * Keys a panel's own compose dialect adds and `docker compose` refuses outright:
+ * `exclude_from_hc` on a service, `content` / `is_directory` on a long-syntax
+ * volume. The file content already travels as a Files entry, so nothing is lost.
+ */
+function stripPanelComposeExtensions(
+  serviceName: string,
+  holder: YAMLMap,
+  changes: string[],
+): void {
+  if (holder.has("exclude_from_hc")) {
+    holder.delete("exclude_from_hc");
+    changes.push(
+      `${serviceName}: exclude_from_hc is the old panel's own key, which compose refuses - it was removed.`,
+    );
+  }
+  const vols = holder.get("volumes", true);
+  if (!isSeq(vols)) return;
+  let stripped = 0;
+  for (const entry of vols.items) {
+    if (!isMap(entry)) continue;
+    for (const key of ["content", "is_directory"])
+      if (entry.has(key)) {
+        entry.delete(key);
+        stripped++;
+      }
+  }
+  if (stripped > 0)
+    changes.push(
+      `${serviceName}: ${stripped} inline file key(s) (content, is_directory) are the old panel's own, which compose refuses - the files themselves came across under Files.`,
+    );
+}
+
 function serviceLikeMaps(root: YAMLMap): { name: string; map: YAMLMap }[] {
   const out: { name: string; map: YAMLMap }[] = [];
   const services = root.get("services");
@@ -447,6 +480,7 @@ export function adaptComposeForDeplo(
   for (const { name: serviceName, map: holder } of serviceLikeMaps(root)) {
     if (keys.size > 0) stripNetworks(holder, keys);
     stripHostNetworkMode(serviceName, holder, changes);
+    stripPanelComposeExtensions(serviceName, holder, changes);
 
     // The file-mount paths, off both shapes of a volume entry. A SEQUENCE is what
     // tells a service's mounts from the top-level named-volume block.
@@ -1003,11 +1037,21 @@ export function mapBuildSettings(
   const root = buildPathFor(app);
   if (root) build.rootDirectory = root;
 
+  // The panel's own overrides of the build steps, where it has them.
+  if (app.installCommand?.trim())
+    build.installCommand = app.installCommand.trim();
+  if (app.buildCommand?.trim()) build.buildCommand = app.buildCommand.trim();
+
   // Dokploy's `command` overrides the container's command; Deplo's closest field
   // is the builder's start command. Same intent, different layer for a
-  // Dockerfile build (where Deplo leaves CMD alone), hence the note.
+  // Dockerfile build (where Deplo leaves CMD alone), hence the note. An app run
+  // straight from an image has no build for the field to reach, so it is said.
   const command = app.command?.trim();
-  if (command) {
+  if (command && app.sourceType === "docker") {
+    notes.push(
+      `Ran with the command "${truncate(command, 80)}" on {panel}. Deplo runs the image's own command; set it in the image or turn the app into a compose stack to keep it.`,
+    );
+  } else if (command) {
     build.startCommand = command;
     if (buildMethod === "dockerfile")
       notes.push(

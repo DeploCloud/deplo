@@ -107,6 +107,7 @@ const CONTROL_PLANE = [
   // kept: "what came over from the old platform, and what did not" has to be
   // answerable after the tab that started it is gone.
   "migration_runs",
+  "migration_run_db_hosts",
   "migration_run_items",
   // Where a machine of a given Dokploy is actually REACHED, remembered across
   // attempts.

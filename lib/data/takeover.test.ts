@@ -10,6 +10,8 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
+import { seedDatabase } from "./backup-test-helpers";
+import { seedServerRow } from "./infra-test-helpers";
 import {
   __resetMigrationFetchForTest,
   __setMigrationFetchForTest,
@@ -21,6 +23,7 @@ import {
   noteBrowserReached,
   requestTakeover,
   takeoverBlocksDashboard,
+  takeoverDataLoss,
   takeoverStatus,
 } from "./takeover";
 
@@ -51,6 +54,8 @@ beforeEach(async () => {
   await pg.exec(TRUNCATE_IDENTITY);
   await db.execute("delete from instance_settings;");
   await db.execute("delete from migration_runs;");
+  await db.execute("delete from databases;");
+  await db.execute("delete from servers;");
   await seedIdentity(db, {
     users: [
       { id: ADMIN, teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
@@ -142,7 +147,7 @@ test("the ladder only ever goes forward", async () => {
   await seedFinishedRun("run_2");
   await assert.rejects(
     () => asUser(ADMIN, () => requestTakeover("run_2")),
-    /cannot move to "ready"/,
+    /already moved on|already over/,
     "a finished takeover must not be restartable",
   );
   await assert.rejects(
@@ -157,7 +162,7 @@ test("the ladder only ever goes forward", async () => {
   assert.equal((await read())?.state, "removed");
   await assert.rejects(
     () => asUser(ADMIN, () => markTakeoverProgress("removing")),
-    /cannot move to "removing"/,
+    /already over/,
   );
 });
 
@@ -185,8 +190,86 @@ test("a cutover that rolled back can be asked for again, and says why", async ()
   await asUser(ADMIN, () => markTakeoverProgress("done"));
   await assert.rejects(
     () => asUser(ADMIN, () => markTakeoverProgress("failed", "late")),
-    /cannot move to "failed"/,
+    /already moved on|already over/,
   );
+});
+
+test("a service that arrived without its data holds the ports until the loss is accepted", async () => {
+  await seedPending();
+  await seedFinishedRun("run_1");
+  // A database the run landed on whose copy failed: the marker on the row is
+  // what says so, and the report's lines are how the run names it.
+  await seedServerRow(db, {
+    id: "srv_1",
+    name: "box",
+    ip: "203.0.113.7",
+    host: "203.0.113.7",
+  });
+  await seedDatabase(db, { id: "db_1", name: "mxpg", serverId: "srv_1" });
+  await db.execute(
+    `update databases set data_copy_error = 'the copy failed' where id = 'db_1';`,
+  );
+  await db.execute(
+    `insert into migration_run_items (id, run_id, path, source_kind, source_name, outcome, target_kind, target_id, message)
+     values ('item_1', 'run_1', 'mx / production / mxpg', 'postgres', 'mxpg', 'created', 'database', 'db_1', null),
+            ('item_2', 'run_1', 'mx / production / mxpg', 'volume', 'mxpg', 'failed', 'database', 'db_1', 'the copy failed'),
+            ('item_3', 'run_1', 'mx / production / web', 'application', 'web', 'created', 'app', 'app_1', null);`,
+  );
+  await assert.rejects(
+    () => asUser(ADMIN, () => requestTakeover("run_1")),
+    /1 service arrived without its data \(mxpg\)/,
+    "the old panel holds the only copy, so nothing moves on a default",
+  );
+  assert.equal((await read())?.state, "pending");
+  await asUser(ADMIN, () => requestTakeover("run_1", { acceptDataLoss: true }));
+  assert.equal((await read())?.state, "ready");
+});
+
+test("the loss list reads the live marker, so a copy run again clears it", async () => {
+  await seedPending();
+  await seedFinishedRun("run_1");
+  await seedServerRow(db, {
+    id: "srv_1",
+    name: "box",
+    ip: "203.0.113.7",
+    host: "203.0.113.7",
+  });
+  await seedDatabase(db, { id: "db_1", name: "mxpg", serverId: "srv_1" });
+  await db.execute(
+    `update databases set data_copy_error = 'the copy failed' where id = 'db_1';`,
+  );
+  await db.execute(
+    `insert into migration_run_items (id, run_id, path, source_kind, source_name, outcome, target_kind, target_id, message)
+     values ('item_a', 'run_1', 'mx / production / mxpg', 'postgres', 'mxpg', 'created', 'database', 'db_1', null);`,
+  );
+  assert.deepEqual(await takeoverDataLoss("run_1"), ["mxpg"]);
+  await db.execute(
+    `update databases set data_copy_error = '' where id = 'db_1';`,
+  );
+  assert.deepEqual(await takeoverDataLoss("run_1"), []);
+});
+
+test("the machine is not taken, nor handed back, while a migration is still running", async () => {
+  await seedPending();
+  await seedFinishedRun("run_1");
+  await seedFinishedRun("run_live", "running");
+  await assert.rejects(
+    () => asUser(ADMIN, () => requestTakeover("run_1")),
+    /still running/,
+  );
+  await assert.rejects(
+    () => asUser(ADMIN, () => requestTakeover(null, { discardData: true })),
+    /still running/,
+  );
+  await assert.rejects(
+    () => asUser(ADMIN, () => cancelTakeover()),
+    /still running/,
+  );
+  await db.execute(
+    `update migration_runs set status = 'done' where id = 'run_live';`,
+  );
+  await asUser(ADMIN, () => requestTakeover("run_1"));
+  assert.equal((await read())?.state, "ready");
 });
 
 test("backing out is still open after a rollback", async () => {
@@ -313,7 +396,7 @@ test("the ports are not handed over for a migration that never finished", async 
   await seedFinishedRun("run_live", "running");
   await assert.rejects(
     () => asUser(ADMIN, () => requestTakeover("run_live")),
-    /is running/,
+    /is running|still running/,
   );
   assert.equal((await read())?.state, "pending");
 });

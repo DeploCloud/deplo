@@ -702,13 +702,22 @@ export function coolifyApplication(
       .map((p) => p.trim())
       .filter(Boolean),
     command: row.start_command ?? null,
+    installCommand: row.install_command ?? null,
+    buildCommand: row.build_command ?? null,
     dockerImage: image,
     // The PATH, not the file: `dockerfile` is the inline text somebody typed into
     // the panel, and taking it for a path built every monorepo from ./Dockerfile.
     dockerfile: row.dockerfile_location?.trim().replace(/^\/+/, "") || null,
-    dockerContextPath: row.base_directory ?? null,
+    // The build path below already carries `base_directory`: the context is
+    // relative to it, and naming it twice built from `apps/web/apps/web`.
+    dockerContextPath: null,
     dockerBuildStage: row.dockerfile_target_build ?? null,
-    publishDirectory: row.publish_directory ?? null,
+    // A publish directory only means "serve these files" when the app IS static;
+    // a stale one on a nixpacks app wrapped a server in nginx.
+    publishDirectory:
+      row.build_pack === "static" || row.settings?.is_static
+        ? (row.publish_directory ?? null)
+        : null,
     isStaticSpa: row.settings?.is_spa ?? null,
     customGitUrl: git.url,
     // A bare `owner/repo` is Coolify keeping the host on a connected SOURCE -
@@ -872,7 +881,16 @@ export function coolifyCompose(
       composeType: "docker-compose",
       stackDir: extras.stackDir ?? null,
       routingPort: onCompose.port,
-      sourceType: "raw",
+      // A compose build pack pointed at a repository builds from it: without the
+      // repository a `build:` stack arrives with nothing to build from.
+      ...(app.git_repository?.trim()
+        ? {
+            sourceType: "git" as const,
+            customGitUrl: coolifyGitUrl(app).url,
+            customGitBranch: app.git_branch ?? null,
+            composePath: app.docker_compose_location ?? null,
+          }
+        : { sourceType: "raw" as const }),
       serverId: extras.serverId ?? "",
       environmentId: extras.environmentId ?? null,
       domains: domains.value,
@@ -1040,10 +1058,15 @@ function decodeLabels(raw: string | null | undefined): string[] {
 export function coolifyNotes(row: CoolifyApplication): string[] {
   const notes: string[] = [];
 
-  // Traefik labels are dropped in silence: Deplo owns that grammar and writes its
-  // own. Anything else was somebody's decision and has to be repeated by hand.
+  // The proxy labels {panel} generates itself are dropped: Deplo owns that
+  // grammar and writes its own. A middleware somebody WROTE (an allow-list, a
+  // header, a rate limit) is a decision, and it is named so it can be repeated.
+  const generated = new RegExp(
+    `^(traefik\\.enable=|traefik\\.http\\.(routers|services)\\.${row.uuid}|traefik\\.http\\.routers\\.https-|traefik\\.http\\.routers\\.http-|traefik\\.http\\.services\\.https-|traefik\\.http\\.services\\.http-|traefik\\.http\\.middlewares\\.(gzip|redirect-to-https|redirect-to-http)\\.|caddy_)`,
+    "i",
+  );
   const labels = decodeLabels(row.custom_labels).filter(
-    (l) => !/^traefik\./i.test(l) && !/^caddy_/i.test(l),
+    (l) => !generated.test(l),
   );
   if (labels.length > 0)
     notes.push(

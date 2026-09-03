@@ -469,6 +469,8 @@ export function MigrationWizard({
     finalUrl: string;
     /** Why the last cutover rolled back, when `state` is `failed`. */
     error: string | null;
+    /** Services of the finished run that arrived without their data. */
+    dataLoss: string[];
   } | null;
   /** What a takeover of this machine is walking into - a server component's
    *  output, so it arrives rendered. Not shown when nothing is being copied. */
@@ -688,7 +690,13 @@ export function MigrationWizard({
   async function submitConnect(e: React.FormEvent) {
     e.preventDefault();
     if (apiKey.trim() && queue.length > 0) return identifyAndAdd();
-    if (queue.length > 0) return goToTeam(0);
+    if (queue.length > 0)
+      return goToTeam(
+        Math.max(
+          0,
+          queue.findIndex((q) => q.status === "waiting"),
+        ),
+      );
     // One team and one token is the common case, and it stays one click: the key
     // in the field IS the list then, named by what the scan read.
     const key = apiKey;
@@ -1009,7 +1017,12 @@ export function MigrationWizard({
       setSnapshot(null);
       // The list says how each team went, so a report closed hours later still
       // reads as "two over, one to go".
-      const outcome = res.data.status === "done" ? "done" : "failed";
+      const outcome =
+        res.data.status === "done"
+          ? "done"
+          : res.data.status === "stopped"
+            ? "stopped"
+            : "failed";
       setQueue((q) =>
         q.map((e, i) => (i === at ? { ...e, status: outcome } : e)),
       );
@@ -1393,6 +1406,7 @@ export function MigrationWizard({
                   on it. The step they left is the step they get, Stop and all. */}
               {resumed && (
                 <MovingPanel
+                  isTakeover={isTakeover}
                   kind={kind}
                   progress={
                     feed
@@ -1478,20 +1492,23 @@ export function MigrationWizard({
                 showing !== "report" &&
                 (moving ? (
                   <MovingPanel
+                    isTakeover={isTakeover}
                     kind={kind}
                     progress={NO_PROGRESS}
                     startedAt={null}
                     // The start call is in flight in THIS tab: there is no run
-                    // yet, so there is no heartbeat to be missing.
-                    heartbeatAt={new Date().toISOString()}
+                    // yet, so there is no heartbeat to be missing. Once there IS
+                    // one the feed has not shown, nothing is moving yet either.
+                    heartbeatAt={awaitingRun ? null : new Date().toISOString()}
                     failure={failure}
                     // A run this tab holds but cannot see yet is still a run: the
                     // plan must not come back under it.
                     running={running || awaitingRun}
                     undoing={false}
                     onShowLog={() => setLogOpen(true)}
-                    // No Stop: this is the second the `startMigration` call
-                    // is in flight, and there is no run id to stop yet.
+                    // Stop is there the moment a run id exists; before that the
+                    // `startMigration` call is in flight and there is nothing to stop.
+                    onStop={runId ? () => void stopRun(runId) : undefined}
                     onBack={() => setFailure(null)}
                   />
                 ) : showing === "plan" && plan ? (
@@ -1546,6 +1563,7 @@ export function MigrationWizard({
                   finishedRunId={adoptedId ?? runId ?? takeover.finishedRunId}
                   finalUrl={takeover.finalUrl}
                   error={takeover.error}
+                  dataLoss={takeover.dataLoss}
                 />
               )}
             </div>
@@ -1743,7 +1761,10 @@ function ConnectStep({
                   <span className="min-w-0 flex-1 truncate">
                     {q.name || `An unnamed ${copy.teamLabel}`}
                   </span>
-                  {q.status === "done" && <Badge variant="success">Over</Badge>}
+                  {q.status === "done" && <Badge variant="success">Done</Badge>}
+                  {q.status === "stopped" && (
+                    <Badge variant="secondary">Stopped</Badge>
+                  )}
                   {q.status === "failed" && (
                     <Badge variant="destructive">Failed</Badge>
                   )}
@@ -1762,8 +1783,8 @@ function ConnectStep({
             </ul>
             <p className="mt-1 text-sm text-muted-foreground">
               {uncovered.length > 0
-                ? `Not covered yet: ${uncovered.join(", ")}. Each needs its own ${copy.tokenLabel.toLowerCase()}.`
-                : `A ${copy.tokenLabel.toLowerCase()} reads one ${copy.teamLabel}. Add one per ${copy.teamLabel}.`}
+                ? `Not covered yet: ${uncovered.join(", ")}. Each needs its own ${copy.tokenLabel}.`
+                : `One ${copy.tokenLabel} reads one ${copy.teamLabel}. Add one per ${copy.teamLabel}.`}
             </p>
           </div>
         )}
@@ -1807,7 +1828,8 @@ function ConnectStep({
                 {scanError}
               </p>
             </div>
-            <div>
+            {/* The installer already said which panel this is on a takeover. */}
+            <div hidden={takeover}>
               <p className="text-sm font-medium">Which one is this?</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {SOURCE_KINDS.map((k) => (
@@ -1866,6 +1888,7 @@ function MovingPanel({
   onShowLog,
   onStop,
   onBack,
+  isTakeover = false,
 }: {
   /** Which panel this run is reading, for the words that name it. */
   kind: SourceKind | null;
@@ -1883,6 +1906,8 @@ function MovingPanel({
    *  id to stop yet. */
   onStop?: () => void;
   onBack: () => void;
+  /** The takeover screen has no header chip to come back through. */
+  isTakeover?: boolean;
 }) {
   const pct = progress.total === 0 ? 0 : (progress.done / progress.total) * 100;
   // Ticks here rather than inside the elapsed line, because a heartbeat goes cold
@@ -1922,8 +1947,10 @@ function MovingPanel({
         undoing
           ? "Deplo is removing everything this migration created and taking its agent back off the machines it was reading. Nothing is left half moved."
           : driven
-            ? "Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
-            : "No control plane has picked this migration up yet, so nothing is moving. One takes it over on its next pass, within a minute or two. Stop it if you would rather start again."
+            ? isTakeover
+              ? "Deplo is doing this on the server. Reload this page any time to come back to it."
+              : "Deplo is doing this on the server. Close the page if you like - the chip in the header brings you back."
+            : "Deplo has not started this migration yet. It starts on its own within a minute or two. Stop it if you would rather start again."
       }
     >
       <div className="space-y-2">
@@ -1946,7 +1973,7 @@ function MovingPanel({
           {undoing
             ? "Removing what came over"
             : !driven
-              ? "Nothing is driving it yet"
+              ? "Not started yet"
               : [
                   progress.total > 0 &&
                     `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`,
@@ -2106,10 +2133,10 @@ function ReportCard({
           <Badge variant="secondary">{report.skipped} already here</Badge>
         )}
         {report.manual > 0 && (
-          <Badge variant="warning">{report.manual} need a person</Badge>
+          <Badge variant="warning">{report.manual} need you</Badge>
         )}
         {report.failed > 0 && (
-          <Badge variant="destructive">{report.failed} refused</Badge>
+          <Badge variant="destructive">{report.failed} failed</Badge>
         )}
       </div>
 
@@ -2120,8 +2147,8 @@ function ReportCard({
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 flex-1 text-muted-foreground">
             {needsAPerson === 1
-              ? "One thing needs a person."
-              : `${needsAPerson} things need a person.`}{" "}
+              ? "One thing needs you."
+              : `${needsAPerson} things need you.`}{" "}
             The log says which, and why.
           </p>
         </div>
@@ -2148,7 +2175,7 @@ function ReportCard({
         </Button>
         <Button onClick={more ? onNext : onContinue}>
           {more
-            ? `Bring ${nextName} over`
+            ? `Migrate ${nextName}`
             : needsAPerson > 0
               ? "I understand, continue"
               : "Continue"}

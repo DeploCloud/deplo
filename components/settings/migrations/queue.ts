@@ -14,7 +14,7 @@ export interface QueuedTeam {
   sourceTeamId: string | null;
   /** The source team's name, which is also the Deplo team it lands in. */
   name: string;
-  status: "waiting" | "done" | "failed";
+  status: "waiting" | "done" | "stopped" | "failed";
 }
 
 /** What `identifyMigrationSource` answers. */

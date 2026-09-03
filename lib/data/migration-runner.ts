@@ -34,6 +34,8 @@ import {
   assertMigrationMachinesReady,
   moveMigrationServiceData,
   planMigrationDataMove,
+  markRunTargetsUncopied,
+  restartSourcesStoppedByRun,
   type DataMoveService,
 } from "./migration-data";
 import { dataAlreadyCopiedInto, markDataCopyFailed } from "./data-copy";
@@ -121,7 +123,11 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
   // Dokploy client against it and died on its first call, inside a run that had
   // already been created.
   const c = await connectCredential(input);
-  await sourceClient(c).listProjects();
+  const client = sourceClient(c);
+  // The scan asserts the token's scope; a run driven from the API skipped it and
+  // imported every variable as KEY= (ADR-0026).
+  await client.assertReadable();
+  await client.listProjects();
   // And the MACHINES, which is the half the panel answering says nothing about.
   await assertMigrationMachinesReady(c);
 
@@ -197,12 +203,7 @@ export async function requestStopMigrationRun(runId: string): Promise<void> {
   // successor, looks like.
   const beatAt = row.heartbeatAt ? Date.parse(row.heartbeatAt) : 0;
   if (Date.now() - beatAt < STALE_MS) return;
-  await stopMigration(runId);
-  await getDb()
-    .update(runsTable)
-    .set({ apiKeyEnc: null, runnerOwner: null, phase: "done" })
-    .where(eq(runsTable.id, runId));
-  publishMigrationChanged();
+  await stopRun(runId);
 }
 
 /**
@@ -256,6 +257,12 @@ async function drive(row: RunRow): Promise<void> {
     if (!held) return;
     await advance(row);
   } catch (e) {
+    // The run is somebody else's now: nothing here is a failure of the run.
+    if (e instanceof LeaseLost || lostLeases.has(row.id)) {
+      lostLeases.delete(row.id);
+      held = false;
+      return;
+    }
     console.error("[migration] run", row.id, "failed:", e);
     await failRun(row, e instanceof Error ? e.message : String(e));
   } finally {
@@ -291,11 +298,27 @@ export function stopMigrationRunner(): void {
 
 type RunRow = typeof runsTable.$inferSelect;
 
+/** Runs whose lease another control plane took from under this one. */
+const lostLeases = new Set<string>();
+
+/** Thrown out of a step when the lease is gone: the other owner finishes the run. */
+class LeaseLost extends Error {
+  constructor(runId: string) {
+    super(`another control plane took over migration ${runId}`);
+  }
+}
+
 /**
  * Claim the run and keep claiming it: a long step must not look abandoned.
  */
 async function beat(runId: string): Promise<void> {
-  await acquireLease(leaseFor(runId), owner, new Date(), STALE_MS);
+  // The lease is the run: another control plane that took it is copying into
+  // the same volumes, so this one cuts its copy and writes nothing more.
+  if (!(await acquireLease(leaseFor(runId), owner, new Date(), STALE_MS))) {
+    lostLeases.add(runId);
+    abortRunCopy(runId);
+    throw new Error("lease lost");
+  }
   await getDb()
     .update(runsTable)
     .set({ runnerOwner: owner, heartbeatAt: nowIso() })
@@ -352,6 +375,9 @@ async function failRun(row: RunRow, why: string): Promise<void> {
   await releaseMigrating(row.id);
 
   if (reached === "data") {
+    // A fault outside the per-service loop left the services it never reached
+    // unmarked and deployable on empty storage, under a line claiming otherwise.
+    await markRunTargetsUncopied(row.id, why).catch(() => 0);
     await appendRunItem(row.id, panelNameFor(row), {
       path: "Migration",
       sourceKind: "run",
@@ -451,15 +477,58 @@ async function stopped(runId: string): Promise<boolean> {
   if (!r) return true;
   if (r.status !== "running") return true;
   if (!r.stop) return false;
-  // Total: apps, databases, projects, variables, and Deplo's agent off the
-  // source machines. See `stopMigration`.
-  await stopMigration(runId);
+  await stopRun(runId);
+  return true;
+}
+
+/**
+ * A Stop, honoured. In the config phase it is total - apps, databases, projects,
+ * variables, and Deplo's agent off the source machines (see `stopMigration`). In
+ * the DATA phase what was created is the person's new infrastructure: it is
+ * kept, every service whose data is not here is marked so, the agents stay for
+ * the next attempt, and what this run stopped on the panel is started again.
+ */
+async function stopRun(runId: string): Promise<void> {
+  const [row] = await getDb()
+    .select()
+    .from(runsTable)
+    .where(eq(runsTable.id, runId))
+    .limit(1);
+  if (row && row.phase === "data") {
+    await getDb()
+      .update(runsTable)
+      .set({ status: "stopped", finishedAt: nowIso() })
+      .where(and(eq(runsTable.id, runId), eq(runsTable.status, "running")));
+    await releaseMigrating(runId);
+    await markRunTargetsUncopied(runId, "the migration was stopped").catch(
+      () => 0,
+    );
+    let restarted = { restarted: 0, left: [] as string[] };
+    try {
+      const c = await credentialFor(row);
+      restarted = await restartSourcesStoppedByRun(runId, {
+        kind: c.kind,
+        baseUrl: c.url,
+        apiKey: c.apiKey,
+      });
+    } catch (e) {
+      restarted.left.push(e instanceof Error ? e.message : String(e));
+    }
+    await appendRunItem(runId, panelNameFor(row), {
+      path: "Migration",
+      sourceKind: "run",
+      sourceName: "Migration",
+      outcome: "manual",
+      message: `Stopped during the data step. Everything created here was kept; the lines above name every service whose data is not here yet. ${restarted.restarted > 0 ? `${restarted.restarted} service(s) were started again on {panel}.` : ""}${restarted.left.length > 0 ? ` Still stopped on {panel}: ${restarted.left.join("; ")}.` : ""} Deplo's agent stays on the source machines so the copy can run again.`,
+    });
+  } else {
+    await stopMigration(runId);
+  }
   await getDb()
     .update(runsTable)
     .set({ apiKeyEnc: null, runnerOwner: null, phase: "done" })
     .where(eq(runsTable.id, runId));
   publishMigrationChanged();
-  return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -849,9 +918,10 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
         },
       });
     } catch (e) {
-      // The copy was cut by a Stop, not by a fault. `stopped()` is what undoes
-      // the run; there is nothing to report and nothing left to copy.
+      // The copy was cut by a Stop, not by a fault - or by the lease going to
+      // another control plane, and then this one writes nothing more at all.
       if (isCopyAborted(e)) {
+        if (lostLeases.has(row.id)) throw new LeaseLost(row.id);
         await stopped(row.id);
         return;
       }

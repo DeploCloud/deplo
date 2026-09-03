@@ -515,7 +515,7 @@ export function ReviewStep({
             retargeting
           }
         >
-          Move it over
+          Start migration
         </Button>
       </div>
     </StepShell>

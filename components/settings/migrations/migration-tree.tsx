@@ -491,12 +491,22 @@ function ServiceRows({
         showBuild={showBuild}
         status={
           STATUS_LABEL[service.status] ? (
-            <Badge
-              className="whitespace-nowrap"
-              variant={service.status === "exists" ? "info" : "warning"}
+            <SimpleTooltip
+              content={service.notes.join(" ") || STATUS_LABEL[service.status]}
             >
-              {STATUS_LABEL[service.status]}
-            </Badge>
+              <Badge
+                className="whitespace-nowrap"
+                variant={service.status === "exists" ? "info" : "warning"}
+              >
+                {STATUS_LABEL[service.status]}
+              </Badge>
+            </SimpleTooltip>
+          ) : service.notes.length > 0 ? (
+            <SimpleTooltip content={service.notes.join(" ")}>
+              <Badge className="whitespace-nowrap" variant="secondary">
+                Note
+              </Badge>
+            </SimpleTooltip>
           ) : null
         }
         build={

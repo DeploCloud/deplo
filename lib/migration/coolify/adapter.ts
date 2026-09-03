@@ -318,12 +318,18 @@ async function detail(
   const { mounts } = coolifyMounts(storages, id);
   // A variable the panel would not answer for arrives EMPTY. Said here, or the
   // report reads as a clean import of nine variables when four of them are gone.
-  const envNotes =
-    env.unreadableKeys.length > 0
+  const envNotes = [
+    ...(env.unreadableKeys.length > 0
       ? [
           `${env.unreadableKeys.join(", ")} arrived empty: {panel} shows those values once and does not answer with them again. Set them under Variables before deploying.`,
         ]
-      : [];
+      : []),
+    ...(env.previewKeys.length > 0
+      ? [
+          `Preview-only variable(s) on {panel} that did not come across: ${env.previewKeys.join(", ")}. Set them under Previews if previews are on.`,
+        ]
+      : []),
+  ];
   // The MACHINE this resource runs on. Left out, everything looked like it was
   // on the panel's own host, and the data phase then asked that host for volumes
   // living on the second one - which answered "no such volume", and the report
