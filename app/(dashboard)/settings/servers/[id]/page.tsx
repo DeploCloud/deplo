@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Server as ServerIcon } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { DeploMark } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
@@ -106,18 +106,13 @@ export default async function ServerDetailPage(
           </Button>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className={titleClass.page}>{serverLabel(hydrated)}</h1>
-            {isDeploHost ? (
+            <ServerHealthChip serverId={server.id} fallback={seed[server.id]} />
+            {isDeploHost && (
               <Badge className="shrink-0 gap-1">
                 <DeploMark size={12} className="text-current" />
                 Deplo host
               </Badge>
-            ) : (
-              <Badge variant="muted" className="shrink-0 gap-1">
-                <ServerIcon className="size-3" />
-                Remote
-              </Badge>
             )}
-            <ServerHealthChip serverId={server.id} fallback={seed[server.id]} />
             <div className="ml-auto">
               <CheckStatusButton
                 serverId={server.id}

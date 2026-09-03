@@ -37,7 +37,9 @@ export function ServerTraefikBadge({
             : "No Traefik proxy is running on this host. Apps deployed here won't be reachable by domain until one is."
         }
       >
-        <Badge variant={state.traefikEnabled ? "success" : "muted"}>
+        {/* Green is reserved for the one fact that matters at a glance - the server
+            being online. A proxy that is up is ordinary; one that is missing is not. */}
+        <Badge variant={state.traefikEnabled ? "muted" : "destructive"}>
           <Network className="size-3" />
           Traefik {state.traefikEnabled ? "on" : "off"}
         </Badge>
@@ -56,7 +58,13 @@ export function ServerTraefikBadge({
 
   return (
     <SimpleTooltip content={tip}>
-      <Badge variant="muted">
+      <Badge
+        variant={
+          state.status === "offline" || state.status === "error"
+            ? "destructive"
+            : "muted"
+        }
+      >
         <CircleHelp className="size-3" />
         Traefik -
       </Badge>

@@ -23,6 +23,7 @@ import {
   type ServerListItem,
 } from "@/components/servers/servers-list";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,6 @@ import { serverLabel } from "@/lib/utils";
 import { reportedAgentVersion } from "@/lib/version";
 import type { Server } from "@/lib/types";
 import type { TeamOption } from "@/components/servers/server-team-access";
-import { CheckUpdatesButton } from "./check-updates-button";
 import { AgentVersionBadge } from "./agent-version-badge";
 import { ServerHealthChip } from "./server-health-chip";
 import { ServerTraefikBadge } from "./server-traefik-badge";
@@ -47,7 +47,7 @@ import {
   ServerHealthProvider,
   type ServerHealthState,
 } from "./server-health-provider";
-import { CheckStatusButton, CheckAllStatusButton } from "./check-status-button";
+import { CheckStatusButton, RefreshFleetButton } from "./check-status-button";
 import { UninstallAgentMenu } from "./uninstall-agent-menu";
 
 export const metadata = { title: "Servers" };
@@ -181,33 +181,8 @@ function ServerCard({
               fact, and splitting them across two elements is how a page ends up
               rendering a confident green dot next to a status nobody has verified. */}
           <CardTitle className="truncate">{serverLabel(server)}</CardTitle>
-          {/* Role: the host running Deplo (control plane + deploys) vs a remote that
-              only runs the deploy agent. Made explicit on BOTH so the contrast is the
-              message, not a lone badge you have to know is absent elsewhere. */}
-          {isDeploHost ? (
-            <Badge
-              className="shrink-0 gap-1"
-              title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
-            >
-              {/* The Deplo mark itself (currentColor, so it takes the badge's
-                  primary-foreground) - this IS the control-plane host, so brand it. */}
-              <DeploMark size={12} className="text-current" />
-              Deplo host
-            </Badge>
-          ) : (
-            <Badge
-              variant="muted"
-              className="shrink-0 gap-1"
-              title="A remote host: it runs only the deploy agent, executing deployments Deplo sends it over mTLS."
-            >
-              <ServerIcon className="size-3" />
-              Remote
-            </Badge>
-          )}
-          {/* What the host is FOR, in its own colour. Without it the page reads as
-              a list of interchangeable servers, and the one that runs nothing
-              looks like the one that is broken. */}
-          <ServerUseBadge use={serverUse(server)} />
+          {/* Health leads every card: whether the host answers is the one thing an
+              operator opens this page for, and the only chip allowed to be green. */}
           <ServerHealthChip
             serverId={server.id}
             fallback={{
@@ -218,6 +193,23 @@ function ServerCard({
               lastReachedAt: server.lastSeenAt ?? null,
             }}
           />
+          {/* Only the control-plane host is badged: everything else is a remote, and
+              a chip every other row wears says nothing. */}
+          {isDeploHost && (
+            <Badge
+              className="shrink-0 gap-1"
+              title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
+            >
+              {/* The Deplo mark itself (currentColor, so it takes the badge's
+                  primary-foreground) - this IS the control-plane host, so brand it. */}
+              <DeploMark size={12} className="text-current" />
+              Deplo host
+            </Badge>
+          )}
+          {/* What the host is FOR, in its own colour. Without it the page reads as
+              a list of interchangeable servers, and the one that runs nothing
+              looks like the one that is broken. */}
+          <ServerUseBadge use={serverUse(server)} />
           <Badge variant="muted" title="Which teams can deploy to this server">
             {accessLabel}
           </Badge>
@@ -299,6 +291,88 @@ function ServerCard({
   );
 }
 
+/** The same server as one table row: the card's facts, minus the capacity tiles. */
+function ServerListRow({
+  server,
+  accessTeamIds,
+  isDeploHost,
+}: {
+  server: Server;
+  accessTeamIds: string[];
+  isDeploHost: boolean;
+}) {
+  const health = {
+    status: server.status,
+    checkedAt: server.statusCheckedAt ?? null,
+    message: server.statusMessage ?? null,
+    traefikEnabled: server.traefikEnabled,
+    lastReachedAt: server.lastSeenAt ?? null,
+  };
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <span className="truncate font-medium">{serverLabel(server)}</span>
+          {isDeploHost && (
+            <Badge className="shrink-0 gap-1">
+              <DeploMark size={12} className="text-current" />
+              Deplo host
+            </Badge>
+          )}
+        </div>
+        <span className="font-mono text-xs text-muted-foreground">
+          {server.ip}
+        </span>
+      </TableCell>
+      <TableCell>
+        <ServerHealthChip serverId={server.id} fallback={health} />
+      </TableCell>
+      <TableCell>
+        <ServerUseBadge use={serverUse(server)} />
+      </TableCell>
+      <TableCell>
+        {server.importOnly ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <ServerTraefikBadge serverId={server.id} fallback={health} />
+        )}
+      </TableCell>
+      <TableCell>
+        <AgentVersionBadge version={reportedAgentVersion(server)} />
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {server.allTeams
+          ? "All teams"
+          : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`}
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-1">
+          {server.importOnly ? (
+            <UninstallAgentMenu
+              serverId={server.id}
+              serverName={serverLabel(server)}
+              provisioned={Boolean(server.agent?.certFingerprint)}
+            />
+          ) : (
+            <>
+              <CheckStatusButton
+                serverId={server.id}
+                serverName={serverLabel(server)}
+              />
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/settings/servers/${server.id}`}>
+                  <Settings2 className="size-4" />
+                  Manage
+                </Link>
+              </Button>
+            </>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export default async function ServersPage(
   props: PageProps<"/settings/servers">,
 ) {
@@ -373,6 +447,13 @@ export default async function ServersPage(
         isDeploHost={isDeploHostServer(server, selfAddrs)}
       />
     ),
+    row: (
+      <ServerListRow
+        server={server}
+        accessTeamIds={serverTeamIds.get(server.id) ?? []}
+        isDeploHost={isDeploHostServer(server, selfAddrs)}
+      />
+    ),
   }));
 
   // The LAST OBSERVED health of each server, handed to the client so the cards paint
@@ -424,8 +505,7 @@ export default async function ServersPage(
           description="Connected Docker hosts running your deployments."
           actions={
             <>
-              <CheckAllStatusButton />
-              <CheckUpdatesButton />
+              <RefreshFleetButton />
               {/* The ONE mounted AddServer on this page: a second instance would also
                   answer ?new=1 and open two dialogs at once. */}
               <AddServer autoOpen={autoOpenServer} teams={teams} />
