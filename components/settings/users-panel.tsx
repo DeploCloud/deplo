@@ -23,7 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ListToolbar } from "@/components/shared/list-toolbar";
+import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   DropdownMenu,
@@ -63,6 +71,7 @@ export function UsersPanel({
   const [status, setStatus] = React.useState<"all" | "active" | "suspended">(
     "all",
   );
+  const [view, setView] = React.useState<ListView>("grid");
   // A revoked link leaves the list on the click - the row is dead server-side
   // the moment the mutation is sent, and a live Revoke on a dead link is only
   // good for a red "Not found".
@@ -120,6 +129,9 @@ export function UsersPanel({
           query={query}
           onQuery={setQuery}
           placeholder="Search users"
+          view={view}
+          onView={setView}
+          listLabel="Table view"
           filters={
             <>
               <Select
@@ -159,7 +171,7 @@ export function UsersPanel({
           title="No matching users"
           description="No account matches the current search and filters."
         />
-      ) : (
+      ) : view === "grid" ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {shown.map((u) => (
             <UserRow
@@ -169,6 +181,32 @@ export function UsersPanel({
               defaultOpen={u.userId === focusUserId}
             />
           ))}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Teams</TableHead>
+                <TableHead>Joined</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shown.map((u) => (
+                <UserRow
+                  key={u.userId}
+                  user={u}
+                  isSelf={u.userId === currentUserId}
+                  defaultOpen={u.userId === focusUserId}
+                  view="list"
+                />
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -203,11 +241,14 @@ function UserRow({
   user,
   isSelf,
   defaultOpen = false,
+  view = "grid",
 }: {
   user: GlobalUserDTO;
   isSelf: boolean;
   /** Arrived here linked straight at this account - open its editor. */
   defaultOpen?: boolean;
+  /** Same account, same actions: a tile, or one row of the table. */
+  view?: ListView;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(defaultOpen);
@@ -307,120 +348,175 @@ function UserRow({
     </button>
   );
 
+  const menu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="-mr-1 shrink-0"
+          aria-label={`@${user.username} menu`}
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <SimpleTooltip
+          content="View details and edit this user's global permissions"
+          side="left"
+        >
+          <DropdownMenuItem onSelect={() => setOpen(true)}>
+            <UserCog className="size-4" />
+            Manage user
+          </DropdownMenuItem>
+        </SimpleTooltip>
+        <DropdownMenuSeparator />
+        <SimpleTooltip
+          content={
+            ownerLocked
+              ? "The instance owner is always an instance admin. Transfer ownership on Settings, Deplo first."
+              : "Grant or revoke instance-admin"
+          }
+          side="left"
+        >
+          <DropdownMenuItem
+            disabled={isSelf || ownerLocked || pending}
+            onSelect={() => flip({ isInstanceAdmin: !user.isInstanceAdmin })}
+          >
+            {user.isInstanceAdmin ? (
+              <ShieldOff className="size-4" />
+            ) : (
+              <ShieldCheck className="size-4" />
+            )}
+            {user.isInstanceAdmin
+              ? "Remove instance admin"
+              : "Make instance admin"}
+          </DropdownMenuItem>
+        </SimpleTooltip>
+        <SimpleTooltip
+          content={
+            ownerLocked
+              ? "The instance owner's account can't be suspended."
+              : "Suspend or reactivate this account"
+          }
+          side="left"
+        >
+          <DropdownMenuItem
+            variant={user.suspended ? undefined : "destructive"}
+            disabled={isSelf || ownerLocked || pending}
+            onSelect={() => {
+              // Reactivating is safe → apply straight away. Suspending is
+              // guarded by a confirm modal (opened once the menu closes).
+              if (user.suspended) {
+                flip({ suspended: false });
+              } else {
+                setConfirmSuspend(true);
+              }
+            }}
+          >
+            {user.suspended ? (
+              <UserCheck className="size-4" />
+            ) : (
+              <Ban className="size-4" />
+            )}
+            {user.suspended ? "Reactivate account" : "Suspend account"}
+          </DropdownMenuItem>
+        </SimpleTooltip>
+        {/**
+         * Permanent deletion sits below the reversible actions, behind its own separator:
+         * suspending is the answer to "they shouldn't be able to log in", and only the
+         * operator who means "and everything they own goes too" should reach past it.
+         */}
+        <DropdownMenuSeparator />
+        <SimpleTooltip
+          content={
+            isSelf
+              ? "You can't delete your own account."
+              : ownerLocked
+                ? "The instance owner's account can't be deleted. Transfer ownership on Settings, Deplo first."
+                : "Permanently delete this account, and, optionally, what it owns"
+          }
+          side="left"
+        >
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={isSelf || ownerLocked || pending}
+            onSelect={() => setConfirmDelete(true)}
+          >
+            <Trash2 className="size-4" />
+            Delete user
+          </DropdownMenuItem>
+        </SimpleTooltip>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <>
-      {/* Left-click the card to open the full editor; the ⋯ menu offers the
-          quick admin/suspend actions. */}
-      <div
-        className={cn(
-          "flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 hover:bg-accent",
-          user.suspended && "opacity-60",
-        )}
-      >
-        {card}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="-mr-1 shrink-0"
-              aria-label={`@${user.username} menu`}
+      {/* Left-click to open the full editor; the ⋯ menu offers the quick
+          admin/suspend actions. Same two in a tile and in a row. */}
+      {view === "list" ? (
+        <TableRow className={cn(user.suspended && "opacity-60")}>
+          <TableCell>
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="flex min-w-0 items-center gap-2 text-left"
             >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <SimpleTooltip
-              content="View details and edit this user's global permissions"
-              side="left"
-            >
-              <DropdownMenuItem onSelect={() => setOpen(true)}>
-                <UserCog className="size-4" />
-                Manage user
-              </DropdownMenuItem>
-            </SimpleTooltip>
-            <DropdownMenuSeparator />
-            <SimpleTooltip
-              content={
-                ownerLocked
-                  ? "The instance owner is always an instance admin. Transfer ownership on Settings, Deplo first."
-                  : "Grant or revoke instance-admin"
-              }
-              side="left"
-            >
-              <DropdownMenuItem
-                disabled={isSelf || ownerLocked || pending}
-                onSelect={() =>
-                  flip({ isInstanceAdmin: !user.isInstanceAdmin })
-                }
-              >
-                {user.isInstanceAdmin ? (
-                  <ShieldOff className="size-4" />
-                ) : (
-                  <ShieldCheck className="size-4" />
-                )}
-                {user.isInstanceAdmin
-                  ? "Remove instance admin"
-                  : "Make instance admin"}
-              </DropdownMenuItem>
-            </SimpleTooltip>
-            <SimpleTooltip
-              content={
-                ownerLocked
-                  ? "The instance owner's account can't be suspended."
-                  : "Suspend or reactivate this account"
-              }
-              side="left"
-            >
-              <DropdownMenuItem
-                variant={user.suspended ? undefined : "destructive"}
-                disabled={isSelf || ownerLocked || pending}
-                onSelect={() => {
-                  // Reactivating is safe → apply straight away. Suspending is
-                  // guarded by a confirm modal (opened once the menu closes).
-                  if (user.suspended) {
-                    flip({ suspended: false });
-                  } else {
-                    setConfirmSuspend(true);
-                  }
-                }}
-              >
-                {user.suspended ? (
-                  <UserCheck className="size-4" />
-                ) : (
-                  <Ban className="size-4" />
-                )}
-                {user.suspended ? "Reactivate account" : "Suspend account"}
-              </DropdownMenuItem>
-            </SimpleTooltip>
-            {/**
-             * Permanent deletion sits below the reversible actions, behind its own separator:
-             * suspending is the answer to "they shouldn't be able to log in", and only the
-             * operator who means "and everything they own goes too" should reach past it.
-             */}
-            <DropdownMenuSeparator />
-            <SimpleTooltip
-              content={
-                isSelf
-                  ? "You can't delete your own account."
-                  : ownerLocked
-                    ? "The instance owner's account can't be deleted. Transfer ownership on Settings, Deplo first."
-                    : "Permanently delete this account, and, optionally, what it owns"
-              }
-              side="left"
-            >
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={isSelf || ownerLocked || pending}
-                onSelect={() => setConfirmDelete(true)}
-              >
-                <Trash2 className="size-4" />
-                Delete user
-              </DropdownMenuItem>
-            </SimpleTooltip>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+              <UserAvatar
+                name={user.name}
+                username={user.username}
+                avatarUrl={user.avatarUrl}
+              />
+              <span className="truncate font-medium">@{user.username}</span>
+              {isSelf && (
+                <span className="text-xs text-muted-foreground">(you)</span>
+              )}
+              {user.isInstanceOwner ? (
+                <Badge variant="secondary" className="gap-1 px-1.5 py-0">
+                  <Crown className="size-3" />
+                  Owner
+                </Badge>
+              ) : (
+                user.isInstanceAdmin && (
+                  <Badge variant="secondary" className="gap-1 px-1.5 py-0">
+                    <ShieldCheck className="size-3" />
+                    Admin
+                  </Badge>
+                )
+              )}
+            </button>
+          </TableCell>
+          <TableCell className="text-muted-foreground">
+            {user.name && user.name !== user.username ? user.name : "—"}
+          </TableCell>
+          <TableCell className="tabular-nums">{user.teamCount}</TableCell>
+          <TableCell className="text-muted-foreground">
+            {timeAgo(user.createdAt)}
+          </TableCell>
+          <TableCell>
+            {user.suspended ? (
+              <Badge variant="destructive" className="gap-1">
+                <Ban className="size-3" />
+                Suspended
+              </Badge>
+            ) : (
+              <span className="text-muted-foreground">Active</span>
+            )}
+          </TableCell>
+          <TableCell className="text-right">{menu}</TableCell>
+        </TableRow>
+      ) : (
+        <div
+          className={cn(
+            "flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 hover:bg-accent",
+            user.suspended && "opacity-60",
+          )}
+        >
+          {card}
+          {menu}
+        </div>
+      )}
       {open && (
         <EditUserDialog
           user={{

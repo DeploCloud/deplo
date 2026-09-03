@@ -18,7 +18,15 @@ import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AccessDeltaBadge } from "@/components/members/access-delta-badge";
-import { ListToolbar } from "@/components/shared/list-toolbar";
+import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Select,
@@ -45,6 +53,7 @@ export function MembersManager({
   const [userOpen, setUserOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [role, setRole] = React.useState("all");
+  const [view, setView] = React.useState<ListView>("grid");
   // The viewer's own rank in this team. Owners (the founder OR an assigned
   // owner) may grant the owner role and act on other owners; everyone else is
   // capped at member/viewer. Derived from the member list, no extra query.
@@ -121,6 +130,9 @@ export function MembersManager({
           query={query}
           onQuery={setQuery}
           placeholder="Search members"
+          view={view}
+          onView={setView}
+          listLabel="Table view"
           filters={
             roleNames.length > 1 && (
               <Select value={role} onValueChange={setRole}>
@@ -147,7 +159,7 @@ export function MembersManager({
           title="No matching members"
           description="Nobody in this team matches the current search and filter."
         />
-      ) : (
+      ) : view === "grid" ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((m) => (
             <MemberCard
@@ -158,8 +170,134 @@ export function MembersManager({
             />
           ))}
         </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Member</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Access</TableHead>
+                <TableHead className="text-right" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shown.map((m) => (
+                <MemberTableRow
+                  key={m.userId}
+                  member={m}
+                  isSelf={m.userId === currentUserId}
+                  canManage={canManage}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The same member as one table row: rank and reach, which is what a roster is
+ * scanned for, with the same page one click away.
+ */
+function MemberTableRow({
+  member,
+  isSelf,
+  canManage,
+}: {
+  member: MemberDTO;
+  isSelf: boolean;
+  canManage: boolean;
+}) {
+  const granted = member.capabilities.filter((c) => c !== "view").length;
+  const name = (
+    <span className="flex min-w-0 items-center gap-2">
+      <UserAvatar
+        name={member.name}
+        username={member.username}
+        avatarUrl={member.avatarUrl}
+      />
+      <span className="truncate font-medium">@{member.username}</span>
+      {member.isPrimaryOwner && (
+        <SimpleTooltip content="Primary owner - created this team; can't be removed or demoted">
+          <Crown className="size-3.5 shrink-0 text-amber-500" />
+        </SimpleTooltip>
+      )}
+      {member.isInstanceAdmin && (
+        <SimpleTooltip content="Instance admin - platform-wide administrator">
+          <ShieldCheck className="size-3.5 shrink-0 text-sky-500" />
+        </SimpleTooltip>
+      )}
+      {isSelf && <span className="text-xs text-muted-foreground">(you)</span>}
+    </span>
+  );
+  return (
+    <TableRow>
+      <TableCell>
+        {canManage ? (
+          <Link
+            href={`/settings/members/${member.userId}`}
+            className="rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            aria-label={`Manage @${member.username}`}
+          >
+            {name}
+          </Link>
+        ) : (
+          name
+        )}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {member.name && member.name !== member.username ? member.name : "—"}
+      </TableCell>
+      <TableCell>
+        {member.isPrimaryOwner ? (
+          <Badge className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <Crown className="size-3" />
+            Primary owner
+          </Badge>
+        ) : (
+          <Badge variant="outline">{member.roleName ?? "Custom"}</Badge>
+        )}
+      </TableCell>
+      <TableCell>
+        <span className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline">
+            {granted === 0
+              ? "View only"
+              : `${granted} permission${granted === 1 ? "" : "s"}`}
+          </Badge>
+          {member.roleScoped && (
+            <SimpleTooltip
+              content={`Their ${member.roleName ?? "assigned"} role only reaches part of this team`}
+            >
+              <Badge variant="outline" className="gap-1">
+                <FolderTree className="size-3" />
+                Limited access
+              </Badge>
+            </SimpleTooltip>
+          )}
+          <AccessDeltaBadge
+            delta={member.accessDelta}
+            roleName={member.roleName}
+          />
+        </span>
+      </TableCell>
+      <TableCell className="text-right">
+        {canManage && (
+          <Button variant="ghost" size="icon-sm" asChild>
+            <Link
+              href={`/settings/members/${member.userId}`}
+              aria-label={`Manage @${member.username}`}
+            >
+              <ChevronRight className="size-4" />
+            </Link>
+          </Button>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }
 
