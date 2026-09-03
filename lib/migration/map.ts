@@ -960,6 +960,10 @@ function composeFileRefs(root: YAMLMap): [string, Scalar][] {
 const PLATFORM_FILES_RE = [
   /^\.\.\/files(?:\/(.*))?$/,
   /^\/data\/coolify\/(?:applications|services)\/[^/]+(?:\/(.*))?$/,
+  /^\/etc\/dokploy\/(?:applications|compose)\/[^/]+\/files(?:\/(.*))?$/,
+  // Anything else under the panel's own directory leaves with the panel.
+  /^\/etc\/dokploy(?:\/(.*))?$/,
+  /^\/data\/coolify(?:\/(.*))?$/,
 ];
 
 /**

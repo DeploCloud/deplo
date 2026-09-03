@@ -2212,6 +2212,15 @@ test("deploFilesPath reads both platforms' files directories", () => {
     "./redis.conf",
   );
   assert.equal(deploFilesPath("/data/coolify/applications/ewc08w0"), ".");
+  assert.equal(
+    deploFilesPath("/etc/dokploy/compose/shop-abc123/files/conf/app.ini"),
+    "./conf/app.ini",
+  );
+  // A bind anywhere under the panel's own directory is deleted with the panel,
+  // so it moves into Deplo's files directory instead of staying behind.
+  assert.equal(deploFilesPath("/etc/dokploy/mxbind"), "./mxbind");
+  assert.equal(deploFilesPath("/data/coolify/backups/x"), "./backups/x");
+  assert.equal(deploFilesPath("/etc/dokployer/x"), null);
   // A real host path and a named volume are neither.
   assert.equal(deploFilesPath("/var/lib/app"), null);
   assert.equal(deploFilesPath("app-data"), null);

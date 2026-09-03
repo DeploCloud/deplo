@@ -500,6 +500,7 @@ async function landedFor(
         .map((v) => ({
           hostPath: `${stackFilesDir(hit.slug)}/${v.projectPath!.trim()}`,
           mountPath: v.mountPath,
+          stackRelative: true,
         })),
     ],
     // A file mount lands as a project file, not a bind, and the panel handed over

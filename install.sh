@@ -2140,6 +2140,40 @@ platform_own_networks() {
   esac
 }
 
+# The platform's directory, minus anything a Deplo container still mounts from
+# it: Dokploy keeps every file mount under /etc/dokploy/files, and an app that
+# came across with such a bind lost it to a wholesale rm - measured, 25 files.
+remove_platform_dir() {
+  local dir="$1" keep="" c src
+  [ -n "$dir" ] && [ -d "$dir" ] || return 0
+  for c in $(docker ps -aq --filter name=deplo- 2>/dev/null); do
+    for src in $(docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "bind"}}{{println .Source}}{{end}}{{end}}' 2>/dev/null); do
+      case "$src" in "$dir"/*) keep="$keep $src" ;; esac
+    done
+  done
+  if [ -z "$keep" ]; then rm -rf "$dir"; return 0; fi
+  warn "Kept under $dir, because an app on Deplo still mounts it:$keep"
+  # Everything else goes, walking down only where a kept path lives.
+  local entry k skip
+  find "$dir" -mindepth 1 -maxdepth 1 | while read -r entry; do
+    skip=0
+    for k in $keep; do
+      case "$k" in "$entry"|"$entry"/*) skip=1 ;; esac
+    done
+    if [ "$skip" = 0 ]; then rm -rf "$entry"; else remove_platform_dir_below "$entry"; fi
+  done
+}
+remove_platform_dir_below() {
+  local entry k skip child
+  find "$1" -mindepth 1 -maxdepth 1 | while read -r child; do
+    skip=0; local exact=0
+    for k in $keep; do
+      case "$k" in "$child") skip=1; exact=1 ;; "$child"/*) skip=1 ;; esac
+    done
+    if [ "$skip" = 0 ]; then rm -rf "$child"; elif [ "$exact" = 0 ]; then remove_platform_dir_below "$child"; fi
+  done
+}
+
 foreign_remove() {
   blank
   phase "Removing $FOREIGN_LABEL"
@@ -2211,7 +2245,7 @@ foreign_remove() {
   # everything the migration just brought across with it.
   docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
     | grep -E "^(ghcr\.io/)?(coollabsio|dokploy)/" | xargs -r docker rmi -f >&9 2>&9 || true
-  rm -rf "$(platform_dir "$TAKEOVER")"
+  remove_platform_dir "$(platform_dir "$TAKEOVER")"
   spin_ok "$FOREIGN_LABEL removed" "containers, swarm, images, its directory, and the volumes and networks they held"
   # Volumes and networks are read off the containers being removed, so whatever it
   # made for an app it had already deleted is still here. Say so rather than delete

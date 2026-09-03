@@ -476,6 +476,7 @@ foreign_remove() { echo foreign_remove; }
 restart_docker() { echo restart_docker; }
 takeover_up_stacks() { echo up; }
 ensure_proxy_bound() { echo proxy_bound; }
+traefik_reconnect_docker() { echo traefik_reconnect; }
 wait_for_proxy() { echo "wait_for_proxy $1"; }
 state_set() { echo "state $1=$2"; }
 takeover_post() { echo "post $1"; }
@@ -492,6 +493,7 @@ takeover_after_cutover
     "restart_docker",
     "up",
     "proxy_bound",
+    "traefik_reconnect",
     "wait_for_proxy 60",
     "state takeover=removed",
     "post removed",
@@ -758,6 +760,8 @@ for (const c of REMOVAL_CASES) {
           "platform_own_networks",
           "foreign_volumes_of",
           "foreign_networks_of",
+          "remove_platform_dir",
+          "remove_platform_dir_below",
           "foreign_remove",
         ].map((n) => shellFn("install.sh", n)),
       )
