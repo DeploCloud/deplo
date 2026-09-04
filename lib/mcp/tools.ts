@@ -94,7 +94,7 @@ const DIAGNOSTICS: McpToolDef[] = [
     name: "whoami",
     title: "Who am I",
     description:
-      "Which Deplo team this connection acts in, and what this token is allowed to do. Run this first when something is refused.",
+      "Which Deplo team this call ran in (the default when no `team` is passed), and what this token is allowed to do. Run this first when something is refused.",
     group: "Diagnostics",
     requires: null,
     readOnly: true,
@@ -114,10 +114,27 @@ const DIAGNOSTICS: McpToolDef[] = [
           name
           slug
         }
-        myTeams {
+      }
+    `,
+  }),
+  tool({
+    name: "list_teams",
+    title: "List teams",
+    description:
+      "Every team this connection can name, with whether it can act there. To work in one, pass its id or slug as the `team` argument of any other tool - that is the only way to change team.",
+    group: "Diagnostics",
+    requires: null,
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpListTeams {
+        mcpTeams {
           id
           name
           slug
+          mcpEnabled
+          canConnect
         }
       }
     `,
@@ -2558,6 +2575,2600 @@ async function passthrough(
   return data;
 }
 
+/* ------------------------------------------------------------------ *
+ * Projects, environments, folders, shared variables
+ * ------------------------------------------------------------------ */
+
+const STRUCTURE: McpToolDef[] = [
+  tool({
+    name: "get_project",
+    title: "Get a project",
+    description:
+      "One project with its environments, by slug (from list_projects).",
+    group: "Organization",
+    requires: "view",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({ slug: z.string() }),
+    query: /* GraphQL */ `
+      query McpGetProject($slug: String!) {
+        project(slug: $slug) {
+          id
+          name
+          slug
+          color
+          appCount
+          folderCount
+          environments {
+            id
+            name
+            slug
+            kind
+            isDefault
+            gitBranch
+            position
+          }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "create_project",
+    title: "Create a project",
+    description:
+      "Create a project: an advanced folder with environments (production by default) that own their own apps and variables.",
+    group: "Organization",
+    requires: "create_projects",
+    input: z.object({
+      name: z.string(),
+      color: z.string().optional().describe("Hex accent colour."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpCreateProject($name: String!, $color: String) {
+        createProject(name: $name, color: $color) {
+          id
+          name
+          slug
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "update_project",
+    title: "Rename or recolour a project",
+    description: "Change a project's name and/or its accent colour.",
+    group: "Organization",
+    requires: "organize_projects",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("The project's id, from list_projects."),
+      name: z.string().optional(),
+      color: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Hex accent colour, or null to clear it."),
+    }),
+    variables: (a) => {
+      if (a.name === undefined && a.color === undefined)
+        throw new Error("Pass a name, a color, or both.");
+      return {
+        id: a.id,
+        name: a.name ?? "",
+        color: a.color ?? null,
+        rename: a.name !== undefined,
+        recolour: a.color !== undefined,
+      };
+    },
+    query: /* GraphQL */ `
+      mutation McpUpdateProject(
+        $id: ID!
+        $name: String!
+        $color: String
+        $rename: Boolean!
+        $recolour: Boolean!
+      ) {
+        renameProject(id: $id, name: $name) @include(if: $rename)
+        setProjectColor(id: $id, color: $color) @include(if: $recolour)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_project",
+    title: "Delete a project",
+    description:
+      "Delete a project and its environments. Its apps are moved to the top level unless deleteApps is true, which destroys them too.",
+    group: "Organization",
+    requires: "delete_projects",
+    destructive: true,
+    input: z.object({
+      id: z.string().describe("The project's id, from list_projects."),
+      deleteApps: z
+        .boolean()
+        .optional()
+        .describe("Also delete every app inside it. Default false."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpDeleteProject($id: ID!, $deleteApps: Boolean) {
+        deleteProject(id: $id, deleteApps: $deleteApps)
+      }
+    `,
+  }),
+  tool({
+    name: "create_environment",
+    title: "Create an environment",
+    description:
+      "Add an environment (staging, preview...) to a project. Each one owns its own apps, shared variables and network.",
+    group: "Organization",
+    requires: "manage_environments",
+    input: z.object({
+      projectId: z.string().describe("From list_projects."),
+      name: z.string(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpCreateEnvironment($projectId: ID!, $name: String!) {
+        createEnvironment(projectId: $projectId, name: $name) {
+          id
+          name
+          slug
+          isDefault
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "update_environment",
+    title: "Update an environment",
+    description:
+      "Rename an environment, make it the project's default, or set the git branch its apps deploy from.",
+    group: "Organization",
+    requires: "manage_environments",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("From list_environments."),
+      name: z.string().optional(),
+      makeDefault: z.boolean().optional().describe("Make it the default."),
+      branch: z
+        .string()
+        .optional()
+        .describe("Git branch the environment tracks."),
+    }),
+    variables: (a) => {
+      if (a.name === undefined && !a.makeDefault && a.branch === undefined)
+        throw new Error("Pass a name, makeDefault or a branch.");
+      return {
+        id: a.id,
+        name: a.name ?? "",
+        branch: a.branch ?? "",
+        rename: a.name !== undefined,
+        makeDefault: a.makeDefault === true,
+        setBranch: a.branch !== undefined,
+      };
+    },
+    query: /* GraphQL */ `
+      mutation McpUpdateEnvironment(
+        $id: ID!
+        $name: String!
+        $branch: String!
+        $rename: Boolean!
+        $makeDefault: Boolean!
+        $setBranch: Boolean!
+      ) {
+        renameEnvironment(id: $id, name: $name) @include(if: $rename)
+        setDefaultEnvironment(id: $id) @include(if: $makeDefault)
+        setEnvironmentBranch(id: $id, branch: $branch) @include(if: $setBranch)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_environment",
+    title: "Delete an environment",
+    description:
+      "Delete a project's environment and everything deployed in it. The default environment cannot be deleted.",
+    group: "Organization",
+    requires: "manage_environments",
+    destructive: true,
+    input: z.object({ id: z.string().describe("From list_environments.") }),
+    query: /* GraphQL */ `
+      mutation McpDeleteEnvironment($id: ID!) {
+        deleteEnvironment(id: $id)
+      }
+    `,
+  }),
+  tool({
+    name: "update_folder",
+    title: "Rename, recolour or move a folder",
+    description:
+      "Change a folder's name or accent colour, or move it under another folder (parentId null moves it to the top level).",
+    group: "Organization",
+    requires: "organize_folders",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("From list_folders."),
+      name: z.string().optional(),
+      color: z.string().nullable().optional().describe("Hex, or null."),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("New parent folder, or null for the top level."),
+    }),
+    variables: (a) => {
+      if (
+        a.name === undefined &&
+        a.color === undefined &&
+        a.parentId === undefined
+      )
+        throw new Error("Pass a name, a color or a parentId.");
+      return {
+        id: a.id,
+        name: a.name ?? "",
+        color: a.color ?? null,
+        parentId: a.parentId ?? null,
+        rename: a.name !== undefined,
+        recolour: a.color !== undefined,
+        move: a.parentId !== undefined,
+      };
+    },
+    query: /* GraphQL */ `
+      mutation McpUpdateFolder(
+        $id: ID!
+        $name: String!
+        $color: String
+        $parentId: ID
+        $rename: Boolean!
+        $recolour: Boolean!
+        $move: Boolean!
+      ) {
+        renameFolder(id: $id, name: $name) @include(if: $rename)
+        setFolderColor(id: $id, color: $color) @include(if: $recolour)
+        moveFolder(id: $id, parentId: $parentId) @include(if: $move)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_folder",
+    title: "Delete a folder",
+    description:
+      "Delete a folder. Its apps move to the top level unless deleteApps is true, which destroys them too.",
+    group: "Organization",
+    requires: "delete_folders",
+    destructive: true,
+    input: z.object({
+      id: z.string().describe("From list_folders."),
+      deleteApps: z.boolean().optional(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpDeleteFolder($id: ID!, $deleteApps: Boolean) {
+        deleteFolder(id: $id, deleteApps: $deleteApps)
+      }
+    `,
+  }),
+  tool({
+    name: "move_apps_to_folder",
+    title: "Move several apps into a folder",
+    description:
+      "File many apps into one folder at once, or pass no folderId to send them back to the top level.",
+    group: "Organization",
+    requires: "move_apps",
+    idempotent: true,
+    input: z.object({
+      appIds: z.array(z.string()).min(1),
+      folderId: z.string().nullable().optional(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpMoveAppsToFolder($appIds: [ID!]!, $folderId: ID) {
+        moveAppsToFolder(appIds: $appIds, folderId: $folderId)
+      }
+    `,
+  }),
+  tool({
+    name: "list_folder_grants",
+    title: "List who can access a folder",
+    description:
+      "The people granted access to a folder and what each may do there, plus which capabilities you could grant.",
+    group: "Organization",
+    requires: "view",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({ folderId: z.string().describe("From list_folders.") }),
+    query: /* GraphQL */ `
+      query McpFolderGrants($folderId: ID!) {
+        folderGrants(folderId: $folderId) {
+          userId
+          username
+          name
+          isOwner
+          capabilities
+        }
+        grantableFolderCapabilities(folderId: $folderId)
+      }
+    `,
+  }),
+  tool({
+    name: "set_folder_grant",
+    title: "Grant or change someone's access to a folder",
+    description:
+      "Give a member access to a folder with exactly these capabilities, replacing any grant they had. Pass an empty list to remove them.",
+    group: "Organization",
+    requires: "organize_folders",
+    idempotent: true,
+    input: z.object({
+      folderId: z.string().describe("From list_folders."),
+      userId: z.string().describe("From list_members."),
+      capabilities: z
+        .array(z.string())
+        .describe("Capability names. Empty removes the grant."),
+    }),
+    variables: (a) => ({
+      folderId: a.folderId,
+      userId: a.userId,
+      capabilities: a.capabilities,
+      remove: a.capabilities.length === 0,
+      grant: a.capabilities.length > 0,
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetFolderGrant(
+        $folderId: ID!
+        $userId: ID!
+        $capabilities: [String!]!
+        $grant: Boolean!
+        $remove: Boolean!
+      ) {
+        setFolderGrant(
+          folderId: $folderId
+          userId: $userId
+          capabilities: $capabilities
+        ) @include(if: $grant) {
+          userId
+          capabilities
+        }
+        removeFolderGrant(folderId: $folderId, userId: $userId)
+          @include(if: $remove) {
+          userId
+          capabilities
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "list_app_shared_vars",
+    title: "List the shared variables an app can use",
+    description:
+      "Every shared variable in reach of one app, and whether it is linked (injected) into it. Values are masked.",
+    group: "Environment",
+    requires: "manage_env",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({ appId }),
+    query: /* GraphQL */ `
+      query McpAppSharedVars($appId: String!) {
+        sharedVarsForApp(appId: $appId) {
+          id
+          key
+          type
+          masked
+          scope
+          linked
+          inScope
+          autoInject
+          targets
+          ownerTeamName
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "save_shared_var",
+    title: "Create or edit a shared variable",
+    description:
+      "Create a shared variable, or change one by passing its id. Say where it applies: whole teams, projects, environments or single apps. Linking it to an app is a separate step (link_shared_var).",
+    group: "Environment",
+    requires: "manage_env",
+    input: z.object({
+      id: z.string().optional().describe("Edit this one; omit to create."),
+      key: z.string(),
+      value: z.string(),
+      secret: z.boolean().optional().describe("Store it masked."),
+      teamIds: z.array(z.string()).optional(),
+      projectIds: z.array(z.string()).optional(),
+      environmentIds: z.array(z.string()).optional(),
+      appIds: z.array(z.string()).optional(),
+      targets: z
+        .array(z.enum(["production", "preview"]))
+        .optional()
+        .describe("Where it is injected. Default both."),
+    }),
+    variables: (a) => ({
+      input: {
+        id: a.id,
+        key: a.key,
+        value: a.value,
+        type: a.secret ? "secret" : "plain",
+        teamIds: a.teamIds ?? [],
+        projectIds: a.projectIds ?? [],
+        environmentIds: a.environmentIds ?? [],
+        appIds: a.appIds,
+        targets: a.targets,
+      },
+    }),
+    query: /* GraphQL */ `
+      mutation McpSaveSharedVar($input: SaveSharedVarInput!) {
+        saveSharedVar(input: $input) {
+          id
+          key
+          type
+          teamWide
+          appIds
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "link_shared_var",
+    title: "Link or unlink a shared variable to an app",
+    description:
+      "Inject a shared variable into an app (linked true) or stop (false). Shared variables are opt-in per app.",
+    group: "Environment",
+    requires: "manage_env",
+    idempotent: true,
+    input: z.object({
+      varId: z.string().describe("From list_shared_vars."),
+      appId,
+      linked: z.boolean(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpLinkSharedVar(
+        $varId: String!
+        $appId: String!
+        $linked: Boolean!
+      ) {
+        setSharedVarAppLink(varId: $varId, appId: $appId, linked: $linked)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_shared_var",
+    title: "Delete a shared variable",
+    description:
+      "Remove a shared variable from every app it was linked to. Takes effect on their next deploy.",
+    group: "Environment",
+    requires: "manage_env",
+    destructive: true,
+    input: z.object({ id: z.string().describe("From list_shared_vars.") }),
+    query: /* GraphQL */ `
+      mutation McpDeleteSharedVar($id: String!) {
+        deleteSharedVar(id: $id)
+      }
+    `,
+  }),
+];
+
+/* ------------------------------------------------------------------ *
+ * Roles, members, team
+ * ------------------------------------------------------------------ */
+
+const ROLE_SCOPE = z
+  .object({
+    projectIds: z.array(z.string()).optional(),
+    environmentIds: z.array(z.string()).optional(),
+    folderIds: z.array(z.string()).optional(),
+    appIds: z.array(z.string()).optional(),
+  })
+  .optional()
+  .describe("Limit the role to part of the team. Omit for the whole team.");
+
+const TEAM_ADMIN: McpToolDef[] = [
+  tool({
+    name: "list_roles",
+    title: "List the team's roles",
+    description:
+      "Every role of this team with its capabilities, scope and how many members hold it.",
+    group: "Team",
+    requires: "view",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpListRoles {
+        teamRoles {
+          id
+          name
+          description
+          builtinKey
+          locked
+          modified
+          memberCount
+          requireTwoFactor
+          capabilities
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "create_role",
+    title: "Create a role",
+    description:
+      "Create a team role with exactly these capabilities. You can only give a role what you hold yourself.",
+    group: "Team",
+    requires: "manage_roles",
+    input: z.object({
+      name: z.string(),
+      description: z.string().optional(),
+      capabilities: z.array(z.string()).describe("Capability names."),
+      requireTwoFactor: z.boolean().optional(),
+      scope: ROLE_SCOPE,
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpCreateRole($input: CreateRoleInput!) {
+        createRole(input: $input) {
+          id
+          name
+          capabilities
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "update_role",
+    title: "Edit a role",
+    description:
+      "Rewrite a role's name, capabilities or scope. Every member holding it changes with it, immediately.",
+    group: "Team",
+    requires: "manage_roles",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("From list_roles."),
+      name: z.string(),
+      description: z.string().optional(),
+      capabilities: z.array(z.string()).optional(),
+      requireTwoFactor: z.boolean().optional(),
+      scope: ROLE_SCOPE,
+      clearScope: z.boolean().optional().describe("Make it team-wide again."),
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpUpdateRole($input: UpdateRoleInput!) {
+        updateRole(input: $input)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_role",
+    title: "Delete a role",
+    description:
+      "Delete a custom role. Refused while a member still holds it; reassign them first with update_member.",
+    group: "Team",
+    requires: "manage_roles",
+    destructive: true,
+    input: z.object({ id: z.string().describe("From list_roles.") }),
+    query: /* GraphQL */ `
+      mutation McpDeleteRole($id: String!) {
+        deleteRole(id: $id)
+      }
+    `,
+  }),
+  tool({
+    name: "reset_role",
+    title: "Reset a default role",
+    description: "Put one of the three default roles back to what Deplo ships.",
+    group: "Team",
+    requires: "manage_roles",
+    idempotent: true,
+    input: z.object({ id: z.string().describe("From list_roles.") }),
+    query: /* GraphQL */ `
+      mutation McpResetRole($id: String!) {
+        resetRole(id: $id)
+      }
+    `,
+  }),
+  tool({
+    name: "add_member",
+    title: "Add an existing user to the team",
+    description:
+      "Add a user who already has an account on this Deplo to this team, with a role (roleId from list_roles) or a hand-picked capability set.",
+    group: "Team",
+    requires: "manage_members",
+    input: z.object({
+      userId: z.string().describe("The user's id."),
+      roleId: z.string().optional().describe("A role, from list_roles."),
+      capabilities: z
+        .array(z.string())
+        .optional()
+        .describe("A custom set instead of a role."),
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpAddMember($input: AddMemberInput!) {
+        addExistingMember(input: $input) {
+          userId
+          username
+          roleName
+          capabilities
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "update_member",
+    title: "Change a member's role or access",
+    description:
+      "Give a member another role (roleId) or a hand-picked capability set. Their API tokens and agents narrow with them, live.",
+    group: "Team",
+    requires: "manage_members",
+    idempotent: true,
+    input: z.object({
+      userId: z.string().describe("From list_members."),
+      roleId: z.string().optional(),
+      capabilities: z.array(z.string()).optional(),
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpUpdateMember($input: UpdateMemberInput!) {
+        updateMember(input: $input) {
+          userId
+          username
+          roleName
+          capabilities
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "remove_member",
+    title: "Remove a member from the team",
+    description:
+      "Take a person out of this team. Every API token and AI agent of theirs stops acting here at once.",
+    group: "Team",
+    requires: "manage_members",
+    destructive: true,
+    input: z.object({ userId: z.string().describe("From list_members.") }),
+    query: /* GraphQL */ `
+      mutation McpRemoveMember($userId: String!) {
+        removeMember(userId: $userId)
+      }
+    `,
+  }),
+  tool({
+    name: "update_team",
+    title: "Rename the team or set its two-factor policy",
+    description:
+      "Change the team's name, or require two-factor authentication of every member.",
+    group: "Team",
+    requires: "manage_team",
+    idempotent: true,
+    input: z.object({
+      name: z.string().optional(),
+      requireTwoFactor: z.boolean().optional(),
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpUpdateTeam($input: UpdateTeamInput!) {
+        updateTeam(input: $input) {
+          id
+          name
+          slug
+          requireTwoFactor
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "transfer_app",
+    title: "Move an app to another team",
+    description:
+      "Transfer an app, with its data, to another team you belong to. Needs move_apps here and create_apps there.",
+    group: "Team",
+    requires: "move_apps",
+    input: z.object({
+      appId,
+      teamId: z.string().describe("The destination team, from list_teams."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpTransferApp($appId: String!, $teamId: String!) {
+        transferAppToTeam(appId: $appId, teamId: $teamId)
+      }
+    `,
+  }),
+];
+
+/* ------------------------------------------------------------------ *
+ * App settings the first table did not reach
+ * ------------------------------------------------------------------ */
+
+const APP_FIELDS_SETTINGS = /* GraphQL */ `
+  id
+  slug
+  name
+  framework
+  frameworkDetected
+  buildServerId
+  buildFallback
+  rollbackKeep
+  deployHookEnabled
+  composeUpArgs
+  ports {
+    published
+    target
+    protocol
+  }
+  healthCheck {
+    type
+    path
+    port
+    command
+    intervalS
+    timeoutS
+    retries
+    startPeriodS
+  }
+`;
+
+const APPS_SETTINGS: McpToolDef[] = [
+  tool({
+    name: "get_app_runtime",
+    title: "Get an app's containers",
+    description:
+      "The live containers of an app or database: how many run, restart or are unhealthy, and each one's state.",
+    group: "Apps",
+    requires: "view",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("The app's or database's id."),
+      kind: CRON_KIND,
+    }),
+    variables: (a) => ({ id: a.id, isDatabase: a.kind === "database" }),
+    query: /* GraphQL */ `
+      query McpRuntime($id: String!, $isDatabase: Boolean!) {
+        appRuntime(appId: $id) @skip(if: $isDatabase) {
+          total
+          running
+          restarting
+          unhealthy
+          unreachable
+          missing
+          containers {
+            name
+            service
+            state
+            health
+            running
+            restartCount
+          }
+        }
+        databaseRuntime(databaseId: $id) @include(if: $isDatabase) {
+          total
+          running
+          restarting
+          unhealthy
+          unreachable
+          missing
+          containers {
+            name
+            service
+            state
+            health
+            running
+            restartCount
+          }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_env",
+    title: "Replace an app's environment variables",
+    description:
+      "Rewrite the app's whole variable list at once: what is not in the list is removed. Use set_env_var to change one.",
+    group: "Environment",
+    requires: "manage_env",
+    idempotent: true,
+    destructive: true,
+    input: z.object({
+      appId,
+      entries: z.array(z.object({ key: z.string(), value: z.string() })),
+      defaultTargets: z
+        .array(z.enum(["production", "preview"]))
+        .optional()
+        .describe("Where new keys are injected. Default both."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetEnv(
+        $appId: String!
+        $entries: [EnvEntryInput!]!
+        $defaultTargets: [EnvTarget!]
+      ) {
+        setAppEnv(
+          appId: $appId
+          entries: $entries
+          defaultTargets: $defaultTargets
+        )
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_ports",
+    title: "Publish ports on the host",
+    description:
+      "Expose container ports directly on the server (TCP/UDP), bypassing Traefik. The whole list at once; empty unpublishes all.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({
+      appId,
+      ports: z.array(
+        z.object({
+          published: z.number().int().describe("Host port."),
+          target: z.number().int().describe("Container port."),
+          protocol: z.enum(["tcp", "udp"]).optional(),
+        }),
+      ),
+    }),
+    variables: (a) => ({ id: a.appId, ports: a.ports }),
+    query: /* GraphQL */ `
+      mutation McpSetAppPorts($id: String!, $ports: [PublishedPortInput!]!) {
+        setAppPorts(id: $id, ports: $ports) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_framework",
+    title: "Override the detected framework",
+    description:
+      "Pin the framework preset a build uses, or pass null to go back to auto-detection.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({
+      appId,
+      framework: z.string().nullable(),
+    }),
+    variables: (a) => ({ id: a.appId, framework: a.framework }),
+    query: /* GraphQL */ `
+      mutation McpSetAppFramework($id: String!, $framework: String) {
+        setAppFramework(id: $id, framework: $framework) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_health_check",
+    title: "Set an app's health check",
+    description:
+      "Define how Deplo decides a container is healthy: an HTTP path or a command, with timings. Pass null to remove it.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({
+      appId,
+      healthCheck: z
+        .object({
+          type: z.enum(["http", "command"]),
+          path: z.string().optional(),
+          port: z.number().int().optional(),
+          command: z.string().optional(),
+          intervalS: z.number().int().default(30),
+          timeoutS: z.number().int().default(10),
+          retries: z.number().int().default(3),
+          startPeriodS: z.number().int().default(30),
+        })
+        .nullable(),
+    }),
+    variables: (a) => ({ id: a.appId, input: a.healthCheck }),
+    query: /* GraphQL */ `
+      mutation McpSetHealthCheck($id: String!, $input: HealthCheckInput) {
+        updateAppHealthCheck(id: $id, input: $input) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_rollback_keep",
+    title: "Set how many builds are kept for rollback",
+    description:
+      "How many past images stay on the server so rollback_deployment can re-run them without a rebuild.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, count: z.number().int().min(0) }),
+    variables: (a) => ({ id: a.appId, count: a.count }),
+    query: /* GraphQL */ `
+      mutation McpSetRollbackKeep($id: String!, $count: Int!) {
+        setAppRollbackKeep(id: $id, count: $count) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_build_server",
+    title: "Choose where an app is built",
+    description:
+      "Build on another server (from list_build_servers) instead of the one that runs the app, optionally falling back when it is down.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({
+      appId,
+      buildServerId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("A server id, or null to build where the app runs."),
+      buildFallback: z.boolean().optional(),
+    }),
+    variables: (a) => ({
+      id: a.appId,
+      buildServerId: a.buildServerId ?? null,
+      buildFallback: a.buildFallback,
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetBuildServer(
+        $id: String!
+        $buildServerId: String
+        $buildFallback: Boolean
+      ) {
+        setAppBuildServer(
+          id: $id
+          buildServerId: $buildServerId
+          buildFallback: $buildFallback
+        ) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "list_build_servers",
+    title: "List servers that can build",
+    description: "The servers an app may be built on, with their architecture.",
+    group: "Apps",
+    requires: "view",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpBuildServers {
+        buildServerChoices {
+          id
+          name
+          hostArch
+          buildOnly
+          buildFallback
+          isDeploHost
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_compose_args",
+    title: "Set extra docker compose up arguments",
+    description:
+      "Flags appended to docker compose up for a compose app, e.g. --force-recreate. Null clears them.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, value: z.string().nullable() }),
+    variables: (a) => ({ id: a.appId, value: a.value }),
+    query: /* GraphQL */ `
+      mutation McpSetComposeArgs($id: String!, $value: String) {
+        setAppComposeUpArgs(id: $id, value: $value) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_deploy_hook_enabled",
+    title: "Turn an app's deploy hook on or off",
+    description:
+      "Whether the app's deploy-hook URL accepts calls. The URL itself is never shown over MCP.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.appId, value: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetDeployHook($id: String!, $value: Boolean!) {
+        setAppDeployHookEnabled(id: $id, value: $value) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_console_enabled",
+    title: "Allow or forbid the web console for an app",
+    description:
+      "Whether members holding open_app_console may open a shell in this app's containers from the dashboard.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, enabled: z.boolean() }),
+    query: /* GraphQL */ `
+      mutation McpSetConsoleEnabled($appId: String!, $enabled: Boolean!) {
+        setConsoleEnabled(appId: $appId, enabled: $enabled)
+      }
+    `,
+  }),
+  tool({
+    name: "clear_app_build_cache",
+    title: "Clear an app's build cache",
+    description:
+      "Drop the cached build layers so the next deploy starts from scratch. The fix for a build that keeps reusing a stale step.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId }),
+    variables: (a) => ({ id: a.appId }),
+    query: /* GraphQL */ `
+      mutation McpClearBuildCache($id: String!) {
+        clearAppBuildCache(id: $id) {
+          id
+          slug
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "detect_app_logo",
+    title: "Detect an app's logo",
+    description:
+      "Ask the running app for its favicon and use it as the app's logo.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId }),
+    variables: (a) => ({ id: a.appId }),
+    query: /* GraphQL */ `
+      mutation McpDetectLogo($id: String!) {
+        detectAppLogo(id: $id) {
+          id
+          logo
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "read_app_file",
+    title: "Read a file from an app's storage",
+    description:
+      "Read a text file from the app's persistent files directory (the one mounted into its containers). Binary files are refused.",
+    group: "Apps",
+    requires: "configure_apps",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({
+      appId,
+      path: z.string().describe("Path inside the app's files directory."),
+    }),
+    query: /* GraphQL */ `
+      query McpReadAppFile($appId: String!, $path: String!) {
+        appStorageFile(appId: $appId, path: $path) {
+          path
+          state
+          text
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "write_app_file",
+    title: "Write a file into an app's storage",
+    description:
+      "Create or overwrite a text file in the app's persistent files directory, e.g. a config the containers read.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    destructive: true,
+    input: z.object({
+      appId,
+      path: z.string(),
+      content: z.string(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpWriteAppFile(
+        $appId: String!
+        $path: String!
+        $content: String!
+      ) {
+        writeAppFile(appId: $appId, path: $path, content: $content)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_deployments",
+    title: "Delete deployment records",
+    description:
+      "Remove past deployments from an app's history (their kept images go with them). Pass ids, or filters for a bulk delete.",
+    group: "Deployments",
+    requires: "delete_apps",
+    destructive: true,
+    input: z.object({
+      ids: z.array(z.string()).optional().describe("Specific deployments."),
+      appId: z
+        .string()
+        .optional()
+        .describe("Bulk: every deployment of this app."),
+      status: z.string().optional().describe("Bulk: only this status."),
+    }),
+    variables: (a) => {
+      if (!a.ids?.length && !a.appId)
+        throw new Error("Pass ids, or an appId for a bulk delete.");
+      return {
+        ids: a.ids ?? [],
+        appId: a.appId,
+        status: a.status,
+        byIds: Boolean(a.ids?.length),
+        bulk: !a.ids?.length,
+      };
+    },
+    query: /* GraphQL */ `
+      mutation McpDeleteDeployments(
+        $ids: [ID!]!
+        $appId: ID
+        $status: String
+        $byIds: Boolean!
+        $bulk: Boolean!
+      ) {
+        deleteDeployments(ids: $ids) @include(if: $byIds)
+        deleteAllDeployments(appId: $appId, status: $status) @include(if: $bulk)
+      }
+    `,
+  }),
+  tool({
+    name: "cancel_all_deployments",
+    title: "Cancel every running deployment",
+    description:
+      "Stop every build or deploy in flight, for one app or for the whole team.",
+    group: "Deployments",
+    requires: "deploy_apps",
+    input: z.object({
+      appId: z.string().optional(),
+      serverId: z.string().optional(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpCancelAllDeployments($appId: ID, $serverId: ID) {
+        cancelAllDeployments(appId: $appId, serverId: $serverId)
+      }
+    `,
+  }),
+  tool({
+    name: "metrics_history",
+    title: "Read metrics history",
+    description:
+      "The recent CPU, memory, network and disk samples of an app, a database or a server, as the Monitoring page charts them.",
+    group: "Monitoring",
+    requires: "view_metrics",
+    readOnly: true,
+    idempotent: true,
+    paginate: true,
+    input: z.object({
+      kind: z.enum(["app", "database", "server"]),
+      id: z.string(),
+      ...page,
+    }),
+    variables: (a) => ({
+      id: a.id,
+      app: a.kind === "app",
+      database: a.kind === "database",
+      server: a.kind === "server",
+    }),
+    query: /* GraphQL */ `
+      query McpMetricsHistory(
+        $id: String!
+        $app: Boolean!
+        $database: Boolean!
+        $server: Boolean!
+      ) {
+        appMetricsHistory(appId: $id) @include(if: $app) {
+          ts
+          cpu
+          memUsed
+          memLimit
+          memPct
+          netRx
+          netTx
+          blockRead
+          blockWrite
+          pids
+          running
+        }
+        databaseMetricsHistory(databaseId: $id) @include(if: $database) {
+          ts
+          cpu
+          memUsed
+          memLimit
+          memPct
+          netRx
+          netTx
+          blockRead
+          blockWrite
+          pids
+          running
+        }
+        serverMetricsHistory(serverId: $id) @include(if: $server) {
+          ts
+          online
+          cpu
+          memPct
+          memUsed
+          memTotal
+          diskPct
+          diskUsed
+          diskTotal
+          load
+          netRx
+          netTx
+          containers
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "fleet_metrics",
+    title: "Read the fleet's live metrics",
+    description:
+      "One line per server: online, CPU, memory, disk and container count, right now.",
+    group: "Monitoring",
+    requires: "view_metrics",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpFleetMetrics {
+        fleetMetrics {
+          serverId
+          online
+          cpu
+          memPct
+          diskPct
+          containers
+          agentVersion
+          expectedAgentVersion
+          ts
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_metrics_retention",
+    title: "Turn metrics history on or off",
+    description:
+      "Whether the team keeps metrics history for its Monitoring charts.",
+    group: "Monitoring",
+    requires: "manage_monitoring",
+    idempotent: true,
+    input: z.object({ enabled: z.boolean() }),
+    query: /* GraphQL */ `
+      mutation McpSetSaveMetrics($enabled: Boolean!) {
+        setSaveMetrics(enabled: $enabled) {
+          saveMetrics
+        }
+      }
+    `,
+  }),
+];
+
+/* ------------------------------------------------------------------ *
+ * Database settings
+ * ------------------------------------------------------------------ */
+
+const DATABASE_FIELDS_SETTINGS = /* GraphQL */ `
+  id
+  name
+  type
+  version
+  status
+  serverId
+  environmentId
+  exposedPublicly
+  exposedPort
+  customImage
+  customCommand
+  mounts {
+    filePath
+    mountPath
+  }
+`;
+
+const DATABASES_SETTINGS: McpToolDef[] = [
+  tool({
+    name: "update_database",
+    title: "Expose a database or move it to another server",
+    description:
+      "Publish the database on a host port (exposedPublicly + exposedPort) or move it to another server, which copies its data.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    input: z.object({
+      databaseId,
+      exposedPublicly: z.boolean(),
+      exposedPort: z.number().int().optional(),
+      serverId: z.string().optional().describe("Move it to this server."),
+    }),
+    variables: (a) => ({
+      id: a.databaseId,
+      input: {
+        exposedPublicly: a.exposedPublicly,
+        exposedPort: a.exposedPort,
+        serverId: a.serverId,
+      },
+    }),
+    query: /* GraphQL */ `
+      mutation McpUpdateDatabase($id: String!, $input: UpdateDatabaseInput!) {
+        updateDatabase(id: $id, input: $input) { ${DATABASE_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "rename_database",
+    title: "Rename a database",
+    description: "Change a database's display name. Its host name stays.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    input: z.object({ databaseId, name: z.string() }),
+    variables: (a) => ({ id: a.databaseId, name: a.name }),
+    query: /* GraphQL */ `
+      mutation McpRenameDatabase($id: String!, $name: String!) {
+        renameDatabase(id: $id, name: $name) { ${DATABASE_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_database_resources",
+    title: "Cap a database's CPU, memory or disk",
+    description:
+      "Resource limits applied on the next redeploy. Omit a field to leave it unlimited.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    input: z.object({
+      databaseId,
+      memoryMb: z.number().int().optional(),
+      cpuMilli: z.number().int().optional(),
+      storageGb: z.number().int().optional(),
+      pidsLimit: z.number().int().optional(),
+    }),
+    variables: (a) => ({
+      id: a.databaseId,
+      limits: {
+        memoryMb: a.memoryMb,
+        cpuMilli: a.cpuMilli,
+        storageGb: a.storageGb,
+        pidsLimit: a.pidsLimit,
+      },
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetDatabaseResources(
+        $id: String!
+        $limits: ResourceLimitsInput!
+      ) {
+        updateDatabaseResources(id: $id, limits: $limits) { ${DATABASE_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_database_config_files",
+    title: "Set a database's config files",
+    description:
+      "Files Deplo writes and mounts into the database container, e.g. a postgresql.conf. The whole list at once; applied with a reroute.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    destructive: true,
+    input: z.object({
+      databaseId,
+      mounts: z.array(
+        z.object({
+          filePath: z.string().describe("Name of the file Deplo keeps."),
+          mountPath: z.string().describe("Where it appears in the container."),
+          content: z.string(),
+        }),
+      ),
+    }),
+    variables: (a) => ({ id: a.databaseId, mounts: a.mounts }),
+    query: /* GraphQL */ `
+      mutation McpSetDatabaseMounts(
+        $id: String!
+        $mounts: [DatabaseMountInput!]!
+      ) {
+        setDatabaseMounts(id: $id, mounts: $mounts) { ${DATABASE_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_database_image",
+    title: "Change a database's engine version or image",
+    description:
+      "Pin another engine version, or run a custom image/command. Applied on the next redeploy; a major-version jump may need a restore.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    input: z.object({
+      databaseId,
+      version: z.string().optional(),
+      customImage: z.string().optional(),
+      customCommand: z.string().optional(),
+    }),
+    variables: (a) => ({
+      id: a.databaseId,
+      input: {
+        version: a.version,
+        customImage: a.customImage,
+        customCommand: a.customCommand,
+      },
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetDatabaseImage(
+        $id: String!
+        $input: UpdateDatabaseImageInput!
+      ) {
+        updateDatabaseImage(id: $id, input: $input) { ${DATABASE_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "move_database",
+    title: "Move a database into an environment",
+    description:
+      "Place a database in a project's environment (or null for the team top level), which decides the network it shares with apps.",
+    group: "Databases",
+    requires: "configure_databases",
+    idempotent: true,
+    input: z.object({
+      databaseId,
+      environmentId: z.string().nullable(),
+    }),
+    variables: (a) => ({ id: a.databaseId, environmentId: a.environmentId }),
+    query: /* GraphQL */ `
+      mutation McpMoveDatabase($id: String!, $environmentId: ID) {
+        moveDatabaseToEnvironment(id: $id, environmentId: $environmentId)
+      }
+    `,
+  }),
+  tool({
+    name: "check_host_ports",
+    title: "Check whether host ports are free",
+    description:
+      "Ask a server which of these ports are already in use, before exposing a database or publishing an app port.",
+    group: "Databases",
+    requires: "create_databases",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({
+      serverId,
+      ports: z.array(z.number().int()).min(1),
+    }),
+    query: /* GraphQL */ `
+      query McpHostPorts($serverId: ID!, $ports: [Int!]!) {
+        hostPortsInUse(serverId: $serverId, ports: $ports) {
+          checked
+          inUse
+          reason
+        }
+      }
+    `,
+  }),
+];
+
+/* ------------------------------------------------------------------ *
+ * Backups, cron and previews - the admin half
+ * ------------------------------------------------------------------ */
+
+const OPS_ADMIN: McpToolDef[] = [
+  tool({
+    name: "cancel_backup_run",
+    title: "Cancel a running backup",
+    description: "Stop a backup that is in progress.",
+    group: "Backups",
+    requires: "manage_backups",
+    input: z.object({ runId: z.string().describe("From list_backup_runs.") }),
+    query: /* GraphQL */ `
+      mutation McpCancelBackupRun($runId: String!) {
+        cancelBackupRun(runId: $runId)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_backup_run",
+    title: "Delete a backup",
+    description: "Delete one backup run and the artifact it stored.",
+    group: "Backups",
+    requires: "delete_backups",
+    destructive: true,
+    input: z.object({ runId: z.string().describe("From list_backup_runs.") }),
+    query: /* GraphQL */ `
+      mutation McpDeleteBackupRun($runId: String!) {
+        deleteBackupRun(runId: $runId)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_backup_artifacts",
+    title: "Delete every backup of an app or database",
+    description: "Remove all stored backups of one app or database at once.",
+    group: "Backups",
+    requires: "delete_backups",
+    destructive: true,
+    input: z.object({
+      targetId: z.string().describe("The app's or database's id."),
+      targetKind: z.enum(["app", "database"]),
+    }),
+    query: /* GraphQL */ `
+      mutation McpDeleteBackupArtifacts(
+        $targetId: String!
+        $targetKind: BackupTargetKind!
+      ) {
+        deleteBackupArtifacts(targetId: $targetId, targetKind: $targetKind)
+      }
+    `,
+  }),
+  tool({
+    name: "list_backup_destination_options",
+    title: "List where a backup can go",
+    description:
+      "The destinations a new backup schedule may pick, with whether each is encrypted and healthy.",
+    group: "Backups",
+    requires: "manage_backups",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpDestinationOptions {
+        backupDestinationOptions {
+          id
+          name
+          kind
+          where
+          status
+          encrypted
+          recoveryKeySavedAt
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "update_cron_job",
+    title: "Edit a cron job",
+    description:
+      "Change any field of a scheduled command: schedule, command, container, timezone, retries, timeout.",
+    group: "Cron",
+    requires: "manage_crons",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("From list_cron_jobs."),
+      name: z.string().optional(),
+      description: z.string().optional(),
+      schedule: z.string().optional().describe("5-field cron."),
+      command: z.string().optional(),
+      service: z.string().optional().describe("Container it runs in."),
+      timezone: z.string().optional(),
+      enabled: z.boolean().optional(),
+      timeoutSeconds: z.number().int().optional(),
+      maxAttempts: z.number().int().optional(),
+      keepRuns: z.number().int().optional(),
+      overlap: z.string().optional().describe("skip | queue | allow."),
+      shell: z.string().optional(),
+      user: z.string().optional(),
+      workdir: z.string().optional(),
+    }),
+    variables: ({ id, ...input }) => ({ id, input }),
+    query: /* GraphQL */ `
+      mutation McpUpdateCronJob($id: ID!, $input: CronJobInput!) {
+        updateCronJob(id: $id, input: $input) {
+          id
+          name
+          schedule
+          command
+          service
+          enabled
+          nextRunAt
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_cron_enabled",
+    title: "Turn cron on or off for an app or database",
+    description:
+      "The master switch over every cron job of one app or database.",
+    group: "Cron",
+    requires: "manage_crons",
+    idempotent: true,
+    input: z.object({
+      targetId: z.string().describe("The app's or database's id."),
+      targetKind: z.enum(["app", "database"]),
+      enabled: z.boolean(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetCronEnabled(
+        $targetId: ID!
+        $targetKind: String!
+        $enabled: Boolean!
+      ) {
+        setCronEnabled(
+          targetId: $targetId
+          targetKind: $targetKind
+          enabled: $enabled
+        )
+      }
+    `,
+  }),
+  tool({
+    name: "list_cron_runs",
+    title: "List a cron job's runs",
+    description:
+      "Past and running executions of one job, with exit code, output and errors, newest first.",
+    group: "Cron",
+    requires: "manage_crons",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({
+      jobId: z.string().describe("From list_cron_jobs."),
+      limit: z.number().int().min(1).max(200).optional(),
+    }),
+    query: /* GraphQL */ `
+      query McpCronRuns($jobId: ID!, $limit: Int) {
+        cronRuns(jobId: $jobId, limit: $limit) {
+          id
+          status
+          trigger
+          attempt
+          maxAttempts
+          exitCode
+          scheduledFor
+          startedAt
+          finishedAt
+          error
+          stdout
+          stderr
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "cancel_cron_run",
+    title: "Cancel a running cron job",
+    description: "Stop one execution that is still running.",
+    group: "Cron",
+    requires: "manage_crons",
+    input: z.object({
+      id: z.string().describe("A run id, from list_cron_runs."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpCancelCronRun($id: ID!) {
+        cancelCronRun(id: $id)
+      }
+    `,
+  }),
+  tool({
+    name: "list_open_pull_requests",
+    title: "List an app's open pull requests",
+    description:
+      "The open pull requests of the app's repository, the ones deploy_pull_request can preview.",
+    group: "Previews",
+    requires: "manage_previews",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({ appId }),
+    query: /* GraphQL */ `
+      query McpOpenPullRequests($appId: ID!) {
+        openPullRequests(appId: $appId) {
+          number
+          title
+          headRef
+          baseRef
+          authorLogin
+          draft
+          fromFork
+          htmlUrl
+          updatedAt
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_preview_settings",
+    title: "Configure pull request previews for an app",
+    description:
+      "Turn previews on or off and tune them: base domain, auto-deploy, drafts, fork policy, TTL, max active, comment on the PR.",
+    group: "Previews",
+    requires: "manage_previews",
+    idempotent: true,
+    input: z.object({
+      appId,
+      enabled: z.boolean().optional(),
+      autoDeploy: z.boolean().optional(),
+      buildDrafts: z.boolean().optional(),
+      comment: z.boolean().optional(),
+      baseDomain: z.string().optional(),
+      https: z.boolean().optional(),
+      forkPolicy: z.string().optional().describe("never | approve | always."),
+      requiredLabels: z.string().optional(),
+      maxActive: z.number().int().optional(),
+      ttlDays: z.number().int().optional(),
+      port: z.number().int().optional(),
+      serverId: z.string().optional(),
+    }),
+    variables: ({ appId: id, ...input }) => ({ appId: id, input }),
+    query: /* GraphQL */ `
+      mutation McpSetPreviewSettings(
+        $appId: ID!
+        $input: AppPreviewSettingsInput!
+      ) {
+        setAppPreviewSettings(appId: $appId, input: $input)
+      }
+    `,
+  }),
+  tool({
+    name: "approve_preview",
+    title: "Approve a preview from a fork",
+    description:
+      "Let a pull request from a fork be deployed as a preview, once its code has been looked at.",
+    group: "Previews",
+    requires: "manage_previews",
+    input: z.object({ id: z.string().describe("From list_previews.") }),
+    query: /* GraphQL */ `
+      mutation McpApprovePreview($id: ID!) {
+        approvePreview(id: $id) {
+          id
+          prNumber
+          approved
+          status
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "redeploy_preview",
+    title: "Redeploy a preview",
+    description: "Rebuild and redeploy one pull request preview.",
+    group: "Previews",
+    requires: "manage_previews",
+    input: z.object({ id: z.string().describe("From list_previews.") }),
+    query: /* GraphQL */ `
+      mutation McpRedeployPreview($id: ID!) {
+        redeployPreview(id: $id) {
+          id
+          prNumber
+          status
+          url
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "list_preview_env",
+    title: "List an app's preview-only variables",
+    description:
+      "Variables injected only into pull request previews. Values are never shown.",
+    group: "Previews",
+    requires: "manage_env",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({ appId }),
+    query: /* GraphQL */ `
+      query McpPreviewEnv($appId: ID!) {
+        previewEnvVars(appId: $appId) {
+          key
+          type
+          updatedAt
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_preview_env_var",
+    title: "Set or delete a preview-only variable",
+    description:
+      "Set one variable that only previews receive, or delete it by passing no value.",
+    group: "Previews",
+    requires: "manage_env",
+    idempotent: true,
+    input: z.object({
+      appId,
+      key: z.string(),
+      value: z.string().optional().describe("Omit to delete the key."),
+      secret: z.boolean().optional(),
+    }),
+    variables: (a) => ({
+      appId: a.appId,
+      key: a.key,
+      value: a.value ?? "",
+      secret: a.secret,
+      set: a.value !== undefined,
+      remove: a.value === undefined,
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetPreviewEnv(
+        $appId: ID!
+        $key: String!
+        $value: String!
+        $secret: Boolean
+        $set: Boolean!
+        $remove: Boolean!
+      ) {
+        setPreviewEnvVar(
+          appId: $appId
+          key: $key
+          value: $value
+          secret: $secret
+        ) @include(if: $set)
+        deletePreviewEnvVar(appId: $appId, key: $key) @include(if: $remove)
+      }
+    `,
+  }),
+];
+
+/* ------------------------------------------------------------------ *
+ * Fleet administration (instance admin)
+ * ------------------------------------------------------------------ */
+
+const SERVER_ROW = /* GraphQL */ `
+  id
+  name
+  host
+  role
+  type
+  status
+  allTeams
+  buildFallback
+  deployConcurrency
+  agentVersion
+  isDeploHost
+`;
+
+const FLEET: McpToolDef[] = [
+  tool({
+    name: "add_server",
+    title: "Register a new server",
+    description:
+      "Add a machine to the fleet. Returns the one-line install command that has to be run on it once; it carries an enrolment token, so hand it to the person who owns the machine rather than repeating it.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    input: z.object({
+      name: z.string(),
+      host: z.string().describe("IP or hostname Deplo dials."),
+      allTeams: z.boolean().optional().describe("Usable by every team."),
+      teamIds: z.array(z.string()).optional(),
+      buildOnly: z.boolean().optional(),
+      storageOnly: z.boolean().optional(),
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpAddServer($input: AddServerInput!) {
+        addServer(input: $input) {
+          server { ${SERVER_ROW} }
+          installCommand
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "remove_server",
+    title: "Remove a server",
+    description:
+      "Take a server out of the fleet. Refused while apps still run on it; the agent is uninstalled by the reaper afterwards.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    destructive: true,
+    input: z.object({ serverId }),
+    variables: (a) => ({ id: a.serverId }),
+    query: /* GraphQL */ `
+      mutation McpRemoveServer($id: String!) {
+        removeServer(id: $id) {
+          warning
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "update_server",
+    title: "Change a server's address, role, teams or limits",
+    description:
+      "Any of: the address Deplo dials, its role, which teams may use it, build fallback, deploy concurrency, timezone.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({
+      serverId,
+      address: z.string().optional(),
+      agentPort: z.number().int().optional(),
+      role: z.string().optional(),
+      allTeams: z.boolean().optional(),
+      teamIds: z.array(z.string()).optional(),
+      buildFallback: z.boolean().optional(),
+      deployConcurrency: z.number().int().optional(),
+      timezone: z.string().optional().describe("IANA zone."),
+    }),
+    variables: (a) => ({
+      id: a.serverId,
+      address: a.address ?? "",
+      agentPort: a.agentPort,
+      role: a.role ?? "",
+      teams: {
+        serverId: a.serverId,
+        allTeams: a.allTeams ?? false,
+        teamIds: a.teamIds,
+      },
+      buildFallback: a.buildFallback,
+      concurrency: a.deployConcurrency ?? 1,
+      timezone: a.timezone ?? "",
+      setAddress: a.address !== undefined,
+      setRole: a.role !== undefined,
+      setTeams: a.allTeams !== undefined || a.teamIds !== undefined,
+      setFallback: a.buildFallback !== undefined,
+      setConcurrency: a.deployConcurrency !== undefined,
+      setTimezone: a.timezone !== undefined,
+    }),
+    query: /* GraphQL */ `
+      mutation McpUpdateServer(
+        $id: String!
+        $address: String!
+        $agentPort: Int
+        $role: String!
+        $teams: SetServerTeamsInput!
+        $buildFallback: Boolean
+        $concurrency: Int!
+        $timezone: String!
+        $setAddress: Boolean!
+        $setRole: Boolean!
+        $setTeams: Boolean!
+        $setFallback: Boolean!
+        $setConcurrency: Boolean!
+        $setTimezone: Boolean!
+      ) {
+        updateServerAddress(id: $id, address: $address, agentPort: $agentPort)
+          @include(if: $setAddress)
+        setServerRole(id: $id, role: $role) @include(if: $setRole) {
+          id
+          role
+        }
+        setServerTeams(input: $teams) @include(if: $setTeams) {
+          id
+          allTeams
+        }
+        setServerBuildFallback(id: $id, buildFallback: $buildFallback)
+          @include(if: $setFallback) {
+          id
+          buildFallback
+        }
+        setServerDeployConcurrency(id: $id, concurrency: $concurrency)
+          @include(if: $setConcurrency) {
+          id
+          deployConcurrency
+        }
+        setServerTimezone(id: $id, timezone: $timezone)
+          @include(if: $setTimezone) {
+          timezone
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "get_server_host_info",
+    title: "Read a server's host facts",
+    description:
+      "Ask the server about itself: OS, kernel, CPU, memory, disk, Docker version, timezone and uptime.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({ serverId }),
+    variables: (a) => ({ id: a.serverId }),
+    query: /* GraphQL */ `
+      mutation McpHostInfo($id: String!) {
+        checkServerHostInfo(id: $id) {
+          osPretty
+          kernel
+          arch
+          cpuModel
+          cpuCores
+          memTotalBytes
+          diskTotalBytes
+          diskUsedBytes
+          dockerVersion
+          timezone
+          uptimeSec
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "check_agent_updates",
+    title: "Check for server agent updates",
+    description:
+      "Look up the newest agent release and compare it with what every server runs.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      mutation McpCheckAgentUpdates {
+        checkAgentUpdates
+      }
+    `,
+  }),
+  tool({
+    name: "uninstall_server_agent",
+    title: "Uninstall a server's agent",
+    description:
+      "Remove the Deplo agent from a machine that has already been taken out of service.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    destructive: true,
+    input: z.object({ serverId }),
+    variables: (a) => ({ id: a.serverId }),
+    query: /* GraphQL */ `
+      mutation McpUninstallAgent($id: String!) {
+        uninstallServerAgent(id: $id) {
+          removed
+          warning
+          error
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "add_server_certificate",
+    title: "Add a custom TLS certificate to a server",
+    description:
+      "Install your own certificate and key on a server's proxy, for a domain Let's Encrypt cannot issue.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    input: z.object({
+      serverId,
+      certificate: z.string().describe("PEM chain."),
+      privateKey: z.string().describe("PEM key."),
+    }),
+    variables: (a) => ({
+      id: a.serverId,
+      input: { certificate: a.certificate, privateKey: a.privateKey },
+    }),
+    query: /* GraphQL */ `
+      mutation McpAddCertificate(
+        $id: String!
+        $input: ServerCertificateInput!
+      ) {
+        addServerCertificate(id: $id, input: $input) {
+          id
+          subject
+          domains
+          notAfter
+          expiresInDays
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "remove_server_certificate",
+    title: "Remove a custom TLS certificate",
+    description: "Drop a certificate that was added by hand to a server.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    destructive: true,
+    input: z.object({ serverId, certificateId: z.string() }),
+    variables: (a) => ({ id: a.serverId, certificateId: a.certificateId }),
+    query: /* GraphQL */ `
+      mutation McpRemoveCertificate($id: String!, $certificateId: String!) {
+        removeServerCertificate(id: $id, certificateId: $certificateId) {
+          id
+          subject
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_certificate_email",
+    title: "Set the Let's Encrypt account email",
+    description:
+      "The email every server's certificate account is registered with.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({ email: z.string() }),
+    query: /* GraphQL */ `
+      mutation McpSetCertificateEmail($email: String!) {
+        setCertificateEmail(email: $email) {
+          serverName
+          email
+          unavailable
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "get_docker_cleanup_policy",
+    title: "Read the Docker cleanup policy",
+    description:
+      "Whether automatic cleanup runs, on what schedule, which scopes, and which servers are excluded.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpCleanupPolicy {
+        dockerCleanupPolicy {
+          enabled
+          schedule
+          scopes
+          keepImagesPerApp
+          minAgeHours
+          excludedServerIds
+          updatedAt
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "update_docker_cleanup_policy",
+    title: "Change the Docker cleanup policy",
+    description:
+      "Set the whole policy at once: on/off, cron schedule, scopes, images kept per app, minimum age for caches, excluded servers.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({
+      enabled: z.boolean(),
+      schedule: z.string().describe("5-field cron."),
+      scopes: z.array(
+        z.enum([
+          "unused_app_images",
+          "dangling_images",
+          "build_cache",
+          "orphan_buildkit_cache",
+          "leftover_networks",
+          "leftover_app_files",
+        ]),
+      ),
+      keepImagesPerApp: z.number().int().min(1),
+      minAgeHours: z.number().int().min(0),
+      excludedServerIds: z.array(z.string()).optional(),
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpUpdateCleanupPolicy($input: UpdateDockerCleanupPolicyInput!) {
+        updateDockerCleanupPolicy(input: $input) {
+          enabled
+          schedule
+          scopes
+          keepImagesPerApp
+          minAgeHours
+          excludedServerIds
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_server_cleanup_excluded",
+    title: "Exclude a server from Docker cleanup",
+    description: "Skip (or include again) one server in the cleanup runs.",
+    group: "Servers",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({ serverId, excluded: z.boolean() }),
+    query: /* GraphQL */ `
+      mutation McpSetCleanupExcluded($serverId: String!, $excluded: Boolean!) {
+        setServerCleanupExcluded(serverId: $serverId, excluded: $excluded) {
+          excludedServerIds
+        }
+      }
+    `,
+  }),
+];
+
+/* ------------------------------------------------------------------ *
+ * Destinations, notifications, git, the panel itself
+ * ------------------------------------------------------------------ */
+
+const DESTINATION_FIELDS = /* GraphQL */ `
+  id
+  name
+  kind
+  where
+  status
+  encrypted
+  serverName
+  bucket
+  endpoint
+  region
+  path
+  lastTestAt
+  lastTestError
+`;
+
+const INTEGRATIONS: McpToolDef[] = [
+  tool({
+    name: "create_destination",
+    title: "Add a backup destination",
+    description:
+      "Where backups are stored: an S3-compatible bucket (with credentials) or a directory on one of the fleet's servers.",
+    group: "Backups",
+    requires: "manage_backup_destinations",
+    input: z.object({
+      name: z.string(),
+      kind: z.enum(["s3", "server"]),
+      serverId: z.string().optional().describe("For kind server."),
+      path: z.string().optional().describe("For kind server."),
+      provider: z
+        .enum([
+          "AWS",
+          "BACKBLAZE_B2",
+          "CLOUDFLARE_R2",
+          "DIGITALOCEAN",
+          "MINIO",
+          "OTHER",
+          "WASABI",
+        ])
+        .optional(),
+      endpoint: z.string().optional(),
+      region: z.string().optional(),
+      bucket: z.string().optional(),
+      accessKey: z.string().optional(),
+      secretKey: z.string().optional(),
+      s3ExtraArgs: z.string().optional(),
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpCreateDestination($input: CreateDestinationInput!) {
+        createDestination(input: $input) { ${DESTINATION_FIELDS} }
+      }
+    `,
+  }),
+  tool({
+    name: "test_destination",
+    title: "Test a backup destination",
+    description:
+      "Write and read a probe object to prove the destination works.",
+    group: "Backups",
+    requires: "manage_backup_destinations",
+    idempotent: true,
+    input: z.object({ id: z.string().describe("From list_destinations.") }),
+    query: /* GraphQL */ `
+      mutation McpTestDestination($id: String!) {
+        testDestination(id: $id) {
+          destination { ${DESTINATION_FIELDS} }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "delete_destination",
+    title: "Delete a backup destination",
+    description:
+      "Remove a destination. Refused while schedules point at it; deleteArtifacts also removes the backups it holds.",
+    group: "Backups",
+    requires: "manage_backup_destinations",
+    destructive: true,
+    input: z.object({
+      id: z.string().describe("From list_destinations."),
+      deleteArtifacts: z.boolean().optional(),
+    }),
+    query: /* GraphQL */ `
+      mutation McpDeleteDestination($id: String!, $deleteArtifacts: Boolean) {
+        deleteDestination(id: $id, deleteArtifacts: $deleteArtifacts)
+      }
+    `,
+  }),
+  tool({
+    name: "list_notification_channels",
+    title: "List notification channels",
+    description:
+      "Where this team is told about deploys and alerts: email, Slack, Discord, Telegram, webhooks. Credentials are masked.",
+    group: "Notifications",
+    requires: "manage_notifications",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpNotificationChannels {
+        notificationChannels
+      }
+    `,
+  }),
+  tool({
+    name: "save_notification_channel",
+    title: "Create or edit a notification channel",
+    description:
+      "Create a channel from its settings object (type, name, target, which events), or edit one by passing its id.",
+    group: "Notifications",
+    requires: "manage_notifications",
+    input: z.object({
+      id: z.string().optional(),
+      input: z
+        .record(z.string(), z.unknown())
+        .describe(
+          "The channel's settings, as list_notification_channels shows them.",
+        ),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSaveNotificationChannel($id: ID, $input: JSON!) {
+        saveNotificationChannel(id: $id, input: $input)
+      }
+    `,
+  }),
+  tool({
+    name: "test_notification_channel",
+    title: "Send a test notification",
+    description: "Send a test message through one channel.",
+    group: "Notifications",
+    requires: "manage_notifications",
+    idempotent: true,
+    input: z.object({ id: z.string() }),
+    query: /* GraphQL */ `
+      mutation McpTestNotificationChannel($id: ID!) {
+        testNotificationChannel(id: $id)
+      }
+    `,
+  }),
+  tool({
+    name: "delete_notification_channel",
+    title: "Delete a notification channel",
+    description:
+      "Remove a notification channel, so nothing is sent through it any more.",
+    group: "Notifications",
+    requires: "manage_notifications",
+    destructive: true,
+    input: z.object({ id: z.string() }),
+    query: /* GraphQL */ `
+      mutation McpDeleteNotificationChannel($id: ID!) {
+        deleteNotificationChannel(id: $id)
+      }
+    `,
+  }),
+  tool({
+    name: "list_git_providers",
+    title: "List the git providers Deplo can connect",
+    description:
+      "GitHub, GitLab, Bitbucket, Gitea: what each needs (token scopes, base URL) to be connected.",
+    group: "Git",
+    requires: "view",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpGitProviders {
+        gitProviders {
+          id
+          label
+          defaultBaseUrl
+          defaultUsername
+          hasApi
+          tokenScopes
+          tokenHelpUrl
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "connect_git_provider",
+    title: "Connect a git provider with a token",
+    description:
+      "Connect GitLab, Bitbucket or Gitea (GitHub uses its own app flow in the dashboard) with a personal access token.",
+    group: "Git",
+    requires: "manage_git",
+    input: z.object({
+      provider: z.string().describe("From list_git_providers."),
+      label: z.string(),
+      baseUrl: z.string(),
+      token: z.string(),
+      username: z.string().optional(),
+    }),
+    variables: (a) => ({ input: a }),
+    query: /* GraphQL */ `
+      mutation McpConnectGit($input: ConnectGitProviderInput!) {
+        connectGitProvider(input: $input) {
+          id
+          provider
+          label
+          baseUrl
+          health
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "update_git_connection",
+    title: "Rotate a git connection's token or rename it",
+    description: "Change the label, the token or the username of a connection.",
+    group: "Git",
+    requires: "manage_git",
+    idempotent: true,
+    input: z.object({
+      id: z.string().describe("From list_git_sources."),
+      label: z.string().optional(),
+      token: z.string().optional(),
+      username: z.string().optional(),
+    }),
+    variables: ({ id, ...input }) => ({ id, input }),
+    query: /* GraphQL */ `
+      mutation McpUpdateGit($id: String!, $input: UpdateGitConnectionInput!) {
+        updateGitConnection(id: $id, input: $input) {
+          id
+          label
+          health
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "test_git_connection",
+    title: "Test a git connection",
+    description: "Check that a connection's token still works.",
+    group: "Git",
+    requires: "manage_git",
+    idempotent: true,
+    input: z.object({ id: z.string().describe("From list_git_sources.") }),
+    query: /* GraphQL */ `
+      mutation McpTestGit($id: String!) {
+        testGitConnection(id: $id) {
+          id
+          health
+          healthError
+          lastCheckedAt
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "remove_git_connection",
+    title: "Disconnect a git provider",
+    description:
+      "Remove a connection. Apps deploying through it keep their code but lose automatic deploys.",
+    group: "Git",
+    requires: "manage_git",
+    destructive: true,
+    input: z.object({ id: z.string().describe("From list_git_sources.") }),
+    query: /* GraphQL */ `
+      mutation McpRemoveGit($id: String!) {
+        removeGitConnection(id: $id)
+      }
+    `,
+  }),
+  tool({
+    name: "get_instance",
+    title: "Read this Deplo's own settings",
+    description:
+      "The panel's address, version, log retention, and whether an update is available.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpInstance {
+        instanceSettings {
+          version
+          panelUrl
+          panelUrlSource
+          storedPanelUrl
+          panelFallbackUrl
+          logMaxDays
+          deploHostName
+          deploHostIp
+        }
+        updateInfo {
+          current
+          latest
+          updateAvailable
+          publishedAt
+          url
+          checkedAt
+          error
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "check_for_updates",
+    title: "Check for a Deplo update",
+    description: "Look up the newest Deplo release right now.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      mutation McpCheckForUpdates {
+        checkForUpdates {
+          current
+          latest
+          updateAvailable
+          publishedAt
+          url
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "read_changelog",
+    title: "Read Deplo's changelog",
+    description: "The recent releases and what changed in each.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpChangelog {
+        deploChangelog {
+          error
+          releases {
+            tag
+            name
+            publishedAt
+            prerelease
+            body
+          }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_panel_url",
+    title: "Set the panel's public address",
+    description:
+      "The address Deplo publishes for itself (webhooks, OAuth, agents). Null goes back to the detected one.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({ url: z.string().nullable() }),
+    query: /* GraphQL */ `
+      mutation McpSetPanelUrl($url: String) {
+        setPanelUrl(url: $url) {
+          panelUrl
+          panelUrlSource
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_panel_https",
+    title: "Turn HTTPS for the panel on or off",
+    description:
+      "Serve the panel over HTTPS through the Deplo host's proxy, with a certificate for the panel's domain.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({ enabled: z.boolean() }),
+    query: /* GraphQL */ `
+      mutation McpSetPanelHttps($enabled: Boolean!) {
+        setPanelHttps(enabled: $enabled) {
+          enabled
+          domain
+          certificateTrusted
+          unavailable
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_log_retention",
+    title: "Set how many days of logs are kept",
+    description: "Log retention for every app and database on this Deplo.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({ days: z.number().int().min(1) }),
+    query: /* GraphQL */ `
+      mutation McpSetLogMaxDays($days: Int!) {
+        setLogMaxDays(days: $days) {
+          logMaxDays
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "restart_panel",
+    title: "Restart the Deplo panel",
+    description:
+      "Restart the control plane itself, on the server that runs it. Every dashboard session is interrupted for a moment.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    destructive: true,
+    input: z.object({ serverId: serverId.describe("The Deplo host's id.") }),
+    variables: (a) => ({ id: a.serverId }),
+    query: /* GraphQL */ `
+      mutation McpRestartPanel($id: String!) {
+        restartDeploPanel(id: $id)
+      }
+    `,
+  }),
+];
+
 const ESCAPE_HATCH: McpToolDef[] = [
   tool({
     name: "graphql_query",
@@ -2618,6 +5229,13 @@ export const MCP_TOOLS: McpToolDef[] = [
   ...GIT,
   ...REGISTRIES_AND_ACCESS,
   ...SERVERS,
+  ...STRUCTURE,
+  ...TEAM_ADMIN,
+  ...APPS_SETTINGS,
+  ...DATABASES_SETTINGS,
+  ...OPS_ADMIN,
+  ...FLEET,
+  ...INTEGRATIONS,
   ...ESCAPE_HATCH,
 ];
 
