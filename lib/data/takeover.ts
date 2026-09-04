@@ -45,12 +45,17 @@ export const TAKEOVER_STATES = [
 ] as const;
 export type TakeoverState = (typeof TAKEOVER_STATES)[number];
 
-/** What may follow what. Nothing ever moves backwards, except a rollback. */
+/**
+ * What may follow what. Nothing ever moves backwards, except a rollback. The host
+ * reports `done` and beyond, and a report it could not deliver (the panel restarts
+ * under the removal) must not leave this a step behind the machine for good: a
+ * later host state is taken from `ready` and `done` too.
+ */
 const NEXT: Record<TakeoverState, readonly TakeoverState[]> = {
   pending: ["ready", "cancelled"],
-  ready: ["done", "failed", "cancelled"],
+  ready: ["done", "removing", "removed", "failed", "cancelled"],
   failed: ["ready", "cancelled"],
-  done: ["removing"],
+  done: ["removing", "removed"],
   removing: ["removed"],
   removed: [],
   cancelled: [],
@@ -203,8 +208,8 @@ export async function noteBrowserReached(): Promise<void> {
  */
 /**
  * The services of a run that arrived WITHOUT their data - a copy that failed -
- * named the way the report names them. The cutover removes the old panel's
- * volumes, so for these the old panel holds the only copy there is.
+ * named the way the report names them. The cutover stops the old panel for good
+ * (its volumes stay on the disk, unread), so for these it holds the only copy.
  */
 export async function takeoverDataLoss(runId: string): Promise<string[]> {
   // The report is history; the marker on the resource is the state, and a copy
@@ -312,11 +317,12 @@ export async function requestTakeover(
       "That migration still has teams to bring over from the panel. Finish them first: taking the ports stops it for good, and a token reads one team.",
     );
   // A copy that failed leaves the old panel holding the only data there is, and
-  // the cutover deletes it. Never on a default: the operator says so by name.
+  // the cutover stops that panel for good. Never on a default: the operator says
+  // so by name.
   const lost = await takeoverDataLoss(runId);
   if (lost.length > 0 && !opts.acceptDataLoss)
     throw new Error(
-      `${lost.length} ${lost.length === 1 ? "service" : "services"} arrived without ${lost.length === 1 ? "its" : "their"} data (${lost.join(", ")}). Taking over deletes the old panel's copy, so copy the data again first, or confirm that it may be lost.`,
+      `${lost.length} ${lost.length === 1 ? "service" : "services"} arrived without ${lost.length === 1 ? "its" : "their"} data (${lost.join(", ")}). Taking over stops the old panel for good - its volumes stay on the disk, but nothing reads them - so copy the data again first, or confirm that it may be lost.`,
     );
   return advance("ready", { runId });
 }

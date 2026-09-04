@@ -205,6 +205,16 @@ test("the ladder only ever goes forward", async () => {
   );
 });
 
+test("a later host state is taken from ready and done: a lost report cannot strand the ladder", async () => {
+  await seedPending();
+  await seedFinishedRun("run_1");
+  await asUser(ADMIN, () => requestTakeover("run_1"));
+  // The host moved the ports and removed the panel, but its `done` and
+  // `removing` never arrived (the panel was restarting under the removal).
+  await asUser(ADMIN, () => markTakeoverProgress("removed"));
+  assert.equal((await read())?.state, "removed");
+});
+
 test("a cutover that rolled back can be asked for again, and says why", async () => {
   await seedPending();
   await seedFinishedRun("run_1");

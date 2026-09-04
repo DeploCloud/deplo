@@ -493,11 +493,6 @@ platform_label() {
   case "$1" in dokploy) printf 'Dokploy' ;; coolify) printf 'Coolify' ;; *) printf '%s' "$1" ;; esac
 }
 
-# Where its own dashboard answers, which is what the migration wizard reads.
-platform_panel_port() {
-  case "$1" in coolify) printf '8000' ;; *) printf '3000' ;; esac
-}
-
 # Its Traefik's certificate store, inherited at the cutover so the domains that
 # already point here keep answering HTTPS without asking Let's Encrypt again.
 platform_acme_file() {
@@ -1765,10 +1760,18 @@ takeover_field() {
 }
 
 takeover_post() { # $1 state, $2 the reason (failed only)
-  local why
+  local why code i=0
   why="$(printf '%s' "${2:-}" | tr '\n\r\t' '   ' | sed 's/\\/\\\\/g; s/"/\\"/g')"
-  curl -fsS --max-time 20 -X POST -H "Authorization: Bearer $HOST_TOKEN" \
-    -H 'Content-Type: application/json' -d "{\"state\":\"$1\",\"error\":\"$why\"}" "$TAKEOVER_API" >&9 2>&9 || true
+  # Retried for two minutes: the panel restarts under the removal, and a report
+  # that never arrived left the wizard a step behind the machine for good.
+  while :; do
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H "Authorization: Bearer $HOST_TOKEN" \
+      -H 'Content-Type: application/json' -d "{\"state\":\"$1\",\"error\":\"$why\"}" "$TAKEOVER_API" 2>&9 || true)"
+    case "$code" in 2* | 4*) return 0 ;; esac
+    i=$((i + 1))
+    [ "$i" -ge 24 ] && return 0
+    sleep 5
+  done
 }
 
 # A route dropped into the other platform's Traefik, which both watch and reload
@@ -2136,8 +2139,8 @@ platform_own_networks() {
 # The platform's directory, minus anything a Deplo container still mounts from
 # it: Dokploy keeps every file mount under /etc/dokploy/files, and an app that
 # came across with such a bind lost it to a wholesale rm - measured, 25 files.
-remove_platform_dir() {
-  local dir="$1" keep="" c src
+remove_platform_dir() { # $1 dir, $2 paths under it to keep as they are
+  local dir="$1" keep="${2:-}" c src
   [ -n "$dir" ] && [ -d "$dir" ] || return 0
   for c in $(docker ps -aq --filter name=deplo- 2>/dev/null); do
     for src in $(docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "bind"}}{{println .Source}}{{end}}{{end}}' 2>/dev/null); do
@@ -2145,7 +2148,7 @@ remove_platform_dir() {
     done
   done
   if [ -z "$keep" ]; then rm -rf "$dir"; return 0; fi
-  warn "Kept under $dir, because an app on Deplo still mounts it:$keep"
+  warn "Kept under $dir:$keep"
   # Everything else goes, walking down only where a kept path lives.
   local entry k skip
   find "$dir" -mindepth 1 -maxdepth 1 | while read -r entry; do
@@ -2234,8 +2237,19 @@ foreign_remove() {
   # everything the migration just brought across with it.
   docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
     | grep -E "^(ghcr\.io/)?(coollabsio|dokploy)/" | xargs -r docker rmi -f >&9 2>&9 || true
-  remove_platform_dir "$(platform_dir "$TAKEOVER")"
+  # Coolify writes every database backup it takes under its own directory, S3 or
+  # not, and keeps them there: deleting the directory whole took the one thing a
+  # copy gone wrong is recovered from.
+  local backups=""
+  if [ "$TAKEOVER" = coolify ] && [ -n "$(find /data/coolify/backups -type f 2>/dev/null | head -n1)" ]; then
+    backups=/data/coolify/backups
+  fi
+  remove_platform_dir "$(platform_dir "$TAKEOVER")" "$backups"
   spin_ok "$FOREIGN_LABEL removed" "containers, swarm, images, its directory and networks; its apps' volumes are kept"
+  if [ -n "$backups" ]; then
+    note "Kept $backups ($(du -sh "$backups" 2>/dev/null | cut -f1)): the database backups $FOREIGN_LABEL took."
+    note "Remove it yourself once you no longer need them."
+  fi
   # Volumes and networks are read off the containers being removed, so whatever it
   # made for an app it had already deleted is still here. Say so rather than delete
   # by name pattern, which is how a removal eats the apps just brought across.
@@ -2249,16 +2263,34 @@ foreign_remove() {
 }
 
 # Backing out. The panel has already started the other platform's services again
-# and undone what it created; this takes Deplo off the machine.
+# and undone what it created; this takes Deplo off the machine - the agent's
+# deployments too (the databases a migration provisioned kept running, five of
+# them, on a box handed back to the other panel). By Deplo's own label, and a
+# volume only when its name is Deplo's as well: a copy, never the original.
+deplo_workloads() { docker ps -aq --filter label=deplo.project 2>/dev/null || true; }
 takeover_uninstall() {
   note "Taking Deplo back off this machine - $FOREIGN_LABEL keeps everything."
+  local ours vols nets c
+  ours="$(deplo_workloads)"
+  if [ -n "$ours" ]; then
+    vols="$(for c in $ours; do docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' 2>/dev/null; done | grep -E '^deplo-' | sort -u || true)"
+    nets="$(for c in $ours; do docker inspect "$c" --format '{{range $n, $v := .NetworkSettings.Networks}}{{println $n}}{{end}}' 2>/dev/null; done | grep -E '^deplo-' | sort -u || true)"
+    step "Removing $(printf '%s\n' "$ours" | wc -l | tr -d ' ') container(s) Deplo deployed here, with the volumes it copied"
+    # shellcheck disable=SC2086
+    docker rm -f $ours >&9 2>&9 || true
+    # shellcheck disable=SC2086
+    [ -z "$vols" ] || docker volume rm -f $vols >&9 2>&9 || true
+    # shellcheck disable=SC2086
+    [ -z "$nets" ] || docker network rm $nets >&9 2>&9 || true
+  fi
   docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" down -v >&9 2>&9 || true
   docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" down >&9 2>&9 || true
   docker network rm deplo >&9 2>&9 || true
   if [ -x /usr/local/bin/deplo-agent ]; then
     systemctl disable --now deplo-agent >&9 2>&9 || true
-    rm -f /usr/local/bin/deplo-agent
+    rm -f /usr/local/bin/deplo-agent /etc/systemd/system/deplo-agent.service
     rm -rf /var/lib/deplo-agent
+    systemctl daemon-reload >&9 2>&9 || true
   fi
   foreign_start
   takeover_unit_remove
