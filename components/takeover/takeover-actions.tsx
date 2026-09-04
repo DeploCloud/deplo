@@ -140,7 +140,7 @@ function TakeoverConfirm({
   const router = useRouter();
   const [retrying, setRetrying] = React.useState(false);
   const clean = mode === "clean";
-  /** The copy of these failed; taking over deletes the only copy left. */
+  /** The copy of these failed; the takeover stops the panel holding the only copy. */
   const lossy = !clean && dataLoss.length > 0;
   const [lossAccepted, setLossAccepted] = React.useState(false);
   /**
@@ -274,7 +274,7 @@ function TakeoverConfirm({
                           : `${dataLoss.length} services lose their data: ${dataLoss.join(", ")}`}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {`The copy failed, so ${platformLabel} still holds the only copy, and taking over deletes it. Go back to Review to copy the data again instead.`}
+                        {`The copy failed, so ${platformLabel} still holds the only copy, and it stops for good at the takeover. Its volume stays on the disk, but nothing here reads it. Go back to Review and copy the data again instead.`}
                       </span>
                     </span>
                   </label>

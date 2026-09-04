@@ -48,7 +48,7 @@ const TakeoverRef = builder.objectRef<TakeoverStatus>("Takeover").implement({
     }),
     dataLoss: t.stringList({
       description:
-        "Services of the run that arrived without their data. The cutover deletes the old panel's copy, so requestTakeover refuses unless acceptDataLoss says so.",
+        "Services of the run that arrived without their data. The cutover stops the old panel for good (its volumes stay on the disk, unread), so requestTakeover refuses unless acceptDataLoss says so.",
       resolve: async (s) => (s.runId ? takeoverDataLoss(s.runId) : []),
     }),
   }),
@@ -132,7 +132,7 @@ builder.mutationFields((t) => ({
       acceptDataLoss: t.arg.boolean({
         required: false,
         description:
-          "The operator accepts that the services `dataLoss` names lose their data: their copy failed, and the cutover deletes the old panel's volumes. Refused without it while `dataLoss` is not empty.",
+          "The operator accepts that the services `dataLoss` names lose their data: their copy failed, and the cutover stops the old panel for good. Refused without it while `dataLoss` is not empty.",
       }),
     },
     resolve: (_r, { runId, noOtherTeams, discardData, acceptDataLoss }) =>

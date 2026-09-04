@@ -3239,7 +3239,7 @@ type Mutation {
   """
   requestTakeover(
     """
-    The operator accepts that the services `dataLoss` names lose their data: their copy failed, and the cutover deletes the old panel's volumes. Refused without it while `dataLoss` is not empty.
+    The operator accepts that the services `dataLoss` names lose their data: their copy failed, and the cutover stops the old panel for good. Refused without it while `dataLoss` is not empty.
     """
     acceptDataLoss: Boolean
 
@@ -5359,7 +5359,7 @@ The takeover this instance is in the middle of. Null on an ordinary install.
 """
 type Takeover {
   """
-  Services of the run that arrived without their data. The cutover deletes the old panel's copy, so requestTakeover refuses unless acceptDataLoss says so.
+  Services of the run that arrived without their data. The cutover stops the old panel for good (its volumes stay on the disk, unread), so requestTakeover refuses unless acceptDataLoss says so.
   """
   dataLoss: [String!]
 
