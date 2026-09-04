@@ -2,6 +2,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  requestOrigin,
   cookiesAreSecure,
   passkeyRelyingParty,
   publicBaseUrl,
@@ -45,6 +46,21 @@ test("clearing the stored address hands the answer back to the environment", () 
   setStoredPublicBaseUrl(null);
   assert.equal(publicBaseUrl(), "https://installed.example.com");
   assert.equal(cookiesAreSecure(), true);
+});
+
+test("the request's own origin is read off the headers, proxy first", () => {
+  assert.equal(
+    requestOrigin(
+      new Headers({
+        host: "deplo:3000",
+        "x-forwarded-host": "deplo.example.com",
+        "x-forwarded-proto": "http",
+      }),
+    ),
+    "http://deplo.example.com",
+  );
+  assert.equal(requestOrigin(new Headers({ host: "not a host" })), null);
+  assert.equal(requestOrigin(new Headers()), null);
 });
 
 test("a trailing slash never changes the answer", () => {

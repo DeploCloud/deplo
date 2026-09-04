@@ -92,6 +92,45 @@ async function seedPending(platform = "dokploy"): Promise<void> {
   await asUser(ADMIN, ensureTakeoverFromEnv);
 }
 
+// Before the cutover Deplo's proxy waits on loopback, so the configured https
+// address is exactly the one that does not answer; the request came in through
+// the old panel's proxy, and that is where a remote machine can enrol.
+test("until the cutover, what Deplo hands out names the address it was reached on", async (t) => {
+  const { instancePublicBaseUrl } = await import("./instance-settings");
+  const previous = process.env.DEPLO_PUBLIC_URL;
+  process.env.DEPLO_PUBLIC_URL = "https://deplo-abc.nip.io";
+  t.after(() => {
+    if (previous === undefined) delete process.env.DEPLO_PUBLIC_URL;
+    else process.env.DEPLO_PUBLIC_URL = previous;
+  });
+  const sideDoor = new Headers({
+    host: "deplo-abc.nip.io",
+    "x-forwarded-proto": "http",
+  });
+  // No takeover: the configured address, whatever the request says.
+  assert.equal(
+    await asUser(ADMIN, () => instancePublicBaseUrl(sideDoor)),
+    "https://deplo-abc.nip.io",
+  );
+  await seedPending();
+  assert.equal(
+    await asUser(ADMIN, () => instancePublicBaseUrl(sideDoor)),
+    "http://deplo-abc.nip.io",
+  );
+  // Outside a request there is nothing to prefer, and the configured one answers.
+  assert.equal(
+    await asUser(ADMIN, () => instancePublicBaseUrl()),
+    "https://deplo-abc.nip.io",
+  );
+  // Once the ports are Deplo's, the configured address is the one that answers.
+  await asUser(ADMIN, () => requestTakeover(null, { discardData: true }));
+  await asUser(ADMIN, () => markTakeoverProgress("done"));
+  assert.equal(
+    await asUser(ADMIN, () => instancePublicBaseUrl(sideDoor)),
+    "https://deplo-abc.nip.io",
+  );
+});
+
 test("an ordinary install is not a takeover", async () => {
   await asUser(ADMIN, ensureTakeoverFromEnv);
   assert.equal(await read(), null);

@@ -84,14 +84,14 @@ export function passkeyRelyingParty(): { rpId: string; origin: string } | null {
 }
 
 export function resolvePublicBaseUrl(h: Headers): string {
-  const configured = publicBaseUrl();
-  if (configured) return configured;
+  return publicBaseUrl() ?? requestOrigin(h) ?? PUBLIC_URL_PLACEHOLDER;
+}
 
+/** The origin this request came in on, or null when the host is not one. */
+export function requestOrigin(h: Headers): string | null {
   const rawHost = h.get("x-forwarded-host") ?? h.get("host") ?? "";
-  if (HOST_RE.test(rawHost)) {
-    return `${sanitizeProto(h.get("x-forwarded-proto"), rawHost)}://${rawHost}`;
-  }
-  return PUBLIC_URL_PLACEHOLDER;
+  if (!HOST_RE.test(rawHost)) return null;
+  return `${sanitizeProto(h.get("x-forwarded-proto"), rawHost)}://${rawHost}`;
 }
 
 /**

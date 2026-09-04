@@ -73,6 +73,36 @@ test("installCommand embeds the token + url, and the fingerprint only over HTTPS
   assert.match(noFp, /'http:\/\/10\.0\.0\.5:3000'/);
 });
 
+// Measured on a takeover: the address in the command did not answer, curl fetched
+// nothing, `| bash` ran an empty script and exited 0 - "installed" in silence.
+test("the one-liners download first and run second, so a failed download fails", () => {
+  const cmd = installCommand({
+    baseUrl: "https://deplo.example.com",
+    rawToken: "t",
+    fingerprint: "f",
+  });
+  assert.doesNotMatch(cmd, /\| *sudo/);
+  assert.match(
+    cmd,
+    /-o \/tmp\/deplo-agent-install\.sh && sudo bash \/tmp\/deplo-agent-install\.sh 't' 'https:\/\/deplo\.example\.com' 'f'$/,
+  );
+  assert.match(
+    installCommand({
+      baseUrl: "http://10.0.0.5:3000",
+      rawToken: "t",
+      fingerprint: "",
+      importOnly: true,
+    }),
+    /&& sudo DEPLO_IMPORT_ONLY=1 bash \/tmp\/deplo-agent-install\.sh 't' 'http:\/\/10\.0\.0\.5:3000'$/,
+  );
+  const un = uninstallCommand({ baseUrl: "https://deplo.example.com" });
+  assert.doesNotMatch(un, /\| *sudo/);
+  assert.match(
+    un,
+    /-o \/tmp\/deplo-uninstall\.sh && sudo bash \/tmp\/deplo-uninstall\.sh --yes --agent-only$/,
+  );
+});
+
 test("curl skips verification only when the panel's own certificate does not", () => {
   // The generated nip.io address serves a certificate no public CA signed, so a
   // command without -k fetches nothing. Printing it on an instance with a real

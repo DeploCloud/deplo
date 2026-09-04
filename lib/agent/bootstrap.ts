@@ -105,7 +105,10 @@ export function installCommand(opts: {
       : buildOnly
         ? "DEPLO_BUILD_ONLY=1 "
         : "";
-  return `curl -${curlFlags(insecure)} '${baseUrl}/install-agent.sh' | sudo ${env}bash -s -- '${rawToken}' '${baseUrl}'${fp}`;
+  // Download THEN run, never `curl | bash`: a download that fails hands bash an
+  // empty script, which exits 0 - measured, an address that did not answer
+  // "installed" nothing and said nothing.
+  return `curl -${curlFlags(insecure)} '${baseUrl}/install-agent.sh' -o /tmp/deplo-agent-install.sh && sudo ${env}bash /tmp/deplo-agent-install.sh '${rawToken}' '${baseUrl}'${fp}`;
 }
 
 /**
@@ -116,7 +119,7 @@ export function uninstallCommand(opts: {
   baseUrl: string;
   insecure?: boolean;
 }): string {
-  return `curl -${curlFlags(opts.insecure)} '${opts.baseUrl}/uninstall.sh' | sudo bash -s -- --yes --agent-only`;
+  return `curl -${curlFlags(opts.insecure)} '${opts.baseUrl}/uninstall.sh' -o /tmp/deplo-uninstall.sh && sudo bash /tmp/deplo-uninstall.sh --yes --agent-only`;
 }
 
 /**

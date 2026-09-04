@@ -102,6 +102,20 @@ export const takeoverStatus = cache(
 );
 
 /**
+ * True while the ports are still the old panel's: Deplo's own proxy waits on
+ * loopback, so the configured https address answers nothing yet and the only way
+ * in is the old panel's proxy (the side door). Everything Deplo hands out to
+ * another machine in this state has to name THAT address.
+ */
+export async function takeoverAwaitsCutover(): Promise<boolean> {
+  const t = await takeoverStatus();
+  return (
+    t != null &&
+    (t.state === "pending" || t.state === "ready" || t.state === "failed")
+  );
+}
+
+/**
  * True while the dashboard must give way to the takeover screen - which is until
  * the old platform is off the machine. Landing on the dashboard is the moment
  * this is Deplo and nothing else, so nothing half-done is behind it.

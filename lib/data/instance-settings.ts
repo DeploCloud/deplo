@@ -40,6 +40,7 @@ import {
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import {
   passkeyRelyingParty,
+  requestOrigin,
   resolvePublicBaseUrl,
   setStoredPublicBaseUrl,
 } from "../public-url";
@@ -266,16 +267,32 @@ export async function setGravatarEnabled(
 /**
  * This instance's public base URL, as everything Deplo hands out should spell it.
  */
-export async function instancePublicBaseUrl(): Promise<string> {
+export async function instancePublicBaseUrl(
+  /** The request's headers; read from the request scope when not given. */
+  h?: Headers,
+): Promise<string> {
   const { panelUrl } = await loadSettings();
-  if (panelUrl) return panelUrl;
-  try {
-    return resolvePublicBaseUrl(await headers());
-  } catch {
-    // Outside a request scope (a scheduler tick, a background sweep) there are no
-    // headers to read; the configured env var, or the placeholder, still answers.
-    return resolvePublicBaseUrl(new Headers());
+  if (!h) {
+    try {
+      h = await headers();
+    } catch {
+      // Outside a request scope (a scheduler tick, a background sweep) there are
+      // no headers to read; the configured address, or the placeholder, answers.
+    }
   }
+  // Before a takeover's cutover the configured address answers nothing - Deplo's
+  // proxy waits on loopback - and the one this request arrived on is the old
+  // panel's proxy, the only address a remote machine can enrol through. Measured:
+  // every remote source of a multi-server panel stayed "provisioning".
+  if (h) {
+    const { takeoverAwaitsCutover } = await import("./takeover");
+    if (await takeoverAwaitsCutover()) {
+      const origin = requestOrigin(h);
+      if (origin) return origin;
+    }
+  }
+  if (panelUrl) return panelUrl;
+  return resolvePublicBaseUrl(h ?? new Headers());
 }
 
 /**
