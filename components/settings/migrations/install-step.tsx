@@ -716,6 +716,15 @@ export function InstallStep({
           );
         })}
       </div>
+
+      {/* A step that was settled when it opened does not move on by itself (see
+          above), so it says how: a second migration from the same panel finds
+          every machine already answering and used to end here with no way out. */}
+      {settled && (
+        <div className="flex justify-end">
+          <Button onClick={onDone}>Continue</Button>
+        </div>
+      )}
     </StepShell>
   );
 }
