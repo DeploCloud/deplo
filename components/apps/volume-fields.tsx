@@ -863,10 +863,10 @@ function AddMenu({
                     <Badge variant="warning">Permission</Badge>
                   )}
                 </span>
-                <span className="block text-xs whitespace-normal text-muted-foreground">
+                <span className="block text-xs leading-relaxed whitespace-normal text-muted-foreground">
                   {meta.summary}
                 </span>
-                <span className="block text-xs whitespace-normal text-muted-foreground/70">
+                <span className="block text-xs leading-relaxed whitespace-normal text-muted-foreground/70">
                   {meta.examples}
                 </span>
               </span>

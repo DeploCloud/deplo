@@ -57,7 +57,7 @@ export function NewTokenMenu() {
           <FileText className="size-4" />
           <span className="flex flex-col">
             <span>Start from scratch</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs leading-relaxed text-muted-foreground">
               View access only, then pick what to add
             </span>
           </span>
@@ -77,7 +77,7 @@ export function NewTokenMenu() {
               <Icon className="size-4 self-start" />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{p.name}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs leading-relaxed text-muted-foreground">
                   {p.description}
                 </span>
               </span>

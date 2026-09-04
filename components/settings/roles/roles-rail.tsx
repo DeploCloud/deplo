@@ -83,7 +83,7 @@ export function RolesRail({
                 <FileText className="size-4" />
                 <span className="flex flex-col">
                   <span>Start from scratch</span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs leading-relaxed text-muted-foreground">
                     View access only, then pick what to add
                   </span>
                 </span>
