@@ -292,7 +292,12 @@ function unfilledStackBinds(
 ): string[] {
   return landed.hostMounts
     .filter(
-      (m) => m.stackRelative && !binds.some((b) => b.mountPath === m.mountPath),
+      (m) =>
+        m.stackRelative &&
+        !binds.some((b) => b.mountPath === m.mountPath) &&
+        // A config FILE is filled by the configuration channel, so a stopped app
+        // (no live bind to pair it with) is not missing anything.
+        !landed.fileMounts.has(normalizePath(m.mountPath)),
     )
     .map(
       (m) =>

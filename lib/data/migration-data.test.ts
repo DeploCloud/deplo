@@ -1087,6 +1087,41 @@ test("a volume missing from a RUNNING service holds the deploy", async () => {
   assert.match(String(app.rows[0].data_copy_error), /not on the machine/);
 });
 
+// Measured on a takeover after an external run had stopped the app: the config
+// file the configuration channel had already carried was reported as a bind
+// beside the compose file that nothing filled.
+test("a stopped app's config file is not an unfilled bind", async () => {
+  await db.insert(appVolumesTable).values({
+    appId: "prj_web",
+    position: 2,
+    volumeId: "vol_hello",
+    type: "app",
+    name: "hello.txt",
+    service: null,
+    projectPath: "hello.txt",
+    hostPath: null,
+    mountPath: "/etc/mx/hello.txt",
+    readOnly: false,
+    propagation: null,
+  });
+  const live = CONTAINERS["blink-web-abc"];
+  CONTAINERS["blink-web-abc"] = [];
+  try {
+    const runId = await openRun();
+    const plan = await asOwner(() =>
+      planMigrationDataMove({ ...CONNECT, runId }),
+    );
+    const web = plan.find((s) => s.sourceName === "blink-web")!;
+    assert.equal(web.running, false);
+    assert.ok(
+      !web.notes.some((n) => /beside this stack's compose file/.test(n)),
+      web.notes.join(" | "),
+    );
+  } finally {
+    CONTAINERS["blink-web-abc"] = live;
+  }
+});
+
 test("a stopped stack whose compose lives in a repo still names its volumes", async () => {
   await seedMigrationHostServer();
   const runId = await openRun();
