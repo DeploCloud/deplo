@@ -351,6 +351,8 @@ test("coolifyEnvBlob takes the resolved value and leaves previews behind", () =>
     "APP_KEY=aB3k9\nPLAIN=yes\nBUILT=b\nSHARED={{team.SMTP_HOST}}",
   );
   assert.deepEqual(r.previewKeys, ["ONLY_PREVIEW"]);
+  // ...and their values ride along, for Deplo's own preview variables.
+  assert.equal(r.previewBlob, "ONLY_PREVIEW=x");
   assert.deepEqual(r.buildOnlyKeys, ["BUILT"]);
   assert.deepEqual(r.sharedRefs, [
     { key: "SHARED", level: "team", sharedKey: "SMTP_HOST", whole: true },

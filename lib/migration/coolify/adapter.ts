@@ -325,11 +325,6 @@ async function detail(
           `${env.unreadableKeys.join(", ")} arrived empty: {panel} shows those values once and does not answer with them again. Set them under Variables before deploying.`,
         ]
       : []),
-    ...(env.previewKeys.length > 0
-      ? [
-          `Preview-only variable(s) on {panel} that did not come across: ${env.previewKeys.join(", ")}. Set them under Previews if previews are on.`,
-        ]
-      : []),
   ];
   // The MACHINE this resource runs on. Left out, everything looked like it was
   // on the panel's own host, and the data phase then asked that host for volumes
@@ -382,6 +377,7 @@ async function detail(
     return coolifyCompose(row, extras).value;
   return coolifyApplication(row, {
     ...extras,
+    previewEnv: env.previewBlob || undefined,
     basicAuth:
       row.is_http_basic_auth_enabled &&
       row.http_basic_auth_username &&

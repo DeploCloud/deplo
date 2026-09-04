@@ -3578,15 +3578,42 @@ async function importAppService(
               : null,
           ...(base ? { baseDomain: base } : {}),
         });
-        if (app.previewEnv?.trim())
-          notes.push(
-            "Preview deployments had variables of their own on {panel}; those did not come across. Set them under Previews.",
-          );
       } catch (e) {
         notes.push(
           `Preview deployments were on over there but did not come across: ${e instanceof Error ? e.message : "refused"}. Turn them on under Previews.`,
         );
       }
+    }
+    // Their own variables, as Deplo's own preview variables - a preview inherits
+    // the app's, so these are the ones that differ or exist only there.
+    const previewVars = parseEnvBlob(app.previewEnv).filter((v) => v.key);
+    if (previewVars.length > 0) {
+      const { setPreviewEnvVar } = await import("./previews");
+      const landed: string[] = [];
+      const refused: string[] = [];
+      for (const v of previewVars) {
+        try {
+          await setPreviewEnvVar(
+            created.id,
+            v.key,
+            v.value,
+            importedEnvType(v.key),
+          );
+          landed.push(v.key);
+        } catch (e) {
+          refused.push(
+            `${v.key} (${e instanceof Error ? e.message : "refused"})`,
+          );
+        }
+      }
+      if (landed.length > 0)
+        notes.push(
+          `Preview-only variable(s) came across as this app's preview variables: ${landed.join(", ")}.`,
+        );
+      if (refused.length > 0)
+        notes.push(
+          `Preview-only variable(s) that did not come across: ${refused.join("; ")}. Set them under Previews.`,
+        );
     }
   }
 

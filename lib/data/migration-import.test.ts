@@ -1296,6 +1296,44 @@ test("an icon Deplo would refuse is dropped, and the app still lands", async () 
   assert.equal(row.source, "github");
 });
 
+// Deplo has preview variables of its own, so the panel's preview-only ones land
+// there instead of being named in a note and left behind.
+test("preview-only variables land as the app's own preview variables", async () => {
+  fixtures = defaultFixtures();
+  const web = { ...(APPLICATIONS["dok-app-web"] as Record<string, unknown>) };
+  web.isPreviewDeploymentsActive = true;
+  web.previewWildcard = "*.preview.acme.test";
+  web.previewEnv = "PREVIEW_ONLY=1\nPREVIEW_API_TOKEN=tok";
+  __setMigrationFetchForTest(
+    routingFetch({ applications: { "dok-app-web": web } }),
+  );
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const app = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+  const { listPreviewEnvVars } = await import("./previews");
+  const vars = await asOwner(() => listPreviewEnvVars(app.id));
+  assert.deepEqual(
+    vars.map((v) => [v.key, v.type]),
+    [
+      ["PREVIEW_API_TOKEN", "secret"],
+      ["PREVIEW_ONLY", "plain"],
+    ],
+  );
+  const notes = (await db.select().from(itemsTable))
+    .filter((i) => i.runId === runId && i.targetId === app.id)
+    .map((i) => i.message ?? "");
+  assert.ok(
+    notes.some((m) =>
+      /came across as this app's preview variables: PREVIEW_ONLY, PREVIEW_API_TOKEN/.test(
+        m,
+      ),
+    ),
+    notes.join("\n"),
+  );
+});
+
 test("the primary domain is the real hostname, not Dokploy's throwaway one", async () => {
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");

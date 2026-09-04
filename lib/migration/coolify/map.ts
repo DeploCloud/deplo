@@ -457,8 +457,11 @@ export function coolifyMounts(
 export interface CoolifyEnvRead {
   /** `KEY=value` lines, in the shape `parseEnvBlob` reads. */
   blob: string;
-  /** Keys carried only for a preview deployment - deliberately left behind. */
+  /** Keys carried only for a preview deployment. */
   previewKeys: string[];
+  /** Those same keys with their values, `KEY=value` lines, for Deplo's own
+   *  preview variables. */
+  previewBlob: string;
   /** Keys that were build-time only over there. */
   buildOnlyKeys: string[];
   /** Shared variables this resource referenced, read off the STORED value. */
@@ -508,6 +511,7 @@ export function withoutPanelInternals(blob: string): string {
 export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
   const lines: string[] = [];
   const previewKeys: string[] = [];
+  const previewLines = new Map<string, string>();
   const buildOnlyKeys: string[] = [];
   const unreadableKeys: string[] = [];
   const sharedRefs: SharedRef[] = [];
@@ -528,6 +532,7 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
       sharedRefs.push(...sharedRefsIn([{ key, value: r.value }]));
     if (r.is_preview) {
       previewKeys.push(key);
+      previewLines.set(key, `${key}=${serializeValue(value)}`);
       continue;
     }
     // NO value came back for this one (told apart from a value that is empty).
@@ -542,9 +547,11 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
   // Coolify keeps a preview twin of every variable; only a key with NO normal
   // row is preview-only, and only that one is worth a line.
   const normal = new Set(lines.map((l) => l.slice(0, l.indexOf("="))));
+  const previewOnly = previewKeys.filter((k) => !normal.has(k));
   return {
     blob: lines.join("\n"),
-    previewKeys: previewKeys.filter((k) => !normal.has(k)),
+    previewKeys: previewOnly,
+    previewBlob: previewOnly.map((k) => previewLines.get(k)!).join("\n"),
     buildOnlyKeys,
     unreadableKeys,
     sharedRefs,
@@ -655,6 +662,8 @@ export interface CoolifyExtras {
   basicAuth?: { username: string; password: string } | null;
   /** {@link SourceDatabase.backups} - the schedules that save to an S3 store. */
   backups?: SourceDatabase["backups"];
+  /** {@link SourceApplication.previewEnv} - the preview-only variables. */
+  previewEnv?: string;
 }
 
 /**
@@ -735,6 +744,7 @@ export function coolifyApplication(
     customGitBuildPath: row.base_directory ?? null,
     isPreviewDeploymentsActive:
       row.settings?.is_preview_deployments_enabled ?? null,
+    previewEnv: extras.previewEnv ?? null,
     memoryLimit: row.limits_memory ?? null,
     memoryReservation: row.limits_memory_reservation ?? null,
     cpuLimit: row.limits_cpus ?? null,
