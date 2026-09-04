@@ -4071,14 +4071,11 @@ async function importBackupDestinations(
     await import("./destinations");
   // The bucket is the identity: a store already here under any name is the one
   // the panel's schedules meant, so its name here answers for the panel's.
-  const existing = new Map(
-    (await listDestinations()).map(
-      (d) =>
-        [
-          `${(d.endpoint ?? "").toLowerCase()}|${d.bucket ?? ""}`,
-          d.id,
-        ] as const,
-    ),
+  const existing = new Map<string, string>(
+    (await listDestinations()).map((d) => [
+      `${(d.endpoint ?? "").toLowerCase()}|${d.bucket ?? ""}`,
+      d.id,
+    ]),
   );
 
   for (const store of stores) {
