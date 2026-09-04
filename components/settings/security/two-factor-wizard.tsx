@@ -16,7 +16,6 @@ import {
   ScanLine,
   ShieldCheck,
   Smartphone,
-  TriangleAlert,
 } from "lucide-react";
 
 import {
@@ -32,7 +31,9 @@ import { Field, fieldControl, invalidField } from "@/components/ui/field-error";
 import { RevealInput } from "@/components/ui/password-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { OtpInput } from "@/components/ui/otp-input";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
+import { AuthenticatorAppGraphic } from "./authenticator-app-graphic";
 import { SetupKey } from "./setup-key";
 import { deploMarkDataUri } from "@/components/logo";
 import { copyText } from "@/lib/clipboard";
@@ -75,26 +76,23 @@ const COPY: Record<
   password: {
     icon: Lock,
     title: "Confirm it's you",
-    blurb:
-      "Enter your password so nobody who finds an unlocked screen can add a second factor to your account.",
+    blurb: "Nobody but you adds a second factor to your account.",
   },
   scan: {
     icon: ScanLine,
     title: "Scan this with your phone",
-    blurb:
-      "Open your authenticator app, add an account, and point the camera here.",
+    blurb: "Open your authenticator app and point the camera here.",
   },
   verify: {
     icon: Smartphone,
     title: "Enter the code it shows",
-    blurb:
-      "This proves the app is set up correctly, while your password alone still gets you in.",
+    blurb: "This proves the app works before anything starts depending on it.",
   },
   codes: {
     icon: KeyRound,
     title: "Save your recovery codes",
     blurb:
-      "These are how you get back in if you lose your phone. This is the only time they are shown.",
+      "Shown once and never again - only replaced. Each one signs you in a single time if you lose your phone.",
   },
 };
 
@@ -117,12 +115,9 @@ function secretOf(uri: string): string {
 export function TwoFactorWizard({
   open,
   onOpenChange,
-  /** Rendered instead of the usual close affordances when 2FA is mandatory. */
-  mandatory = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  mandatory?: boolean;
 }) {
   const router = useRouter();
   const [step, setStep] = React.useState<StepId>("password");
@@ -230,25 +225,23 @@ export function TwoFactorWizard({
     URL.revokeObjectURL(url);
   }
 
-  const locked = step === "codes" || mandatory;
+  const locked = step === "codes";
 
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => (o ? onOpenChange(true) : close())}
     >
-      {/* Fixed height so the stepper and the footer hold their place instead of
-          jumping as the body goes from one field to a QR code to ten codes. */}
       <DialogContent
         selfManaged
-        className="h-[min(92vh,38rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg"
+        className="sm:max-w-lg"
         // Once the codes are on screen they exist nowhere else, so a stray click
         // outside must not be what loses them.
         hideClose={locked}
         onInteractOutside={(e) => locked && e.preventDefault()}
         onEscapeKeyDown={(e) => locked && e.preventDefault()}
       >
-        {/* pr-8 keeps the last step clear of the absolutely-positioned close X. */}
+        {/* pr-8 keeps the rail clear of the absolutely-positioned close X. */}
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">
             Turn on two-factor authentication
@@ -266,59 +259,64 @@ export function TwoFactorWizard({
           />
         </DialogHeader>
 
-        <form
-          onSubmit={onSubmit}
-          className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4 overflow-hidden"
-        >
-          {/**
-           * `m-auto` centres the step in the fixed-height body, NOT `justify-center`: a step
-           * taller than the row (Scan, Recovery on a short screen) would have its top clipped
-           * outside the scrollable area and be unreachable.
-           */}
-          <div className="focus-safe-scroll flex flex-col overflow-y-auto">
-            <div className="m-auto flex w-full max-w-sm shrink-0 flex-col gap-5 py-2">
-              {/* One heading block, same shape on every step, so the eye lands
-                  in the same place each time the body swaps under it. */}
-              <div className="flex flex-col items-center gap-2 text-center">
-                <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                  <StepIcon className="size-5 text-primary" />
-                </span>
-                <h2 className="text-base font-semibold lg:text-lg">{title}</h2>
-                <p className="text-sm text-balance text-muted-foreground">
-                  {blurb}
-                </p>
-              </div>
+        <form onSubmit={onSubmit} className="grid gap-4">
+          {/* The height is the STEP's, measured: a wizard padded to its tallest
+              step spends a third of itself on air, and the QR step scrolled. */}
+          <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
+            {/* One heading block, same shape on every step, so the eye lands
+                in the same place each time the body swaps under it. */}
+            <div className="flex flex-col items-center gap-2 text-center">
+              <span
+                className={cn(
+                  "flex size-10 items-center justify-center rounded-full",
+                  step === "codes" ? "bg-[var(--warning)]/10" : "bg-primary/10",
+                )}
+              >
+                <StepIcon
+                  className={cn(
+                    "size-5",
+                    step === "codes" ? "text-[var(--warning)]" : "text-primary",
+                  )}
+                />
+              </span>
+              <h2 className="text-base font-semibold lg:text-lg">{title}</h2>
+              <p className="text-sm text-balance text-muted-foreground">
+                {blurb}
+              </p>
+            </div>
 
-              {error && step !== "password" && (
-                <p
-                  role="alert"
-                  className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive"
-                >
-                  {error}
-                </p>
-              )}
+            {error && step !== "password" && (
+              <p
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive"
+              >
+                {error}
+              </p>
+            )}
 
-              {step === "password" && (
-                <div className="space-y-4">
-                  <Field error={error}>
-                    <RevealInput
-                      autoComplete="current-password"
-                      placeholder="Your password"
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        setError(null);
-                      }}
-                      autoFocus
-                      aria-invalid={Boolean(error)}
-                      className={cn(fieldControl, error && invalidField)}
-                    />
-                  </Field>
-                  <div className="rounded-lg border border-border bg-muted/30 p-3">
+            {step === "password" && (
+              <div className="space-y-4">
+                <Field error={error}>
+                  <RevealInput
+                    autoComplete="current-password"
+                    placeholder="Your password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError(null);
+                    }}
+                    autoFocus
+                    aria-invalid={Boolean(error)}
+                    className={cn(fieldControl, error && invalidField)}
+                  />
+                </Field>
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                  <AuthenticatorAppGraphic className="size-12 shrink-0" />
+                  <div className="min-w-0">
                     <p className="text-xs font-medium">
-                      You will need an authenticator app on your phone
+                      You need an authenticator app on your phone
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {APPS.map((a) => (
                         <span
                           key={a}
@@ -328,125 +326,110 @@ export function TwoFactorWizard({
                         </span>
                       ))}
                     </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Any of them works. If you use a password manager, it
-                      probably already does this.
-                    </p>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {step === "scan" && (
-                <div className="space-y-4">
-                  {/**
-                   * Black on white regardless of theme, framed deplo-style.
-                   */}
-                  <div className="mx-auto w-fit rounded-2xl border border-border bg-white p-4 shadow-sm ring-1 ring-black/5">
-                    <QRCodeSVG
-                      value={totpUri}
-                      size={180}
-                      bgColor="#ffffff"
-                      fgColor="#0a0a0a"
-                      // "H" (30% recovery) is what pays for the excavated middle: the mark covers ~6% of
-                      // the area, so the code still reads with room to spare. Any lower level and the
-                      // logo breaks it - see lib/two-factor-qr.test.ts.
-                      level="H"
-                      marginSize={0}
-                      imageSettings={{
-                        src: deploMarkDataUri(),
-                        height: 44,
-                        width: 44,
-                        // Clear the modules under the badge rather than painting
-                        // over them: a scanner that sees half a module there
-                        // reads noise, not a gap it can reconstruct.
-                        excavate: true,
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="h-px flex-1 bg-border" />
-                    <span className="text-xs text-muted-foreground">
-                      or type it in by hand
-                    </span>
-                    <span className="h-px flex-1 bg-border" />
-                  </div>
+            {step === "scan" && (
+              <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+                {/* Black on white regardless of theme, framed deplo-style. */}
+                <div className="mx-auto w-fit rounded-2xl border border-border bg-white p-3 shadow-sm ring-1 ring-black/5">
+                  <QRCodeSVG
+                    value={totpUri}
+                    size={180}
+                    bgColor="#ffffff"
+                    fgColor="#0a0a0a"
+                    // "H" (30% recovery) is what pays for the excavated middle: the mark covers ~6% of
+                    // the area, so the code still reads with room to spare. Any lower level and the
+                    // logo breaks it - see lib/two-factor-qr.test.ts.
+                    level="H"
+                    marginSize={0}
+                    imageSettings={{
+                      src: deploMarkDataUri(),
+                      height: 44,
+                      width: 44,
+                      // Clear the modules under the badge rather than painting
+                      // over them: a scanner that sees half a module there
+                      // reads noise, not a gap it can reconstruct.
+                      excavate: true,
+                    }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Or type it in by hand
+                  </p>
                   <SetupKey secret={secretOf(totpUri)} />
                 </div>
-              )}
+              </div>
+            )}
 
-              {step === "verify" && (
-                <div className="space-y-3">
-                  <OtpInput
-                    value={code}
-                    onChange={setCode}
-                    // Six digits in means there is nothing left to decide.
-                    onComplete={(v) => void verify(v)}
-                    disabled={pending}
-                    invalid={!!error}
-                    autoFocus
-                    label="Authentication code"
+            {step === "verify" && (
+              <div className="space-y-3">
+                <OtpInput
+                  value={code}
+                  onChange={setCode}
+                  // Six digits in means there is nothing left to decide.
+                  onComplete={(v) => void verify(v)}
+                  disabled={pending}
+                  invalid={!!error}
+                  autoFocus
+                  label="Authentication code"
+                />
+                <p className="text-center text-xs text-muted-foreground">
+                  The code changes every 30 seconds. If it is rejected, wait for
+                  the next one.
+                </p>
+              </div>
+            )}
+
+            {step === "codes" && (
+              <div className="space-y-4">
+                <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-muted/30 p-3">
+                  {backupCodes.map((c, i) => (
+                    <li
+                      key={c}
+                      className="flex items-baseline gap-2 font-mono text-xs"
+                    >
+                      <span className="w-4 shrink-0 text-right text-muted-foreground/60 tabular-nums">
+                        {i + 1}
+                      </span>
+                      <span className="select-all">{c}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={copyCodes}
+                  >
+                    <Copy className="size-4" />
+                    Copy
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={downloadCodes}
+                  >
+                    <Download className="size-4" />
+                    Download
+                  </Button>
+                </div>
+                <label className="flex items-start gap-2 rounded-lg border border-border p-3 text-sm">
+                  <Checkbox
+                    checked={saved}
+                    onCheckedChange={(v) => setSaved(v === true)}
+                    className="mt-0.5"
                   />
-                  <p className="text-center text-xs text-muted-foreground">
-                    The code changes every 30 seconds. If it is rejected, wait
-                    for the next one.
-                  </p>
-                </div>
-              )}
-
-              {step === "codes" && (
-                <div className="space-y-4">
-                  <div className="flex items-start gap-2 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 px-3 py-2 text-xs text-[var(--warning)]">
-                    <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                    <span>
-                      Save these before you close this window. They cannot be
-                      shown again - only replaced.
-                    </span>
-                  </div>
-                  <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-muted/30 p-3">
-                    {backupCodes.map((c, i) => (
-                      <li
-                        key={c}
-                        className="flex items-baseline gap-2 font-mono text-xs"
-                      >
-                        <span className="w-4 shrink-0 text-right text-muted-foreground/60 tabular-nums">
-                          {i + 1}
-                        </span>
-                        <span className="select-all">{c}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={copyCodes}
-                    >
-                      <Copy className="size-4" />
-                      Copy
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={downloadCodes}
-                    >
-                      <Download className="size-4" />
-                      Download
-                    </Button>
-                  </div>
-                  <label className="flex items-start gap-2 rounded-lg border border-border p-3 text-sm">
-                    <Checkbox
-                      checked={saved}
-                      onCheckedChange={(v) => setSaved(v === true)}
-                      className="mt-0.5"
-                    />
-                    I have saved my recovery codes somewhere safe
-                  </label>
-                </div>
-              )}
-            </div>
-          </div>
+                  I have saved my recovery codes somewhere safe
+                </label>
+              </div>
+            )}
+          </AnimatedHeight>
 
           <DialogFooter>
             <Button
@@ -462,7 +445,7 @@ export function TwoFactorWizard({
               Back
             </Button>
             <div className="flex gap-2">
-              {step !== "codes" && !mandatory && (
+              {step !== "codes" && (
                 <Button type="button" variant="outline" onClick={close}>
                   Cancel
                 </Button>

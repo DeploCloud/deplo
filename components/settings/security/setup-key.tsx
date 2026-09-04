@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Check, Copy, Eye, EyeOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
@@ -40,54 +41,28 @@ export function SetupKey({ secret }: { secret: string }) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-muted/30">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+    <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+      <div className="flex items-center gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">
-          Setup key
+          TOTP setup key
         </span>
-        <div className="flex items-center gap-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs"
-            aria-pressed={revealed}
-            onClick={() => setRevealed((v) => !v)}
-          >
-            {revealed ? (
-              <EyeOff className="size-3.5" />
-            ) : (
-              <Eye className="size-3.5" />
-            )}
-            {revealed ? "Hide" : "Show"}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs"
-            onClick={copy}
-          >
-            {copied ? (
-              <Check className="size-3.5 text-[var(--success)]" />
-            ) : (
-              <Copy className="size-3.5" />
-            )}
-            Copy
-          </Button>
-        </div>
+        <InfoTip
+          content="Your authenticator app may call this the secret, the key or the setup code. It is the same 2FA secret the QR code carries: a time-based (TOTP) six-digit code, new every 30 seconds."
+          docs="team.twoFactor"
+        />
       </div>
+
       {/* Two branches, never one element with a swapped string: while covered,
           `secret` is not referenced in the rendered tree at all. */}
       {revealed ? (
-        <code className="block px-3 py-2.5 font-mono text-xs leading-relaxed break-all select-all">
+        <code className="block font-mono text-xs leading-relaxed break-all select-all">
           {grouped}
         </code>
       ) : (
         <code
           aria-hidden
           className={cn(
-            "block px-3 py-2.5 font-mono text-xs leading-relaxed break-all",
+            "block font-mono text-xs leading-relaxed break-all",
             "text-muted-foreground/70 select-none",
           )}
         >
@@ -95,6 +70,38 @@ export function SetupKey({ secret }: { secret: string }) {
         </code>
       )}
       {!revealed && <span className="sr-only">Setup key hidden</span>}
+
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs"
+          aria-pressed={revealed}
+          onClick={() => setRevealed((v) => !v)}
+        >
+          {revealed ? (
+            <EyeOff className="size-3.5" />
+          ) : (
+            <Eye className="size-3.5" />
+          )}
+          {revealed ? "Hide" : "Show"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs"
+          onClick={copy}
+        >
+          {copied ? (
+            <Check className="size-3.5 text-[var(--success)]" />
+          ) : (
+            <Copy className="size-3.5" />
+          )}
+          Copy
+        </Button>
+      </div>
     </div>
   );
 }

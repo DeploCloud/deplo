@@ -28,6 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { ChoiceCard } from "@/components/shared/choice-card";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { atClock } from "@/components/settings/registration-link-row";
 import { copyText } from "@/lib/clipboard";
@@ -229,12 +230,7 @@ export function RegisterUserWizard({
         if (!o) reset();
       }}
     >
-      {/* Fixed height so the stepper and the footer hold their place instead of
-          jumping between a two-card choice, a team list and a link. */}
-      <DialogContent
-        selfManaged
-        className="h-[min(92vh,34rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg"
-      >
+      <DialogContent selfManaged className="sm:max-w-lg">
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Register a new user</DialogTitle>
           <DialogDescription className="sr-only">
@@ -254,208 +250,201 @@ export function RegisterUserWizard({
           />
         </DialogHeader>
 
-        <form
-          onSubmit={onSubmit}
-          className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4 overflow-hidden"
-        >
-          <div className="focus-safe-scroll flex flex-col overflow-y-auto">
-            <div className="m-auto flex w-full max-w-sm shrink-0 flex-col gap-5 py-2">
-              {step === "access" && (
-                <>
-                  <div className="flex flex-col items-center gap-2 text-center">
-                    <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                      <UserPlus className="size-5 text-primary" />
-                    </span>
-                    <h2 className="text-base font-semibold lg:text-lg">
-                      Where does this person work?
-                    </h2>
-                    <p className="text-sm text-balance text-muted-foreground">
-                      You can change this later from their account page.
-                    </p>
-                  </div>
-                  <div
-                    role="radiogroup"
-                    aria-label="Access"
-                    className="space-y-2"
-                  >
-                    <ChoiceCard
-                      title="They get their own team"
-                      blurb="They name and own a fresh team when they open the link."
-                      icon={UserPlus}
-                      selected={choice === "own_team"}
-                      onSelect={() => setChoice("own_team")}
-                    />
-                    <ChoiceCard
-                      title="They join your teams"
-                      blurb="Pick which of your teams they join, and what they can do there."
-                      icon={Users}
-                      selected={choice === "existing_teams"}
-                      disabled={teamsLoaded && teams.length === 0}
-                      disabledNote="You are not in any team yet."
-                      onSelect={() => setChoice("existing_teams")}
-                    />
-                  </div>
-                </>
-              )}
+        <form onSubmit={onSubmit} className="grid gap-4">
+          {/* The height is the STEP's, measured: a wizard padded to its tallest
+              step spends a third of itself on air. */}
+          <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
+            {step === "access" && (
+              <>
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                    <UserPlus className="size-5 text-primary" />
+                  </span>
+                  <h2 className="text-base font-semibold lg:text-lg">
+                    Where does this person work?
+                  </h2>
+                  <p className="text-sm text-balance text-muted-foreground">
+                    You can change this later from their account page.
+                  </p>
+                </div>
+                <div
+                  role="radiogroup"
+                  aria-label="Access"
+                  className="space-y-2"
+                >
+                  <ChoiceCard
+                    title="They get their own team"
+                    blurb="They name and own a fresh team when they open the link."
+                    icon={UserPlus}
+                    selected={choice === "own_team"}
+                    onSelect={() => setChoice("own_team")}
+                  />
+                  <ChoiceCard
+                    title="They join your teams"
+                    blurb="Pick which of your teams they join, and what they can do there."
+                    icon={Users}
+                    selected={choice === "existing_teams"}
+                    disabled={teamsLoaded && teams.length === 0}
+                    disabledNote="You are not in any team yet."
+                    onSelect={() => setChoice("existing_teams")}
+                  />
+                </div>
+              </>
+            )}
 
-              {step === "teams" && (
-                <>
-                  <div className="flex flex-col items-center gap-2 text-center">
-                    <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                      <Users className="size-5 text-primary" />
-                    </span>
-                    <h2 className="text-base font-semibold lg:text-lg">
-                      Which teams?
-                    </h2>
-                    <p className="text-sm text-balance text-muted-foreground">
-                      They can be in more than one.
-                      {selectedCount > 0 && ` ${selectedCount} selected.`}
-                    </p>
-                  </div>
+            {step === "teams" && (
+              <>
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                    <Users className="size-5 text-primary" />
+                  </span>
+                  <h2 className="text-base font-semibold lg:text-lg">
+                    Which teams?
+                  </h2>
+                  <p className="text-sm text-balance text-muted-foreground">
+                    They can be in more than one.
+                    {selectedCount > 0 && ` ${selectedCount} selected.`}
+                  </p>
+                </div>
 
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={teamQuery}
-                      onChange={(e) => setTeamQuery(e.target.value)}
-                      placeholder="Search teams"
-                      aria-label="Search teams"
-                      className="h-9 pl-9"
-                      // A filter box, not a field of the form: Enter here would
-                      // otherwise mint the link mid-search.
-                      onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
-                    />
-                  </div>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={teamQuery}
+                    onChange={(e) => setTeamQuery(e.target.value)}
+                    placeholder="Search teams"
+                    aria-label="Search teams"
+                    className="h-9 pl-9"
+                    // A filter box, not a field of the form: Enter here would
+                    // otherwise mint the link mid-search.
+                    onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+                  />
+                </div>
 
-                  {/* No scroller of its own: the dialog's body is the ONE
+                {/* No scroller of its own: the dialog's body is the ONE
                       scrolling region, so a long team list never traps the wheel
                       in a nested box. */}
-                  <div className="space-y-2">
-                    {loadingTeams &&
-                      [0, 1].map((i) => (
+                <div className="space-y-2">
+                  {loadingTeams &&
+                    [0, 1].map((i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg border border-border p-3"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Skeleton shimmer className="size-4 rounded" />
+                          <Skeleton shimmer className="size-5 rounded-full" />
+                          <Skeleton shimmer className="h-4 w-32 rounded" />
+                        </div>
+                      </div>
+                    ))}
+
+                  {!loadingTeams && shownTeams.length === 0 && (
+                    <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                      {teamFilter
+                        ? `No team matches “${teamQuery.trim()}”.`
+                        : "You are not in any team yet."}
+                    </p>
+                  )}
+
+                  {!loadingTeams &&
+                    shownTeams.map((tm) => {
+                      const a = assign[tm.id];
+                      return (
                         <div
-                          key={i}
+                          key={tm.id}
                           className="rounded-lg border border-border p-3"
                         >
-                          <div className="flex items-center gap-2">
-                            <Skeleton shimmer className="size-4 rounded" />
-                            <Skeleton shimmer className="size-5 rounded-full" />
-                            <Skeleton shimmer className="h-4 w-32 rounded" />
-                          </div>
-                        </div>
-                      ))}
-
-                    {!loadingTeams && shownTeams.length === 0 && (
-                      <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                        {teamFilter
-                          ? `No team matches “${teamQuery.trim()}”.`
-                          : "You are not in any team yet."}
-                      </p>
-                    )}
-
-                    {!loadingTeams &&
-                      shownTeams.map((tm) => {
-                        const a = assign[tm.id];
-                        return (
-                          <div
-                            key={tm.id}
-                            className="rounded-lg border border-border p-3"
+                          <label
+                            htmlFor={`regteam-${tm.id}`}
+                            className="flex cursor-pointer items-center gap-2"
                           >
-                            <label
-                              htmlFor={`regteam-${tm.id}`}
-                              className="flex cursor-pointer items-center gap-2"
-                            >
-                              <Checkbox
-                                id={`regteam-${tm.id}`}
-                                checked={!!a}
-                                onCheckedChange={(v) =>
-                                  toggleTeam(tm.id, v === true)
-                                }
-                              />
-                              {/* The same mark the topbar switcher shows, so a
+                            <Checkbox
+                              id={`regteam-${tm.id}`}
+                              checked={!!a}
+                              onCheckedChange={(v) =>
+                                toggleTeam(tm.id, v === true)
+                              }
+                            />
+                            {/* The same mark the topbar switcher shows, so a
                                   team looks the same wherever it is named. */}
-                              <TeamAvatar
-                                name={tm.name}
-                                avatarUrl={tm.avatarUrl}
-                                size="sm"
-                              />
-                              <span className="text-sm font-medium">
-                                {tm.name}
-                              </span>
-                            </label>
-                            {/**
-                             * Which of that team's two joinable default roles they land in.
-                             */}
-                            {a && (
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {(["member", "viewer"] as Role[]).map((r) => (
-                                  <button
-                                    key={r}
-                                    type="button"
-                                    aria-pressed={a.role === r}
-                                    onClick={() =>
-                                      setAssign((p) => ({
-                                        ...p,
-                                        [tm.id]: {
-                                          role: r,
-                                          capabilities: capabilitiesForRole(r),
-                                        },
-                                      }))
-                                    }
-                                    className={cn(
-                                      "rounded-md border px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                                      a.role === r
-                                        ? "border-primary bg-primary/5 text-foreground"
-                                        : "border-border text-muted-foreground hover:bg-accent",
-                                    )}
-                                  >
-                                    {r}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
-                </>
-              )}
+                            <TeamAvatar
+                              name={tm.name}
+                              avatarUrl={tm.avatarUrl}
+                              size="sm"
+                            />
+                            <span className="text-sm font-medium">
+                              {tm.name}
+                            </span>
+                          </label>
+                          {/**
+                           * Which of that team's two joinable default roles they land in.
+                           */}
+                          {a && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {(["member", "viewer"] as Role[]).map((r) => (
+                                <button
+                                  key={r}
+                                  type="button"
+                                  aria-pressed={a.role === r}
+                                  onClick={() =>
+                                    setAssign((p) => ({
+                                      ...p,
+                                      [tm.id]: {
+                                        role: r,
+                                        capabilities: capabilitiesForRole(r),
+                                      },
+                                    }))
+                                  }
+                                  className={cn(
+                                    "rounded-md border px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                                    a.role === r
+                                      ? "border-primary bg-primary/5 text-foreground"
+                                      : "border-border text-muted-foreground hover:bg-accent",
+                                  )}
+                                >
+                                  {r}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </>
+            )}
 
-              {step === "link" && link && (
-                <>
-                  <div className="flex flex-col items-center gap-2 text-center">
-                    <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                      <Link2 className="size-5 text-primary" />
-                    </span>
-                    <h2 className="text-base font-semibold lg:text-lg">
-                      Share this link
-                    </h2>
-                    <p className="text-sm text-balance text-muted-foreground">
-                      It works once and expires in 24 hours
-                      {expiresAt ? ` - ${atClock(expiresAt)}` : ""}. You can
-                      copy it again from Settings &rarr; Users until then.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      readOnly
-                      value={link}
-                      className="font-mono text-xs"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={copy}
-                      aria-label="Copy link"
-                    >
-                      <Copy className="size-4" />
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+            {step === "link" && link && (
+              <>
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                    <Link2 className="size-5 text-primary" />
+                  </span>
+                  <h2 className="text-base font-semibold lg:text-lg">
+                    Share this link
+                  </h2>
+                  <p className="text-sm text-balance text-muted-foreground">
+                    It works once and expires in 24 hours
+                    {expiresAt ? ` - ${atClock(expiresAt)}` : ""}. You can copy
+                    it again from Settings &rarr; Users until then.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Input readOnly value={link} className="font-mono text-xs" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={copy}
+                    aria-label="Copy link"
+                  >
+                    <Copy className="size-4" />
+                  </Button>
+                </div>
+              </>
+            )}
+          </AnimatedHeight>
 
           <DialogFooter>
             <Button

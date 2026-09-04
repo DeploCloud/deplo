@@ -119,7 +119,7 @@ export function TwoFactorLockScreen({
         </CardContent>
       </Card>
 
-      <TwoFactorWizard open={wizard} onOpenChange={setWizard} mandatory />
+      <TwoFactorWizard open={wizard} onOpenChange={setWizard} />
     </div>
   );
 }
