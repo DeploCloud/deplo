@@ -62,6 +62,9 @@ export interface RuntimeQuery {
   kind: string;
   id: string;
   appName: string;
+  /** The panel's own id for the machine it runs on; empty for the panel's host.
+   *  Dokploy inspects containers on THAT machine only when told which one. */
+  serverId?: string;
   declaredVolumes: NamedVolume[];
   declaredBindMounts: HostMount[];
   /** The stack's own YAML, which is the only place a volume's real name is

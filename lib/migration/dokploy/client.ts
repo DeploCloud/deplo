@@ -402,16 +402,19 @@ export interface DokployContainer {
  */
 export type DokployRuntime = "swarm" | "standalone";
 
-/** The containers of one service, by its `appName`. */
+/** The containers of one service, by its `appName` - on the machine it runs on.
+ *  Without `serverId` Dokploy looks on its own host, so a service on a remote
+ *  server read as stopped and a git app there as "cannot tell what its data is". */
 export async function listAppContainers(
   c: SourceCredential,
   appName: string,
   type: DokployRuntime,
+  serverId?: string,
 ): Promise<DokployContainer[]> {
   const rows = await get<DokployContainer[] | null>(
     c,
     "docker.getContainersByAppLabel",
-    { appName, type },
+    { appName, type, serverId: serverId || undefined },
   );
   return Array.isArray(rows) ? rows : [];
 }
@@ -453,8 +456,12 @@ export interface DokployInspect {
 export function inspectContainer(
   c: SourceCredential,
   containerId: string,
+  serverId?: string,
 ): Promise<DokployInspect> {
-  return get<DokployInspect>(c, "docker.getConfig", { containerId });
+  return get<DokployInspect>(c, "docker.getConfig", {
+    containerId,
+    serverId: serverId || undefined,
+  });
 }
 
 /** Which procedure stops one kind of service, and what it calls its id. */

@@ -206,6 +206,64 @@ test("the organization's S3 stores come across whole, or not at all", async (t) 
   assert.deepEqual(await dokployClient(cred).listBackupDestinations(), []);
 });
 
+// Measured on a two-machine Dokploy: every service on the remote server read as
+// stopped, because the panel was asked about its OWN host's containers.
+test("a service on a remote machine is inspected on that machine", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+  const asked: string[] = [];
+  __setMigrationFetchForTest(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input instanceof Request ? input.url : input));
+    asked.push(
+      `${url.pathname.split("/").pop()}?serverId=${url.searchParams.get("serverId") ?? ""}`,
+    );
+    const proc = url.pathname.split("/").pop();
+    const body =
+      proc === "docker.getContainersByAppLabel"
+        ? [{ containerId: "c1", name: "web", state: "running" }]
+        : proc === "docker.getConfig"
+          ? {
+              State: { Running: true },
+              Mounts: [
+                { Type: "volume", Name: "web-data", Destination: "/data" },
+              ],
+            }
+          : null;
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  const query = {
+    kind: "application",
+    id: "a1",
+    appName: "web",
+    declaredVolumes: [],
+    declaredBindMounts: [],
+    composeFile: null,
+  };
+  const remote = await dokployClient(cred).serviceRuntime({
+    ...query,
+    serverId: "srv-2",
+  });
+  assert.equal(remote.running, true);
+  assert.deepEqual(
+    remote.volumes.map((v) => v.name),
+    ["web-data"],
+  );
+  assert.ok(
+    asked.includes("docker.getContainersByAppLabel?serverId=srv-2"),
+    asked.join(","),
+  );
+  assert.ok(asked.includes("docker.getConfig?serverId=srv-2"), asked.join(","));
+  // The panel's own host carries no id, and none is sent.
+  asked.length = 0;
+  await dokployClient(cred).serviceRuntime({ ...query, serverId: "" });
+  assert.ok(
+    asked.every((a) => a.endsWith("?serverId=")),
+    asked.join(","),
+  );
+});
+
 test("a Dokploy with no networks endpoint still imports", async (t) => {
   t.after(__resetMigrationFetchForTest);
 

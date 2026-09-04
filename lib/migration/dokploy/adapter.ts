@@ -116,7 +116,12 @@ async function serviceRuntime(
 
   let containers: { containerId: string }[] = [];
   for (const type of order) {
-    containers = await listAppContainers(c, svc.appName, type).catch(() => []);
+    containers = await listAppContainers(
+      c,
+      svc.appName,
+      type,
+      svc.serverId,
+    ).catch(() => []);
     if (containers.length > 0) break;
   }
   // No container is the NORMAL state of a platform someone is leaving (Dokploy stops
@@ -151,7 +156,9 @@ async function serviceRuntime(
   const notes: string[] = [];
   let running = false;
   await mapLimit(containers, 4, async (ct) => {
-    const info = await inspectContainer(c, ct.containerId).catch(() => null);
+    const info = await inspectContainer(c, ct.containerId, svc.serverId).catch(
+      () => null,
+    );
     if (!info) {
       notes.push(`Dokploy would not inspect container ${ct.containerId}.`);
       return;
