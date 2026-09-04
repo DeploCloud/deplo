@@ -149,6 +149,95 @@ test("a scoped API token can't mint a token reaching a team outside its scope (M
   });
 });
 
+/**
+ * The capability sibling of M-2 above: that one bounds a token's REACH by the
+ * acting token's scope, this one bounds what it may HAND OUT by the acting
+ * token's own set. Both exist because a leaked credential must not be able to
+ * mint itself a better one.
+ */
+test("a token can't mint a successor above itself, in any team it reaches (M-3)", async () => {
+  await alsoMemberOfB(); // USER_1 is a full owner of BOTH teams
+  // The credential people paste into a script: read-only, and unscoped, which
+  // is what a token minted with no ticks now is.
+  const { raw } = await asUser1(() =>
+    createToken({ name: "read only", capabilities: ["view"] }),
+  );
+  const acting = (await authenticateToken(raw))!;
+  assert.deepEqual(acting.token!.capabilities, ["view"]);
+
+  await runWithIdentity(acting, async () => {
+    // The live clamp answers for the team the request resolved to...
+    await assert.rejects(
+      () =>
+        createToken({
+          name: "same team",
+          capabilities: ["delete_apps"],
+          teamIds: [TEAM_A],
+        }),
+      /permissions you hold yourself/i,
+    );
+    // ...and the owner's OTHER teams must not lend it what it lacks here: the
+    // ceiling is a union across the teams the new token reaches, and only the
+    // resolved one was ever clamped.
+    await assert.rejects(
+      () =>
+        createToken({
+          name: "other team",
+          capabilities: ["delete_apps"],
+          teamIds: [TEAM_B],
+        }),
+      /permissions you hold yourself/i,
+    );
+    await assert.rejects(
+      () => createToken({ name: "unscoped", capabilities: ["delete_apps"] }),
+      /permissions you hold yourself/i,
+    );
+    // What it DOES hold is still mintable: this bounds, it does not forbid.
+    const sibling = await createToken({
+      name: "sibling",
+      capabilities: ["view"],
+    });
+    assert.deepEqual(sibling.token.capabilities, ["view"]);
+  });
+
+  // A cookie session is untouched - the owner mints what the owner holds.
+  const cookie = await asUser1(() =>
+    createToken({ name: "cookie", capabilities: ["delete_apps"] }),
+  );
+  assert.ok(cookie.token.capabilities.includes("delete_apps"));
+});
+
+test("a token can't re-author itself above what it holds", async () => {
+  await alsoMemberOfB();
+  const { raw, token } = await asUser1(() =>
+    createToken({ name: "read only", capabilities: ["view"] }),
+  );
+  const acting = (await authenticateToken(raw))!;
+
+  await runWithIdentity(acting, () =>
+    assert.rejects(
+      () =>
+        updateToken({
+          id: token.id,
+          name: "read only",
+          capabilities: ["delete_apps"],
+          teamIds: [TEAM_B],
+        }),
+      /permissions you hold yourself/i,
+    ),
+  );
+  assert.deepEqual((await authenticateToken(raw))?.token?.capabilities, [
+    "view",
+  ]);
+
+  // It may still re-author WITHIN its own set: this bounds the edit, it does
+  // not take the edit away.
+  await runWithIdentity(acting, () =>
+    updateToken({ id: token.id, name: "renamed", capabilities: ["view"] }),
+  );
+  assert.equal((await asUser1(() => listTokens()))[0]!.name, "renamed");
+});
+
 test("createToken persists its own capability set, in catalog order, with the view floor", async () => {
   await asUser1(async () => {
     const { raw, token } = await createToken({

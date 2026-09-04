@@ -37,6 +37,7 @@ import {
   teamsWhereUserHolds,
 } from "../membership";
 import { withinActor } from "./roles";
+import { boundedBy } from "../membership-shared";
 import { visibleFolderIds } from "./folder-access";
 import { appCapabilitiesForTeam } from "./node-access";
 // The folder-subtree walk a scope needs, shared with the ROLE scope that reuses
@@ -763,7 +764,16 @@ async function ownerCeiling(
     const m = await membershipFor(userId, teamId).catch(() => null);
     if (m) for (const c of m.capabilities) held.add(c);
   }
-  return withinActor(caps, { capabilities: [...held] } as Membership, "token");
+  // A TOKEN never mints or re-authors a successor above ITSELF. `membershipFor`
+  // clamps to the acting token only in the team the request resolved to, so the
+  // union above carries the owner's UNCLAMPED set from every other team - which
+  // let a read-only token mint a `delete_apps` one as soon as its owner had a
+  // second team.
+  const acting = currentIdentity()?.token;
+  const ceiling = acting
+    ? boundedBy([...held], acting.capabilities)
+    : [...held];
+  return withinActor(caps, { capabilities: ceiling } as Membership, "token");
 }
 
 /** Returns the raw token ONCE; only the hash is persisted. */
