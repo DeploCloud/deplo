@@ -10,11 +10,12 @@ import {
   deploFilesPath,
   isDataHostPath,
 } from "../map";
-import type {
-  MigrationSourceClient,
-  RuntimeQuery,
-  ServiceRuntime,
-  SourceCredential,
+import {
+  StopAcceptedError,
+  type MigrationSourceClient,
+  type RuntimeQuery,
+  type ServiceRuntime,
+  type SourceCredential,
 } from "../source";
 import type {
   SourceApplication,
@@ -75,11 +76,12 @@ import {
 /** How many reads run at once. Well under the 200/min the bucket already caps. */
 const CONCURRENCY = 5;
 
-/** How long a stop may take before the cutover gives up. It scales: a flat 30
- *  seconds was a two-container service on a panel that was also building. */
-const STOP_BASE_MS = 30_000;
+/** How long a stop may take before the cutover gives up. Coolify's `status` is
+ *  not the container: the sentinel pushes it about once a minute, so a stop that
+ *  took 5 s reads "running" for up to 60 s more (measured: 1 database in 5). */
+const STOP_BASE_MS = 90_000;
 const STOP_PER_CONTAINER_MS = 20_000;
-const STOP_DEADLINE_CAP_MS = 180_000;
+const STOP_DEADLINE_CAP_MS = 240_000;
 const STOP_POLL_MS = 1_500;
 
 /* ------------------------------------------------------------------ */
@@ -585,8 +587,8 @@ async function stopService(
     if (!allowed)
       allowed = stopDeadlineMs(composeServices(state.compose).length);
     if (Date.now() - started >= allowed)
-      throw new Error(
-        `Coolify accepted the stop for that service but it is still running ${Math.round(allowed / 1000)} seconds later. Stop it there, then move its data.`,
+      throw new StopAcceptedError(
+        `Coolify accepted the stop for that service but still reported it running ${Math.round(allowed / 1000)} seconds later.`,
       );
     await new Promise((r) => setTimeout(r, STOP_POLL_MS));
   }

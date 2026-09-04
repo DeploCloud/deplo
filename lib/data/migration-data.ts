@@ -30,7 +30,7 @@ import { stackFilesDir } from "../deploy/deploy-key";
 import type { DatabaseType } from "../types";
 
 import { serviceDisplayName } from "../migration/dokploy/client";
-import { sourceClient } from "../migration/source";
+import { sourceClient, StopAcceptedError } from "../migration/source";
 import type { SourceCredential } from "../migration/source";
 import { SOURCE_DB_KINDS } from "../migration/model";
 import type { SourceDatabase } from "../migration/model";
@@ -1274,12 +1274,43 @@ async function runMoveMigrationServiceData(
   // 500 to its own stop. Nothing is running, so nothing is moving under the
   // copy; the run has no business ending over it.
   let stoppedThere = false;
+  // The way back up over there, for a service Deplo stopped and then copied
+  // nothing from: "stopped on the old panel, empty on the new one" is the outcome
+  // this whole step exists to prevent.
+  const startAgainThere = async (): Promise<string> => {
+    try {
+      await sourceClient(c).startService(input.sourceKind, input.sourceId);
+      await getDb()
+        .update(targetsTable)
+        .set({ stoppedAt: null, stoppedKind: null })
+        .where(
+          and(
+            eq(targetsTable.runId, input.runId),
+            eq(targetsTable.serviceId, input.sourceId),
+          ),
+        );
+      return `${svc.name} was started again on {panel}, since none of its data came across.`;
+    } catch (e) {
+      return `${svc.name} is still stopped on {panel} (${e instanceof Error ? e.message : "it would not start"}). Start it there yourself until the copy succeeds.`;
+    }
+  };
   try {
     await sourceClient(c).stopService(input.sourceKind, input.sourceId);
     stoppedThere = true;
   } catch (e) {
     const why = e instanceof Error ? e.message : `${panel} refused`;
     if (state.running) {
+      // The panel TOOK the stop and only its status lagged: Deplo did stop it, so
+      // it is written down (a cancel starts it again) and started again now.
+      let undone = "";
+      if (e instanceof StopAcceptedError) {
+        await recordSourceStopped(
+          input.runId,
+          input.sourceId,
+          input.sourceKind,
+        );
+        undone = ` ${await startAgainThere()}`;
+      }
       await appendRunItem(input.runId, panel, {
         path,
         sourceKind: input.sourceKind,
@@ -1288,7 +1319,7 @@ async function runMoveMigrationServiceData(
         outcome: "failed",
         targetKind: landed.targetKind,
         targetId: landed.targetId,
-        message: `${svc.name} is still running on {panel} and would not stop (${why}), so its data was not copied - copying a volume being written to would arrive corrupted. Stop it there and run the copy again.`,
+        message: `${svc.name} is still running on {panel} and would not stop (${why}), so its data was not copied - copying a volume being written to would arrive corrupted.${undone} Run the copy again.`,
       });
       await markDataCopyFailed(
         { kind: landed.targetKind, id: landed.targetId },
@@ -1563,27 +1594,8 @@ async function runMoveMigrationServiceData(
   // A service Deplo stopped over there for a copy that then moved NOTHING goes
   // back up over there: it is the only place its data is, and "stopped on the
   // old panel, empty on the new one" is the outcome this exists to prevent.
-  if (stoppedThere && state.running && moved === 0 && failed + notCopied > 0) {
-    try {
-      await sourceClient(c).startService(input.sourceKind, input.sourceId);
-      await getDb()
-        .update(targetsTable)
-        .set({ stoppedAt: null, stoppedKind: null })
-        .where(
-          and(
-            eq(targetsTable.runId, input.runId),
-            eq(targetsTable.serviceId, input.sourceId),
-          ),
-        );
-      notes.push(
-        `${svc.name} was started again on {panel}, since none of its data came across.`,
-      );
-    } catch (e) {
-      notes.push(
-        `${svc.name} is still stopped on {panel} (${e instanceof Error ? e.message : "it would not start"}). Start it there yourself until the copy succeeds.`,
-      );
-    }
-  }
+  if (stoppedThere && state.running && moved === 0 && failed + notCopied > 0)
+    notes.push(await startAgainThere());
 
   // ...but never on a volume that is known to hold NOTHING of the source's: a
   // running source whose data is elsewhere would come up as a fresh engine that

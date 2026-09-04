@@ -151,6 +151,12 @@ export interface MigrationSourceClient {
 }
 
 /** The client for one panel. The only place a platform is turned into code. */
+/**
+ * The panel ACCEPTED the stop and still reported the service running when the
+ * wait ran out. Deplo did ask for that stop, so whoever backs out has to undo it.
+ */
+export class StopAcceptedError extends Error {}
+
 export function sourceClient(c: SourceCredential): MigrationSourceClient {
   return c.kind === "coolify" ? coolifyClient(c) : dokployClient(c);
 }
