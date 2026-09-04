@@ -838,7 +838,10 @@ export function MigrationWizard({
         setRetargetError(switched.error);
         return switched.error;
       }
-      setLanded({ from, to: nextTeamId });
+      // `from` is the PAGE's team, which is what the guard above compares: a
+      // second hop (team B after team A) starts from A, and recording A here
+      // made the guard read the landing as stale and drop it.
+      setLanded({ from: teamId, to: nextTeamId });
       if (from !== nextTeamId) {
         // The machines Deplo installed to read the panel are granted to ONE team,
         // and every lookup that reads one is team-scoped: left behind, the run
@@ -889,7 +892,7 @@ export function MigrationWizard({
       setServerMap((prev) => ({ ...defaults.servers, ...prev }));
       return null;
     },
-    [connectInput, router, servers, targetTeamId],
+    [connectInput, router, servers, targetTeamId, teamId],
   );
 
   /* ---- the move itself ---------------------------------------------- */
