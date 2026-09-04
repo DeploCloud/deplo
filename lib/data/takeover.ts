@@ -207,13 +207,24 @@ export async function noteBrowserReached(): Promise<void> {
  * panel's routing for nothing, and a disabled button is not a gate.
  */
 /**
- * The services of a run that arrived WITHOUT their data - a copy that failed -
- * named the way the report names them. The cutover stops the old panel for good
- * (its volumes stay on the disk, unread), so for these it holds the only copy.
+ * The services that arrived WITHOUT their data - a copy that failed - named the
+ * way the report names them. The cutover stops the old panel for good (its
+ * volumes stay on the disk, unread), so for these it holds the only copy. One
+ * run, or every run that finished: the machine is one, and a team brought over
+ * earlier is on it as much as the last.
  */
-export async function takeoverDataLoss(runId: string): Promise<string[]> {
+export async function takeoverDataLoss(runId?: string): Promise<string[]> {
   // The report is history; the marker on the resource is the state, and a copy
   // run again clears it. So: every service the run landed on that is STILL marked.
+  const runs = runId
+    ? [runId]
+    : (
+        await getDb()
+          .select({ id: runsTable.id })
+          .from(runsTable)
+          .where(eq(runsTable.status, "done"))
+      ).map((r) => r.id);
+  if (runs.length === 0) return [];
   const rows = await getDb()
     .select({
       name: itemsTable.sourceName,
@@ -223,7 +234,7 @@ export async function takeoverDataLoss(runId: string): Promise<string[]> {
     .from(itemsTable)
     .where(
       and(
-        eq(itemsTable.runId, runId),
+        inArray(itemsTable.runId, runs),
         inArray(itemsTable.targetKind, ["app", "database"]),
         inArray(itemsTable.outcome, ["created", "skipped", "failed"]),
       ),
@@ -319,7 +330,7 @@ export async function requestTakeover(
   // A copy that failed leaves the old panel holding the only data there is, and
   // the cutover stops that panel for good. Never on a default: the operator says
   // so by name.
-  const lost = await takeoverDataLoss(runId);
+  const lost = await takeoverDataLoss();
   if (lost.length > 0 && !opts.acceptDataLoss)
     throw new Error(
       `${lost.length} ${lost.length === 1 ? "service" : "services"} arrived without ${lost.length === 1 ? "its" : "their"} data (${lost.join(", ")}). Taking over stops the old panel for good - its volumes stay on the disk, but nothing reads them - so copy the data again first, or confirm that it may be lost.`,

@@ -72,8 +72,9 @@ export default async function TakeoverPage() {
 
   // Something has to have come across before there is any point taking the ports.
   const finished = runs.find((r) => r.status === "done") ?? null;
-  // What that run could NOT copy: the cutover deletes the old panel's copy.
-  const dataLoss = finished ? await takeoverDataLoss(finished.id) : [];
+  // What no run could copy, every team's included: the old panel holds the
+  // only copy, and the cutover stops it for good.
+  const dataLoss = finished ? await takeoverDataLoss() : [];
 
   return (
     <Screen>

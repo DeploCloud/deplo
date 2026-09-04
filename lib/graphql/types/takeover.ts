@@ -48,8 +48,8 @@ const TakeoverRef = builder.objectRef<TakeoverStatus>("Takeover").implement({
     }),
     dataLoss: t.stringList({
       description:
-        "Services of the run that arrived without their data. The cutover stops the old panel for good (its volumes stay on the disk, unread), so requestTakeover refuses unless acceptDataLoss says so.",
-      resolve: async (s) => (s.runId ? takeoverDataLoss(s.runId) : []),
+        "Services of every finished run that arrived without their data. The cutover stops the old panel for good (its volumes stay on the disk, unread), so requestTakeover refuses unless acceptDataLoss says so.",
+      resolve: () => takeoverDataLoss(),
     }),
   }),
 });

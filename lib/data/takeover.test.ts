@@ -274,6 +274,33 @@ test("a service that arrived without its data holds the ports until the loss is 
   assert.equal((await read())?.state, "ready");
 });
 
+test("a loss in an earlier team's run holds the ports as much as the last one's", async () => {
+  await seedPending();
+  await seedFinishedRun("run_1");
+  await seedFinishedRun("run_2");
+  await seedServerRow(db, {
+    id: "srv_1",
+    name: "box",
+    ip: "203.0.113.7",
+    host: "203.0.113.7",
+  });
+  await seedDatabase(db, { id: "db_1", name: "mxpg", serverId: "srv_1" });
+  await db.execute(
+    `update databases set data_copy_error = 'the copy failed' where id = 'db_1';`,
+  );
+  await db.execute(
+    `insert into migration_run_items (id, run_id, path, source_kind, source_name, outcome, target_kind, target_id, message)
+     values ('item_1', 'run_1', 'mx / production / mxpg', 'postgres', 'mxpg', 'created', 'database', 'db_1', null);`,
+  );
+  // The takeover is asked for with the LAST run, whose own copies were fine.
+  await assert.rejects(
+    () => asUser(ADMIN, () => requestTakeover("run_2")),
+    /mxpg/,
+    "the machine is one: the first team's loss counts too",
+  );
+  assert.deepEqual(await takeoverDataLoss(), ["mxpg"]);
+});
+
 test("the loss list reads the live marker, so a copy run again clears it", async () => {
   await seedPending();
   await seedFinishedRun("run_1");
