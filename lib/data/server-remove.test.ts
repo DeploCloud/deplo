@@ -171,7 +171,7 @@ test("a clean removal deletes the row and returns the host-side uninstall comman
   // Removal never touches the host, so the command is the whole point of it.
   assert.equal(
     result.uninstallCommand,
-    "curl -fsSL 'https://deplo.test/uninstall.sh' | sudo bash -s -- --yes --agent-only",
+    "curl -fsSL 'https://deplo.test/uninstall.sh' -o /tmp/deplo-uninstall.sh && sudo bash /tmp/deplo-uninstall.sh --yes --agent-only",
   );
 });
 

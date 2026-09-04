@@ -77,7 +77,7 @@ test("this host's own agent is bootstrapped over loopback, on the port the insta
   );
   assert.match(
     res.installCommand,
-    /bash -s -- '[^']+' 'http:\/\/127\.0\.0\.1:3001'$/,
+    /bash \/tmp\/deplo-agent-install\.sh '[^']+' 'http:\/\/127\.0\.0\.1:3001'$/,
   );
   assert.equal(
     res.installCommand.includes("fsSLk"),
