@@ -37,16 +37,24 @@ export type DokployDbKind = (typeof DOKPLOY_DB_KINDS)[number];
 
 const DOKPLOY_PANEL: PanelIdentity = { name: "Dokploy", portHint: ":3000" };
 
+/** Keys Dokploy has accepted at least once in this process. */
+const accepted = new Set<string>();
+
 /**
- * A key {panel} minted is born at 10 requests a DAY, and a migration reads the
- * panel hundreds of times - so the run dies part way with an HTTP number and no
- * hint of what to change. Say where the limit is.
+ * A key minted outside Dokploy's own dialog is born at 10 requests a DAY, and a
+ * migration reads the panel hundreds of times. Measured on v0.30.5: the key that
+ * runs out answers 401 Unauthorized, the same status as a wrong key - so a 401 on
+ * a key that was accepted moments ago is the limit (or a revocation), never a typo.
  */
-async function requestFailed(res: Response, procedure: string): Promise<Error> {
+async function requestFailed(
+  res: Response,
+  procedure: string,
+  apiKey: string,
+): Promise<Error> {
   const detail = (await res.text().catch(() => "")).slice(0, 300).trim();
-  if (res.status === 429)
+  if (res.status === 429 || (res.status === 401 && accepted.has(apiKey)))
     return new Error(
-      `Dokploy refused the request on ${procedure}: this API key has run out of requests. Raise its rate limit in Dokploy (Settings, Profile, API/CLI) and run the import again.`,
+      `Dokploy stopped accepting this API key on ${procedure} (${res.status}). It was accepted moments ago, so it has hit its rate limit or was revoked: open it in Dokploy under Settings, Profile, API/CLI, raise or disable its rate limit, and run the import again.`,
     );
   return new Error(
     `Dokploy request failed (${res.status}) on ${procedure}` +
@@ -83,7 +91,8 @@ async function get<T>(
   );
 
   refuseRedirect(res, DOKPLOY_PANEL);
-  if (!res.ok) throw await requestFailed(res, procedure);
+  if (!res.ok) throw await requestFailed(res, procedure, c.apiKey);
+  accepted.add(c.apiKey);
   return (await res.json()) as T;
 }
 
@@ -114,7 +123,8 @@ async function post<T>(
     },
     DOKPLOY_PANEL,
   );
-  if (!res.ok) throw await requestFailed(res, procedure);
+  if (!res.ok) throw await requestFailed(res, procedure, c.apiKey);
+  accepted.add(c.apiKey);
   return (await res.json().catch(() => null)) as T;
 }
 

@@ -248,9 +248,43 @@ test("a key that has run out of requests says where to raise it", async () => {
   );
   await assert.rejects(
     () => listProjects(cred),
-    /run out of requests[\s\S]*Raise its rate limit/,
+    /hit its rate limit[\s\S]*raise or disable its rate limit/,
   );
   __resetMigrationFetchForTest();
+});
+
+// Measured on Dokploy v0.30.5: a key at its limit answers 401 Unauthorized, the
+// same status as a wrong key. Only the history tells the two apart.
+test("a 401 on a key that was accepted moments ago is the rate limit, not a typo", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+  const fresh = { ...cred, apiKey: "born-limited" };
+  const unauthorized = () =>
+    new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
+  // Never accepted: a plain refusal, said as one.
+  __setMigrationFetchForTest(async () => unauthorized());
+  await assert.rejects(
+    () => listProjects(fresh),
+    /failed \(401\)[\s\S]*Unauthorized/,
+  );
+  await assert.rejects(
+    () => listProjects(fresh),
+    (e: Error) => !/rate limit/.test(e.message),
+  );
+  // Accepted once, then refused: the limit.
+  let calls = 0;
+  __setMigrationFetchForTest(async () =>
+    ++calls === 1
+      ? new Response("[]", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      : unauthorized(),
+  );
+  assert.deepEqual(await listProjects(fresh), []);
+  await assert.rejects(
+    () => listProjects(fresh),
+    /accepted moments ago[\s\S]*rate limit or was revoked/,
+  );
 });
 
 // A key is minted FOR one organization (Dokploy's own dialog picks one), and
