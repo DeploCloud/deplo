@@ -109,6 +109,67 @@ test("a network the PANEL attached is reported, not silently dropped", async (t)
   );
 });
 
+// Measured on v0.30.5: the file carries the panel's own basic-auth middleware and
+// whatever the operator added by hand; only the latter is worth a line.
+test("a middleware written into the app's own Traefik file is reported by name", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+  const traefik = `http:
+  routers:
+    mxweb-48qeb8-router-1:
+      rule: Host(\`mxweb.example.com\`)
+      service: mxweb-48qeb8-service-1
+      middlewares:
+        - auth-mxweb-48qeb8
+        - mx-headers
+      entryPoints:
+        - web
+  middlewares:
+    mx-headers:
+      headers:
+        customResponseHeaders:
+          X-Mx: "yes"
+`;
+  routes({
+    "application.one": {
+      applicationId: "a1",
+      appName: "mxweb-48qeb8",
+      env: "",
+    },
+    "application.readTraefikConfig": traefik,
+  });
+  const row = await dokployClient(cred).getService("application", "a1");
+  const notes = row.platformNotes ?? [];
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /custom middleware, mx-headers \(headers\)/);
+  assert.doesNotMatch(notes[0], /auth-mxweb/);
+
+  // Nothing but the panel's own: no line at all. And no file: no line either.
+  routes({
+    "application.one": {
+      applicationId: "a1",
+      appName: "mxweb-48qeb8",
+      env: "",
+    },
+    "application.readTraefikConfig":
+      "http:\n  routers:\n    r:\n      middlewares:\n        - auth-mxweb-48qeb8\n        - redirect-to-https\n",
+  });
+  assert.deepEqual(
+    (await dokployClient(cred).getService("application", "a1")).platformNotes,
+    [],
+  );
+  routes({
+    "application.one": {
+      applicationId: "a1",
+      appName: "mxweb-48qeb8",
+      env: "",
+    },
+  });
+  assert.deepEqual(
+    (await dokployClient(cred).getService("application", "a1")).platformNotes,
+    [],
+  );
+});
+
 test("a Dokploy with no networks endpoint still imports", async (t) => {
   t.after(__resetMigrationFetchForTest);
 

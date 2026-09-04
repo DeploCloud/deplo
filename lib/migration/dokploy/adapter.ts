@@ -22,10 +22,12 @@ import {
   listProjects,
   listSchedules,
   listServers,
+  readTraefikConfig,
   startService,
   stopService,
   type DokployRuntime,
 } from "./client";
+import { load as loadYaml } from "../../yaml";
 import {
   DOKPLOY_PLATFORM,
   parseEnvBlob,
@@ -59,6 +61,44 @@ async function panelNetworkNotes(
   return [
     `Attached on {panel} to ${names.join(", ")}, ${names.length === 1 ? "a network" : "networks"} on the server rather than part of this app - here every app in the same Environment already shares one network.`,
   ];
+}
+
+/**
+ * A middleware the operator wrote into the application's own Traefik file. The
+ * panel's forms never produce one, so it is the one route setting an import cannot
+ * read off the row - and, unsaid, it vanished. Dokploy's own two are left out.
+ */
+function customMiddlewareNotes(
+  traefik: string | null,
+  appName: string,
+): string[] {
+  if (!traefik) return [];
+  let doc: unknown;
+  try {
+    doc = loadYaml(traefik);
+  } catch {
+    return [];
+  }
+  const http = (doc as { http?: Record<string, unknown> } | null)?.http;
+  if (!http || typeof http !== "object") return [];
+  const own = new Set([`auth-${appName}`, "redirect-to-https"]);
+  const defined = (http.middlewares ?? {}) as Record<
+    string,
+    Record<string, unknown> | null
+  >;
+  const names = new Set<string>();
+  for (const name of Object.keys(defined)) if (!own.has(name)) names.add(name);
+  for (const router of Object.values(
+    (http.routers ?? {}) as Record<string, { middlewares?: unknown }>,
+  ))
+    for (const m of Array.isArray(router?.middlewares)
+      ? router.middlewares
+      : [])
+      if (typeof m === "string" && !own.has(m)) names.add(m);
+  return [...names].map((name) => {
+    const kind = Object.keys(defined[name] ?? {})[0];
+    return `Its Traefik file on {panel} carries a custom middleware, ${name}${kind ? ` (${kind})` : ""}, which did not come across. A domain here takes a middleware by name, so define it in the proxy's configuration first, then add it to the domain.`;
+  });
 }
 
 /**
@@ -145,10 +185,15 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     getService: async (kind, id) => {
       const row = await getService(c, kind, id);
       const blob = (row as { env?: string | null }).env;
+      const traefik =
+        kind === "application" ? await readTraefikConfig(c, id) : null;
       return {
         ...row,
         sharedRefs: sharedRefsIn(parseEnvBlob(blob)),
-        platformNotes: await panelNetworkNotes(c, row),
+        platformNotes: [
+          ...(await panelNetworkNotes(c, row)),
+          ...customMiddlewareNotes(traefik, row.appName?.trim() ?? ""),
+        ],
       };
     },
     getResolvedCompose: (id) => getConvertedCompose(c, id),

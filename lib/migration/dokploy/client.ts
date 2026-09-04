@@ -271,6 +271,26 @@ export async function getConvertedCompose(
   }
 }
 
+/**
+ * The application's own Traefik file, the panel's escape hatch for a middleware
+ * nobody can express in its forms. Best-effort: an older Dokploy has no such
+ * procedure, and a file that will not come is a report line short, not a failed
+ * import.
+ */
+export async function readTraefikConfig(
+  c: SourceCredential,
+  applicationId: string,
+): Promise<string | null> {
+  try {
+    const body = await get<unknown>(c, "application.readTraefikConfig", {
+      applicationId,
+    });
+    return typeof body === "string" && body.trim() ? body : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The fleet the source instance deploys to. `serverId: null` on a service means
  *  Dokploy's own host, which has no row here. */
 export async function listServers(
