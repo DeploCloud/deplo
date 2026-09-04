@@ -713,16 +713,16 @@ else
 fi
 
 # Resources --------------------------------------------------------------------
-# The recommendation is 4 cores, 4 GB and 30 GB, and it is about the APPS: Deplo
-# itself fits in far less, a machine that only fits Deplo is not worth renting.
+# Minimum 2 cores and 4 GB, recommended 4 and 8, 30 GB either way - and it is
+# about the APPS: Deplo itself fits in far less.
 MEM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
 if [ "${MEM_MB:-0}" -ge 3800 ]; then ok "Memory: ${MEM_MB} MB"
-elif [ "${MEM_MB:-0}" -ge 1800 ]; then pf_warn "Only ${MEM_MB} MB of RAM." "Deplo runs, but 2 GB leaves almost nothing for the apps you deploy. 4 GB is the recommendation."
-else pf_warn "Only ${MEM_MB} MB of RAM detected." "Deplo and Postgres fit, but there is nothing left for a build or an app. 4 GB is the recommendation."; fi
+elif [ "${MEM_MB:-0}" -ge 1800 ]; then pf_warn "Only ${MEM_MB} MB of RAM." "Deplo runs, but 2 GB leaves almost nothing for the apps you deploy. 4 GB is the minimum."
+else pf_warn "Only ${MEM_MB} MB of RAM detected." "Deplo and Postgres fit, but there is nothing left for a build or an app. 4 GB is the minimum."; fi
 
 CPU_CORES="$(nproc 2>/dev/null || echo 0)"
-if [ "${CPU_CORES:-0}" -ge 4 ]; then ok "CPU: ${CPU_CORES} cores"
-elif [ "${CPU_CORES:-0}" -ge 1 ]; then pf_warn "Only ${CPU_CORES} CPU $(plural "$CPU_CORES" core)." "Builds take the whole machine. 4 cores is the recommendation."
+if [ "${CPU_CORES:-0}" -ge 2 ]; then ok "CPU: ${CPU_CORES} cores"
+elif [ "${CPU_CORES:-0}" -ge 1 ]; then pf_warn "Only ${CPU_CORES} CPU $(plural "$CPU_CORES" core)." "A build takes the whole machine. 2 cores is the minimum, 4 the recommendation."
 else skip "CPU: cannot tell how many cores this host has"; fi
 
 DISK_GB="$(df -PBG / 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}' || true)"
