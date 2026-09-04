@@ -11,7 +11,6 @@ import {
   ScrollText,
   Server as ServerIcon,
   TriangleAlert,
-  Users,
   X,
 } from "lucide-react";
 
@@ -23,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { KindCard } from "@/components/shared/kind-card";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -162,6 +162,7 @@ const IDENTIFY = /* GraphQL */ `
       platform
       teamId
       teamName
+      teamAvatarUrl
       otherTeams
     }
   }
@@ -173,6 +174,7 @@ const SCAN = /* GraphQL */ `
       platform
       sourceUrl
       orgName
+      orgAvatarUrl
       otherTeams
       servers {
         sourceId
@@ -707,6 +709,7 @@ export function MigrationWizard({
           apiKey: key,
           sourceTeamId: null,
           name: scanned.orgName ?? "",
+          avatarUrl: scanned.orgAvatarUrl,
           status: "waiting",
         },
       ]);
@@ -1757,7 +1760,14 @@ function ConnectStep({
                   key={`${q.sourceTeamId ?? ""}-${i}`}
                   className="flex items-center gap-2 px-3 py-2 text-sm"
                 >
-                  <Users className="size-4 shrink-0 text-muted-foreground" />
+                  {/* The panel's own picture for it, and the team's monogram
+                      when it keeps none - the same renderer every other team
+                      list in the product uses. */}
+                  <TeamAvatar
+                    name={q.name || copy.teamLabel}
+                    avatarUrl={q.avatarUrl}
+                    size="sm"
+                  />
                   <span className="min-w-0 flex-1 truncate">
                     {q.name || `An unnamed ${copy.teamLabel}`}
                   </span>

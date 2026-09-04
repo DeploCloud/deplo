@@ -71,6 +71,9 @@ export interface Plan {
   platform: SourceKind;
   sourceUrl: string;
   orgName: string | null;
+  /** That team's picture on the panel, drawn on its row instead of the generic
+   *  mark. Null when the panel keeps none - see `./queue`. */
+  orgAvatarUrl: string | null;
   /** The panel's other teams, for the line that names the ones no token covers.
    *  Null when the panel cannot say - see `./queue`. */
   otherTeams: string[] | null;

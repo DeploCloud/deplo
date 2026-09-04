@@ -14,6 +14,9 @@ export interface QueuedTeam {
   sourceTeamId: string | null;
   /** The source team's name, which is also the Deplo team it lands in. */
   name: string;
+  /** Its picture on the panel, drawn instead of the generic mark. Null when the
+   *  panel keeps none - a Coolify team has no picture at all. */
+  avatarUrl: string | null;
   status: "waiting" | "done" | "stopped" | "failed";
 }
 
@@ -22,6 +25,7 @@ export interface SourceTeam {
   platform: SourceKind;
   teamId: string | null;
   teamName: string | null;
+  teamAvatarUrl: string | null;
   otherTeams: string[] | null;
 }
 
@@ -56,6 +60,7 @@ export function addTeam(
         apiKey: key,
         sourceTeamId: team.teamId,
         name: teamLabel(team),
+        avatarUrl: team.teamAvatarUrl,
         status: "waiting",
       },
     ],

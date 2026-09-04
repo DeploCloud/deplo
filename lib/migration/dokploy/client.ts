@@ -342,10 +342,12 @@ export async function listMembers(
   return Array.isArray(rows) ? rows : [];
 }
 
-/** A better-auth organization row, of which only these two are read. */
+/** A better-auth organization row, of which only these three are read. */
 interface DokployOrganization {
   id?: string | null;
   name?: string | null;
+  /** Its picture: a data URI from Dokploy's own uploader, or a typed address. */
+  logo?: string | null;
 }
 
 /**
@@ -353,17 +355,20 @@ interface DokployOrganization {
  * and tell two keys of the same organization apart. Best-effort: an older
  * instance has no such procedure, and not knowing must not stop an import.
  */
-export async function activeOrganization(
-  c: SourceCredential,
-): Promise<{ id: string | null; name: string | null }> {
+export async function activeOrganization(c: SourceCredential): Promise<{
+  id: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+}> {
   try {
     const org = await get<DokployOrganization | null>(c, "organization.active");
     return {
       id: org?.id?.trim() || null,
       name: org?.name?.trim() || null,
+      avatarUrl: org?.logo?.trim() || null,
     };
   } catch {
-    return { id: null, name: null };
+    return { id: null, name: null, avatarUrl: null };
   }
 }
 

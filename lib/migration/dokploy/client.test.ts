@@ -455,7 +455,11 @@ test("a key names its own organization and the ones it does not cover", async (t
           { id: "org_2", name: "Acme" },
           { id: "org_3", name: "" },
         ]
-      : { id: "org_1", name: "Idra Arts" };
+      : {
+          id: "org_1",
+          name: "Idra Arts",
+          logo: "data:image/webp;base64,AAAA",
+        };
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -463,7 +467,12 @@ test("a key names its own organization and the ones it does not cover", async (t
   });
 
   const src = dokployClient(cred);
-  assert.deepEqual(await src.sourceTeam(), { id: "org_1", name: "Idra Arts" });
+  // Its picture comes over too: the wizard draws it on that team's row.
+  assert.deepEqual(await src.sourceTeam(), {
+    id: "org_1",
+    name: "Idra Arts",
+    avatarUrl: "data:image/webp;base64,AAAA",
+  });
   assert.deepEqual(await src.otherTeams(), ["Acme", "org_3"]);
 });
 
@@ -477,6 +486,10 @@ test("a Dokploy that will not list its organizations says so", async (t) => {
   );
 
   const src = dokployClient(cred);
-  assert.deepEqual(await src.sourceTeam(), { id: null, name: null });
+  assert.deepEqual(await src.sourceTeam(), {
+    id: null,
+    name: null,
+    avatarUrl: null,
+  });
   assert.equal(await src.otherTeams(), null);
 });

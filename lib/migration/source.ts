@@ -98,10 +98,14 @@ export interface MigrationSourceClient {
   listMembers(): Promise<SourceMember[]>;
   /**
    * The one team this credential reads. `id` is what tells two tokens of the same
-   * team apart from two tokens of two teams; both halves are null when the panel
-   * would not say.
+   * team apart from two tokens of two teams; every part is null when the panel
+   * would not say. `avatarUrl` is its picture over there, for the wizard to draw.
    */
-  sourceTeam(): Promise<{ id: string | null; name: string | null }>;
+  sourceTeam(): Promise<{
+    id: string | null;
+    name: string | null;
+    avatarUrl: string | null;
+  }>;
   /**
    * The teams on this panel this credential does NOT cover, by name, or null when
    * the panel cannot say - Coolify filters `/v1/teams` down to the token's own
@@ -159,4 +163,18 @@ export class StopAcceptedError extends Error {}
 
 export function sourceClient(c: SourceCredential): MigrationSourceClient {
   return c.kind === "coolify" ? coolifyClient(c) : dokployClient(c);
+}
+
+/**
+ * A source team's picture, as far as it can be trusted into an `<img>`: the panel
+ * is a third party, and this is the one string of its answer a browser fetches.
+ * Dokploy's uploader writes a data URI; a person may also type an address.
+ */
+export function teamAvatarUrl(v: string | null | undefined): string | null {
+  const s = v?.trim();
+  if (!s || s.length > 1_000_000) return null;
+  const ok =
+    /^https?:\/\/./i.test(s) ||
+    /^data:image\/(png|jpeg|gif|webp|svg\+xml)[;,]/i.test(s);
+  return ok ? s : null;
 }

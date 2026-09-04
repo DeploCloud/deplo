@@ -2325,6 +2325,11 @@ type MigrationPlan {
   members: [MigrationPlanMember!]
 
   """
+  That team's own picture on the panel, so the wizard draws it rather than a generic mark. Null when the panel keeps none - a Coolify team has no picture at all.
+  """
+  orgAvatarUrl: String
+
+  """
   The team or organization this token reads. A token belongs to one, so importing a second one means a second token.
   """
   orgName: String
@@ -2616,6 +2621,11 @@ type MigrationSourceTeam {
   """
   otherTeams: [String!]
   platform: MigrationPlatform
+
+  """
+  That team's own picture on the panel, so the wizard draws it rather than a generic mark. Null when the panel keeps none - a Coolify team has no picture at all.
+  """
+  teamAvatarUrl: String
 
   """
   The team's own id over there, which is how two tokens of ONE team are told apart from two tokens of two teams. Null when the panel would not say.

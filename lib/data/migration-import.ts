@@ -76,7 +76,11 @@ import { reservedMountPath } from "../apps/volume-model";
 import { listMembers, serviceDisplayName } from "../migration/dokploy/client";
 import { normalizeSourceBaseUrl } from "../migration/transport";
 import { detectMigrationSource } from "../migration/detect";
-import { isMigrationPlatform, sourceClient } from "../migration/source";
+import {
+  isMigrationPlatform,
+  sourceClient,
+  teamAvatarUrl,
+} from "../migration/source";
 import type { MigrationSourceClient } from "../migration/source";
 import type { MigrationPlatform } from "../migration/source";
 import type { SourceCredential } from "../migration/source";
@@ -267,6 +271,9 @@ export interface MigrationPlan {
   platform: MigrationPlatform;
   sourceUrl: string;
   orgName: string | null;
+  /** That team's picture over there, for the wizard to draw instead of a generic
+   *  mark. Null when the panel keeps none, which on Coolify it never does. */
+  orgAvatarUrl: string | null;
   /** The panel's OTHER teams, so the wizard can say which ones this token does
    *  not cover. Null when the panel cannot say - see {@link SourceIdentity}. */
   otherTeams: string[] | null;
@@ -617,6 +624,8 @@ export interface SourceIdentity {
    *  from two tokens of two teams. Null when the panel would not say. */
   teamId: string | null;
   teamName: string | null;
+  /** That team's picture over there. Null when the panel keeps none. */
+  teamAvatarUrl: string | null;
   /**
    * The panel's other teams, by name - never the ones already added here, which
    * only the caller knows. Null when the panel cannot say, which is always the
@@ -647,6 +656,7 @@ export async function identifyMigrationSource(
     platform: c.kind,
     teamId: team.id,
     teamName: team.name,
+    teamAvatarUrl: teamAvatarUrl(team.avatarUrl),
     otherTeams: others,
   };
 }
@@ -933,6 +943,7 @@ export async function scanMigrationSource(
     platform: c.kind,
     sourceUrl: c.baseUrl,
     orgName: sourceTeam.name,
+    orgAvatarUrl: teamAvatarUrl(sourceTeam.avatarUrl),
     otherTeams,
     projects: planned,
     servers: await planMachines(c, teamId, servers, { probe: true }),

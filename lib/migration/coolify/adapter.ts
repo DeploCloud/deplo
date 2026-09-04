@@ -647,11 +647,14 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
     listMembers: async (): Promise<SourceMember[]> =>
       (await listTeamMembers(c)).map(coolifyMember),
 
+    // A Coolify team is a name and a description - the model carries no picture
+    // at all, so there is never one to draw.
     sourceTeam: async () => {
       const t = await currentTeam(c);
       return {
         id: t?.id != null ? String(t.id) : null,
         name: t?.name?.trim() || null,
+        avatarUrl: null,
       };
     },
     // `/v1/teams` is filtered down to the token's own team, so the others are not
