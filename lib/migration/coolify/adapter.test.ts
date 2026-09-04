@@ -133,6 +133,48 @@ test("a database is found, because the engine lives on `database_type`", async (
   );
 });
 
+test("a database's S3 backup schedules ride on its row, named after the store", async (t) => {
+  serve(t, {
+    "/api/v1/databases/db-1/backups": [
+      {
+        uuid: "bk-1",
+        enabled: true,
+        frequency: "0 3 * * *",
+        save_s3: true,
+        s3_storage_id: 7,
+        database_backup_retention_amount_s3: 5,
+      },
+      { uuid: "bk-2", enabled: true, frequency: "0 4 * * *", save_s3: false },
+    ],
+    "/api/v1/s3-storages": [
+      {
+        id: 7,
+        uuid: "s3-7",
+        name: "nightly",
+        endpoint: "https://s3.test",
+        bucket: "b",
+      },
+    ],
+  });
+  const row = (await coolifyClient(cred).getService("postgres", "db-1")) as {
+    backups?: unknown;
+  };
+  assert.deepEqual(row.backups, [
+    {
+      schedule: "0 3 * * *",
+      enabled: true,
+      keepLatestCount: 5,
+      destination: { name: "nightly" },
+    },
+    {
+      schedule: "0 4 * * *",
+      enabled: true,
+      keepLatestCount: null,
+      destination: null,
+    },
+  ]);
+});
+
 test("a resource carries the machine it runs on, not the panel's own host", async (t) => {
   serve(t);
   const detail = await coolifyClient(cred).getService("compose", "svc-gitea");

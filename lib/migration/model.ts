@@ -298,6 +298,8 @@ export interface SourceDatabase {
     | {
         schedule?: string | null;
         enabled?: boolean | null;
+        /** How many artifacts the panel kept at that destination. */
+        keepLatestCount?: number | null;
         destination?: { name?: string | null } | null;
       }[]
     | null;

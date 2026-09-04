@@ -1839,19 +1839,6 @@ export function mapDatabase(
     return { value: null, notes };
   }
 
-  // A backup schedule is not carried - the destination bucket is recreated, and
-  // a bucket with no schedule reads as a choice unless this says otherwise.
-  const schedules = (row.backups ?? []).filter((b) => b?.enabled !== false);
-  if (schedules.length > 0)
-    notes.push(
-      `Backed up on {panel} (${schedules
-        .map(
-          (b) =>
-            `${b.schedule ?? "?"}${b.destination?.name ? ` to ${b.destination.name}` : ""}`,
-        )
-        .join("; ")}). No schedule comes across - set one under Backups.`,
-    );
-
   // The source's EXACT image is kept, canonical or not - Deplo never re-derives one
   // here. Data must be reopened by the binary that wrote it.
   const customImage = row.dockerImage?.trim() || `${kind}:latest`;

@@ -2195,6 +2195,10 @@ async function runImportMigrationProject(
       items: report.items,
     };
 
+  // Before the databases: a schedule can only be set on a database whose
+  // destination is already here.
+  const destinations = await importBackupDestinations(c, report);
+
   // What the caller picked, or everything. A service left out is left out
   // SILENTLY: it is a choice made on the review screen, not an event, and a
   // report line per unticked box would bury the ones that need reading.
@@ -2405,6 +2409,7 @@ async function runImportMigrationProject(
                 serverId != null &&
                 (await hostOfMachine(sourceServerId)) === serverId,
               dbHosts,
+              destinations,
             },
             svcReport,
           );
@@ -2421,8 +2426,6 @@ async function runImportMigrationProject(
       }
     }
   }
-
-  await importBackupDestinations(c, report);
 
   await refreshCounts(input.runId, teamId);
   // Outside every transaction, like every other caller: `recordActivity` opens its
@@ -3724,6 +3727,8 @@ async function importDatabaseService(
     projectName?: string;
     /** Filled in with `old host -> new host`, for the apps that name it. */
     dbHosts: Map<string, string>;
+    /** The panel's backup stores by name (lower-cased), as Deplo destinations. */
+    destinations?: Map<string, string>;
   },
   report: Report,
 ): Promise<void> {
@@ -3941,6 +3946,48 @@ async function importDatabaseService(
     }
   }
 
+  // Its backup schedules, onto the destination that came across with them. One
+  // that saves somewhere Deplo has no store for stays a note - a bucket with no
+  // schedule reads as a choice unless this says otherwise.
+  const schedules = (row.backups ?? []).filter(
+    (b) => b?.enabled !== false && b.schedule?.trim(),
+  );
+  if (schedules.length > 0) {
+    const { createBackup } = await import("./backups");
+    for (const b of schedules) {
+      const destName = b.destination?.name?.trim() ?? "";
+      const destinationId = destName
+        ? opts.destinations?.get(destName.toLowerCase())
+        : undefined;
+      const where = `${b.schedule!.trim()}${destName ? ` to ${destName}` : ""}`;
+      if (!destinationId) {
+        notes.push(
+          `Backed up on {panel} (${where}), but that destination is not here, so no schedule was set - set one under Backups.`,
+        );
+        continue;
+      }
+      try {
+        await createBackup({
+          name: `${spec.name} to ${destName}`,
+          databaseId: created.id,
+          destinationId,
+          schedule: b.schedule!.trim(),
+          retentionCount:
+            typeof b.keepLatestCount === "number" && b.keepLatestCount > 0
+              ? b.keepLatestCount
+              : 7,
+        });
+        notes.push(`Its backup schedule came across: ${where}.`);
+      } catch (e) {
+        notes.push(
+          `Backed up on {panel} (${where}); the schedule was not set here: ${
+            e instanceof Error ? e.message : "refused"
+          }. Set one under Backups.`,
+        );
+      }
+    }
+  }
+
   // Said out loud, because every connection string the import just brought over
   // still spells out the old one.
   if (publishPort != null && sourcePort != null && publishPort !== sourcePort)
@@ -4008,28 +4055,37 @@ async function importDatabaseService(
 async function importBackupDestinations(
   c: SourceCredential,
   report: Report,
-): Promise<void> {
+): Promise<Map<string, string>> {
+  const byName = new Map<string, string>();
   let stores: Awaited<
     ReturnType<MigrationSourceClient["listBackupDestinations"]>
   >;
   try {
     stores = await sourceClient(c).listBackupDestinations();
   } catch {
-    return;
+    return byName;
   }
-  if (stores.length === 0) return;
+  if (stores.length === 0) return byName;
 
   const { createDestination, listDestinations, testDestination } =
     await import("./destinations");
-  const existing = new Set(
+  // The bucket is the identity: a store already here under any name is the one
+  // the panel's schedules meant, so its name here answers for the panel's.
+  const existing = new Map(
     (await listDestinations()).map(
-      (d) => `${(d.endpoint ?? "").toLowerCase()}|${d.bucket ?? ""}`,
+      (d) =>
+        [
+          `${(d.endpoint ?? "").toLowerCase()}|${d.bucket ?? ""}`,
+          d.id,
+        ] as const,
     ),
   );
 
   for (const store of stores) {
     const key = `${store.endpoint.toLowerCase()}|${store.bucket}`;
-    if (existing.has(key)) {
+    const already = existing.get(key);
+    if (already) {
+      byName.set(store.name.toLowerCase(), already);
       await report.add({
         sourceKind: "destination",
         sourceName: store.name,
@@ -4050,7 +4106,8 @@ async function importBackupDestinations(
         accessKey: store.accessKeyId,
         secretKey: store.secretAccessKey,
       });
-      existing.add(key);
+      existing.set(key, created.id);
+      byName.set(store.name.toLowerCase(), created.id);
       let failure: string | null = null;
       try {
         const { report: probe } = await testDestination(created.id);
@@ -4078,6 +4135,7 @@ async function importBackupDestinations(
       });
     }
   }
+  return byName;
 }
 
 /**

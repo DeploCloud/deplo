@@ -35,6 +35,7 @@ import {
   getDatabase,
   getService as getServiceRow,
   listApplications,
+  listDatabaseBackups,
   listDatabases,
   listEnvironments,
   listEnvs,
@@ -349,7 +350,27 @@ async function detail(
   if (group === "databases") {
     const row = await getDatabase(c, id);
     const engine = coolifyDbKindOf(row) ?? (kind as SourceDbKind);
-    return coolifyDatabase(row, engine, extras);
+    // Only the schedules that save to a store: a local-only one has nowhere to
+    // land here, and the report says so through the same note.
+    const [schedules, stores] = await Promise.all([
+      listDatabaseBackups(c, id),
+      listS3Storages(c).catch(() => []),
+    ]);
+    const backups = schedules
+      .filter((b) => b.frequency?.trim())
+      .map((b) => ({
+        schedule: b.frequency!.trim(),
+        enabled: b.enabled !== false,
+        keepLatestCount: b.database_backup_retention_amount_s3 || null,
+        destination: b.save_s3
+          ? {
+              name:
+                stores.find((st) => st.id != null && st.id === b.s3_storage_id)
+                  ?.name ?? null,
+            }
+          : null,
+      }));
+    return coolifyDatabase(row, engine, { ...extras, backups });
   }
   if (group === "services") {
     const row = await getServiceRow(c, id);

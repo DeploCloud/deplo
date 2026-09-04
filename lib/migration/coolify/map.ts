@@ -653,6 +653,8 @@ export interface CoolifyExtras {
   /** {@link SourceCompose.stackDir} - the resource's own directory on the host. */
   stackDir?: string;
   basicAuth?: { username: string; password: string } | null;
+  /** {@link SourceDatabase.backups} - the schedules that save to an S3 store. */
+  backups?: SourceDatabase["backups"];
 }
 
 /**
@@ -951,6 +953,7 @@ export function coolifyDatabase(
     serverId: extras.serverId ?? "",
     environmentId: extras.environmentId ?? null,
     mounts: extras.mounts ?? [],
+    backups: extras.backups ?? null,
   };
 }
 

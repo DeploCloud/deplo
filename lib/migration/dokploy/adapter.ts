@@ -16,6 +16,7 @@ import {
   getService,
   inspectContainer,
   listAppContainers,
+  listDestinations,
   listMembers,
   listNetworks,
   listOrganizations,
@@ -214,7 +215,28 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     // Dokploy shares variables at the project and the environment, never above.
     teamSharedEnv: async () => null,
     serverSharedEnv: async () => null,
-    listBackupDestinations: async () => [],
+    // Only a store with every field a client needs; a row missing its secret is
+    // one the key may not read, and half a destination is worse than none.
+    listBackupDestinations: async () =>
+      (await listDestinations(c)).flatMap((d) => {
+        const name = d.name?.trim();
+        const endpoint = d.endpoint?.trim();
+        const bucket = d.bucket?.trim();
+        const accessKeyId = d.accessKey?.trim();
+        const secretAccessKey = d.secretAccessKey?.trim();
+        if (!name || !endpoint || !bucket || !accessKeyId || !secretAccessKey)
+          return [];
+        return [
+          {
+            name,
+            endpoint,
+            bucket,
+            region: d.region?.trim() || "us-east-1",
+            accessKeyId,
+            secretAccessKey,
+          },
+        ];
+      }),
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),
     startService: (kind, id) => startService(c, kind, id),

@@ -62,6 +62,7 @@ import {
   __resetMigrationFetchForTest,
 } from "../migration/transport";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
+import { __resetAcceptedKeysForTest } from "../migration/dokploy/client";
 import {
   abandonMigration,
   appendRunItem,
@@ -395,6 +396,7 @@ beforeEach(async () => {
   await seedServer(db);
   fixtures = defaultFixtures();
   __setMigrationFetchForTest(routingFetch());
+  __resetAcceptedKeysForTest();
   __setAgentConnectorForTest();
   await db.execute("truncate table databases cascade;");
   calls = [];
@@ -416,6 +418,67 @@ function importProject(runId: string, projectId: string) {
     importMigrationProject({ ...CONNECT, runId, projectId }),
   );
 }
+
+// Dokploy's `destination.all` hands the store over with its credentials, so the
+// schedule has somewhere to land; one saving elsewhere stays a note.
+test("a database's backup schedule comes across onto the destination that came with it", async () => {
+  fixtures["destination.all"] = [
+    {
+      destinationId: "dst-1",
+      name: "nightly",
+      endpoint: "https://s3.acme.test",
+      bucket: "backups",
+      region: "eu-west-1",
+      accessKey: "AK",
+      secretAccessKey: "SK",
+    },
+  ];
+  (fixtures["postgres.one"] as { backups?: unknown[] }).backups = [
+    {
+      schedule: "0 3 * * *",
+      enabled: true,
+      keepLatestCount: 5,
+      destination: { name: "nightly" },
+    },
+    {
+      schedule: "0 4 * * *",
+      enabled: true,
+      destination: { name: "elsewhere" },
+    },
+    { schedule: "0 5 * * *", enabled: false, destination: { name: "nightly" } },
+  ];
+  // The seeded server has to be one a database can be created on.
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  await db
+    .update(serversTable)
+    .set({ agentPort: 9443, agentCertFingerprint: "ab".repeat(32) })
+    .where(eq(serversTable.id, SERVER_1));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const rows = await db.execute(
+    "select b.schedule, b.retention_count, d.name as dest from backups b join backup_destination d on d.id = b.destination_id",
+  );
+  const notes = (await db.select().from(itemsTable))
+    .filter((i) => i.runId === runId && i.sourceKind === "postgres")
+    .map((i) => i.message ?? "");
+  const dests = (await db.select().from(itemsTable))
+    .filter((i) => i.runId === runId && i.sourceKind === "destination")
+    .map((i) => `${i.outcome}: ${i.message ?? ""}`);
+  assert.deepEqual(
+    rows.rows,
+    [{ schedule: "0 3 * * *", retention_count: 5, dest: "nightly" }],
+    notes.join("\n") + "\nDEST " + dests.join("\n"),
+  );
+  assert.ok(
+    notes.some((m) => /schedule came across: 0 3 \* \* \* to nightly/.test(m)),
+    notes.join("\n"),
+  );
+  assert.ok(
+    notes.some((m) => /0 4 \* \* \* to elsewhere.*not here/.test(m)),
+    notes.join("\n"),
+  );
+});
 
 /* ------------------------------------------------------------------ */
 /* Scan                                                                */
@@ -885,7 +948,7 @@ test("a named platform is taken, not re-detected", async () => {
   fixtures["project.all"] = { __status: 401, body: "Invalid API key" };
   await assert.rejects(
     () => asOwner(() => scanMigrationSource({ ...CONNECT, kind: "dokploy" })),
-    /Dokploy request failed \(401\) on project.all/,
+    /(Dokploy request failed \(401\)|stopped accepting this API key) on project.all/,
   );
   // Once, for the scan itself. A detection probe would have asked a second time.
   assert.equal(calls.filter((c) => c === "project.all").length, 1);

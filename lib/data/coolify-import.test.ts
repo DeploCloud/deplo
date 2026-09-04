@@ -31,6 +31,7 @@ import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
 import { __setDnsResolve4ForTest, __resetDnsResolve4ForTest } from "./domains";
 import { settleProvisioning } from "./backup-test-helpers";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
+import { __resetAcceptedKeysForTest } from "../migration/dokploy/client";
 import {
   __resetMigrationFetchForTest,
   __setMigrationFetchForTest,
@@ -294,6 +295,7 @@ beforeEach(async () => {
   await seedServer(db);
   fixtures = defaultFixtures();
   __setMigrationFetchForTest(routingFetch());
+  __resetAcceptedKeysForTest();
   __setAgentConnectorForTest();
   __resetCoolifyRateLimitForTest();
   calls = [];

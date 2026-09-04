@@ -170,6 +170,42 @@ test("a middleware written into the app's own Traefik file is reported by name",
   );
 });
 
+test("the organization's S3 stores come across whole, or not at all", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+  routes({
+    "destination.all": [
+      {
+        name: "nightly",
+        endpoint: "https://s3.acme.test",
+        bucket: "b",
+        region: "",
+        accessKey: "AK",
+        secretAccessKey: "SK",
+      },
+      // A row the key may not read fully: no secret, no destination.
+      {
+        name: "half",
+        endpoint: "https://s3.acme.test",
+        bucket: "c",
+        accessKey: "AK",
+      },
+    ],
+  });
+  assert.deepEqual(await dokployClient(cred).listBackupDestinations(), [
+    {
+      name: "nightly",
+      endpoint: "https://s3.acme.test",
+      bucket: "b",
+      region: "us-east-1",
+      accessKeyId: "AK",
+      secretAccessKey: "SK",
+    },
+  ]);
+  // An older Dokploy without the procedure answers nothing, never a failure.
+  routes({});
+  assert.deepEqual(await dokployClient(cred).listBackupDestinations(), []);
+});
+
 test("a Dokploy with no networks endpoint still imports", async (t) => {
   t.after(__resetMigrationFetchForTest);
 

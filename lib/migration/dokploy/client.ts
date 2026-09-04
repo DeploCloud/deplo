@@ -37,8 +37,14 @@ export type DokployDbKind = (typeof DOKPLOY_DB_KINDS)[number];
 
 const DOKPLOY_PANEL: PanelIdentity = { name: "Dokploy", portHint: ":3000" };
 
-/** Keys Dokploy has accepted at least once in this process. */
+/** Keys a panel has accepted at least once in this process, by panel. */
 const accepted = new Set<string>();
+const acceptedKey = (c: SourceCredential) => `${c.baseUrl}|${c.apiKey}`;
+
+/** Tests reuse one key across a wrong-key case and a working one; this forgets it. */
+export function __resetAcceptedKeysForTest(): void {
+  accepted.clear();
+}
 
 /**
  * A key minted outside Dokploy's own dialog is born at 10 requests a DAY, and a
@@ -49,10 +55,13 @@ const accepted = new Set<string>();
 async function requestFailed(
   res: Response,
   procedure: string,
-  apiKey: string,
+  c: SourceCredential,
 ): Promise<Error> {
   const detail = (await res.text().catch(() => "")).slice(0, 300).trim();
-  if (res.status === 429 || (res.status === 401 && accepted.has(apiKey)))
+  if (
+    res.status === 429 ||
+    (res.status === 401 && accepted.has(acceptedKey(c)))
+  )
     return new Error(
       `Dokploy stopped accepting this API key on ${procedure} (${res.status}). It was accepted moments ago, so it has hit its rate limit or was revoked: open it in Dokploy under Settings, Profile, API/CLI, raise or disable its rate limit, and run the import again.`,
     );
@@ -91,8 +100,8 @@ async function get<T>(
   );
 
   refuseRedirect(res, DOKPLOY_PANEL);
-  if (!res.ok) throw await requestFailed(res, procedure, c.apiKey);
-  accepted.add(c.apiKey);
+  if (!res.ok) throw await requestFailed(res, procedure, c);
+  accepted.add(acceptedKey(c));
   return (await res.json()) as T;
 }
 
@@ -123,8 +132,8 @@ async function post<T>(
     },
     DOKPLOY_PANEL,
   );
-  if (!res.ok) throw await requestFailed(res, procedure, c.apiKey);
-  accepted.add(c.apiKey);
+  if (!res.ok) throw await requestFailed(res, procedure, c);
+  accepted.add(acceptedKey(c));
   return (await res.json().catch(() => null)) as T;
 }
 
@@ -288,6 +297,31 @@ export async function readTraefikConfig(
     return typeof body === "string" && body.trim() ? body : null;
   } catch {
     return null;
+  }
+}
+
+/** One S3 destination of the organization, credentials included - `destination.all`
+ *  hands them over in the clear (measured on v0.30.5), unlike a registry's. */
+export interface DokployDestination {
+  destinationId?: string | null;
+  name?: string | null;
+  endpoint?: string | null;
+  bucket?: string | null;
+  region?: string | null;
+  accessKey?: string | null;
+  secretAccessKey?: string | null;
+}
+
+/** The S3 stores the organization backs up to. Best-effort: a key that may not
+ *  read them, or a Dokploy without the procedure, is a report line short. */
+export async function listDestinations(
+  c: SourceCredential,
+): Promise<DokployDestination[]> {
+  try {
+    const rows = await get<DokployDestination[] | null>(c, "destination.all");
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
   }
 }
 

@@ -227,6 +227,8 @@ export interface CoolifyScheduledTask {
 }
 
 export interface CoolifyS3Storage {
+  /** The numeric id a backup schedule's `s3_storage_id` points at. */
+  id?: number | null;
   uuid: string;
   name?: string | null;
   description?: string | null;
@@ -236,6 +238,16 @@ export interface CoolifyS3Storage {
   /** Both only for a token holding `read:sensitive`. */
   key?: string | null;
   secret?: string | null;
+}
+
+/** One `ScheduledDatabaseBackup` row, as `GET /databases/{uuid}/backups` lists them. */
+export interface CoolifyDatabaseBackup {
+  uuid?: string | null;
+  enabled?: boolean | null;
+  frequency?: string | null;
+  save_s3?: boolean | null;
+  s3_storage_id?: number | null;
+  database_backup_retention_amount_s3?: number | null;
 }
 
 export interface CoolifyTeam {
@@ -543,6 +555,16 @@ export async function listS3Storages(
   c: SourceCredential,
 ): Promise<CoolifyS3Storage[]> {
   return asArray<CoolifyS3Storage>(await getOr<unknown>(c, "s3-storages", []));
+}
+
+/** The backup schedules of one database. A panel without the route answers []. */
+export async function listDatabaseBackups(
+  c: SourceCredential,
+  uuid: string,
+): Promise<CoolifyDatabaseBackup[]> {
+  return asArray<CoolifyDatabaseBackup>(
+    await getOr<unknown>(c, `databases/${uuid}/backups`, []),
+  );
 }
 
 export function currentTeam(c: SourceCredential): Promise<CoolifyTeam | null> {
