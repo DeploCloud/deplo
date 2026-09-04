@@ -35,6 +35,7 @@ import {
   getDatabase,
   getService as getServiceRow,
   listApplications,
+  canStop,
   listDatabaseBackups,
   listDatabases,
   listEnvironments,
@@ -351,19 +352,21 @@ async function detail(
       listDatabaseBackups(c, id),
       listS3Storages(c).catch(() => []),
     ]);
+    // The store a schedule saves to: by id when the list carries one, else the
+    // only store there is - the API lists stores without their id (4.3.16).
+    const storeFor = (b: { s3_storage_id?: number | null }) =>
+      stores.find((st) => st.id != null && st.id === b.s3_storage_id)?.name ??
+      (stores.length === 1 ? (stores[0].name ?? null) : null);
     const backups = schedules
+      // Coolify filters by database_id ALONE, so a postgres schedule comes back
+      // for the mysql whose row shares the number; the morph class tells them apart.
+      .filter((b) => coolifyBackupIsFor(b, engine))
       .filter((b) => b.frequency?.trim())
       .map((b) => ({
         schedule: b.frequency!.trim(),
         enabled: b.enabled !== false,
         keepLatestCount: b.database_backup_retention_amount_s3 || null,
-        destination: b.save_s3
-          ? {
-              name:
-                stores.find((st) => st.id != null && st.id === b.s3_storage_id)
-                  ?.name ?? null,
-            }
-          : null,
+        destination: b.save_s3 ? { name: storeFor(b) } : null,
       }));
     return coolifyDatabase(row, engine, { ...extras, backups });
   }
@@ -397,12 +400,24 @@ async function detail(
  * from the JSON. So the probe is the absence of a key, and it runs ONCE, before
  * anything is created here or stopped over there.
  */
-const READ_SENSITIVE_REFUSAL =
-  "This token cannot read values. Coolify hides every variable value and every database password from a token without the read:sensitive scope, so the apps would arrive with their variables empty. Mint a token with read:sensitive (Coolify grants it to a team admin or owner) and connect again.";
+/** The one recipe, said the same way in every refusal: Coolify's dialog clears the
+ *  list when deploy is ticked, so the order is the whole trick. */
+const TOKEN_RECIPE =
+  "Mint the token with deploy ticked FIRST, then read and read:sensitive (Coolify grants those to a team admin or owner), and connect again.";
+
+const READ_SENSITIVE_REFUSAL = `This token cannot read values. Coolify hides every variable value and every database password from a token without the read:sensitive scope, so the apps would arrive with their variables empty. ${TOKEN_RECIPE}`;
+
+/**
+ * Measured on a two-machine Coolify: a token with read and read:sensitive imported
+ * every service and then could not stop a single one, so every copy failed with
+ * "would not stop". The stop is the data step's one write, and it is `deploy`.
+ */
+const STOP_REFUSAL = `This token cannot stop a service. The data step stops each service on Coolify before it copies its data, and Coolify allows that only with the deploy permission. ${TOKEN_RECIPE}`;
 
 async function assertReadable(c: SourceCredential): Promise<void> {
   await assertValuesReadable(c);
   await assertComposeReadable(c);
+  if (!(await canStop(c))) throw new Error(STOP_REFUSAL);
 }
 
 /**
@@ -420,8 +435,30 @@ async function assertComposeReadable(c: SourceCredential): Promise<void> {
   throw new Error(COMPOSE_REFUSAL);
 }
 
-const COMPOSE_REFUSAL =
-  "This token cannot read compose files. Coolify hides a stack's compose from a token without the read:sensitive scope, so every one-click service would arrive with nothing to deploy. Mint a token with read:sensitive (Coolify grants it to a team admin or owner) and connect again.";
+/** `database_type` on a backup row is the morph class of the database it belongs to. */
+const BACKUP_CLASS: Record<string, string> = {
+  postgres: "StandalonePostgresql",
+  mysql: "StandaloneMysql",
+  mariadb: "StandaloneMariadb",
+  mongo: "StandaloneMongodb",
+  redis: "StandaloneRedis",
+  clickhouse: "StandaloneClickhouse",
+  keydb: "StandaloneKeydb",
+  dragonfly: "StandaloneDragonfly",
+};
+
+function coolifyBackupIsFor(
+  b: { database_type?: string | null },
+  engine: string,
+): boolean {
+  const cls = BACKUP_CLASS[engine];
+  const type = b.database_type?.trim();
+  // A row that does not say which engine it is for is kept: better a schedule
+  // too many than a silent none.
+  return !cls || !type || type.endsWith(cls);
+}
+
+const COMPOSE_REFUSAL = `This token cannot read compose files. Coolify hides a stack's compose from a token without the read:sensitive scope, so every one-click service would arrive with nothing to deploy. ${TOKEN_RECIPE}`;
 
 async function assertValuesReadable(c: SourceCredential): Promise<void> {
   // A database is the sharpest probe: without the scope its password column is not

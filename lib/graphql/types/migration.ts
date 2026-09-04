@@ -528,7 +528,7 @@ const ConnectInputRef = builder.inputType("MigrationSourceInput", {
     apiKey: t.string({
       required: true,
       description:
-        "The panel's API key or token. Dokploy: Settings -> Profile -> API/CLI. Coolify: Keys & Tokens -> API tokens, with `read:sensitive` ticked, or the values and database passwords arrive empty. Use an owner's or admin's either way: a plain member's is refused. Never stored.",
+        "The panel's API key or token. Dokploy: Settings -> Profile -> API/CLI. Coolify: Keys & Tokens -> API tokens, with `deploy` ticked first, then `read` and `read:sensitive` - without deploy the data step cannot stop a service, without read:sensitive the values and database passwords arrive empty. Use an owner's or admin's either way: a plain member's is refused. Never stored.",
     }),
     kind: t.field({
       type: MigrationPlatformEnum,

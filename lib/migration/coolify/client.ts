@@ -243,6 +243,8 @@ export interface CoolifyS3Storage {
 /** One `ScheduledDatabaseBackup` row, as `GET /databases/{uuid}/backups` lists them. */
 export interface CoolifyDatabaseBackup {
   uuid?: string | null;
+  /** The morph class of the database this row is for (`App\Models\StandalonePostgresql`). */
+  database_type?: string | null;
   enabled?: boolean | null;
   frequency?: string | null;
   save_s3?: boolean | null;
@@ -624,6 +626,17 @@ export function startResource(
   uuid: string,
 ): Promise<unknown> {
   return post<unknown>(c, `${group}/${uuid}/start`);
+}
+
+/**
+ * Whether this token may STOP a service - the data step's one write, gated on the
+ * `deploy` ability. Coolify answers a GET on the stop route with 405 ("changed to a
+ * POST") when the ability is there and 403 when it is not, before it looks at the
+ * uuid, so nothing is touched. Measured on 4.3.16.
+ */
+export async function canStop(c: SourceCredential): Promise<boolean> {
+  const res = await request(c, "GET", "applications/deplo-probe/stop");
+  return res.status !== 403;
 }
 
 /** The status Coolify reports for one resource, for the stop to poll. */

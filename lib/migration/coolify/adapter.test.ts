@@ -83,6 +83,10 @@ function serve(
       ],
     },
     "/api/v1/databases/db-1": DATABASES[0],
+    // The deploy-ability probe: any answer but 403 means the token may stop.
+    "/api/v1/applications/deplo-probe/stop": {
+      message: "This endpoint has changed to a POST request.",
+    },
     "/api/v1/databases/db-1/envs": [],
     "/api/v1/databases/db-1/storages": {},
     ...over,
@@ -143,12 +147,29 @@ test("a database's S3 backup schedules ride on its row, named after the store", 
         save_s3: true,
         s3_storage_id: 7,
         database_backup_retention_amount_s3: 5,
+        database_type: "App\\Models\\StandalonePostgresql",
       },
-      { uuid: "bk-2", enabled: true, frequency: "0 4 * * *", save_s3: false },
+      {
+        uuid: "bk-2",
+        enabled: true,
+        frequency: "0 4 * * *",
+        save_s3: false,
+        database_type: "App\\Models\\StandalonePostgresql",
+      },
+      // Measured on 4.3.16: the route filters by database_id alone, so the mysql
+      // that shares the number comes back too. The morph class tells it apart.
+      {
+        uuid: "bk-9",
+        enabled: true,
+        frequency: "0 9 * * *",
+        save_s3: true,
+        s3_storage_id: 7,
+        database_type: "App\\Models\\StandaloneMysql",
+      },
     ],
+    // ...and the store list carries no id, so with one store that is the one.
     "/api/v1/s3-storages": [
       {
-        id: 7,
         uuid: "s3-7",
         name: "nightly",
         endpoint: "https://s3.test",
@@ -173,6 +194,41 @@ test("a database's S3 backup schedules ride on its row, named after the store", 
       destination: null,
     },
   ]);
+});
+
+// Measured on a two-machine Coolify: read + read:sensitive imported everything and
+// then could not stop one service, so every copy failed. Refused at Connect instead.
+test("a token that cannot stop a service is refused before anything runs", async (t) => {
+  serve(
+    t,
+    {
+      "/api/v1/services/svc-gitea": {
+        ...SERVICES[0],
+        docker_compose_raw: "services:\n  gitea:\n    image: gitea/gitea\n",
+      },
+    },
+    (path) =>
+      path === "/api/v1/applications/deplo-probe/stop"
+        ? new Response(
+            JSON.stringify({ message: "Missing required permissions: deploy" }),
+            { status: 403, headers: { "content-type": "application/json" } },
+          )
+        : null,
+  );
+  await assert.rejects(
+    () => coolifyClient(cred).assertReadable(),
+    /cannot stop a service[\s\S]*deploy ticked FIRST/,
+  );
+});
+
+test("a token that may stop passes the readiness check", async (t) => {
+  serve(t, {
+    "/api/v1/services/svc-gitea": {
+      ...SERVICES[0],
+      docker_compose_raw: "services:\n  gitea:\n    image: gitea/gitea\n",
+    },
+  });
+  await coolifyClient(cred).assertReadable();
 });
 
 test("a resource carries the machine it runs on, not the panel's own host", async (t) => {
