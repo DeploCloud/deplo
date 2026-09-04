@@ -444,7 +444,7 @@ async function seedRunItems(
 ): Promise<void> {
   for (const [i, r] of rows.entries())
     await db.insert(itemsTable).values({
-      id: `dimi_seed_${i}_${r.sourceId}`,
+      id: `dimi_seed_${runId.slice(-6)}_${i}_${r.sourceId}`,
       runId,
       path: `Blink / production / ${r.sourceName}`,
       sourceKind: r.sourceKind,
@@ -691,6 +691,42 @@ test("the plan pairs an imported app's volume with the one Deplo will mount", as
     ],
   );
   assert.match(web.volumes[1].note!, /path on the host, not a volume/);
+});
+
+// Measured on a Coolify run whose first attempt had failed the data step: the
+// second run skipped every service as "already here" and then planned NOTHING,
+// because the row's marker is cleared when a run ends. The report of the run that
+// created it is the durable fact.
+test("a second run still moves the data of what the first one created", async () => {
+  const first = await openRun();
+  await asOwner(() => finishMigration(first));
+  const second = await asOwner(() => beginMigration({ url: CONNECT.url }));
+  await seedRunItems(second, [
+    {
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+      sourceName: "blink-web",
+      targetKind: "app",
+      targetId: "prj_web",
+      outcome: "skipped",
+    },
+    {
+      sourceKind: "postgres",
+      sourceId: "dok-pg-1",
+      sourceName: "blink-db",
+      targetKind: "database",
+      targetId: "db_blink",
+      outcome: "skipped",
+    },
+  ]);
+  const plan = await asOwner(() =>
+    planMigrationDataMove({ ...CONNECT, runId: second }),
+  );
+  assert.deepEqual(
+    plan.map((s) => s.sourceName).sort(),
+    ["blink-db", "blink-web"],
+    "a second run has to find what the first created, marker or no marker",
+  );
 });
 
 test("a service that was never imported is not listed at all", async () => {

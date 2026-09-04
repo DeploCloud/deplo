@@ -350,15 +350,31 @@ async function runTargets(
     { targetKind: "app" | "database"; targetId: string }
   >();
   // A skipped target counts only when a migration made it: somebody's own app
-  // or database is never a place a copy may wipe and refill.
+  // or database is never a place a copy may wipe and refill. The durable fact is
+  // a `created` line in SOME run's report; the row's own marker is transient and
+  // gone the moment that run ends - read alone, it made every second run copy
+  // nothing, which is the run the docs send people to for newer data.
   const migrated = async (kind: "app" | "database", ids: string[]) => {
     if (ids.length === 0) return new Set<string>();
     const table = kind === "app" ? appsTable : databasesTable;
-    const hits = await getDb()
+    const marked = await getDb()
       .select({ id: table.id })
       .from(table)
       .where(and(inArray(table.id, ids), isNotNull(table.migrationRunId)));
-    return new Set(hits.map((h) => h.id));
+    const created = await getDb()
+      .select({ id: itemsTable.targetId })
+      .from(itemsTable)
+      .where(
+        and(
+          eq(itemsTable.targetKind, kind),
+          inArray(itemsTable.targetId, ids),
+          eq(itemsTable.outcome, "created"),
+        ),
+      );
+    return new Set([
+      ...marked.map((h) => h.id),
+      ...created.map((h) => h.id).filter((id): id is string => id != null),
+    ]);
   };
   const skippedApps = await migrated(
     "app",
