@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Database as DatabaseIcon,
   Folder as FolderIcon,
+  House,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -156,11 +157,15 @@ function Crumb({
   isCurrent?: boolean;
 }) {
   const hasChoices = segment.items.some((i) => !i.current);
+  // Away from the Overview itself, its crumb is just the way back: a home mark
+  // reads faster than the word and leaves the width to the trail.
+  const home = segment.kind === "overview" && !isCurrent;
   return (
     <span className="flex min-w-0 items-center">
       <Link
         href={segment.href}
         title={segment.name}
+        aria-label={home ? segment.name : undefined}
         aria-current={isCurrent ? "page" : undefined}
         className={cn(
           "flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-accent/60 hover:text-foreground",
@@ -170,13 +175,19 @@ function Crumb({
         {/* The thing's own mark, before its name. A trail of names is a trail of
             strings that all look alike; the App you are working on wearing the
             logo you know it by is what makes the crumb readable at a glance. */}
-        <KindIcon
-          kind={segment.kind}
-          logo={segment.logo}
-          dbType={segment.dbType}
-          size={14}
-        />
-        <span className="max-w-40 truncate">{segment.name}</span>
+        {home ? (
+          <House className="size-3.5 shrink-0" />
+        ) : (
+          <>
+            <KindIcon
+              kind={segment.kind}
+              logo={segment.logo}
+              dbType={segment.dbType}
+              size={14}
+            />
+            <span className="max-w-40 truncate">{segment.name}</span>
+          </>
+        )}
       </Link>
       {hasChoices && <SiblingMenu segment={segment} />}
     </span>
