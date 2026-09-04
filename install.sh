@@ -1999,6 +1999,9 @@ proxy_running() {
 # Traefik must have 80 and 443, and a workload of the platform being replaced can
 # grab one the moment its proxy lets go - a host-network container does exactly
 # that. Take the port back, from THEIRS only.
+# The one thing a rollback has to name: a port a stranger holds. Read by the
+# cutover's reason, which the wizard shows next to Try again.
+PORT_STRANGER=""
 ensure_proxy_bound() {
   proxy_running && return 0
   local port cid took=0 workloads
@@ -2016,6 +2019,7 @@ $workloads
 $cid
 "*) ;;
       *)
+        PORT_STRANGER="port $port is held by $(docker inspect "$cid" --format '{{.Name}}' 2>/dev/null | tr -d /), which is not ${FOREIGN_LABEL}'s"
         warn "Port $port is held by something that is not ${FOREIGN_LABEL}'s, so Deplo's proxy cannot start."
         continue
         ;;
@@ -2064,7 +2068,11 @@ takeover_cutover() {
     return 0
   fi
   spin_err "The dashboard did not answer on $PUBLIC_URL after the move"
-  why="Traefik took ports 80 and 443 but did not answer for $PANEL_HOST within a minute. Logs on the host: docker logs deplo-traefik"
+  if [ -n "$PORT_STRANGER" ]; then
+    why="Deplo's proxy could not start: $PORT_STRANGER. Stop that container, then try again."
+  else
+    why="Traefik took ports 80 and 443 but did not answer for $PANEL_HOST within a minute. Logs on the host: docker logs deplo-traefik"
+  fi
 
   # Back to where this started. Nothing of the other platform was removed, so
   # putting the ports back IS the whole rollback - side door included, or the
