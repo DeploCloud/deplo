@@ -26,14 +26,23 @@ import { TEAM_HEADER, teamSlugFromPath } from "./team-path";
 
 /**
  * The team the open page belongs to. `/api/graphql` is flat, so this header is
- * what tells the server which team the request is for (lib/membership.ts).
+ * what tells the server which team the request is for (lib/membership.ts). A
+ * caller that must act in ANOTHER team names it: the migration wizard lands a
+ * run in a team its page does not address.
  */
-function teamHeader(): Record<string, string> {
+function teamHeader(teamId?: string): Record<string, string> {
   const slug =
-    typeof location === "undefined"
+    teamId ??
+    (typeof location === "undefined"
       ? null
-      : teamSlugFromPath(location.pathname);
+      : teamSlugFromPath(location.pathname));
   return slug ? { [TEAM_HEADER]: slug } : {};
+}
+
+/** Per-call options. `teamId` sends the request to that team, not the page's. */
+export interface GqlOptions {
+  teamId?: string;
+  signal?: AbortSignal;
 }
 
 /** An abort is the caller's own doing, never a connection problem. */
@@ -77,9 +86,10 @@ export async function gqlAction<TData = unknown, TPick = TData>(
   query: string,
   variables?: Record<string, unknown>,
   pick?: (data: TData) => TPick,
+  opts?: GqlOptions,
 ): Promise<ActionResult<TPick>> {
   try {
-    const data = await gql<TData>(query, variables);
+    const data = await gql<TData>(query, variables, opts?.signal, opts);
     return { ok: true, data: pick ? pick(data) : (data as unknown as TPick) };
   } catch (e) {
     const error =
@@ -96,6 +106,7 @@ export async function gql<TData = unknown>(
   query: string,
   variables?: Record<string, unknown>,
   signal?: AbortSignal,
+  opts?: GqlOptions,
 ): Promise<TData> {
   // Already latched offline: the request can only fail, so refuse it up front with
   // the custom message instead of making the user wait out a timeout for a raw
@@ -106,7 +117,10 @@ export async function gql<TData = unknown>(
   try {
     res = await fetch("/api/graphql", {
       method: "POST",
-      headers: { "content-type": "application/json", ...teamHeader() },
+      headers: {
+        "content-type": "application/json",
+        ...teamHeader(opts?.teamId),
+      },
       body: JSON.stringify({ query, variables }),
       credentials: "same-origin",
       signal,

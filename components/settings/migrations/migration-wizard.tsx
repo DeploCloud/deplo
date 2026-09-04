@@ -843,7 +843,12 @@ export function MigrationWizard({
         // The machines Deplo installed to read the panel are granted to ONE team,
         // and every lookup that reads one is team-scoped: left behind, the run
         // refuses to start and their agents are stranded.
-        const moved = await gqlAction(HAND_OVER_SOURCES, { fromTeamId: from });
+        const moved = await gqlAction(
+          HAND_OVER_SOURCES,
+          { fromTeamId: from },
+          undefined,
+          { teamId: nextTeamId },
+        );
         if (!moved.ok) {
           setRetargeting(false);
           setRetargetError(moved.error);
@@ -851,12 +856,16 @@ export function MigrationWizard({
         }
       }
       router.refresh();
+      // In the team it lands in, said outright: the page's URL names the team
+      // every call is for (lib/graphql-client.ts), and this page stays where it
+      // was opened while the run lands somewhere else.
       const again = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
         SCAN,
         // A team of the queue arrives with its own key: the state that would hold
         // it is set in the same tick as this call, so it is passed, not read.
         { input: { ...connectInput, apiKey: withKey || connectInput.apiKey } },
         (d) => d.scanMigrationSource,
+        { teamId: nextTeamId },
       );
       setRetargeting(false);
       if (!again.ok) {
@@ -937,6 +946,7 @@ export function MigrationWizard({
         keepSources: opts.keepSources ?? teamsLeft > 0,
       },
       (d) => d.startMigration,
+      inTarget(),
     );
     setRunning(false);
     if (!res.ok) {
@@ -1000,6 +1010,8 @@ export function MigrationWizard({
   queueRef.current = queue;
   const targetTeamRef = React.useRef(targetTeamId);
   targetTeamRef.current = targetTeamId;
+  /** Every call about the run goes to the team it lands in, not the page's. */
+  const inTarget = () => ({ teamId: targetTeamRef.current });
 
   /**
    * Everything ONE team chose. Which teams are still to come is not one team's,
@@ -1110,7 +1122,7 @@ export function MigrationWizard({
     setUndoing(true);
     setAdoptedId(id);
     setRunId(id);
-    const res = await gqlAction(STOP, { runId: id });
+    const res = await gqlAction(STOP, { runId: id }, undefined, inTarget());
     if (!res.ok) {
       setUndoing(false);
       toast.error(res.error);
@@ -1134,7 +1146,7 @@ export function MigrationWizard({
             (RunReport & { status: string; error: string | null }) | null;
         },
         (RunReport & { status: string; error: string | null }) | null
-      >(RUN_REPORT, { id }, (d) => d.migrationRun);
+      >(RUN_REPORT, { id }, (d) => d.migrationRun, inTarget());
       if (!res.ok || !res.data) return;
       // Still moving: the live feed owns the screen. Only the arrival path gets
       // here - the edge below fires when the feed has already gone quiet.
@@ -1166,7 +1178,7 @@ export function MigrationWizard({
             (q, j) => j > at && q.status === "waiting",
           );
           if (next !== -1) {
-            await gqlAction(DISMISS, { runId: id });
+            await gqlAction(DISMISS, { runId: id }, undefined, inTarget());
             void runBulkRef.current(next);
             return;
           }
@@ -1197,43 +1209,34 @@ export function MigrationWizard({
    */
   async function closeReport() {
     const id = adoptedId ?? runId;
-    if (id) await gqlAction(DISMISS, { runId: id });
+    if (id) await gqlAction(DISMISS, { runId: id }, undefined, inTarget());
   }
 
   /* ---- step: people ------------------------------------------------ */
 
-  /**
-   * One team of the list. Its invites are minted in ITS Deplo team, where its
-   * run lives, so the active team is switched there first - and one team at a
-   * time, because two switches in flight would mint one team's links in the
-   * other's.
-   */
-  const inviteChain = React.useRef(Promise.resolve());
-  function inviteFor(i: number) {
-    inviteChain.current = inviteChain.current.then(async () => {
-      const run = teamRuns[i];
-      const team = queue[i];
-      if (!run || !team) return;
-      setInviting(true);
-      const switched = await gqlAction(SWITCH_TEAM, { teamId: run.teamId });
-      const res = switched.ok
-        ? await gqlAction<{ importMigrationMembers: Invite[] }, Invite[]>(
-            IMPORT_MEMBERS,
-            {
-              input: { url, apiKey: team.apiKey, kind: plan?.platform ?? null },
-              runId: run.runId,
-            },
-            (d) => d.importMigrationMembers,
-          )
-        : switched;
-      setInviting(false);
-      if (!res.ok) {
-        toast.error(`${team.name}: ${res.error}`);
-        return;
-      }
-      setTeamInvites((prev) => ({ ...prev, [i]: res.data ?? [] }));
-      router.refresh();
-    });
+  /** One team of the list: its invites are minted in ITS Deplo team, where its
+   *  run lives, so the call names that team rather than the page's. */
+  async function inviteFor(i: number) {
+    const run = teamRuns[i];
+    const team = queue[i];
+    if (!run || !team) return;
+    setInviting(true);
+    const res = await gqlAction<{ importMigrationMembers: Invite[] }, Invite[]>(
+      IMPORT_MEMBERS,
+      {
+        input: { url, apiKey: team.apiKey, kind: plan?.platform ?? null },
+        runId: run.runId,
+      },
+      (d) => d.importMigrationMembers,
+      { teamId: run.teamId },
+    );
+    setInviting(false);
+    if (!res.ok) {
+      toast.error(`${team.name}: ${res.error}`);
+      return;
+    }
+    setTeamInvites((prev) => ({ ...prev, [i]: res.data ?? [] }));
+    router.refresh();
   }
 
   async function mintLinkFor(i: number) {
@@ -1338,6 +1341,7 @@ export function MigrationWizard({
       IMPORT_MEMBERS,
       { input: connectInput, runId },
       (d) => d.importMigrationMembers,
+      inTarget(),
     );
     setInviting(false);
     if (!res.ok) {
