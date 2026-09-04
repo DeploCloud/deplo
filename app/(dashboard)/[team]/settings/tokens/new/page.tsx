@@ -1,11 +1,6 @@
 import Link from "@/components/ui/link";
-import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import {
-  hasCapability,
-  isInstanceAdmin,
-  requireActiveTeamId,
-} from "@/lib/membership";
+import { isInstanceAdmin, requireActiveTeamId } from "@/lib/membership";
 
 import { listScopeTree } from "@/lib/data/tokens";
 import { tokenPreset } from "@/lib/token-presets";
@@ -18,19 +13,13 @@ export const metadata = { title: "Settings · New API token" };
 export default async function NewTokenPage(
   props: PageProps<"/[team]/settings/tokens/new">,
 ) {
-  const { team } = await props.params;
   const sp = await props.searchParams;
   const wanted = Array.isArray(sp.preset) ? sp.preset[0] : sp.preset;
-  const [canManage, canGrantInstanceAdmin, tree, activeTeamId] =
-    await Promise.all([
-      hasCapability("manage_tokens"),
-      isInstanceAdmin(),
-      listScopeTree(),
-      requireActiveTeamId(),
-    ]);
-  // Reachable only from the "New token" menu, which is itself gated, but a
-  // typed URL must not open an editor whose save can only fail.
-  if (!canManage) redirect(`/${team}/settings/tokens`);
+  const [canGrantInstanceAdmin, tree, activeTeamId] = await Promise.all([
+    isInstanceAdmin(),
+    listScopeTree(),
+    requireActiveTeamId(),
+  ]);
   // `?preset=` is the template chosen in that menu. An unknown or stale id
   // degrades to a blank token rather than erroring: the choice is a starting
   // point, not a link.
@@ -61,7 +50,7 @@ export default async function NewTokenPage(
         preset={preset}
         tree={tree}
         activeTeamId={activeTeamId}
-        canManage
+
         canGrantInstanceAdmin={canGrantInstanceAdmin}
         publicUrl={await instancePublicBaseUrl()}
       />

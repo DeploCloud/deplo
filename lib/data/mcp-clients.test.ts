@@ -9,8 +9,9 @@ import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { oauthConsent } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
 import {
+  countMcpAgents,
   listConnectableTeamIds,
-  listMcpConnections,
+  listMcpTeams,
   mcpTokenConnected,
   mintMcpConnection,
 } from "./mcp-clients";
@@ -130,21 +131,19 @@ test("a connection cannot be granted a capability its approver does not hold", a
 });
 
 test("a connection is never granted instance administration", async () => {
-  // Structural rather than a check: the token is always scoped to the chosen
-  // team, and a scoped token is refused instance administration outright. Run it
-  // as the instance ADMIN, where a slip would actually be reachable.
+  // The consent path never names it, so it cannot be asked for. Run it as the
+  // instance ADMIN, where a slip would actually be reachable.
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
   const rows = (
     await pg.query(
-      `select instance_admin, scoped from api_tokens where oauth_client_id = $1`,
+      `select instance_admin from api_tokens where oauth_client_id = $1`,
       [CLIENT],
     )
-  ).rows as { instance_admin: boolean; scoped: boolean }[];
+  ).rows as { instance_admin: boolean }[];
   assert.equal(rows.length, 1);
   assert.equal(rows[0].instance_admin, false);
-  assert.equal(rows[0].scoped, true);
 });
 
 test("re-approving replaces the connection instead of widening the old token", async () => {
@@ -189,37 +188,36 @@ test("the minted capabilities are the ones the form submitted, never the client'
   assert.deepEqual(caps.map((c) => c.capability).sort(), ["view"]);
 });
 
-test("a connection is scoped to EXACTLY the active team, whoever the approver is", async () => {
-  // The bug this pins reached production. It created an app in the wrong one before
-  // this was fixed.
-  await pg.query(
-    `insert into memberships (id, user_id, team_id, role, created_at)
-     values ('mem_owner_b2', $1, $2, 'owner', '2025-01-01T00:00:00.000Z')`,
-    [OWNER, TEAM_B],
-  );
-  await pg.query(
-    `insert into membership_capabilities (membership_id, capability)
-     select 'mem_owner_b2', capability from membership_capabilities
-     where membership_id = $1`,
-    [`mem_${OWNER}`],
-  );
-
+test("naming nothing means every team you may connect agents to, live", async () => {
+  await grantOwnerIn(TEAM_B);
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
   const scope = (
     await pg.query(
-      `select tt.team_id from api_token_teams tt
-       join api_tokens t on t.id = tt.token_id
+      `select t.scoped, tt.team_id from api_tokens t
+       left join api_token_teams tt on tt.token_id = t.id
        where t.oauth_client_id = $1`,
       [CLIENT],
     )
-  ).rows as { team_id: string }[];
-  assert.deepEqual(
-    scope.map((r) => r.team_id),
-    [TEAM_A],
-    "the connection reaches more than the team it was approved for",
+  ).rows as { scoped: boolean; team_id: string | null }[];
+  assert.deepEqual(scope, [{ scoped: false, team_id: null }]);
+  const [token] = await as(OWNER, () => listTokens());
+  assert.deepEqual(token.teamsReached.map((t) => t.id).sort(), [
+    TEAM_A,
+    TEAM_B,
+  ]);
+  // Where it may ACT is read live: take the permission away in one team and
+  // the connection is refused there, with nothing on the token touched.
+  await pg.query(
+    `delete from membership_capabilities
+     where membership_id = 'mem_owner_b2' and capability = 'manage_mcp'`,
   );
+  const teams = await as(OWNER, () => listMcpTeams());
+  assert.deepEqual(teams.map((t) => [t.id, t.canConnect]).sort(), [
+    [TEAM_A, true],
+    [TEAM_B, false],
+  ]);
 });
 
 test("no approval on file mints nothing", async () => {
@@ -326,7 +324,7 @@ test("a team where you may not manage MCP access cannot be granted", async () =>
         teamIds: [TEAM_A, TEAM_B],
       }),
     ),
-    /may manage MCP access/i,
+    /may connect AI agents/i,
   );
   assert.equal((await pg.query(`select id from api_tokens`)).rows.length, 0);
 });
@@ -443,7 +441,7 @@ test("the team kill switch blocks the DOOR, not only the request", async () => {
     as(OWNER, () =>
       mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
     ),
-    /turned off MCP access/i,
+    /turn MCP on/i,
   );
   assert.equal((await pg.query(`select id from api_tokens`)).rows.length, 0);
 });
@@ -490,44 +488,34 @@ test("a disabled client cannot be approved", async () => {
 /* Listing, revocation, cross-team                                     */
 /* ------------------------------------------------------------------ */
 
-test("a connection is listed with the permissions it holds NOW", async () => {
+test("a connection is listed to its owner with the permissions it holds NOW", async () => {
   await as(OWNER, () =>
     mintMcpConnection({
       clientId: CLIENT,
       capabilities: ["view", "deploy_apps"],
     }),
   );
-  const list = await as(OWNER, () => listMcpConnections());
+  const list = await as(OWNER, () => listTokens());
   assert.equal(list.length, 1);
-  assert.equal(list[0].clientName, "Claude");
-  assert.equal(list[0].username, USER_1);
-  assert.equal(list[0].redirectOrigin, "https://client.test");
-  assert.deepEqual(list[0].capabilities.sort(), ["deploy_apps", "view"]);
+  assert.equal(list[0].oauthClientName, "Claude");
+  assert.equal(list[0].mcp, true);
+  assert.deepEqual(list[0].capabilities.slice().sort(), [
+    "deploy_apps",
+    "view",
+  ]);
 });
 
-test("another team neither sees nor revokes this team's connection", async () => {
+test("another person neither sees nor revokes the connection, but the team counts it", async () => {
   const { tokenId } = await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
-  // Another PERSON, in the other team: whoever approved the connection may
-  // always cut their own credential, so "another team" has to be someone else.
-  await pg.query(
-    `insert into memberships (id, user_id, team_id, role, created_at)
-     values ('mem_member_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,
-    [MEMBER, TEAM_B],
-  );
-  await pg.query(
-    `insert into membership_capabilities (membership_id, capability)
-     select 'mem_member_b', capability from membership_capabilities
-     where membership_id = $1`,
-    [`mem_${MEMBER}`],
-  );
-  const fromB = await as(MEMBER, () => listMcpConnections(), TEAM_B);
-  assert.deepEqual(fromB, []);
+  assert.deepEqual(await as(MEMBER, () => listTokens()), []);
   await assert.rejects(
-    as(MEMBER, () => revokeToken(tokenId), TEAM_B),
+    as(MEMBER, () => revokeToken(tokenId)),
     /not found/i,
   );
+  // A number is all the team gets: enough to know an agent is here.
+  assert.equal(await as(MEMBER, () => countMcpAgents()), 1);
 });
 
 test("your own connection follows you into your other teams", async () => {
@@ -535,8 +523,6 @@ test("your own connection follows you into your other teams", async () => {
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
   await grantOwnerIn(TEAM_B);
-  // Settings → MCP is a TEAM screen and stays team-scoped.
-  assert.deepEqual(await as(OWNER, () => listMcpConnections(), TEAM_B), []);
   assert.deepEqual(
     (await as(OWNER, () => listTokens(), TEAM_B)).map((t) => t.id),
     [tokenId],
@@ -545,27 +531,20 @@ test("your own connection follows you into your other teams", async () => {
   assert.deepEqual(await as(OWNER, () => listTokens()), []);
 });
 
-test("a connection never carries the other teams it reaches", async () => {
-  // Settings → MCP speaks about the active team and nothing else: whoever reads
-  // it need not belong to the other teams the same consent was approved for, so
-  // neither their names nor their ids may ride along in the row.
+test("the agent count is per team, and only counts where the owner may connect", async () => {
   await grantOwnerIn(TEAM_B);
   await as(OWNER, () =>
-    mintMcpConnection({
-      clientId: CLIENT,
-      capabilities: ["view"],
-      teamIds: [TEAM_A, TEAM_B],
-    }),
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
-  const [row] = await as(OWNER, () => listMcpConnections());
-  const json = JSON.stringify(row);
-  assert.equal(row.teamId, TEAM_A);
-  assert.ok(!json.includes(TEAM_B), "the other team's id leaked into the row");
-  // Teams are seeded named after their slug.
-  assert.ok(
-    !json.includes("beta"),
-    "the other team's name leaked into the row",
+  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
+  assert.equal(await as(OWNER, () => countMcpAgents(), TEAM_B), 1);
+  // Not a member who may use tokens there any more: not counted there.
+  await pg.query(
+    `delete from membership_capabilities
+     where membership_id = 'mem_owner_b2' and capability = 'manage_tokens'`,
   );
+  assert.equal(await as(OWNER, () => countMcpAgents(), TEAM_B), 0);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
 });
 
 test("revoking from one team disconnects the client from all of them", async () => {
@@ -580,8 +559,8 @@ test("revoking from one team disconnects the client from all of them", async () 
 
   await as(OWNER, () => revokeToken(tokenId), TEAM_B);
 
-  assert.deepEqual(await as(OWNER, () => listMcpConnections()), []);
-  assert.deepEqual(await as(OWNER, () => listMcpConnections(), TEAM_B), []);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 0);
+  assert.equal(await as(OWNER, () => countMcpAgents(), TEAM_B), 0);
   // The OAuth half goes with it: a surviving consent would let the client
   // re-authorize with no screen, which is not what Revoke promised.
   assert.equal(
@@ -678,7 +657,6 @@ test("the raw token never reaches the activity trail or the connection DTO", asy
   );
   const dump = JSON.stringify([
     await as(OWNER, () => listActivity()),
-    await as(OWNER, () => listMcpConnections()),
     await as(OWNER, () => listTokens()),
   ]);
   // The 12-character `prefix` is shown on purpose (`deplo_abc1••••••••`), so the
@@ -740,8 +718,8 @@ test("the connection appears in the API tokens list, marked", async () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * The gap these cover: before `mcp_last_used_at`, `listMcpConnections` joined
- * `oauth_client` and so could only ever see web connectors.
+ * A bearer token has no registered client row: what makes it an agent is having
+ * spoken the protocol.
  */
 
 /** Mint an ordinary bearer token, the way the connect wizard does. */
@@ -760,77 +738,53 @@ async function markSpokeMcp(tokenId: string) {
   );
 }
 
-test("a bearer token that has spoken MCP is listed as a connection", async () => {
+test("a bearer token that has spoken MCP counts as an agent, and is marked", async () => {
   const id = await bearer("Claude Code");
   await markSpokeMcp(id);
-
-  const list = await as(OWNER, () => listMcpConnections());
-  assert.equal(list.length, 1);
-  assert.equal(list[0].id, id);
-  assert.equal(list[0].kind, "token");
-  // Its name is the one the person typed: there is no registered client row to
-  // take a name from, and the protocol revision carries no `clientInfo`.
-  assert.equal(list[0].clientName, "Claude Code");
-  assert.equal(list[0].redirectOrigin, null);
-  assert.ok(list[0].mcpLastUsedAt, "the MCP stamp did not reach the DTO");
-});
-
-test("a bearer token that has spoken MCP is marked in the tokens list", async () => {
-  // The mark is what tells a company an AI agent holds this credential, and it
-  // is not the OAuth join: a bearer connector has no registered client row.
-  const id = await bearer("Claude Code");
-  await markSpokeMcp(id);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
   const [token] = await as(OWNER, () => listTokens());
   assert.equal(token.id, id);
   assert.equal(token.oauthClientName, null);
   assert.equal(token.mcp, true);
 });
 
-test("a token that has never spoken MCP is not a connection", async () => {
-  // The whole reason for a second column. This is a CI credential, and listing
-  // it here would tell a company an AI agent is in their infrastructure when
-  // none is.
+test("a token that has never spoken MCP is not an agent", async () => {
+  // This is a CI credential, and counting it would tell a company an AI agent
+  // is in their infrastructure when none is.
   await bearer("Nightly CI");
-  assert.deepEqual(await as(OWNER, () => listMcpConnections()), []);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 0);
   assert.equal((await as(OWNER, () => listTokens()))[0].mcp, false);
 });
 
-test("an OAuth connector is still listed, and marked as a web app", async () => {
+test("an OAuth connector counts from the moment it is approved", async () => {
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
-  const list = await as(OWNER, () => listMcpConnections());
-  assert.equal(list.length, 1);
-  assert.equal(list[0].kind, "web");
-  assert.equal(list[0].clientName, "Claude");
-  // Listed from the moment it is approved: approving IS the connection, and it
-  // has made no call yet.
-  assert.equal(list[0].mcpLastUsedAt, null);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
 });
 
-test("both kinds share one list", async () => {
-  const id = await bearer("Cursor");
+test("both kinds count, across every member", async () => {
+  const id = await bearer("Cursor", MEMBER);
   await markSpokeMcp(id);
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
-  const list = await as(OWNER, () => listMcpConnections());
-  assert.deepEqual(list.map((c) => c.kind).sort(), ["token", "web"]);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 2);
 });
 
-test("an expired token says so rather than vanishing", async () => {
+test("an expired token is not counted, but its owner still sees why it stopped", async () => {
   const id = await bearer("Old laptop");
   await markSpokeMcp(id);
   await pg.query(
     `update api_tokens set expires_at = now() - interval '1 day' where id = $1`,
     [id],
   );
-  const list = await as(OWNER, () => listMcpConnections());
-  assert.equal(list.length, 1, "an expired connection must stay visible");
-  assert.equal(list[0].expired, true);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 0);
+  const [token] = await as(OWNER, () => listTokens());
+  assert.equal(token.expired, true);
 });
 
-test("mcpTokenConnected answers only for a token that reaches this team", async () => {
+test("mcpTokenConnected answers only for your own token", async () => {
   const id = await bearer("Claude Code");
   assert.equal(
     await as(OWNER, () => mcpTokenConnected(id)),
@@ -840,30 +794,10 @@ test("mcpTokenConnected answers only for a token that reaches this team", async 
   await markSpokeMcp(id);
   assert.equal(await as(OWNER, () => mcpTokenConnected(id)), true);
 
-  // A token that does NOT reach the reading team answers FALSE, not an error: an
-  // error would confirm the row exists to somebody with no business knowing it does.
+  // Somebody else's token answers FALSE, not an error: an error would confirm
+  // the row exists to somebody with no business knowing it does.
   const theirs = await bearer("Their Cursor", MEMBER);
   await markSpokeMcp(theirs);
-  await grantOwnerIn(TEAM_B);
-  assert.equal(
-    await as(OWNER, () => mcpTokenConnected(theirs), TEAM_B),
-    false,
-    "a token that reaches only another team must not be visible here",
-  );
-  assert.equal(
-    await as(OWNER, () => mcpTokenConnected(theirs)),
-    true,
-    "and it IS visible in the team it actually reaches",
-  );
-});
-
-test("a bearer connection carries no other team's name or id", async () => {
-  // The same leak check the OAuth rows get, for the shape that skips the
-  // `oauth_client` join entirely.
-  await grantOwnerIn(TEAM_B);
-  const id = await bearer("Claude Code");
-  await markSpokeMcp(id);
-  const dump = JSON.stringify(await as(OWNER, () => listMcpConnections()));
-  assert.ok(!dump.includes(TEAM_B), dump);
-  assert.ok(!dump.includes("beta"), dump);
+  assert.equal(await as(OWNER, () => mcpTokenConnected(theirs)), false);
+  assert.equal(await as(MEMBER, () => mcpTokenConnected(theirs)), true);
 });

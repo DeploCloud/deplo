@@ -111,12 +111,14 @@ test("setMcpSettings turns it off and back on", async () => {
   assert.deepEqual(row, { enabled: false }, "persisted");
 });
 
-test("changing the policy needs manage_mcp, not merely membership", async () => {
-  await revoke("manage_mcp");
+test("changing the policy needs manage_team, not manage_mcp", async () => {
+  // `manage_mcp` is a member's own permission to connect THEIR agents; the
+  // team's switch is a team setting, like renaming it.
+  await revoke("manage_team");
   await assert.rejects(
     () => asUser1(() => setMcpSettings({ enabled: false })),
-    /manage_mcp|permission|not allowed|capability/i,
-    "a member without manage_mcp must be refused",
+    /manage_team|permission|not allowed|capability/i,
+    "a member without manage_team must be refused",
   );
   // Reading is deliberately ungated: /api/mcp has to read its own kill switch
   // as whatever principal the token carries.

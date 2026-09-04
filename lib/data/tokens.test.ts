@@ -22,9 +22,11 @@ import {
   authenticateToken,
   createToken,
   listTokens,
+  tokenCountsByUser,
   updateToken,
   revokeToken,
 } from "./tokens";
+import { listActivity } from "./activity";
 
 /**
  * Data-layer tests for the `api_tokens` leaf collection against pglite
@@ -35,7 +37,7 @@ let db: TestDb;
 let pg: PGlite;
 
 const T0 = "2026-01-01T00:00:00.000Z";
-const TRUNCATE = `truncate table api_tokens, projects, users, teams restart identity cascade;`;
+const TRUNCATE = `truncate table api_tokens, projects, activities, users, teams restart identity cascade;`;
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -171,7 +173,6 @@ test("createToken persists its own capability set, in catalog order, with the vi
     assert.deepEqual(list[0]!.teamIds, []);
     assert.deepEqual(list[0]!.projectIds, []);
     assert.deepEqual(list[0]!.appIds, []);
-    assert.equal(list[0]!.createdByUsername, USER_1);
     // The DTO never carries the hash.
     assert.equal("tokenHash" in list[0]!, false);
   });
@@ -267,7 +268,7 @@ test("a project scope round-trips, and a foreign project writes nothing", async 
           name: "Foreign",
           projectIds: ["prc_b"],
         }),
-      /isn't in a team you belong to/,
+      /isn't in a team you can use API tokens in/,
     );
   });
   // The refusal rolled the whole insert back, no half-created token.
@@ -586,7 +587,6 @@ test("listTokens shows the tokens you minted in your OTHER teams", async () => {
       rows.map((r) => r.id),
       [id],
     );
-    assert.equal(rows[0]!.homeTeamName, "alpha", "every row names its team");
   });
 });
 
@@ -652,7 +652,7 @@ async function seedMembership(
     .values(caps.map((capability) => ({ membershipId: id, capability })));
 }
 
-test("re-scoping someone else's token can't hand it power the editor lacks there", async () => {
+test("someone else's token is not found, whatever you administer", async () => {
   await pg.exec(TRUNCATE);
   await seedIdentity(db, {
     users: [
@@ -660,83 +660,204 @@ test("re-scoping someone else's token can't hand it power the editor lacks there
       { id: "u_editor", teamId: TEAM_A, role: "owner" },
     ],
   });
-  // Both belong to team B as well - the creator fully, the editor read-only.
   await seedMembership("u_creator", TEAM_B, [...ALL_CAPABILITIES]);
-  await seedMembership("u_editor", TEAM_B, ["view"]);
+  await seedMembership("u_editor", TEAM_B, [...ALL_CAPABILITIES]);
 
-  const { raw } = await runWithIdentity(
-    { userId: "u_creator", teamId: TEAM_A },
-    () =>
-      createToken({
-        name: "ci",
-        capabilities: ["view", "delete_apps"],
-        teamIds: [TEAM_A],
-      }),
+  await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
+    createToken({ name: "ci", capabilities: ["view", "delete_apps"] }),
   );
   const tokenId = (await db.select().from(apiTokens))[0]!.id;
 
-  // The editor administers team A, so the token is theirs to edit, but pointing
-  // it at team B would arm a credential with a permission they don't hold there.
-  await assert.rejects(
-    () =>
-      runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
-        updateToken({
-          id: tokenId,
-          name: "ci",
-          capabilities: ["view", "delete_apps"],
-          teamIds: [TEAM_B],
-        }),
-      ),
-    /permissions you hold yourself/i,
-  );
-
-  // Narrowing it to what they DO hold in team B is fine - the bound is a
-  // ceiling, and revoking is always available.
-  await runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
-    updateToken({
-      id: tokenId,
-      name: "ci",
-      capabilities: ["view"],
-      teamIds: [TEAM_B],
-    }),
-  );
-  const grant = await authenticateToken(raw, TEAM_B);
-  assert.deepEqual(grant?.token?.capabilities, ["view"]);
+  // An owner of every team the token reaches: still not theirs to see, edit
+  // or revoke. The lever a team has is the member, never the credential.
+  await runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, async () => {
+    assert.deepEqual(await listTokens(), []);
+    await assert.rejects(
+      () => updateToken({ id: tokenId, name: "ci", capabilities: ["view"] }),
+      /Token not found/,
+    );
+    await assert.rejects(() => revokeToken(tokenId), /Token not found/);
+  });
+  assert.equal((await db.select().from(apiTokens)).length, 1);
 });
 
-test("an unrestricted token reaching a team the editor isn't in can only be revoked", async () => {
+test("an instance admin can't see or revoke another person's token either", async () => {
   await pg.exec(TRUNCATE);
   await seedIdentity(db, {
     users: [
       { id: "u_creator", teamId: TEAM_A, role: "owner" },
-      { id: "u_editor", teamId: TEAM_A, role: "owner" },
+      { id: "u_admin", teamId: TEAM_A, role: "owner" },
     ],
   });
-  // Only the creator is in team B, so an unrestricted token reaches a team the
-  // editor cannot even see - there is no set to measure the edit against.
-  await seedMembership("u_creator", TEAM_B, [...ALL_CAPABILITIES]);
-
+  await pg.exec(
+    `update users set is_instance_admin = true where id = 'u_admin'`,
+  );
   await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
     createToken({ name: "ci", capabilities: ["view"] }),
   );
   const tokenId = (await db.select().from(apiTokens))[0]!.id;
+  await runWithIdentity({ userId: "u_admin", teamId: TEAM_A }, async () => {
+    assert.deepEqual(await listTokens(), []);
+    await assert.rejects(() => revokeToken(tokenId), /Token not found/);
+  });
+});
 
-  await assert.rejects(
-    () =>
-      runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
-        updateToken({
-          id: tokenId,
-          name: "ci",
-          capabilities: ["view", "delete_apps"],
-        }),
-      ),
-    /team you're not a member of/i,
+test("a token reaches only the teams where its owner may use API tokens", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, {
+    users: [{ id: "u_creator", teamId: TEAM_A, role: "owner" }],
+  });
+  // In B without `manage_tokens`: a member, but not one whose tokens act there.
+  await seedMembership("u_creator", TEAM_B, ["view", "deploy_apps"]);
+  const { raw, token } = await runWithIdentity(
+    { userId: "u_creator", teamId: TEAM_A },
+    () => createToken({ name: "ci", capabilities: ["view", "deploy_apps"] }),
   );
-  // Revoking it is still the lever they have.
-  await runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
-    revokeToken(tokenId),
+  assert.deepEqual(
+    token.teamsReached.map((t) => t.id),
+    [TEAM_A],
+    "the DTO names only the teams the token can act in",
   );
-  assert.equal((await db.select().from(apiTokens)).length, 0);
+  // Asked for B, resolved in A: B is out of reach, not a choice.
+  assert.equal((await authenticateToken(raw, TEAM_B))?.teamId, TEAM_A);
+  assert.equal((await tokenCountsByUser(TEAM_B)).get("u_creator"), undefined);
+
+  // Granting the permission is what lets the SAME token in - nothing on the
+  // token changes.
+  await db.insert(membershipCapabilities).values({
+    membershipId: `mem_u_creator_${TEAM_B}`,
+    capability: "manage_tokens",
+  });
+  assert.equal((await authenticateToken(raw, TEAM_B))?.teamId, TEAM_B);
+  assert.equal((await tokenCountsByUser(TEAM_B)).get("u_creator")?.tokens, 1);
+
+  // And losing it in the LAST team stops the token resolving at all.
+  await db
+    .delete(membershipCapabilities)
+    .where(eq(membershipCapabilities.capability, "manage_tokens"));
+  assert.equal(await authenticateToken(raw), null);
+});
+
+test("a token can't be scoped to a team where its owner may not use API tokens", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, {
+    users: [{ id: "u_creator", teamId: TEAM_A, role: "owner" }],
+  });
+  await seedMembership("u_creator", TEAM_B, ["view", "deploy_apps"]);
+  await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
+    assert.rejects(
+      () => createToken({ name: "into-B", teamIds: [TEAM_B] }),
+      /can't use API tokens in one of those teams/,
+    ),
+  );
+});
+
+test("any member may mint, bounded by what they hold where the token reaches", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, {
+    users: [
+      { id: "u_owner", teamId: TEAM_A, role: "owner" },
+      {
+        id: "u_member",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "deploy_apps", "manage_tokens"],
+      },
+      {
+        id: "u_viewer",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view"],
+      },
+    ],
+  });
+  await runWithIdentity({ userId: "u_member", teamId: TEAM_A }, async () => {
+    const { token } = await createToken({
+      name: "deploys",
+      capabilities: ["deploy_apps"],
+    });
+    assert.deepEqual(token.capabilities, ["view", "deploy_apps"]);
+    await assert.rejects(
+      () => createToken({ name: "more", capabilities: ["delete_apps"] }),
+      /permissions you hold yourself/i,
+    );
+  });
+  // No team lets their tokens in, so there is nothing to mint.
+  await runWithIdentity({ userId: "u_viewer", teamId: TEAM_A }, () =>
+    assert.rejects(
+      () => createToken({ name: "nothing", capabilities: ["view"] }),
+      /can't use API tokens in any of your teams/,
+    ),
+  );
+});
+
+test("a member sees only their own tokens, and revokes only their own", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, {
+    users: [
+      { id: "u_one", teamId: TEAM_A, role: "owner" },
+      { id: "u_two", teamId: TEAM_A, role: "owner" },
+    ],
+  });
+  const one = await runWithIdentity({ userId: "u_one", teamId: TEAM_A }, () =>
+    createToken({ name: "one", capabilities: ["view"] }),
+  );
+  const two = await runWithIdentity({ userId: "u_two", teamId: TEAM_A }, () =>
+    createToken({ name: "two", capabilities: ["view"] }),
+  );
+  await runWithIdentity({ userId: "u_two", teamId: TEAM_A }, async () => {
+    assert.deepEqual(
+      (await listTokens()).map((t) => t.id),
+      [two.token.id],
+    );
+    await assert.rejects(() => revokeToken(one.token.id), /Token not found/);
+    await revokeToken(two.token.id);
+  });
+  assert.deepEqual(
+    (await db.select().from(apiTokens)).map((t) => t.id),
+    [one.token.id],
+  );
+});
+
+test("the trail lands in every team the token reaches, and counts per member", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, {
+    users: [{ id: "u_creator", teamId: TEAM_A, role: "owner" }],
+  });
+  await seedMembership("u_creator", TEAM_B, [
+    "view",
+    "manage_tokens",
+    "view_activity",
+  ]);
+  const { token } = await runWithIdentity(
+    { userId: "u_creator", teamId: TEAM_A },
+    () => createToken({ name: "everywhere", capabilities: ["view"] }),
+  );
+  for (const teamId of [TEAM_A, TEAM_B]) {
+    const trail = await runWithIdentity({ userId: "u_creator", teamId }, () =>
+      listActivity(),
+    );
+    assert.ok(
+      trail.some((a) => a.message.includes("Created the everywhere API token")),
+      `no trail entry in ${teamId}`,
+    );
+    assert.deepEqual((await tokenCountsByUser(teamId)).get("u_creator"), {
+      tokens: 1,
+      agents: 0,
+    });
+  }
+  await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
+    revokeToken(token.id),
+  );
+  for (const teamId of [TEAM_A, TEAM_B]) {
+    const trail = await runWithIdentity({ userId: "u_creator", teamId }, () =>
+      listActivity(),
+    );
+    assert.ok(
+      trail.some((a) => a.message.includes("Revoked the everywhere API token")),
+      `no revoke entry in ${teamId}`,
+    );
+  }
 });
 
 test("the creator editing their own token is untouched by the cross-team bound", async () => {
@@ -744,7 +865,7 @@ test("the creator editing their own token is untouched by the cross-team bound",
   await seedIdentity(db, {
     users: [{ id: "u_creator", teamId: TEAM_A, role: "owner" }],
   });
-  await seedMembership("u_creator", TEAM_B, ["view"]);
+  await seedMembership("u_creator", TEAM_B, ["view", "manage_tokens"]);
 
   const { raw } = await runWithIdentity(
     { userId: "u_creator", teamId: TEAM_A },
@@ -807,10 +928,7 @@ test("the creator edits their own token from any team, not only the one it was m
   const row = (
     await db.select().from(apiTokens).where(eq(apiTokens.id, tokenId))
   )[0];
-  // Not merely "it didn't throw": the UPDATE is scoped by the token's home team,
-  // and scoping it by the ACTING team instead matches zero rows in silence.
   assert.equal(row?.name, "agent renamed");
-  assert.equal(row?.teamId, TEAM_A, "the home team stays where it was minted");
 });
 
 /* ------------------------------------------------------------------ */

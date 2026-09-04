@@ -26,6 +26,7 @@ import {
   teamsForUser,
   capabilitiesForRole,
   requireTeamWide,
+  teamsWhereUserHolds,
 } from "../membership";
 import { recordActivity } from "./activity";
 import { teamAvatarUrl } from "../avatar";
@@ -160,11 +161,18 @@ export async function listMyTeams(): Promise<
 > {
   const user = await assertUser();
   const db = getDb();
-  // A bearer token acts only in the teams its scope names, so this is the list
-  // it may switch between with `X-Deplo-Team`, not every team the person is in.
-  const scope = currentIdentity()?.token?.scope;
+  // A bearer token acts only in the teams its scope names AND where its owner
+  // may use tokens, so this is the list it may switch between with
+  // `X-Deplo-Team`, not every team the person is in.
+  const token = currentIdentity()?.token;
+  const allowed = token
+    ? await teamsWhereUserHolds(user.id, "manage_tokens")
+    : null;
   const teams = (await teamsForUser(user.id)).filter(
-    (t) => !scope || scope.teamIds.includes(t.id),
+    (t) =>
+      !token ||
+      ((!token.scope || token.scope.teamIds.includes(t.id)) &&
+        allowed!.has(t.id)),
   );
   if (teams.length === 0) return [];
 

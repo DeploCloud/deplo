@@ -16,7 +16,7 @@ import { recordActivity } from "./activity";
  * The active team's MCP policy - the one switch on Settings → MCP Server.
  */
 export interface McpSettings {
-  /** Whether this team's API tokens may drive it over `/api/mcp`. */
+  /** Whether any API token may drive this team over `/api/mcp`. */
   enabled: boolean;
 }
 
@@ -41,7 +41,9 @@ export const getMcpSettings = cache(async (): Promise<McpSettings> => {
 export async function setMcpSettings(input: {
   enabled: boolean;
 }): Promise<McpSettings> {
-  const { teamId } = await requireCapability("manage_mcp");
+  // A team policy, like renaming the team: `manage_mcp` is a member's own
+  // permission to connect their agents, not a say over everybody else's.
+  const { teamId } = await requireCapability("manage_team");
   // A narrowed token (one scoped to a project, folder or app) reaches part of the
   // team, and this switch governs all of it.
   await requireTeamWide("the team's MCP settings");

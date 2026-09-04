@@ -80,6 +80,31 @@ async function capabilitiesByMembership(
   return byId;
 }
 
+/**
+ * The teams where this person holds `cap` outright - their stored membership
+ * rows, never clamped to the token making the request. What a personal token's
+ * reach and the MCP door read.
+ */
+export async function teamsWhereUserHolds(
+  userId: string,
+  cap: Capability,
+): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ teamId: membershipsTable.teamId })
+    .from(membershipsTable)
+    .innerJoin(
+      membershipCapabilitiesTable,
+      eq(membershipCapabilitiesTable.membershipId, membershipsTable.id),
+    )
+    .where(
+      and(
+        eq(membershipsTable.userId, userId),
+        eq(membershipCapabilitiesTable.capability, cap),
+      ),
+    );
+  return new Set(rows.map((r) => r.teamId));
+}
+
 /** All teams the given user is a member of, in creation order. */
 export async function teamsForUser(userId: string): Promise<Team[]> {
   const rows = await getDb()

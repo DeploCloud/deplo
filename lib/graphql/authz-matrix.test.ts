@@ -366,12 +366,17 @@ test("every capability the catalogue offers is either enforced on the API or enf
   // Not every capability names a field: the folder verbs and `delete_team` are gated
   // inside the data layer instead (their fields are `loggedIn`), and `view` is the
   // floor no field asks for.
+  // `manage_tokens` and `manage_mcp` gate no field either: they decide WHERE a
+  // member's personal tokens reach (`tokenReach`) and where they may speak MCP
+  // (`listMcpTeams`), read by the identity builder and the MCP door.
   const enforcedBelow = new Set<Capability>([
     "view",
     "organize_folders",
     "delete_folders",
     "delete_team",
     "manage_notifications",
+    "manage_tokens",
+    "manage_mcp",
   ]);
   const orphans = ALL_CAPABILITIES.filter(
     (c) => !byCapability.has(c) && !enforcedBelow.has(c),
@@ -575,9 +580,10 @@ test(`an instance admin's token can't open the ${ADMIN_SUBSCRIPTIONS.length} adm
 test("a token granted everything can do nothing its creator has since lost", async () => {
   await reset(ALL_CAPABILITIES);
   const raw = await mintToken(ALL_CAPABILITIES, USER_M);
-  // The creator is cut back to the floor AFTER the token was minted: nothing is
-  // materialised, so the clamp has to bite on the next request.
-  await setCaps([]);
+  // The creator is cut back AFTER the token was minted: nothing is
+  // materialised, so the clamp has to bite on the next request. `manage_tokens`
+  // stays, or the token would not reach the team at all (tested below).
+  await setCaps(["manage_tokens"]);
   const principal = await asToken(raw);
   assert.ok(
     principal,
@@ -585,7 +591,7 @@ test("a token granted everything can do nothing its creator has since lost", asy
   );
   assert.deepEqual(
     principal.ctx.capabilities,
-    ["view"],
+    ["view", "manage_tokens"],
     "the token is clamped to what its creator can still do",
   );
   const leaks: string[] = [];
@@ -599,6 +605,9 @@ test("a token granted everything can do nothing its creator has since lost", asy
     [],
     `reachable after the creator lost everything: ${leaks.join(", ")}`,
   );
+  // And without `manage_tokens` the token no longer reaches the team at all.
+  await setCaps([]);
+  assert.equal(await asToken(raw), null, "the token must stop resolving");
 });
 
 /* ------------------------------------------------------------------ */

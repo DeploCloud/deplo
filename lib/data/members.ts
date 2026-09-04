@@ -33,6 +33,7 @@ import {
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
+import { tokenCountsByUser } from "./tokens";
 import {
   sha256Hex,
   randomToken,
@@ -113,6 +114,13 @@ export interface MemberDTO {
    * extra, `null` when they are exactly their role, which is almost everybody.
    */
   accessDelta: "less" | "more" | null;
+  /**
+   * How many of their personal API tokens reach this team, and how many of
+   * those drive an AI agent. Counts only: a token is its owner's, and this is
+   * all a team gets to know about it.
+   */
+  tokenCount: number;
+  agentCount: number;
   /**
    * True for the team's ABSOLUTE owner - the founder who created the team (the
    * "crown" 👑).
@@ -308,6 +316,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
     rows.map((r) => r.membershipId),
   );
   const deltas = await memberDeltas(db, teamId, rows, caps);
+  const tokens = await tokenCountsByUser(teamId);
   const avatarUrl = await avatarResolver();
   return rows.map((r) => ({
     userId: r.userId,
@@ -320,6 +329,8 @@ export async function listMembers(): Promise<MemberDTO[]> {
     roleScoped: r.roleScoped ?? false,
     capabilities: caps.get(r.membershipId) ?? [],
     accessDelta: deltas.get(r.membershipId) ?? null,
+    tokenCount: tokens.get(r.userId)?.tokens ?? 0,
+    agentCount: tokens.get(r.userId)?.agents ?? 0,
     isPrimaryOwner: r.userId === founderId,
     isInstanceAdmin: r.isInstanceAdmin ?? false,
     avatarColor: r.avatarColor,
@@ -723,6 +734,9 @@ export async function addExistingMember(input: {
     capabilities: caps,
     // Added ON a role, so they are exactly it until somebody says otherwise.
     accessDelta: null,
+    // Their tokens reach this team from the next request; the list re-reads.
+    tokenCount: 0,
+    agentCount: 0,
     // A freshly added member is never the founder (the team already has one).
     isPrimaryOwner: false,
     isInstanceAdmin: target.isInstanceAdmin ?? false,

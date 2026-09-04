@@ -3,11 +3,12 @@ import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
 import { requireActiveTeamId } from "@/lib/membership";
 import { listScopeTree } from "@/lib/data/tokens";
-import { listMcpConnections } from "@/lib/data/mcp-clients";
+import { countMcpAgents } from "@/lib/data/mcp-clients";
 import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
-import { McpTabs } from "@/components/settings/mcp/mcp-tabs";
+import { ConnectWizard } from "@/components/settings/mcp/connect-wizard";
+import { McpSwitchMenu } from "@/components/settings/mcp/mcp-switch-menu";
 import { MCP_TOOLS } from "@/lib/mcp/tools";
 
 export const metadata = { title: "Settings · MCP Server" };
@@ -25,15 +26,14 @@ const TOOL_SUMMARIES = MCP_TOOLS.map((t) => ({
 }));
 
 export default async function McpSettingsPage() {
-  // The page governs the whole team, so a member who reaches only part of it
-  // has no business here - same gate as API tokens, which this page is the twin
-  // of.
+  // The scope picker behind the wizard needs whole-team reach, so a narrowed
+  // role stops here - same gate as API tokens, which this page mints.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess
         title="MCP Server"
-        description="Let AI agents drive this team over MCP, using an API token you control."
-        what="The team's MCP settings"
+        description="Connect your AI agents to this team over MCP, with an API token only you control."
+        what="The MCP connect flow"
       />
     );
 
@@ -41,25 +41,23 @@ export default async function McpSettingsPage() {
     settings,
     publicUrl,
     teamId,
-    canManageMcp,
-    // Two capabilities open two different halves of this page: `manage_mcp` is the
-    // team's switch and approving a web connector, `manage_tokens` is minting the
-    // credential a terminal agent connects with and revoking any of them.
-    canManageTokens,
-    connections,
+    // Connecting YOUR agent is `manage_mcp`; the team's switch is `manage_team`.
+    canConnect,
+    canManageTeam,
+    agentCount,
     tree,
   ] = await Promise.all([
     getMcpSettings(),
     instancePublicBaseUrl(),
     requireActiveTeamId(),
     hasCapability("manage_mcp"),
-    hasCapability("manage_tokens"),
-    listMcpConnections(),
+    hasCapability("manage_team"),
+    countMcpAgents(),
     listScopeTree(),
   ]);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <PageHeader
         docs="mcp.overview"
         title={
@@ -68,17 +66,24 @@ export default async function McpSettingsPage() {
             <BetaChip />
           </span>
         }
-        description="Let AI agents drive this team over MCP, using an API token you control."
+        description="Connect your AI agents to this team over MCP, with an API token only you control."
       />
-      <McpTabs
-        enabled={settings.enabled}
-        canManageMcp={canManageMcp}
-        canManageTokens={canManageTokens}
+      <ConnectWizard
+        mcpEnabled={settings.enabled}
+        canConnect={canConnect}
+        canManageTeam={canManageTeam}
         publicUrl={publicUrl}
         tree={tree}
         activeTeamId={teamId}
         tools={TOOL_SUMMARIES}
-        connections={connections}
+        connectionCount={agentCount}
+        overlay={
+          <McpSwitchMenu
+            count={agentCount}
+            enabled={settings.enabled}
+            canManage={canManageTeam}
+          />
+        }
       />
     </div>
   );

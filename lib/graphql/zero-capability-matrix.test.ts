@@ -154,7 +154,6 @@ async function seedAll(): Promise<void> {
   });
   await db.insert(apiTokensTable).values({
     id: F.token,
-    teamId: TEAM_A,
     userId: OWNER,
     name: "Fixture token",
     prefix: "deplo_fixtur",

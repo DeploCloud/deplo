@@ -1086,6 +1086,13 @@
       "when": 1788366354908,
       "tag": "0154_migration_run_db_hosts",
       "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1788366355908,
+      "tag": "0155_api_tokens_are_personal",
+      "breakpoints": true
     }
   ]
 }

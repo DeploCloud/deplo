@@ -4,9 +4,8 @@ import {
   getOAuthClientForConsent,
   listConnectableTeamIds,
 } from "@/lib/data/mcp-clients";
-import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { listScopeTree } from "@/lib/data/tokens";
-import { hasCapability, requireActiveTeamId } from "@/lib/membership";
+import { requireActiveTeamId } from "@/lib/membership";
 import { rebuildOauthQuery } from "@/lib/auth/oauth-query";
 import { publicBaseUrl } from "@/lib/public-url";
 import { ConsentForm } from "@/components/oauth/consent-form";
@@ -51,43 +50,20 @@ export default async function OAuthConsentPage(props: {
       />
     );
 
-  const [
-    canManageMcp,
-    canManageTokens,
-    settings,
-    tree,
-    activeTeamId,
-    connectableTeamIds,
-  ] = await Promise.all([
-    hasCapability("manage_mcp"),
-    hasCapability("manage_tokens"),
-    getMcpSettings(),
+  const [tree, activeTeamId, connectableTeamIds] = await Promise.all([
     listScopeTree(),
-    // The form MUST start on the active team, not on the first one in the
-    // tree: the mint resolves the team from the session, so a dropdown showing
-    // anything else would connect the client somewhere the person never read.
     requireActiveTeamId(),
-    // What the scope picker starts ticked. Only the teams the mint would
-    // actually accept - ticking one it refuses is a failed Authorize, not a
-    // connection.
+    // The teams an unscoped connection will act in: where this person may
+    // connect agents and MCP is on. Named on the form, so Authorize is read.
     listConnectableTeamIds(),
   ]);
 
-  if (!canManageMcp || !canManageTokens)
+  if (connectableTeamIds.length === 0)
     return (
       <ConsentRefusal
         clientName={client.name}
-        title="You can't connect an app to this team"
-        detail="Connecting an AI client needs permission to manage MCP access and to manage API tokens. Ask a team admin to grant them, or to make the connection."
-      />
-    );
-
-  if (!settings.enabled)
-    return (
-      <ConsentRefusal
-        clientName={client.name}
-        title="This team has turned off MCP access"
-        detail="An admin can switch it back on under Settings → MCP Server."
+        title="You can't connect an app to any of your teams"
+        detail="Connecting an AI client needs the permission to connect AI agents in a team that has MCP turned on. Ask a team admin."
       />
     );
 

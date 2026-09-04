@@ -232,19 +232,18 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "github repository connect oauth",
   },
   manage_tokens: {
-    label: "Manage API tokens",
+    label: "Use API tokens",
+    // Tokens are personal (nobody else sees them); this is the team's say over
+    // whether a member's tokens reach it at all.
     description:
-      "Mint and revoke the bearer tokens that drive Deplo's API from outside the dashboard.",
+      "Let their own API tokens act in this team, from scripts, CI and other clients.",
     keywords: "api access token bearer cli automation",
     sensitive: true,
   },
   manage_mcp: {
-    label: "Manage MCP access",
-    // The old wording promised a second half, "and whether they must ask before
-    // destructive actions" - that migration 0100 removed: that switch was a second
-    // permission system beside Capabilities, and a permission description naming a
+    label: "Connect AI agents",
     description:
-      "Decide whether AI agents may drive this team, and approve the web apps that connect to it.",
+      "Let their own AI agents drive this team over MCP. Turning MCP off for the whole team is a team setting.",
     keywords: "mcp ai agent assistant llm claude cursor copilot chatgpt gemini",
     sensitive: true,
   },

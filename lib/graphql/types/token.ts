@@ -17,8 +17,10 @@ export const ApiTokenRef = builder
   .objectRef<ApiTokenDTO>("ApiToken")
   .implement({
     description:
-      "A team API token. Only the prefix is ever exposed - the raw token " +
-      "is shown once at creation and only its hash is persisted.",
+      "A PERSONAL API token: it belongs to the person who minted it, and " +
+      "nobody else can list, edit or revoke it. Only the prefix is ever " +
+      "exposed - the raw token is shown once at creation and only its hash " +
+      "is persisted.",
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
@@ -34,7 +36,7 @@ export const ApiTokenRef = builder
       scoped: t.exposeBoolean("scoped", {
         description:
           "Whether this token is limited at all. False means every team its " +
-          "creator belongs to, and everything in it.",
+          "owner may use API tokens in, and everything in it.",
       }),
       teamIds: t.exposeStringList("teamIds", {
         description:
@@ -56,39 +58,18 @@ export const ApiTokenRef = builder
       appIds: t.exposeStringList("appIds", {
         description: "Individually-named apps in the scope.",
       }),
-      homeTeamId: t.exposeID("homeTeamId", {
-        description:
-          "The team this token is MANAGED from, where it was created. Any team " +
-          "it reaches can revoke it; only this one can change it.",
-      }),
-      homeTeamName: t.exposeString("homeTeamName", {
-        description: "That team's name, for a list that spans teams.",
-      }),
       instanceAdmin: t.exposeBoolean("instanceAdmin", {
         description:
           "The token may administer the whole instance (users, servers and " +
           "the global environment), not just its team. Mutually exclusive " +
           "with a project scope.",
       }),
-      createdByUsername: t.exposeString("createdByUsername", {
-        nullable: true,
-        description: "The member this token acts as, and is clamped to.",
-      }),
-      createdByAvatarColor: t.exposeString("createdByAvatarColor", {
-        nullable: true,
-      }),
-      createdByAvatarUrl: t.exposeString("createdByAvatarUrl", {
-        nullable: true,
-        description:
-          "That member's resolved picture, so a token names them the way every other screen does.",
-      }),
       oauthClientName: t.exposeString("oauthClientName", {
         nullable: true,
         description:
           "Set when this token was minted by connecting an AI client over " +
-          "OAuth rather than from the tokens page. Such a token is also listed " +
-          "under Settings → MCP Server, and `updateToken` re-authors it like " +
-          "any other: the client sees the new permissions on its next call.",
+          "OAuth rather than from the tokens page. `updateToken` re-authors " +
+          "it like any other: the client sees the new permissions on its next call.",
       }),
       mcp: t.exposeBoolean("mcp", {
         description:
@@ -181,9 +162,8 @@ builder.queryFields((t) => ({
     type: [ApiTokenRef],
     authScopes: { loggedIn: true },
     description:
-      "Every API token that can act in the active team. A dashboard session " +
-      "also gets the ones it minted in its other teams; a bearer request stays " +
-      "scoped to the team it resolved to.",
+      "Your own API tokens, whatever team they act in. A bearer request sees " +
+      "only the token it is made with.",
     resolve: () => listTokens(),
   }),
 }));
@@ -195,10 +175,11 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   createToken: t.field({
     type: CreateTokenPayloadRef,
-    authScopes: { capability: "manage_tokens" },
+    authScopes: { loggedIn: true },
     description:
-      "Create a new API token with its own permissions. The raw secret is " +
-      "returned once in the payload.",
+      "Create a personal API token with its own permissions. It reaches the " +
+      "teams where you hold `manage_tokens` and can never do more than you. " +
+      "The raw secret is returned once in the payload.",
     args: { input: t.arg({ type: CreateTokenInputType, required: true }) },
     resolve: (_r, { input }) =>
       createToken({
@@ -215,9 +196,9 @@ builder.mutationFields((t) => ({
   }),
   updateToken: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_tokens" },
+    authScopes: { loggedIn: true },
     description:
-      "Change a token's name, permissions or project scope. The secret is " +
+      "Change one of your tokens' name, permissions or scope. The secret is " +
       "unchanged, so tightening a live token costs no rotation. Returns true.",
     args: { input: t.arg({ type: UpdateTokenInputType, required: true }) },
     resolve: async (_r, { input }) => {
@@ -239,12 +220,11 @@ builder.mutationFields((t) => ({
   }),
   revokeToken: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_tokens" },
+    authScopes: { loggedIn: true },
     description:
-      "Delete this token. The credential stops working immediately in every " +
-      "team it reached, not only the active one, and an OAuth connection's " +
-      "consent and refresh token go with it. Any team it can act in may revoke " +
-      "it, and so may its creator. Returns true.",
+      "Delete one of your tokens. The credential stops working immediately in " +
+      "every team it reached, and an OAuth connection's consent and refresh " +
+      "token go with it. Only its owner can. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await revokeToken(id);

@@ -1,9 +1,4 @@
-import {
-  hasCapability,
-  reachesWholeTeam,
-  requireActiveTeamId,
-} from "@/lib/membership";
-import { requireUser } from "@/lib/auth";
+import { reachesWholeTeam, requireActiveTeamId } from "@/lib/membership";
 import { listTokens } from "@/lib/data/tokens";
 import { listProjects } from "@/lib/data/projects";
 import { listApps } from "@/lib/data/apps";
@@ -19,37 +14,26 @@ import { TokenGraphic } from "@/components/settings/tokens/token-graphic";
 export const metadata = { title: "Settings · API tokens" };
 
 export default async function TokensPage() {
-  // The page sits under Account and lists every token you minted, whatever team
-  // it acts in, plus the ones that can act in the active team, which is what
-  // `listTokens` needs whole-team reach for. Nothing here survives without it.
+  // Your own tokens, whatever team they act in. The scope picker behind each
+  // needs whole-team reach, so a narrowed role stops here.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess
         title="API tokens"
-        description="Tokens that let scripts, CI jobs and other clients call the API. Each one carries its own permissions."
+        description="Your personal tokens that let scripts, CI jobs and AI agents call the API. Each one carries its own permissions."
         what="API tokens"
       />
     );
 
-  const [
-    tokens,
-    projects,
-    folders,
-    apps,
-    teams,
-    user,
-    canManage,
-    activeTeamId,
-  ] = await Promise.all([
-    listTokens(),
-    listProjects(),
-    listFolders(),
-    listApps(),
-    listMyTeams(),
-    requireUser(),
-    hasCapability("manage_tokens"),
-    requireActiveTeamId(),
-  ]);
+  const [tokens, projects, folders, apps, teams, activeTeamId] =
+    await Promise.all([
+      listTokens(),
+      listProjects(),
+      listFolders(),
+      listApps(),
+      listMyTeams(),
+      requireActiveTeamId(),
+    ]);
   // A token can reach teams and apps this page can't name; `scopeLabel` falls
   // back to a count for anything missing here rather than showing a blank.
   const names = Object.fromEntries(
@@ -61,8 +45,8 @@ export default async function TokensPage() {
       <PageHeader
         docs="tokens.overview"
         title="API tokens"
-        description="Tokens that let scripts, CI jobs and other clients call the API. Each one carries its own permissions."
-        actions={canManage ? <NewTokenMenu /> : undefined}
+        description="Your personal tokens that let scripts, CI jobs and AI agents call the API. Each one carries its own permissions."
+        actions={<NewTokenMenu />}
       />
 
       {tokens.length === 0 ? (
@@ -70,20 +54,10 @@ export default async function TokensPage() {
           graphic={<TokenGraphic />}
           title="No API tokens yet"
           docs="tokens.overview"
-          description={
-            canManage
-              ? "A token lets a script, a CI job or an assistant call this team's API. Start from one of our templates and give it only the permissions it needs."
-              : "Only members who can manage API tokens can create one. Ask a team admin if you need API access."
-          }
+          description="A token lets a script, a CI job or an AI agent act as you, in the teams that allow it. Start from a template and give it only the permissions it needs."
         />
       ) : (
-        <TokensList
-          tokens={tokens}
-          names={names}
-          activeTeamId={activeTeamId}
-          currentUserId={user.id}
-          canManage={canManage}
-        />
+        <TokensList tokens={tokens} names={names} activeTeamId={activeTeamId} />
       )}
     </div>
   );

@@ -5,7 +5,7 @@ import { runWithIdentity } from "@/lib/auth/request-context";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveTeamId, reachableCapabilities } from "@/lib/membership";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
-import { listMyTeams } from "@/lib/data/teams";
+import { listMcpTeams } from "@/lib/data/mcp-clients";
 import type { GraphQLContext } from "@/lib/graphql/context";
 import { rateLimit } from "@/lib/security";
 import {
@@ -98,11 +98,29 @@ async function refuse(request: Request, message: string): Promise<Response> {
   return unauthorized(message);
 }
 
-type GrantedTeam = { id: string; slug: string };
+type GrantedTeam = { id: string; slug: string; name: string };
+
+/**
+ * Why a team named by the caller cannot be worked in, as one sentence the model
+ * can relay - or null when it can.
+ */
+function refusalFor(
+  team: string,
+  known: Awaited<ReturnType<typeof listMcpTeams>>,
+): string | null {
+  const t = known.find((k) => k.id === team || k.slug === team);
+  if (!t)
+    return `This connection has no access to the team "${team}". Run list_teams to see the teams it can act in.`;
+  if (!t.mcpEnabled)
+    return `The team "${t.name}" has turned off MCP access. An admin can switch it back on under Settings → MCP Server.`;
+  if (!t.canConnect)
+    return `You may not connect AI agents to the team "${t.name}". A team admin can grant the "Connect AI agents" permission.`;
+  return null;
+}
 
 /**
  * The context for a team a tool named explicitly, or a refusal. `teams` is what
- * this connection may reach, resolved once per request by the caller.
+ * this connection may act in, resolved once per request by the caller.
  */
 async function contextForTeam(
   raw: string,
@@ -111,20 +129,21 @@ async function contextForTeam(
 ): Promise<GraphQLContext> {
   const match = teams.find((t) => t.id === team || t.slug === team);
   const refusal = new Error(
-    `This connection has no access to the team "${team}". Run whoami to see the teams it was granted.`,
+    `This connection has no access to the team "${team}". Run list_teams to see the teams it can act in.`,
   );
   if (!match) throw refusal;
 
   const identity = await authenticateToken(raw, match.id);
-  if (!identity) throw refusal;
+  // The header's lenient fallback lands the token elsewhere when the named
+  // team is out of reach; an ARGUMENT naming a team is strict, never swapped.
+  if (!identity || identity.teamId !== match.id) throw refusal;
 
   return runWithIdentity(identity, async () => {
-    // The per-team MCP kill switch (`teams.mcp_enabled`) is checked at the door
-    // for the INITIAL team; re-check it here so a tool switching team via its
-    // `team` argument can't keep operating in a team that turned MCP off.
-    const settings = await getMcpSettings();
-    if (!settings.enabled)
-      throw new Error(`The team "${team}" has the MCP server turned off.`);
+    // The team's switch and the owner's `manage_mcp` were read at the door for
+    // the INITIAL team; re-read them here so a tool switching team via its
+    // `team` argument can't keep operating where MCP was turned off since.
+    const why = refusalFor(match.id, await listMcpTeams());
+    if (why) throw new Error(why);
     const [viewer, teamId, capabilities] = await Promise.all([
       getCurrentUser(),
       getActiveTeamId(),
@@ -145,66 +164,102 @@ export async function POST(request: Request) {
       "Authenticate first. A web AI client should follow the OAuth challenge on this response; a terminal agent sends a Deplo API token as `Authorization: Bearer deplo_…`, created under Settings → API tokens.",
     );
 
-  let identity;
+  const hint = request.headers.get(TEAM_HEADER);
+  let first;
   try {
-    identity = await authenticateToken(raw, request.headers.get(TEAM_HEADER));
+    first = await authenticateToken(raw, hint);
   } catch (e) {
     // An unmet two-factor policy THROWS rather than returning null. Surfacing it
     // as the 401 body beats a 500 that tells the operator nothing.
     return refuse(request, e instanceof Error ? e.message : "Not authorized");
   }
-  if (!identity) return refuse(request, "That API token is not valid.");
+  if (!first) return refuse(request, "That API token is not valid.");
+  const identity = first;
 
   // Everything below resolves as the token's principal.
-  let prepared;
+  type Prepared =
+    | { blocked: string }
+    | { limited: Awaited<ReturnType<typeof rateLimit>> }
+    | { principal: McpPrincipal };
+  let prepared: Prepared;
   try {
-    prepared = await runWithIdentity(identity, async () => {
-      const settings = await getMcpSettings();
-      if (!settings.enabled) return { blocked: true as const };
+    prepared = await runWithIdentity(identity, async (): Promise<Prepared> => {
+      let active = identity;
+      // Every team this credential can name, with whether MCP may act there:
+      // the team's switch AND the owner's own `manage_mcp`. Read once, here,
+      // and again by `forTeam` for a call that names another team.
+      const known = await listMcpTeams();
+      const usable = known.filter((t) => t.mcpEnabled && t.canConnect);
+      let why = refusalFor(active.teamId, known);
+      // No team was asked for and the default one refuses: land on the first
+      // usable one rather than answering "no" for a team nobody chose.
+      if (why && !hint && usable.length > 0) {
+        const moved = await authenticateToken(raw, usable[0].id);
+        if (moved) {
+          active = moved;
+          why = null;
+        }
+      }
+      if (why)
+        return {
+          blocked: usable.length
+            ? `${why} This connection can act in: ${usable.map((t) => t.slug).join(", ")}.`
+            : why,
+        };
 
-      const limited = await rateLimit(`mcp:${identity.token!.id}`, RATE);
-      if (!limited.ok) return { blocked: false as const, limited };
+      const limited = await rateLimit(`mcp:${active.token!.id}`, RATE);
+      if (!limited.ok) return { limited };
 
-      const [viewer, teamId, capabilities, teams] = await Promise.all([
-        getCurrentUser(),
-        getActiveTeamId(),
-        reachableCapabilities(),
-        // Resolved up front so `tools/list` knows whether a `team` argument is
-        // worth publishing at all, and so `forTeam` does not read it again.
-        listMyTeams(),
-      ]);
-      const principal: McpPrincipal = {
-        gql: { viewer, teamId, capabilities, via: "token", identity },
-        settings,
-        capabilities: new Set(capabilities),
-        // Instance-admin is opt-in per token and never inherited from an admin
-        // creator, so this is the token's own flag, not the person's.
-        instanceAdmin: identity.token?.instanceAdmin === true,
-        multiTeam: teams.length > 1,
-        forTeam: (team) => contextForTeam(raw, teams, team),
-      };
-      return { blocked: false as const, principal };
+      // Every team the credential can NAME, not only the usable ones: a call
+      // naming a team that is off limits has to hear why, not "no access".
+      const teams = known.map((t) => ({
+        id: t.id,
+        slug: t.slug,
+        name: t.name,
+      }));
+      const resolved = active;
+      return runWithIdentity(resolved, async () => {
+        const [viewer, teamId, capabilities, settings] = await Promise.all([
+          getCurrentUser(),
+          getActiveTeamId(),
+          reachableCapabilities(),
+          getMcpSettings(),
+        ]);
+        const principal: McpPrincipal = {
+          gql: {
+            viewer,
+            teamId,
+            capabilities,
+            via: "token",
+            identity: resolved,
+          },
+          settings,
+          capabilities: new Set(capabilities),
+          // Instance-admin is opt-in per token and never inherited from an admin
+          // creator, so this is the token's own flag, not the person's.
+          instanceAdmin: resolved.token?.instanceAdmin === true,
+          forTeam: (team) => contextForTeam(raw, teams, team),
+        };
+        return { principal };
+      });
     });
   } catch (e) {
     return unauthorized(e instanceof Error ? e.message : "Not authorized");
   }
 
-  if (prepared.blocked)
+  if ("blocked" in prepared)
     return Response.json(
-      {
-        error:
-          "This team has turned off MCP access. An admin can switch it back on under Settings → MCP Server.",
-      },
+      { error: prepared.blocked },
       { status: 403, headers: OAUTH_CORS_HEADERS },
     );
-  if (!prepared.principal)
+  if ("limited" in prepared)
     return Response.json(
       { error: "Too many requests." },
       {
         status: 429,
         headers: {
           ...OAUTH_CORS_HEADERS,
-          "retry-after": String(prepared.limited?.retryAfterSec ?? 60),
+          "retry-after": String(prepared.limited.retryAfterSec ?? 60),
         },
       },
     );

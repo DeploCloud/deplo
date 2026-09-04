@@ -1942,16 +1942,15 @@ export const cronRuns = pgTable(
 
 /**
  * [ApiToken](../../types.ts). A token carries its OWN capabilities
- * (`api_token_capabilities`) and an optional Project scope (`api_token_projects`);
+ * (`api_token_capabilities`) and an optional scope (`api_token_*` junctions);
  * it is never root by construction.
  */
 export const apiTokens = pgTable(
   "api_tokens",
   {
     id: text("id").primaryKey(),
-    teamId: text("team_id")
-      .notNull()
-      .references(() => teams.id, { onDelete: "cascade" }),
+    // PERSONAL: the token belongs to this person and to no team. It reaches the
+    // teams where they hold `manage_tokens`, live, and nobody else can see it.
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

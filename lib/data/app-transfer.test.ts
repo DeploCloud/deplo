@@ -208,7 +208,6 @@ test("transfers the app, and severs every tie to the team it came from", async (
     } = await import("../db/schema/control-plane");
     await db.insert(tokTable).values({
       id: "tok_src",
-      teamId: TEAM_A,
       userId: USER_1,
       name: "src",
       prefix: "deplo_srcxx",

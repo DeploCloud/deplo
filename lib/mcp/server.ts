@@ -26,24 +26,24 @@ export interface McpPrincipal {
   capabilities: Set<Capability>;
   /** Whether this TOKEN carries instance-admin (never inherited from the person). */
   instanceAdmin: boolean;
-  /** Whether this connection was granted more than one team. */
-  multiTeam: boolean;
   /**
-   * Resolve the context for ANOTHER team this connection was granted. MUST THROW
-   * for a team that was not granted.
+   * Resolve the context for ANOTHER team this connection may act in. MUST THROW
+   * for a team it may not.
    */
   forTeam: (team: string) => Promise<GraphQLContext>;
 }
 
 /**
- * The team a call works in, and ONLY for a connection granted more than one:
- * on a single-team connection it was a fifth of the whole `tools/list` payload,
- * repeated on every tool, for an argument that had one legal value.
+ * The team a call works in. On every tool, always: a connection reaches every
+ * team its owner may connect agents to, and the one thing an agent must never
+ * be left guessing is how to get to another one.
  */
 const TEAM_ARG = z
   .string()
   .optional()
-  .describe("Team id or slug; omit for this connection's own team.");
+  .describe(
+    "Team id or slug, from list_teams. Omit for this connection's default team.",
+  );
 
 function visible(tool: McpToolDef, principal: McpPrincipal): boolean {
   if (tool.requires === null) return true;
@@ -102,9 +102,7 @@ function failure(message: string) {
  * Sent once at `initialize`. The tool table says what Deplo can DO; this says
  * what Deplo IS, so an agent uses Deplo's own words and knows where to read more.
  */
-const instructions = (
-  multiTeam: boolean,
-) => `Deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
+const instructions = `Deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
 
 Its vocabulary, which the tools use literally:
 - App: the deployable unit. Never call it a service or a project.
@@ -113,7 +111,8 @@ Its vocabulary, which the tools use literally:
 - Server: a machine in the fleet. Servers are shared; everything else belongs to one team.
 
 How to work here:
-${multiTeam ? "- Every call runs in one team. `find` searches every granted team and says which team each hit is in; pass that as `team` on the next call.\n" : "- Every call runs in this connection's one team; `whoami` names it.\n"}- What you may do is exactly the token's Capabilities. A refusal is an answer, not something to retry another way.
+- Every call runs in ONE team. \`whoami\` names the default; \`list_teams\` names every team this connection can act in. To work in another team, pass its id or slug as the \`team\` argument of any tool - there is no "switch team" step, the argument IS the switch. \`find\` searches every team at once and says which team each hit is in.
+- What you may do is exactly the token's Capabilities, clamped to what its owner holds in each team. A refusal is an answer, not something to retry another way.
 - Secret variables are write-only: nothing reveals a secret's value, by design.
 
 The user manual is at ${DOCS_BASE} - read it there when you need to explain how something works.`;
@@ -123,7 +122,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
     { name: "deplo", version: DEPLO_VERSION },
     {
       capabilities: { tools: {} },
-      instructions: instructions(principal.multiTeam),
+      instructions,
     },
   );
 
@@ -141,9 +140,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         // Unknown keys are kept, not stripped, so the handler below can REFUSE
         // them by name. Advertising `additionalProperties: false` instead would
         // make a client's own validator answer, and never in Deplo's words.
-        inputSchema: principal.multiTeam
-          ? tool.input.extend({ team: TEAM_ARG }).passthrough()
-          : tool.input.passthrough(),
+        inputSchema: tool.input.extend({ team: TEAM_ARG }).passthrough(),
         // `readOnlyHint` and `idempotentHint` already default to false, so
         // spelling them out bought nothing and cost a line on every tool. The
         // other two default to TRUE and have to stay explicit.
@@ -165,9 +162,6 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
           // resolver as "no container was given", and the model reads Deplo's "pick
           // one" as its own mistake and tries another spelling. `_`-prefixed keys
           // are protocol metadata some clients add, never the model's doing.
-          // `team` is ACCEPTED always, even where it is not advertised: a
-          // single-team connection that names another team has to hear "no
-          // access to that team", not "no such argument".
           const accepted = new Set([...Object.keys(tool.input.shape), "team"]);
           const unknown = Object.keys(args).filter(
             (k) => !accepted.has(k) && !k.startsWith("_"),

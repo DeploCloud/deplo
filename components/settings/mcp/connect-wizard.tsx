@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
+import Link from "@/components/ui/link";
 import { toast } from "sonner";
 import {
   Check,
   ExternalLink,
   Loader2,
   Pencil,
-  Plug,
+  KeyRound,
   TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -82,25 +83,28 @@ const POLL_LIMIT = 150;
 
 export function ConnectWizard({
   mcpEnabled,
-  canManageMcp,
-  canManageTokens,
+  canConnect,
+  canManageTeam,
   publicUrl,
   tree,
   activeTeamId,
   tools,
   connectionCount,
-  onGoToManage,
+  overlay,
 }: {
   mcpEnabled: boolean;
-  canManageMcp: boolean;
-  canManageTokens: boolean;
+  /** `manage_mcp`: may connect THEIR OWN agents to this team. */
+  canConnect: boolean;
+  /** `manage_team`: may flip the team's MCP switch. */
+  canManageTeam: boolean;
   publicUrl: string;
   tree: ScopeTreeTeam[];
   activeTeamId: string;
   tools: McpToolSummary[];
-  /** Connections already in this team, from the server. Drives the return view. */
+  /** Agents already in this team, from the server. Drives the return view. */
   connectionCount: number;
-  onGoToManage: () => void;
+  /** Drawn over the illustration's top-right corner: the count and the switch. */
+  overlay?: React.ReactNode;
 }) {
   const router = useRouter();
   const host = publicUrl.replace(/\/+$/, "") || "https://your-deplo-host";
@@ -115,15 +119,15 @@ export function ConnectWizard({
       // token, agent or confetti.
       key={runId}
       mcpEnabled={mcpEnabled}
-      canManageMcp={canManageMcp}
-      canManageTokens={canManageTokens}
+      canConnect={canConnect}
+      canManageTeam={canManageTeam}
       url={url}
       https={https}
       tree={tree}
       activeTeamId={activeTeamId}
       tools={tools}
       connectionCount={connectionCount}
-      onGoToManage={onGoToManage}
+      overlay={overlay}
       onRestart={() => setRunId((n) => n + 1)}
       onRefresh={() => router.refresh()}
     />
@@ -136,28 +140,28 @@ export function ConnectWizard({
 
 function WizardRun({
   mcpEnabled,
-  canManageMcp,
-  canManageTokens,
+  canConnect,
+  canManageTeam,
   url,
   https,
   tree,
   activeTeamId,
   tools,
   connectionCount,
-  onGoToManage,
+  overlay,
   onRestart,
   onRefresh,
 }: {
   mcpEnabled: boolean;
-  canManageMcp: boolean;
-  canManageTokens: boolean;
+  canConnect: boolean;
+  canManageTeam: boolean;
   url: string;
   https: boolean;
   tree: ScopeTreeTeam[];
   activeTeamId: string;
   tools: McpToolSummary[];
   connectionCount: number;
-  onGoToManage: () => void;
+  overlay?: React.ReactNode;
   onRestart: () => void;
   onRefresh: () => void;
 }) {
@@ -175,8 +179,8 @@ function WizardRun({
   const [caps, setCaps] = React.useState<Capability[]>(MCP_PRESET.capabilities);
   const [expiry, setExpiry] = React.useState("90");
   const [scope, setScope] = React.useState<ScopeSelection>({
-    // Scoped to THIS team from the start.
-    teamIds: [activeTeamId],
+    // Unscoped from the start: every team you may connect agents to, live.
+    teamIds: [],
     projectIds: [],
     folderIds: [],
     appIds: [],
@@ -215,7 +219,7 @@ function WizardRun({
       }
       setConnected(true);
       setStep("done");
-      // The Manage tab reads from the server, so it has to be told.
+      // The agent count reads from the server, so it has to be told.
       onRefresh();
     }, POLL_MS);
     return () => {
@@ -354,6 +358,11 @@ function WizardRun({
         {/* Mounted only on success, so it plays once and replays whenever a new
             run reaches the end. */}
         {connected && <ConfettiBurst className="top-28" />}
+        {overlay && (
+          <div className="absolute top-0 right-0 xl:top-2 xl:right-2">
+            {overlay}
+          </div>
+        )}
       </div>
 
       {/**
@@ -382,9 +391,9 @@ function WizardRun({
           {step === "enable" && (
             <StepShell
               title="The MCP Server is off for this team"
-              lead="Turning it on lets an agent act here with an API token you control. What it may actually do is that token's permissions, and nothing else."
+              lead="Turning it on lets members connect their own agents here. What an agent may actually do is its token's permissions, and nothing else."
             >
-              {canManageMcp ? (
+              {canManageTeam ? (
                 <Button onClick={turnOn} disabled={pending}>
                   {pending && <Loader2 className="size-4 animate-spin" />}
                   Turn on MCP for this team
@@ -412,8 +421,7 @@ function WizardRun({
                     key={a.id}
                     agent={a}
                     selected={agentId === a.id}
-                    canManageMcp={canManageMcp}
-                    canManageTokens={canManageTokens}
+                    canConnect={canConnect}
                     onSelect={() => pick(a.id)}
                   />
                 ))}
@@ -430,7 +438,7 @@ function WizardRun({
                 <div className="grid gap-2">
                   <FieldLabel
                     htmlFor="mcp-token-name"
-                    info="How this connection is listed under Manage, and in Settings → API tokens."
+                    info="How this connection is listed in Settings → API tokens, where you can change or revoke it."
                     docs="mcp.connect"
                   >
                     Name
@@ -462,7 +470,15 @@ function WizardRun({
                     <span className="truncate text-sm">
                       {
                         scopeLabel(
-                          { scoped: true, ...scope },
+                          {
+                            scoped:
+                              scope.teamIds.length +
+                                scope.projectIds.length +
+                                scope.folderIds.length +
+                                scope.appIds.length >
+                              0,
+                            ...scope,
+                          },
                           Object.fromEntries(tree.map((t) => [t.id, t.name])),
                         ).text
                       }
@@ -505,7 +521,7 @@ function WizardRun({
 
               <Button
                 onClick={createToken}
-                disabled={pending || !name.trim() || !canManageTokens}
+                disabled={pending || !name.trim() || !canConnect}
               >
                 {pending && <Loader2 className="size-4 animate-spin" />}
                 Create token
@@ -605,11 +621,7 @@ function WizardRun({
           )}
 
           {step === "done" && agent && (
-            <DoneStep
-              agent={agent}
-              onGoToManage={onGoToManage}
-              onRestart={onRestart}
-            />
+            <DoneStep agent={agent} onRestart={onRestart} />
           )}
         </div>
       </div>
@@ -704,8 +716,8 @@ function WizardRun({
               What {agent?.label ?? "this agent"} can reach
             </DialogTitle>
             <DialogDescription className="mt-1">
-              This team is ticked. Narrow it to a project, a folder or single
-              apps if the agent only works on one corner.
+              Nothing ticked means every team you can connect agents to, now and
+              later. Tick a team, project, folder or single apps to limit it.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -719,7 +731,7 @@ function WizardRun({
               tree={tree}
               selection={scope}
               onChange={setScope}
-              info="Where this agent may work. Tick a team for all of it, or narrow it to a project, folder or single apps."
+              info="Where this agent may work. Nothing ticked is every team you can connect agents to; a tick limits it to that."
               docs="tokens.scope"
             />
             <DialogFooter>
@@ -796,24 +808,18 @@ function AgentMark({
 function AgentCard({
   agent,
   selected,
-  canManageMcp,
-  canManageTokens,
+  canConnect,
   onSelect,
 }: {
   agent: AgentDef;
   selected: boolean;
-  canManageMcp: boolean;
-  canManageTokens: boolean;
+  canConnect: boolean;
   onSelect: () => void;
 }) {
-  // Shown but refused, with the reason - the two branches need different
-  // capabilities, and hiding half the grid would leave a reader wondering
-  // whether Deplo supports their agent at all.
-  const blocked = agent.kind === "web" ? !canManageMcp : !canManageTokens;
-  const note =
-    agent.kind === "web"
-      ? "Needs the permission to manage MCP access."
-      : "Needs the permission to create API tokens.";
+  // Shown but refused, with the reason: hiding the grid would leave a reader
+  // wondering whether Deplo supports their agent at all.
+  const blocked = !canConnect;
+  const note = "Needs the permission to connect AI agents to this team.";
   // The same wash the template store's cards wear, in the brand's own colour: lit on
   // hover while you are still looking, and held lit once this is the one you chose.
   const veil = veilProps(agent.veil, selected ? "on" : "hover");
@@ -859,29 +865,27 @@ function AgentCard({
  */
 function DoneStep({
   agent,
-  onGoToManage,
   onRestart,
 }: {
   agent: AgentDef;
-  onGoToManage: () => void;
   onRestart: () => void;
 }) {
   return (
     <StepShell
       mark={<AgentMark agent={agent} size="lg" />}
       title="Connected successfully!"
-      lead="It made its first call to Deplo. You can revoke its access at any time under Manage."
+      lead="It made its first call to Deplo. Change or revoke its access at any time under Settings → API tokens."
     >
-      {/* Two ways on, because there are two things people do next: look at what
-          they just let in, or let in the next one. Neither leaves this page. */}
       <div className="flex flex-wrap gap-2">
-        <Button onClick={onGoToManage}>
+        <Button onClick={onRestart}>
           <Check className="size-4" />
           Done
         </Button>
-        <Button variant="outline" onClick={onRestart}>
-          <Plug className="size-4" />
-          Connect another
+        <Button asChild variant="outline">
+          <Link href="/settings/tokens">
+            <KeyRound className="size-4" />
+            API tokens
+          </Link>
         </Button>
       </div>
     </StepShell>
@@ -907,16 +911,14 @@ async function probe(
     );
     return res.ok && res.data === true;
   }
-  const res = await gqlAction<{ mcpConnections: { id: string }[] }, number>(
+  const res = await gqlAction<{ mcpAgentCount: number }, number>(
     /* GraphQL */ `
-      query McpConnectionCount {
-        mcpConnections {
-          id
-        }
+      query McpAgentCount {
+        mcpAgentCount
       }
     `,
     {},
-    (d) => d.mcpConnections.length,
+    (d) => d.mcpAgentCount,
   );
   return res.ok && typeof res.data === "number" && res.data > baseline;
 }

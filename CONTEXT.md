@@ -137,16 +137,20 @@ _Avoid_: security key (that is one KIND of passkey - a hardware one), WebAuthn c
 
 **API token**:
 The `deplo_` bearer token a **user** mints from Settings → API tokens to drive
-Deplo's GraphQL API from outside the dashboard (a script, CI, an AI agent). It is a
+Deplo's GraphQL API from outside the dashboard (a script, CI, an AI agent). It is
+**personal**: it belongs to the person who minted it, and nobody else - an instance admin
+included - lists, edits or revokes it (ADR-0032). It is a
 **principal with its own Capabilities**, chosen when it is created and editable afterwards
-without re-minting it, never an impersonation of its creator. Its **effective** power is the
-INTERSECTION of what it was granted and what its creator can still do in the team the request
-resolves to, computed
-live on every request, so revoking a person's access blunts every token they minted. Two
+without re-minting it, never an impersonation of its owner. Its **effective** power is the
+INTERSECTION of what it was granted and what its owner can still do in the team the request
+resolves to, computed live on every request. WHERE it acts is the team's decision, per
+member: it reaches a team only while its owner holds `manage_tokens` (**Use API tokens**)
+there, and may drive it over MCP only while they hold `manage_mcp` (**Connect AI agents**).
+A team takes access away through the member, never the token. Two
 orthogonal switches ride alongside: a **scope** and an opt-in **instance-admin** bit (only an
 instance admin can grant it; mutually exclusive with a scope). The scope is a TREE - whole
 **Teams**, whole **Projects**, whole **Folders** (subfolders included), or individual **Apps**,
-ticked at whatever depth fits, and nothing ticked means every team its creator belongs to. A
+ticked at whatever depth fits, and nothing ticked means every team its owner may use tokens in, live. A
 folder's subtree is expanded at authentication time, never stored, so moving or nesting one
 takes effect on the next request; a Project scope also covers the folders filed under it. Breadth and depth are different
 questions: holding several whole teams restricts nothing inside them, while naming a project or
@@ -170,10 +174,11 @@ Deplo's endpoint for AI agents, at `/api/mcp`, speaking the Model Context Protoc
 schema and a GraphQL document run in-process against the same schema `/api/graphql` serves,
 as the caller's own principal. It introduces **no credential of its own**: an agent
 authenticates with an ordinary **API token**, either pasted in by hand (a terminal agent, picking
-its team with `X-Deplo-Team`) or minted by approving a **connected client**'s OAuth request (a web
-app, which picks its team on the consent screen). The protocol is stateless, so one endpoint serves
-one team, chosen when the agent is connected. One team switch governs it - whether agents are allowed at
-all - behind the `manage_mcp` **Capability**. What an agent may DO is decided by its token's
+its default team with `X-Deplo-Team`) or minted by approving a **connected client**'s OAuth request
+(a web app). The protocol is stateless, so every call runs in one team: the default, or the one
+named by the `team` argument every tool takes (`list_teams` names them; ADR-0032). Two things
+govern it: the team's switch - whether agents are allowed at all, a team setting behind
+`manage_team` - and the owner's own `manage_mcp` in each team. What an agent may DO is decided by its token's
 Capabilities and by nothing on top; Deplo adds no confirmation step of its own, and destructive
 tools are flagged so the MCP client can ask its own user. No tool can reveal a secret, whatever
 the token holds (ADR-0021). Beside the curated tools sit two **escape hatch** tools,
@@ -184,11 +189,11 @@ _Avoid_: MCP plugin (the withdrawn container relay, ADR-0013), MCP token / `MCP_
 is no such credential), connector.
 
 **Connected client**:
-A web AI app (Claude, ChatGPT) that a member has authorised to drive a team over the **MCP
-server**, listed and revocable under Settings → MCP Server. It registers itself with Deplo (Deplo is
+A web AI app (Claude, ChatGPT) that a member has authorised to drive their teams over the **MCP
+server**, listed and revocable only by that member under Settings → API tokens. It registers itself with Deplo (Deplo is
 an OAuth 2.1 authorization server for exactly this), and approving its consent screen **mints an
-ordinary API token**: the access token it goes on to present is only a pointer at that row, so
-revoking the token stops it, and it appears in Settings → API tokens too, marked. What it may do is
+ordinary, personal API token**: the access token it goes on to present is only a pointer at that row,
+so revoking the token stops it everywhere. What it may do is
 that token's **Capabilities**; the OAuth _scopes_ it holds decide nothing (ADR-0022). A client that
 has registered but has never been approved holds nothing and reaches nothing.
 _Avoid_: connector, OAuth app, integration, MCP client (that is the software talking the protocol,

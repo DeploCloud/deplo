@@ -288,10 +288,10 @@ export const SETTINGS_NAV: NavSection[] = [
         label: "MCP Server",
         href: "/settings/mcp",
         icon: Bot,
-        tooltip: "Let AI agents drive this team over MCP",
-        // TWO capabilities open a real half of this page, so naming one hid it from people
-        // with work to do there.
-        requiresAny: ["manage_mcp", "manage_tokens"],
+        tooltip: "Connect your AI agents to this team over MCP",
+        // Connecting your own agent, or flipping the team's switch: either is
+        // work to do here.
+        requiresAny: ["manage_mcp", "manage_team"],
       },
       {
         label: "Migrations",
@@ -323,7 +323,7 @@ export const SETTINGS_NAV: NavSection[] = [
         label: "API tokens",
         href: "/settings/tokens",
         icon: KeyRound,
-        tooltip: "Bearer tokens, and what each one may do",
+        tooltip: "Your personal bearer tokens, and what each one may do",
       },
     ],
   },

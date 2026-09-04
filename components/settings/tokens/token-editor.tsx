@@ -61,8 +61,6 @@ export function TokenEditor({
   preset,
   tree,
   activeTeamId,
-  canManage,
-  canEdit = canManage,
   canGrantInstanceAdmin,
   publicUrl,
 }: {
@@ -75,13 +73,6 @@ export function TokenEditor({
   preset?: TokenPreset | null;
   /** Every team, project and app the actor can reach - the scope picker's tree. */
   tree: ScopeTreeTeam[];
-  canManage: boolean;
-  /**
-   * Whether the form itself may be changed here. Defaults to `canManage`, and is
-   * false for a token MANAGED in another team: only that team can re-author it,
-   * while revoking stays available to everyone who can see it.
-   */
-  canEdit?: boolean;
   /** Only an instance admin may hand out instance administration. */
   canGrantInstanceAdmin: boolean;
   /** This Deplo's public URL, for the copy-paste curl after minting. */
@@ -122,7 +113,6 @@ export function TokenEditor({
   );
   const [expiry, setExpiry] = React.useState<string>(initial.expiry);
 
-  const readOnly = !canEdit;
   const revokeCopy = {
     teams: token?.teamsReached ?? [],
     activeTeamId,
@@ -162,7 +152,7 @@ export function TokenEditor({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (readOnly || !name.trim()) return;
+    if (!name.trim()) return;
     const input = {
       name,
       capabilities: caps,
@@ -247,7 +237,6 @@ export function TokenEditor({
                 placeholder="GitHub Actions deploy"
                 maxLength={40}
                 autoFocus={mode === "create"}
-                disabled={readOnly}
               />
             </div>
 
@@ -259,11 +248,7 @@ export function TokenEditor({
               >
                 Expires
               </FieldLabel>
-              <Select
-                value={expiry}
-                onValueChange={setExpiry}
-                disabled={readOnly}
-              >
+              <Select value={expiry} onValueChange={setExpiry}>
                 <SelectTrigger id="token-expiry" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -282,14 +267,6 @@ export function TokenEditor({
                 </SelectContent>
               </Select>
             </div>
-
-            {mode === "edit" && (
-              <p className="text-xs text-muted-foreground">
-                The full token was shown once when it was created. Deplo keeps
-                only a hash of it, so it can&apos;t be shown again - revoke this
-                one and create another if it was lost.
-              </p>
-            )}
 
             {canGrantInstanceAdmin && (
               <Accordion type="single" collapsible>
@@ -319,7 +296,7 @@ export function TokenEditor({
                       <Switch
                         checked={instanceAdmin}
                         onCheckedChange={setInstanceAdmin}
-                        disabled={readOnly || scoped}
+                        disabled={scoped}
                         aria-label="Instance admin"
                       />
                     </div>
@@ -332,12 +309,7 @@ export function TokenEditor({
 
         <Card>
           <CardContent className="pt-6">
-            <ScopePicker
-              tree={tree}
-              selection={scope}
-              onChange={changeScope}
-              disabled={readOnly}
-            />
+            <ScopePicker tree={tree} selection={scope} onChange={changeScope} />
           </CardContent>
         </Card>
 
@@ -346,7 +318,6 @@ export function TokenEditor({
             <PermissionPicker
               capabilities={caps}
               onChange={setCaps}
-              disabled={readOnly}
               hint="Every action Deplo can gate, one permission each. Tick exactly what this token should be able to do - search by what you want it to reach."
             />
           </CardContent>
@@ -407,29 +378,6 @@ export function TokenEditor({
                   {scopeLabel}
                 </dd>
               </div>
-              {mode === "edit" && (
-                <div className="flex items-center gap-3">
-                  <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                    Acts as
-                    <InfoTip
-                      content={`A token can never do more than the member who created it. If ${
-                        token!.createdByUsername ?? "they"
-                      } loses a permission, this token loses it too.`}
-                      docs="tokens.scope"
-                    />
-                  </dt>
-                  <dd className="flex min-w-0 flex-1 items-center justify-end gap-1.5 truncate text-right font-medium">
-                    {token!.createdByUsername && (
-                      <UserAvatar
-                        username={token!.createdByUsername}
-                        avatarUrl={token!.createdByAvatarUrl}
-                        size="sm"
-                      />
-                    )}
-                    {token!.createdByUsername ?? "—"}
-                  </dd>
-                </div>
-              )}
             </dl>
 
             <div className="space-y-1.5">
@@ -479,7 +427,7 @@ export function TokenEditor({
               </Badge>
             )}
 
-            {!readOnly && (
+            {
               <Button
                 type="submit"
                 size="lg"
@@ -499,7 +447,7 @@ export function TokenEditor({
                     ? "Save changes"
                     : "Saved"}
               </Button>
-            )}
+            }
 
             {mode === "edit" && (
               <p className="text-xs text-muted-foreground">
@@ -507,7 +455,7 @@ export function TokenEditor({
               </p>
             )}
 
-            {mode === "edit" && canManage && (
+            {mode === "edit" && (
               <Button
                 type="button"
                 variant="outline"

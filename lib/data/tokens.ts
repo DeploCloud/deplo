@@ -16,9 +16,9 @@ import {
   environments as environmentsTable,
   folders as foldersTable,
   memberships as membershipsTable,
+  membershipCapabilities as membershipCapabilitiesTable,
   projects as projectsTable,
   teams as teamsTable,
-  users as usersTable,
 } from "../db/schema/control-plane";
 import {
   oauthAccessToken,
@@ -31,10 +31,10 @@ import { newId, nowIso } from "../ids";
 import {
   membershipFor,
   requireActiveTeamId,
-  requireCapability,
   requireInstanceAdmin,
   requireTeamWide,
   teamsForUser,
+  teamsWhereUserHolds,
 } from "../membership";
 import { withinActor } from "./roles";
 import { visibleFolderIds } from "./folder-access";
@@ -44,10 +44,15 @@ import { appCapabilitiesForTeam } from "./node-access";
 // other (`node-scope.ts` explains why).
 import { expandFolders } from "./node-scope";
 import { recordActivity } from "./activity";
-import { avatarResolver } from "../avatar";
 import { assertUser, getCurrentUser } from "../auth";
 import { sha256Hex, randomToken } from "../crypto";
-import { ALL_CAPABILITIES, type Capability, type Membership } from "../types";
+import {
+  ALL_CAPABILITIES,
+  type AlertKey,
+  type Capability,
+  type Membership,
+  type Team,
+} from "../types";
 import {
   currentIdentity,
   type RequestIdentity,
@@ -55,8 +60,12 @@ import {
 } from "../auth/request-context";
 
 /**
- * API tokens - bearer credentials that drive Deplo's API from outside the
- * dashboard.
+ * API tokens - PERSONAL bearer credentials that drive Deplo's API from outside
+ * the dashboard. A token belongs to the person who minted it: nobody else lists,
+ * edits or revokes it, an instance admin included. It reaches the teams where
+ * that person holds `manage_tokens`, and may speak MCP where they hold
+ * `manage_mcp`; both are read live, so a team takes access away by changing the
+ * member's permissions or removing them.
  */
 
 const MAX_NAME = 40;
@@ -78,32 +87,12 @@ export interface ApiTokenDTO {
   /** Individually-named apps in the scope. */
   appIds: string[];
   /**
-   * Every team this token can act in, named - the four scope lists above flattened
-   * to the teams they land in. Here because revoking is per-team: a screen
-   * offering Revoke has to say what survives it.
+   * Every team this token can act in, named - the scope lists above flattened to
+   * the teams they land in, or every team the owner may use tokens in when it is
+   * not scoped. What the editor's summary and the Revoke dialog name.
    */
   teamsReached: TokenTeam[];
   instanceAdmin: boolean;
-  /** The team this token is MANAGED from, where it was created. */
-  homeTeamId: string;
-  /**
-   * That team, named. The list is a personal one and spans teams, so every row
-   * has to say where its credential lives: otherwise two tokens called "CI"
-   * are indistinguishable.
-   */
-  homeTeamName: string;
-  /** The member it acts as. Its power is clamped to theirs, so name them. */
-  createdByUsername: string | null;
-  /** That member's monogram colour + resolved picture, so the name is shown the
-   *  way a person is shown everywhere else. Null when the account is gone. */
-  createdByAvatarColor: string | null;
-  createdByAvatarUrl: string | null;
-  /**
-   * That member's id. A token is minted on a PERSON's account and can reach
-   * several teams, so its creator manages it from any of them - this is what a
-   * screen asks to know whether it is looking at its own credential.
-   */
-  createdByUserId: string;
   /**
    * The AI client this token was minted for, when it came from approving an OAuth
    * consent rather than from the tokens page.
@@ -134,19 +123,45 @@ const DTO_COLUMNS = {
   prefix: apiTokens.prefix,
   scoped: apiTokens.scoped,
   instanceAdmin: apiTokens.instanceAdmin,
-  homeTeamId: apiTokens.teamId,
-  createdByUserId: apiTokens.userId,
   expiresAt: apiTokens.expiresAt,
   lastUsedAt: apiTokens.lastUsedAt,
   createdAt: apiTokens.createdAt,
 } as const;
 
 /**
- * Every token that can act in `teamId`, not merely the ones created there.
+ * The people who may use API tokens in `teamId`: members holding
+ * `manage_tokens` there. A token whose owner lost it stops reaching the team,
+ * so every count below reads this first.
  */
-export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
+async function tokenHoldersIn(teamId: string): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ userId: membershipsTable.userId })
+    .from(membershipsTable)
+    .innerJoin(
+      membershipCapabilitiesTable,
+      eq(membershipCapabilitiesTable.membershipId, membershipsTable.id),
+    )
+    .where(
+      and(
+        eq(membershipsTable.teamId, teamId),
+        eq(membershipCapabilitiesTable.capability, "manage_tokens"),
+      ),
+    );
+  return new Set(rows.map((r) => r.userId));
+}
+
+/**
+ * Every LIVE token that can act in `teamId`, with its owner. Never the
+ * credentials themselves: this feeds counts (agents connected, tokens per
+ * member), which is all a team may know about somebody else's tokens.
+ */
+export async function tokensReaching(
+  teamId: string,
+): Promise<{ id: string; userId: string; mcp: boolean }[]> {
   const db = getDb();
-  const [byTeam, byProject, byFolder, byApp, unscoped] = await Promise.all([
+  const holders = await tokenHoldersIn(teamId);
+  if (holders.size === 0) return [];
+  const [byTeam, byProject, byFolder, byApp] = await Promise.all([
     db
       .select({ id: apiTokenTeams.tokenId })
       .from(apiTokenTeams)
@@ -169,24 +184,61 @@ export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
       .from(apiTokenApps)
       .innerJoin(appsTable, eq(appsTable.id, apiTokenApps.appId))
       .where(eq(appsTable.teamId, teamId)),
-    // An unrestricted token reaches every team its CREATOR belongs to, so it
-    // shows up wherever they are a member.
-    db
-      .select({ id: apiTokens.id })
-      .from(apiTokens)
-      .innerJoin(
-        membershipsTable,
-        eq(membershipsTable.userId, apiTokens.userId),
-      )
-      .where(
-        and(eq(apiTokens.scoped, false), eq(membershipsTable.teamId, teamId)),
-      ),
   ]);
-  return new Set(
-    [...byTeam, ...byProject, ...byFolder, ...byApp, ...unscoped].map(
-      (r) => r.id,
-    ),
+  const scopedIds = new Set(
+    [...byTeam, ...byProject, ...byFolder, ...byApp].map((r) => r.id),
   );
+  const rows = await db
+    .select({
+      id: apiTokens.id,
+      userId: apiTokens.userId,
+      scoped: apiTokens.scoped,
+      oauthClientId: apiTokens.oauthClientId,
+      mcpLastUsedAt: apiTokens.mcpLastUsedAt,
+      expiresAt: apiTokens.expiresAt,
+    })
+    .from(apiTokens)
+    .where(inArray(apiTokens.userId, [...holders]));
+  const now = Date.now();
+  return rows
+    .filter(
+      (r) =>
+        (!r.scoped || scopedIds.has(r.id)) &&
+        !(r.expiresAt && Date.parse(r.expiresAt) <= now),
+    )
+    .map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      mcp: r.oauthClientId !== null || r.mcpLastUsedAt !== null,
+    }));
+}
+
+/**
+ * How many tokens, and how many of them drive an AI agent, each member of
+ * `teamId` has reaching it. Counts only - the Members page shows them so an
+ * admin can answer "who can act here via the API" without seeing a credential.
+ */
+export async function tokenCountsByUser(
+  teamId: string,
+): Promise<Map<string, { tokens: number; agents: number }>> {
+  const out = new Map<string, { tokens: number; agents: number }>();
+  for (const t of await tokensReaching(teamId)) {
+    const c = out.get(t.userId) ?? { tokens: 0, agents: 0 };
+    c.tokens += 1;
+    if (t.mcp) c.agents += 1;
+    out.set(t.userId, c);
+  }
+  return out;
+}
+
+/**
+ * The teams this person's tokens may act in: where they are a member AND hold
+ * `manage_tokens`. Read live on every request, so a team narrows or cuts a
+ * member's tokens by editing their access - never by touching the tokens.
+ */
+export async function tokenReach(userId: string): Promise<Team[]> {
+  const holds = await teamsWhereUserHolds(userId, "manage_tokens");
+  return (await teamsForUser(userId)).filter((t) => holds.has(t.id));
 }
 
 /** A team a token can act in, named for the screen that has to say so. */
@@ -261,30 +313,15 @@ export async function teamsReachedByTokens(
 }
 
 /**
- * The tokens Settings → API tokens shows: every one YOU minted, whatever team it
- * acts in, plus every token that can act in the ACTIVE team.
+ * YOUR tokens, and only yours. A bearer request sees just the token it is
+ * made with: a credential must not enumerate its owner's other credentials.
  */
 export async function listTokens(): Promise<ApiTokenDTO[]> {
-  const teamId = await requireActiveTeamId();
-  // A narrowed token must not enumerate the team's OTHER credentials: its
-  // capability clamp already stops it minting one, this stops it reading them.
-  await requireTeamWide("API tokens");
-  const reaching = await tokenIdsReaching(teamId);
-  const me = currentIdentity()?.token ? null : await getCurrentUser();
-  const wanted = [
-    ...(reaching.size > 0 ? [inArray(apiTokens.id, [...reaching])] : []),
-    ...(me ? [eq(apiTokens.userId, me.id)] : []),
-  ];
-  if (wanted.length === 0) return [];
+  const user = await assertUser();
+  const acting = currentIdentity()?.token;
   const rows = await getDb()
     .select({
       ...DTO_COLUMNS,
-      homeTeamName: teamsTable.name,
-      createdByUsername: usersTable.username,
-      createdByAvatarColor: usersTable.avatarColor,
-      // Consumed by `createdByAvatarUrl` and dropped, no email in this DTO.
-      createdByImage: usersTable.image,
-      createdByEmail: usersTable.email,
       oauthClientName: oauthClient.name,
       // Consumed by `mcp` and dropped: the id, not the joined name, because a
       // client row that has been deleted must not un-mark its connection.
@@ -292,10 +329,12 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
       mcpLastUsedAt: apiTokens.mcpLastUsedAt,
     })
     .from(apiTokens)
-    .leftJoin(teamsTable, eq(teamsTable.id, apiTokens.teamId))
-    .leftJoin(usersTable, eq(usersTable.id, apiTokens.userId))
     .leftJoin(oauthClient, eq(oauthClient.clientId, apiTokens.oauthClientId))
-    .where(or(...wanted))
+    .where(
+      acting
+        ? and(eq(apiTokens.userId, user.id), eq(apiTokens.id, acting.id))
+        : eq(apiTokens.userId, user.id),
+    )
     .orderBy(desc(apiTokens.createdAt));
   if (rows.length === 0) return [];
 
@@ -347,36 +386,24 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   const appsById = group(appRows);
 
   const now = Date.now();
-  const avatarUrl = await avatarResolver();
-  // `createdByImage` / `createdByEmail` are DESTRUCTURED OUT before the spread: the
-  // row carries them so the avatar can be resolved, and `...rest` would otherwise
-  // walk both straight into the DTO - an email this list has never exposed.
-  return rows.map(
-    ({
-      createdByImage,
-      createdByEmail,
-      oauthClientId,
-      mcpLastUsedAt,
-      ...r
-    }) => ({
-      ...r,
-      createdByAvatarUrl: avatarUrl({
-        image: createdByImage,
-        email: createdByEmail,
-      }),
-      mcp: oauthClientId !== null || mcpLastUsedAt !== null,
-      expired: r.expiresAt != null && Date.parse(r.expiresAt) <= now,
-      homeTeamName: r.homeTeamName ?? "",
-      // Chosen by the app at registration: free text, any length, shown in a badge.
-      oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
-      capabilities: inCatalogOrder((capsById.get(r.id) ?? []) as Capability[]),
-      teamIds: teamsById.get(r.id) ?? [],
-      projectIds: projectsById.get(r.id) ?? [],
-      folderIds: foldersById.get(r.id) ?? [],
-      appIds: appsById.get(r.id) ?? [],
-      teamsReached: reachedByToken.get(r.id) ?? [],
-    }),
-  );
+  // An unscoped token reaches wherever its owner may use tokens, live.
+  const everywhere = (await tokenReach(user.id)).map((t) => ({
+    id: t.id,
+    name: t.name,
+  }));
+  return rows.map(({ oauthClientId, mcpLastUsedAt, ...r }) => ({
+    ...r,
+    mcp: oauthClientId !== null || mcpLastUsedAt !== null,
+    expired: r.expiresAt != null && Date.parse(r.expiresAt) <= now,
+    // Chosen by the app at registration: free text, any length, shown in a badge.
+    oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
+    capabilities: inCatalogOrder((capsById.get(r.id) ?? []) as Capability[]),
+    teamIds: teamsById.get(r.id) ?? [],
+    projectIds: projectsById.get(r.id) ?? [],
+    folderIds: foldersById.get(r.id) ?? [],
+    appIds: appsById.get(r.id) ?? [],
+    teamsReached: r.scoped ? (reachedByToken.get(r.id) ?? []) : everywhere,
+  }));
 }
 
 /**
@@ -702,6 +729,43 @@ function assertScopeWithinActingToken(
     );
 }
 
+/**
+ * The teams a token will act in, from its resolved scope: the ones it names,
+ * or everywhere its owner may use tokens.
+ */
+async function reachOf(
+  scope: ResolvedScope,
+  userId: string,
+): Promise<string[]> {
+  return scope.teamsReached.length > 0
+    ? scope.teamsReached
+    : (await tokenReach(userId)).map((t) => t.id);
+}
+
+/**
+ * The ceiling on what a token may be given: everything its owner holds in ANY
+ * team it will reach. The live clamp (`clampToToken`) then narrows it per team
+ * on every request, so a permission held in one team never leaks into another.
+ */
+async function ownerCeiling(
+  userId: string,
+  caps: Capability[] | undefined,
+  reach: string[],
+): Promise<Capability[]> {
+  if (reach.length === 0)
+    throw new Error(
+      "You can't use API tokens in any of your teams. Ask a team admin for the API tokens permission.",
+    );
+  const held = new Set<Capability>();
+  for (const teamId of reach) {
+    // A team whose two-factor policy this member has not met resolves NOTHING
+    // for them there, and `membershipFor` says so by throwing.
+    const m = await membershipFor(userId, teamId).catch(() => null);
+    if (m) for (const c of m.capabilities) held.add(c);
+  }
+  return withinActor(caps, { capabilities: [...held] } as Membership, "token");
+}
+
 /** Returns the raw token ONCE; only the hash is persisted. */
 export async function createToken(
   input: {
@@ -712,14 +776,16 @@ export async function createToken(
     expiresAt?: string | null;
   } & TokenScopeInput,
 ): Promise<{ raw: string; token: ApiTokenDTO }> {
-  const { teamId, userId, membership } =
-    await requireCapability("manage_tokens");
+  // Any member may mint: a token adds no power, it is clamped to what its
+  // owner holds in each team it reaches.
+  const { id: userId } = await assertUser();
   const name = cleanTokenName(input.name);
-  const capabilities = withinActor(input.capabilities, membership, "token");
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt = cleanExpiry(input.expiresAt);
   const scope = await resolveScopeInput(input, userId);
   assertScopeWithinActingToken(scope, scoped);
+  const reach = await reachOf(scope, userId);
+  const capabilities = await ownerCeiling(userId, input.capabilities, reach);
 
   const raw = `deplo_${randomToken(24)}`;
   const id = newId("tok");
@@ -727,10 +793,7 @@ export async function createToken(
   await getDb().transaction(async (tx) => {
     await tx.insert(apiTokens).values({
       id,
-      // The team it is MANAGED from. Its reach is the scope below, which may be
-      // wider, but exactly one team owns the row that can edit it.
-      teamId,
-      // The token acts as its creator for user-scoped fields, and its power is
+      // The token acts as its owner for user-scoped fields, and its power is
       // clamped to theirs on every request, but it is NOT them: what it may do
       // is the set below, chosen here and editable later.
       userId,
@@ -749,14 +812,9 @@ export async function createToken(
     await writeScope(tx, id, scope);
   });
 
-  await recordActivity(
-    "security",
-    `Created the ${name} API token`,
-    await actorUsername(),
-    null,
-    teamId,
-    "token_created",
-  );
+  // Every team the credential can act in learns that it exists: the trail is
+  // how a team knows who holds API access here, since it never sees the token.
+  await trail(reach, `Created the ${name} API token`, "token_created");
   return {
     raw,
     token: {
@@ -769,17 +827,8 @@ export async function createToken(
       projectIds: scope.projectIds,
       folderIds: scope.folderIds,
       appIds: scope.appIds,
-      teamsReached: (await teamsReachedByTokens([id])).get(id) ?? [],
+      teamsReached: await namedTeams(reach),
       instanceAdmin,
-      homeTeamId: teamId,
-      homeTeamName:
-        (await teamsForUser(userId)).find((t) => t.id === teamId)?.name ?? "",
-      createdByUsername: (await getCurrentUser())?.username ?? null,
-      // The minter is the current user, whose picture is already resolved on the
-      // session DTO, no second lookup.
-      createdByAvatarColor: (await getCurrentUser())?.avatarColor ?? null,
-      createdByAvatarUrl: (await getCurrentUser())?.avatarUrl ?? null,
-      createdByUserId: userId,
       // Set by `mintMcpConnection` right after this, in the same flow, when the
       // mint came from an OAuth consent rather than from the tokens page.
       oauthClientName: null,
@@ -825,8 +874,7 @@ export async function updateToken(
     expiresAt?: string | null;
   } & TokenScopeInput,
 ): Promise<void> {
-  const { teamId, userId, membership } =
-    await requireCapability("manage_tokens");
+  const { id: userId } = await assertUser();
   const name = cleanTokenName(input.name);
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt =
@@ -837,51 +885,22 @@ export async function updateToken(
   const db = getDb();
   // Read and gate BEFORE opening the transaction: these helpers query on their
   // own connection, and pglite deadlocks if that happens inside one.
+  // Somebody else's token resolves to nothing, the same "not found" a made-up id
+  // gets: its existence is its owner's business.
   const existing = (
     await db
-      .select({
-        instanceAdmin: apiTokens.instanceAdmin,
-        homeTeamId: apiTokens.teamId,
-        createdByUserId: apiTokens.userId,
-      })
+      .select({ instanceAdmin: apiTokens.instanceAdmin })
       .from(apiTokens)
-      .where(eq(apiTokens.id, input.id))
+      .where(and(eq(apiTokens.id, input.id), eq(apiTokens.userId, userId)))
       .limit(1)
   )[0];
   if (!existing) throw new Error("Token not found");
 
-  const isCreator = existing.createdByUserId === userId;
-  if (!isCreator && existing.homeTeamId !== teamId) {
-    // Don't leak that it exists to a team it can't reach at all.
-    if (!(await tokenIdsReaching(teamId)).has(input.id))
-      throw new Error("Token not found");
-    throw new Error(
-      "This token is managed in the team it was created in. You can revoke it here, but not change it.",
-    );
-  }
+  const reach = await reachOf(scope, userId);
+  const capabilities = await ownerCeiling(userId, input.capabilities, reach);
 
-  // The teams the edited token will act in.
-  const reach = scoped
-    ? scope.teamsReached
-    : (await teamsForUser(existing.createdByUserId)).map((t) => t.id);
-  // What may be TICKED. The creator is measured across the teams the token reaches
-  // rather than the one they happen to be standing in, or a credential spanning teams
-  // would be unsaveable from any team that holds less than another.
-  const bound =
-    isCreator && !currentIdentity()?.token
-      ? await actorAcross(membership, reach)
-      : membership;
-  const capabilities = withinActor(input.capabilities, bound, "token");
-
-  // Editing an instance-admin token is itself an instance-admin action: a plain
-  // manage_tokens holder must not be able to rename it, re-scope it, or keep the
-  // bit alive under a permission set of their own choosing.
+  // Keeping the instance-admin bit alive is itself an instance-admin action.
   if (existing.instanceAdmin) await requireInstanceAdmin();
-  // Re-authoring SOMEONE ELSE's token: the live clamp only measures it against
-  // its creator, so bound the edit by the actor's own capabilities in every team
-  // this token will reach.
-  if (!isCreator)
-    await assertWithinActorEverywhere(capabilities, userId, teamId, reach);
 
   await db.transaction(async (tx) => {
     await tx
@@ -892,12 +911,7 @@ export async function updateToken(
         scoped,
         ...(expiresAt === undefined ? {} : { expiresAt }),
       })
-      .where(
-        and(
-          eq(apiTokens.id, input.id),
-          eq(apiTokens.teamId, existing.homeTeamId),
-        ),
-      );
+      .where(and(eq(apiTokens.id, input.id), eq(apiTokens.userId, userId)));
     // Whole-set replace on every junction: an edit says what the token grants
     // now, it does not add to what it granted before.
     await tx
@@ -917,23 +931,13 @@ export async function updateToken(
     await writeScope(tx, input.id, scope);
   });
 
-  await recordActivity(
-    "security",
-    `Updated the ${name} API token`,
-    await actorUsername(),
-    null,
-    // The trail belongs to the team that hosts the credential, which is not
-    // necessarily the one its creator happened to be looking at.
-    existing.homeTeamId,
-  );
+  await trail(reach, `Updated the ${name} API token`);
 }
 
 /** The columns every bearer lookup resolves to before the identity is built. */
 interface TokenRow {
   id: string;
   userId: string;
-  /** The team the token is MANAGED from, where it was created. */
-  teamId: string;
   instanceAdmin: boolean;
   scoped: boolean;
   /** When it stops working. Null ⇒ never. */
@@ -943,7 +947,6 @@ interface TokenRow {
 const TOKEN_ROW_COLUMNS = {
   id: apiTokens.id,
   userId: apiTokens.userId,
-  teamId: apiTokens.teamId,
   instanceAdmin: apiTokens.instanceAdmin,
   scoped: apiTokens.scoped,
   expiresAt: apiTokens.expiresAt,
@@ -967,10 +970,7 @@ export async function authenticateToken(
   }
   if (raw.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
     const row = await oauthTokenRow(raw);
-    // No hint means the connection's OWN team, never `reachable[0]`, the OLDEST team
-    // its approver belongs to, which is how an agent once worked somewhere nobody
-    // chose.
-    return row ? identityForTokenRow(row, teamHint ?? row.teamId) : null;
+    return row ? identityForTokenRow(row, teamHint) : null;
   }
   return null;
 }
@@ -1017,10 +1017,10 @@ async function identityForTokenRow(
   if (match.expiresAt && Date.parse(match.expiresAt) <= Date.now()) return null;
   const scope = match.scoped ? await loadScope(match.id) : null;
 
-  // Fail CLOSED: the token acts only in teams its creator is STILL a member of,
-  // so losing a membership silently narrows every token that person minted, and
-  // losing the last one stops the token resolving at all.
-  const mine = await teamsForUser(match.userId);
+  // Fail CLOSED: the token acts only in teams where its owner is STILL a member
+  // holding `manage_tokens`, so losing either silently narrows every token that
+  // person minted, and losing the last one stops the token resolving at all.
+  const mine = await tokenReach(match.userId);
   const reachable = scope
     ? mine.filter((t) => scope.teamIds.includes(t.id))
     : mine;
@@ -1078,44 +1078,30 @@ export function stampMcpUse(tokenId: string): void {
 }
 
 /**
- * Revoke = the credential is gone, everywhere.
+ * Revoke = the credential is gone, everywhere. Only its owner can: a team takes
+ * access away by changing the member, not the token.
  */
 export async function revokeToken(id: string): Promise<void> {
-  const { teamId, userId } = await requireCapability("manage_tokens");
-
-  const row = (
-    await getDb()
-      .select({
-        name: apiTokens.name,
-        userId: apiTokens.userId,
-        instanceAdmin: apiTokens.instanceAdmin,
-        homeTeamId: apiTokens.teamId,
-        oauthClientId: apiTokens.oauthClientId,
-      })
-      .from(apiTokens)
-      .where(eq(apiTokens.id, id))
-      .limit(1)
-  )[0];
-  if (!row) throw new Error("Token not found");
-
-  // An INSTANCE-ADMIN token is unscoped and reaches every team its creator belongs
-  // to, so "any reaching team may revoke" (below) would let a plain manage_tokens
-  // holder in any of those teams kill the admin's global credential.
-  if (row.instanceAdmin) await requireInstanceAdmin();
-
-  // Any team the token can act in may cut it off: that is the lever a team has over a
-  // credential someone else minted into it.
-  const reachesHere = (await tokenIdsReaching(teamId)).has(id);
-  if (!reachesHere && row.userId !== userId) throw new Error("Token not found");
+  const { id: userId } = await assertUser();
 
   // Read the reach BEFORE the row goes: afterwards there is nothing left to ask.
   // (Also before any transaction - this helper queries on its own connection and
   // pglite deadlocks if that happens inside one.)
-  const reached = (await teamsReachedByTokens([id])).get(id) ?? [];
+  const row = (
+    await getDb()
+      .select({ scoped: apiTokens.scoped })
+      .from(apiTokens)
+      .where(and(eq(apiTokens.id, id), eq(apiTokens.userId, userId)))
+      .limit(1)
+  )[0];
+  if (!row) throw new Error("Token not found");
+  const reach = row.scoped
+    ? ((await teamsReachedByTokens([id])).get(id) ?? []).map((t) => t.id)
+    : (await tokenReach(userId)).map((t) => t.id);
 
   const gone = await getDb()
     .delete(apiTokens)
-    .where(eq(apiTokens.id, id))
+    .where(and(eq(apiTokens.id, id), eq(apiTokens.userId, userId)))
     .returning({
       id: apiTokens.id,
       name: apiTokens.name,
@@ -1125,29 +1111,17 @@ export async function revokeToken(id: string): Promise<void> {
   if (gone.length === 0) throw new Error("Token not found");
   await forgetOauthGrant(gone[0].userId, gone[0].oauthClientId);
 
-  // The team that pressed the button, plus every other team the credential was
-  // working in. An unscoped token reaches no stored teams, so this is just the
-  // one entry it always had.
-  const trailTeamIds = new Set([
-    reachesHere ? teamId : row.homeTeamId,
-    ...reached.map((t) => t.id),
-  ]);
-  const actor = await actorUsername();
   const mcp = gone[0].oauthClientId != null;
-  const what = mcp
-    ? `Revoked ${gone[0].name}'s MCP access`
-    : `Revoked the ${gone[0].name} API token`;
-  for (const trailTeamId of trailTeamIds)
-    // The type follows the message: `mcp-clients.ts` files the connect under
-    // `mcp`, and filing the revoke elsewhere would split one story in two.
-    await recordActivity(
-      mcp ? "mcp" : "security",
-      what,
-      actor,
-      null,
-      trailTeamId,
-      "token_revoked",
-    );
+  // The type follows the message: `mcp-clients.ts` files the connect under
+  // `mcp`, and filing the revoke elsewhere would split one story in two.
+  await trail(
+    reach,
+    mcp
+      ? `Revoked ${gone[0].name}'s MCP access`
+      : `Revoked the ${gone[0].name} API token`,
+    "token_revoked",
+    mcp ? "mcp" : "security",
+  );
 }
 
 /**
@@ -1271,10 +1245,10 @@ async function resolveScopeInput(
       teamsReached: [],
     };
 
-  const mine = new Set((await teamsForUser(userId)).map((t) => t.id));
+  const mine = new Set((await tokenReach(userId)).map((t) => t.id));
   for (const id of teamIds)
     if (!mine.has(id))
-      throw new Error("You're not a member of one of those teams");
+      throw new Error("You can't use API tokens in one of those teams");
   const reached = new Set<string>(teamIds);
   // Refused rather than reinterpreted: `loadScope` lets the narrower tick win, so
   // accepting both would hand back a token that reads as whole-team and behaves
@@ -1297,7 +1271,9 @@ async function resolveScopeInput(
       rows.length !== projectIds.length ||
       rows.some((r) => !mine.has(r.teamId))
     )
-      throw new Error("One of those projects isn't in a team you belong to");
+      throw new Error(
+        "One of those projects isn't in a team you can use API tokens in",
+      );
     for (const r of rows) {
       narrower(r.teamId);
       reached.add(r.teamId);
@@ -1312,7 +1288,9 @@ async function resolveScopeInput(
       rows.length !== folderIds.length ||
       rows.some((r) => !mine.has(r.teamId))
     )
-      throw new Error("One of those folders isn't in a team you belong to");
+      throw new Error(
+        "One of those folders isn't in a team you can use API tokens in",
+      );
     for (const r of rows) {
       narrower(r.teamId);
       reached.add(r.teamId);
@@ -1324,7 +1302,9 @@ async function resolveScopeInput(
       .from(appsTable)
       .where(inArray(appsTable.id, appIds));
     if (rows.length !== appIds.length || rows.some((r) => !mine.has(r.teamId)))
-      throw new Error("One of those apps isn't in a team you belong to");
+      throw new Error(
+        "One of those apps isn't in a team you can use API tokens in",
+      );
     for (const r of rows) {
       narrower(r.teamId);
       reached.add(r.teamId);
@@ -1333,49 +1313,29 @@ async function resolveScopeInput(
   return { teamIds, projectIds, folderIds, appIds, teamsReached: [...reached] };
 }
 
-/**
- * The actor, measured across the teams a token reaches instead of the one team
- * they are standing in - the ceiling on what the CREATOR may tick when they edit
- * their own token from somewhere else.
- */
-async function actorAcross(
-  actor: Membership,
-  teams: string[],
-): Promise<Membership> {
-  const caps = new Set<Capability>(
-    teams.length === 0 ? actor.capabilities : [],
-  );
-  for (const teamId of teams) {
-    // A team whose two-factor policy this member has not met resolves NOTHING
-    // for them there, and `membershipFor` says so by throwing. Either way it
-    // contributes no capabilities.
-    const m = await membershipFor(actor.userId, teamId).catch(() => null);
-    if (m) for (const c of m.capabilities) caps.add(c);
-  }
-  return { ...actor, capabilities: [...caps] };
+/** The teams in `ids`, named, for a DTO. */
+async function namedTeams(ids: string[]): Promise<TokenTeam[]> {
+  if (ids.length === 0) return [];
+  const rows = await getDb()
+    .select({ id: teamsTable.id, name: teamsTable.name })
+    .from(teamsTable)
+    .where(inArray(teamsTable.id, ids));
+  return rows.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
- * Bound a token edit by what the ACTOR may do in every team the token will act in,
- * not merely in the team it is managed from.
+ * One trail entry in EVERY team the token reaches. Outside any transaction
+ * (`recordActivity` owns its connection).
  */
-async function assertWithinActorEverywhere(
-  capabilities: Capability[],
-  actorUserId: string,
-  boundedTeamId: string,
-  reach: string[],
+async function trail(
+  teamIds: string[],
+  what: string,
+  alert: AlertKey | null = null,
+  type: "security" | "mcp" = "security",
 ): Promise<void> {
-  for (const teamId of reach) {
-    // The team the actor is acting in is already bounded by the `withinActor`
-    // call at the top.
-    if (teamId === boundedTeamId) continue;
-    const membership = await membershipFor(actorUserId, teamId);
-    if (!membership)
-      throw new Error(
-        "This token can act in a team you're not a member of. You can revoke it here, but not change what it may do.",
-      );
-    withinActor(capabilities, membership, "token");
-  }
+  const actor = await actorUsername();
+  for (const teamId of teamIds)
+    await recordActivity(type, what, actor, null, teamId, alert);
 }
 
 async function writeScope(

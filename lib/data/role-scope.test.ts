@@ -844,7 +844,6 @@ test("nothing that belongs to the whole team is reachable through a point lookup
 test("every team-wide read refuses a scoped member, in their own words", async () => {
   const { listMembers } = await import("./members");
   const { listRoles } = await import("./roles");
-  const { listTokens } = await import("./tokens");
   const { listRegistries } = await import("./registries");
   const { listDatabases } = await import("./databases");
   const { listSharedVars } = await import("./shared-vars");
@@ -856,7 +855,6 @@ test("every team-wide read refuses a scoped member, in their own words", async (
   const reads: [string, () => Promise<unknown>][] = [
     ["members", listMembers],
     ["roles", listRoles],
-    ["tokens", listTokens],
     ["registries", listRegistries],
     ["databases", listDatabases],
     ["shared variables", listSharedVars],

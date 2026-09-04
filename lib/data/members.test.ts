@@ -393,6 +393,37 @@ test("listMembers marks the founder as the primary owner; assigned owners are no
   });
 });
 
+test("listMembers counts each member's tokens and agents reaching the team, nothing more", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "m1", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+    ],
+  });
+  const { createToken } = await import("./tokens");
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, async () => {
+    await createToken({ name: "ci", capabilities: ["view"] });
+    const { token } = await createToken({
+      name: "agent",
+      capabilities: ["view"],
+    });
+    await pg.query(
+      `update api_tokens set mcp_last_used_at = now() where id = $1`,
+      [token.id],
+    );
+  });
+  await asOwner(async () => {
+    const byId = new Map((await listMembers()).map((m) => [m.userId, m]));
+    assert.equal(byId.get(USER_1)!.tokenCount, 2);
+    assert.equal(byId.get(USER_1)!.agentCount, 1);
+    assert.equal(byId.get("m1")!.tokenCount, 0);
+    // The DTO carries counts only: no id, prefix or name of a credential.
+    const dump = JSON.stringify(byId.get(USER_1));
+    assert.ok(!dump.includes("deplo_"), dump);
+    assert.ok(!dump.includes("tok_"), dump);
+  });
+});
+
 test("the founder (primary owner) can't be removed or demoted - even by another owner", async () => {
   await seedIdentity(db, {
     users: [

@@ -318,11 +318,6 @@ test("a token is listed in every team it can reach, not only where it was made",
     inB.map((t) => t.id),
     [id],
   );
-  assert.equal(
-    inB[0]!.homeTeamId,
-    TEAM_A,
-    "still managed from where it was made",
-  );
 });
 
 test("a foreign team can't be put in a scope", async () => {
@@ -330,7 +325,7 @@ test("a foreign team can't be put in a scope", async () => {
   await asUser1(async () => {
     await assert.rejects(
       () => createToken({ name: "Reach", teamIds: [TEAM_B] }),
-      /not a member of one of those teams/,
+      /can't use API tokens in one of those teams/,
     );
   });
 });
@@ -544,7 +539,7 @@ test("a folder in a team you don't belong to can't be put in a scope", async () 
   await asUser1(async () => {
     await assert.rejects(
       () => createToken({ name: "Reach", folderIds: ["fld_other"] }),
-      /isn't in a team you belong to/,
+      /isn't in a team you can use API tokens in/,
     );
   });
 });

@@ -113,7 +113,7 @@ export function ConsentForm({
   /** The team the mint will actually use - the dropdown must start here. */
   activeTeamId: string;
   /**
-   * The teams the mint would accept, ticked to begin with.
+   * The teams an unscoped connection acts in, right now - named on the form.
    */
   connectableTeamIds: string[];
   /** The origin Deplo publishes, which the consent POST must come from. */
@@ -126,8 +126,10 @@ export function ConsentForm({
   const [capabilities, setCapabilities] = useState<Capability[]>(
     mcpPreset?.capabilities ?? ["view"],
   );
+  // Unscoped to begin with: every team this person may connect agents to, read
+  // live on each call, so a team they join later is reached without re-approving.
   const [selection, setSelection] = useState<ScopeSelection>({
-    teamIds: connectableTeamIds,
+    teamIds: [],
     projectIds: [],
     folderIds: [],
     appIds: [],
@@ -136,10 +138,6 @@ export function ConsentForm({
   // you press is the question you wanted to answer, and answering the other one
   // was never the reason you clicked.
   const [editing, setEditing] = useState<null | "access" | "permissions">(null);
-  // The team this connection is being made FROM. Always granted (the server
-  // includes it whatever the picker says) and the default when nothing is
-  // ticked. Not a control any more - the picker is the only one.
-  const connectingTeam = tree.find((t) => t.id === activeTeamId);
 
   // Better Auth refuses a cookie-carrying POST whose Origin is not the address Deplo
   // publishes - the CSRF defence the consent posts through.
@@ -170,12 +168,22 @@ export function ConsentForm({
   // here, so the two screens do not name one thing twice.
   const accessLabel = scoped
     ? scopeLabel({ scoped: true, ...selection }, teamNames)
-    : { text: connectingTeam?.name ?? "This team", empty: false };
+    : {
+        text:
+          connectableTeamIds.length === 1
+            ? (teamNames[connectableTeamIds[0]] ?? "1 team")
+            : `Every team you can connect (${connectableTeamIds.length})`,
+        empty: false,
+      };
   // A team wears its initials everywhere else in Deplo (the team switcher), so it
   // wears them here too - the reach of a connection is the one place a name in plain
   // text is easiest to skim past.
   const accessTeams = (
-    selection.teamIds.length ? selection.teamIds : scoped ? [] : [activeTeamId]
+    selection.teamIds.length
+      ? selection.teamIds
+      : scoped
+        ? []
+        : connectableTeamIds
   )
     .map((id) => tree.find((t) => t.id === id))
     .filter((t): t is ScopeTreeTeam => !!t)
@@ -375,8 +383,8 @@ export function ConsentForm({
                 the word printed twice one line apart reads as a bug. */}
             <DialogTitle>What {client.name} can reach</DialogTitle>
             <DialogDescription className="mt-1">
-              Every team you can connect is ticked. Untick what it should not
-              reach.
+              Nothing ticked means every team you can connect, now and later.
+              Tick teams, projects, folders or apps to limit it.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -393,7 +401,7 @@ export function ConsentForm({
               tree={tree}
               selection={selection}
               onChange={setSelection}
-              info="Which teams this app may work in, and how much of each. Every team you can connect is ticked to begin with - untick the ones it should not reach, or narrow one to a project, folder or app."
+              info="Which teams this app may work in, and how much of each. Nothing ticked is every team you can connect agents to; a tick limits it to that."
               docs="tokens.scope"
             />
 

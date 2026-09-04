@@ -86,7 +86,6 @@ beforeEach(async () => {
 
 test("every team-wide collection is refused, and says why", async () => {
   await scoped(async () => {
-    await assert.rejects(() => listTokens(), LIMITED);
     await assert.rejects(() => listMembers(), LIMITED);
     await assert.rejects(() => listRoles(), LIMITED);
     await assert.rejects(() => listRegistries(), LIMITED);
@@ -127,11 +126,19 @@ test("a point lookup by id reads as NOT FOUND, never as a scope error", async ()
 
 test("a scoped token can't mint itself an unscoped successor", async () => {
   await scoped(async () => {
-    // `manage_tokens` is not a project-scoped capability, so the clamp removed
-    // it even though the token was granted all forty.
     await assert.rejects(
       () => createToken({ name: "Escape", capabilities: ["view"] }),
-      /permission/i,
+      /can't mint an unscoped token/i,
     );
+  });
+});
+
+test("a token lists only itself, never its owner's other credentials", async () => {
+  const other = await asUser(() =>
+    createToken({ name: "Other", capabilities: ["view"] }),
+  );
+  await scoped(async () => {
+    const mine = await listTokens();
+    assert.ok(!mine.some((t) => t.id === other.token.id), "a sibling leaked");
   });
 });

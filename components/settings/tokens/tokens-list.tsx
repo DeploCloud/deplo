@@ -10,7 +10,6 @@ import {
   ServerCog,
   Bot,
   Pencil,
-  Eye,
 } from "lucide-react";
 import {
   Table,
@@ -21,7 +20,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -35,28 +33,22 @@ import { timeAgo } from "@/lib/utils";
 import { CAPABILITY_META } from "@/lib/capabilities";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
 import { scopeLabel } from "@/components/settings/tokens/scope-label";
-import { tokenEditable } from "@/components/settings/tokens/editable";
 import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
 import type { ApiTokenDTO } from "@/lib/data/tokens";
 
 /**
- * Your API tokens, and the ones that can act in the active team.
+ * Your API tokens. Every row is yours: nobody else can see or touch it.
  */
 export function TokensList({
   tokens,
   names,
   activeTeamId,
-  currentUserId,
-  canManage,
 }: {
   tokens: ApiTokenDTO[];
   /** Team / project / app id → name, as far as this team can resolve them. */
   names: Record<string, string>;
-  /** Revoking takes away THIS team's access, so the dialog has to name it. */
+  /** The Revoke dialog names the OTHER teams the token also reaches. */
   activeTeamId: string;
-  /** Your own tokens are yours to edit from any team, so the row has to know you. */
-  currentUserId: string;
-  canManage: boolean;
 }) {
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<ApiTokenDTO | null>(null);
@@ -80,11 +72,9 @@ export function TokensList({
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
-            <TableHead>Team</TableHead>
             <TableHead>Permissions</TableHead>
             <TableHead>Access</TableHead>
             <TableHead>Last used</TableHead>
-            <TableHead>Created by</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -100,11 +90,6 @@ export function TokensList({
               (c) => CAPABILITY_META[c]?.sensitive,
             );
             const scope = scopeLabel(t, names);
-            const editable = tokenEditable(t, {
-              userId: currentUserId,
-              activeTeamId,
-              canManage,
-            });
             return (
               <TableRow key={t.id}>
                 <TableCell>
@@ -117,9 +102,6 @@ export function TokensList({
                   <p className="mt-1 font-mono text-xs text-muted-foreground">
                     {`${t.prefix}${"•".repeat(8)}`}
                   </p>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {t.homeTeamName || "—"}
                 </TableCell>
                 <TableCell>
                   <span className="flex flex-wrap items-center gap-1.5">
@@ -151,8 +133,8 @@ export function TokensList({
                       <SimpleTooltip
                         content={
                           t.oauthClientName
-                            ? "An AI client connected over OAuth. Edit it here, or take its access away under Settings → MCP Server."
-                            : "This token has already driven Deplo over MCP. It is also listed under Settings → MCP Server."
+                            ? "An AI client connected over OAuth. Edit or revoke it here."
+                            : "This token drives an AI agent over MCP. Edit or revoke it here."
                         }
                       >
                         {/* The name is whatever the app called itself at
@@ -200,49 +182,25 @@ export function TokensList({
                       </span>
                     ))}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {t.createdByUsername ? (
-                    <span className="flex items-center gap-1.5">
-                      <UserAvatar
-                        username={t.createdByUsername}
-                        avatarUrl={t.createdByAvatarUrl}
-                        size="sm"
-                      />
-                      {t.createdByUsername}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    {/**
-                     * Same rule the token's own page applies: a token managed in another
-                     * team can only be revoked here, an OAuth one is edited like any other.
-                     */}
                     <Button asChild variant="ghost" size="icon-sm">
                       <Link
                         href={`/settings/tokens/${t.id}`}
-                        aria-label={`${editable ? "Edit" : "View"} ${t.name}`}
+                        aria-label={`Edit ${t.name}`}
                       >
-                        {editable ? (
-                          <Pencil className="size-4" />
-                        ) : (
-                          <Eye className="size-4" />
-                        )}
+                        <Pencil className="size-4" />
                       </Link>
                     </Button>
-                    {canManage && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setRevoke(t)}
-                        aria-label={`Revoke ${t.name}`}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => setRevoke(t)}
+                      aria-label={`Revoke ${t.name}`}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Crown,
   FolderTree,
+  KeyRound,
   ShieldCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -283,6 +284,7 @@ function MemberTableRow({
             delta={member.accessDelta}
             roleName={member.roleName}
           />
+          <TokenCountBadge member={member} />
         </span>
       </TableCell>
       <TableCell className="text-right">
@@ -430,3 +432,25 @@ function MemberCard({
 /* ------------------------------------------------------------------ */
 /* Edit member permissions                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * How many of a member's personal tokens and AI agents reach this team. A
+ * number, never a credential: the lever is the member's permissions, not the
+ * token.
+ */
+function TokenCountBadge({ member }: { member: MemberDTO }) {
+  if (member.tokenCount === 0) return null;
+  const tokens = `${member.tokenCount} token${member.tokenCount === 1 ? "" : "s"}`;
+  const agents = member.agentCount
+    ? ` · ${member.agentCount} agent${member.agentCount === 1 ? "" : "s"}`
+    : "";
+  return (
+    <SimpleTooltip content="Personal API tokens of theirs that can act in this team. Remove the member, or take away their API tokens or AI agents permission, to cut them off.">
+      <Badge variant="outline" className="gap-1">
+        <KeyRound className="size-3" />
+        {tokens}
+        {agents}
+      </Badge>
+    </SimpleTooltip>
+  );
+}

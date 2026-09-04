@@ -166,9 +166,8 @@ test("a database gets Cron jobs on the same rule", () => {
 });
 
 test("MCP Server is offered to either capability that opens half of it", () => {
-  // Two different people have work to do there: `manage_mcp` owns the team switch and
-  // approving a web connector, `manage_tokens` owns minting the credential a terminal
-  // agent connects with.
+  // Two different people have work to do there: `manage_mcp` connects their own
+  // agent, `manage_team` owns the team's switch.
   const mcp = SETTINGS_NAV.flatMap((s) => s.items).find(
     (i) => i.href === "/settings/mcp",
   );
@@ -180,7 +179,7 @@ test("MCP Server is offered to either capability that opens half of it", () => {
   );
   assert.deepEqual(mcp.requiresAny?.slice().sort(), [
     "manage_mcp",
-    "manage_tokens",
+    "manage_team",
   ]);
 });
 

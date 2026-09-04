@@ -643,24 +643,139 @@ test("X-Deplo-Team cannot move an OAuth connection to a team it was not granted"
   );
 });
 
-test("a connection whose scope names two teams still resolves in the one it was approved for", async () => {
-  // The repair for grants minted before the mint was fixed. Without a hint the
-  // fallback is `reachable[0]`, the OLDEST team the approver belongs to, so a
-  // connection approved in TEAM_A would act in whichever team happens to sort first.
-  const conn = await connect(["view"]);
-  await pg.query(`update teams set created_at = $1 where id = $2`, [
-    "2020-01-01T00:00:00.000Z",
+test("list_teams names every team, and says why one is off limits", async () => {
+  const conn = await connect(["view"], [TEAM_A, TEAM_B]);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [
     TEAM_B,
   ]);
-  await pg.query(
-    `insert into api_token_teams (token_id, team_id) values ($1, $2)`,
-    [conn.tokenId, TEAM_B],
+  const res = await mcp(conn.accessToken, { tool: "list_teams" });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const teams = toolJson(res.body).mcpTeams as {
+    id: string;
+    mcpEnabled: boolean;
+    canConnect: boolean;
+  }[];
+  assert.deepEqual(
+    teams.map((t) => [t.id, t.mcpEnabled, t.canConnect]).sort(),
+    [
+      [TEAM_A, true, true],
+      [TEAM_B, false, true],
+    ],
   );
+});
+
+test("the team argument is advertised on every tool, even with one team in reach", async () => {
+  // The whole reason an agent once said it "had no way to change team".
+  const conn = await connect(["view"], [TEAM_A]);
+  const res = await POST(
+    new Request(RESOURCE, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-method": "tools/list",
+        authorization: `Bearer ${conn.accessToken}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {
+          _meta: {
+            [PROTOCOL_VERSION_META_KEY]: "2026-07-28",
+            [CLIENT_CAPABILITIES_META_KEY]: {},
+          },
+        },
+      }),
+    }),
+  );
+  const text = await res.text();
+  const payload = text.startsWith("data:")
+    ? text.slice(text.indexOf("data:") + 5).split("\n")[0]
+    : text;
+  const body = JSON.parse(payload) as {
+    result: { tools: { name: string; inputSchema: { properties?: object } }[] };
+  };
+  const whoami = body.result.tools.find((t) => t.name === "whoami");
+  assert.ok(whoami, "whoami missing");
+  assert.ok(
+    "team" in (whoami.inputSchema.properties ?? {}),
+    "the team argument is not advertised",
+  );
+  assert.ok(
+    body.result.tools.some((t) => t.name === "list_teams"),
+    "list_teams missing",
+  );
+});
+
+test("a team where the owner may not connect agents refuses, and names the permission", async () => {
+  const conn = await connect(["view"], [TEAM_A, TEAM_B]);
+  await pg.query(
+    `delete from membership_capabilities where membership_id = 'mem_user_1_b' and capability = 'manage_mcp'`,
+  );
+  const there = await mcp(conn.accessToken, { toolArgs: { team: "beta" } });
+  const body = JSON.stringify(there.body);
+  assert.match(body, /Connect AI agents/, body);
+  assert.ok(
+    !body.includes(`"id":"${TEAM_B}"`),
+    "it answered about the team anyway",
+  );
+});
+
+test("losing manage_mcp in the default team lands the connection in a usable one", async () => {
+  const conn = await connect(["view"], [TEAM_A, TEAM_B]);
+  await pg.query(
+    `delete from membership_capabilities where membership_id = 'mem_user_1' and capability = 'manage_mcp'`,
+  );
+  // No team asked for: the door moves to the one that still allows it.
   const res = await mcp(conn.accessToken);
   assert.equal(res.status, 200, JSON.stringify(res.body));
-  // On the resolved team, not the whole blob: `whoami` also returns `myTeams`,
-  // which legitimately lists every team the scope names.
-  assert.equal(toolJson(res.body).viewerTeam?.id, TEAM_A);
+  assert.equal(toolJson(res.body).viewerTeam?.id, TEAM_B);
+  // Asked for explicitly, the refusal names the permission and the way out.
+  const asked = await mcp(conn.accessToken, { team: "alpha" });
+  assert.equal(asked.status, 403);
+  assert.match(String(asked.body.error), /Connect AI agents/);
+  assert.match(String(asked.body.error), /can act in: beta/);
+});
+
+test("losing manage_mcp everywhere refuses the door outright", async () => {
+  const { raw } = await mintToken(["view"]);
+  await pg.query(
+    `delete from membership_capabilities where capability = 'manage_mcp'`,
+  );
+  const res = await mcp(raw);
+  assert.equal(res.status, 403);
+  assert.match(String(res.body.error), /Connect AI agents/);
+  // The same credential still drives the GraphQL API: `manage_mcp` gates
+  // agents, not tokens.
+  const ctx = await buildContext(
+    new Request("https://deplo.test/api/graphql", {
+      headers: { authorization: `Bearer ${raw}` },
+    }),
+  );
+  assert.equal(ctx.teamId, TEAM_A);
+});
+
+test("losing manage_tokens narrows the connection to the teams that still allow it", async () => {
+  const conn = await connect(["view"], [TEAM_A, TEAM_B]);
+  await pg.query(
+    `delete from membership_capabilities where membership_id = 'mem_user_1' and capability = 'manage_tokens'`,
+  );
+  // The header keeps its documented lenient fallback (ADR-0022 §3)...
+  const viaHeader = await mcp(conn.accessToken, { team: "alpha" });
+  assert.equal(viaHeader.status, 200, JSON.stringify(viaHeader.body));
+  assert.equal(toolJson(viaHeader.body).viewerTeam?.id, TEAM_B);
+  // ...and the tool argument is strict: an unreachable team is a refusal.
+  const viaArg = await mcp(conn.accessToken, { toolArgs: { team: "alpha" } });
+  assert.match(JSON.stringify(viaArg.body), /no access to the team/i);
+  // list_teams no longer names it at all.
+  const teams = toolJson(
+    (await mcp(conn.accessToken, { tool: "list_teams" })).body,
+  ).mcpTeams as { id: string }[];
+  assert.deepEqual(
+    teams.map((t) => t.id),
+    [TEAM_B],
+  );
 });
 
 test("a tool works in another GRANTED team when the call names it", async () => {
