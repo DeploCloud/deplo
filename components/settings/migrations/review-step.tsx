@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  ArrowRight,
   Layers,
   Loader2,
   Server as ServerIcon,
@@ -10,6 +11,7 @@ import {
 
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -280,9 +282,29 @@ function usePortConflicts({
 /* Step 2 - review                                                    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * One team of the list when several come over at once: what its token read, and
+ * the Deplo team it lands in - one that exists, or one made for it at Start.
+ */
+export interface ReviewGroup {
+  key: string;
+  team: { name: string; avatarUrl: string | null };
+  landsIn: { name: string; avatarUrl: string | null; isNew: boolean };
+  plan: Plan;
+}
+
+/** Every team's projects as one plan, which is what the port check reads. */
+function mergedPlan(groups: ReviewGroup[]): Plan {
+  return {
+    ...groups[0].plan,
+    projects: groups.flatMap((g) => g.plan.projects),
+  };
+}
+
 export function ReviewStep({
   kind,
   plan,
+  groups = null,
   teamId,
   teamName,
   teamAvatarUrl,
@@ -304,6 +326,9 @@ export function ReviewStep({
   /** Which panel the plan was read from. */
   kind: SourceKind | null;
   plan: Plan;
+  /** Several teams at once, each with its own list and its own landing team.
+   *  Then `plan` is only the first of them, and nothing is re-targeted here. */
+  groups?: ReviewGroup[] | null;
   /** The active team, named in the card at the top: everything lands there. */
   teamId: string;
   teamName: string;
@@ -331,15 +356,20 @@ export function ReviewStep({
 }) {
   const [newTeamOpen, setNewTeamOpen] = React.useState(false);
   const [pickTeamOpen, setPickTeamOpen] = React.useState(false);
+  const bulk = groups != null && groups.length > 1;
+  const all = React.useMemo(
+    () => (bulk ? mergedPlan(groups) : plan),
+    [bulk, groups, plan],
+  );
   const ports = usePortConflicts({
-    plan,
+    plan: all,
     placements,
     setPlacements,
     chosen,
     servers,
     enabled: canExposePorts,
   });
-  const pickable = plan.projects.flatMap((p) => importableOf(p));
+  const pickable = all.projects.flatMap((p) => importableOf(p));
   const allChosen = pickable.length > 0 && chosen.size === pickable.length;
   // The confirm names them, in a tooltip. A search box above the tree filters
   // what you SEE and not what is ticked, so a count alone let somebody stop
@@ -381,12 +411,75 @@ export function ReviewStep({
           title="No server to deploy to"
           description="Add a server under Settings, Servers before migrating."
         />
-      ) : plan.projects.length === 0 ? (
+      ) : all.projects.length === 0 ? (
         <EmptyState
           icon={Layers}
           title="Nothing to bring over"
           description={`That ${copyFor(kind).name} has no projects, or the token cannot see them.`}
         />
+      ) : bulk ? (
+        // One section per team, each under the name it has over there and the
+        // team it lands in here - so two lists never read as one.
+        <div className="space-y-4">
+          {groups.map((g) => {
+            const own = g.plan.projects.flatMap((p) => importableOf(p));
+            const ownAll =
+              own.length > 0 && own.every((s) => chosen.has(s.sourceId));
+            return (
+              <section
+                key={g.key}
+                className="space-y-3 rounded-lg border border-border p-3"
+              >
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <TeamAvatar
+                    name={g.team.name}
+                    avatarUrl={g.team.avatarUrl}
+                    size="sm"
+                  />
+                  <span className="font-medium">{g.team.name}</span>
+                  <span className="text-muted-foreground">
+                    on {copyFor(kind).name}
+                  </span>
+                  <ArrowRight className="size-3.5 text-muted-foreground" />
+                  <TeamAvatar
+                    name={g.landsIn.name}
+                    avatarUrl={g.landsIn.avatarUrl}
+                    size="sm"
+                  />
+                  <span className="font-medium">{g.landsIn.name}</span>
+                  {g.landsIn.isNew && (
+                    <Badge variant="secondary">New team</Badge>
+                  )}
+                </div>
+                {g.plan.projects.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nothing to bring over from this team.
+                  </p>
+                ) : (
+                  <MigrationTree
+                    projects={g.plan.projects}
+                    chosen={chosen}
+                    onChange={setChosen}
+                    servers={servers}
+                    buildServers={buildServers}
+                    placements={placements}
+                    onPlacementsChange={setPlacements}
+                    portConflicts={ports.conflicts}
+                    showPorts={canExposePorts}
+                    allChosen={ownAll}
+                    onToggleAll={() => {
+                      const next = new Set(chosen);
+                      for (const s of own)
+                        if (ownAll) next.delete(s.sourceId);
+                        else next.add(s.sourceId);
+                      setChosen(next);
+                    }}
+                  />
+                )}
+              </section>
+            );
+          })}
+        </div>
       ) : (
         <div
           className={cn(
@@ -421,42 +514,49 @@ export function ReviewStep({
        * you have seen the list - not a card to read past on the way to it.
        */}
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
-          <TeamTargetGraphic />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 text-sm font-medium">
-              Everything lands in
-              <TeamAvatar name={teamName} avatarUrl={teamAvatarUrl} size="sm" />
-              {teamName}
+        {/* Several teams say where each lands on its own section above. */}
+        {!bulk && (
+          <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
+            <TeamTargetGraphic />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                Everything lands in
+                <TeamAvatar
+                  name={teamName}
+                  avatarUrl={teamAvatarUrl}
+                  size="sm"
+                />
+                {teamName}
+              </div>
+              {retargeting ? (
+                <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Re-checking what is already there
+                </p>
+              ) : retargetError ? (
+                <p className="mt-1 flex items-start gap-1.5 text-sm text-warning">
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                  <span className="min-w-0 text-muted-foreground">
+                    {retargetError} What is marked &ldquo;Already here&rdquo;
+                    below is another team&rsquo;s answer - pick this team again
+                    to re-check.
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Apps, databases and the variables that go with them.
+                </p>
+              )}
             </div>
-            {retargeting ? (
-              <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin" />
-                Re-checking what is already there
-              </p>
-            ) : retargetError ? (
-              <p className="mt-1 flex items-start gap-1.5 text-sm text-warning">
-                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                <span className="min-w-0 text-muted-foreground">
-                  {retargetError} What is marked &ldquo;Already here&rdquo;
-                  below is another team&rsquo;s answer - pick this team again to
-                  re-check.
-                </span>
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground">
-                Apps, databases and the variables that go with them.
-              </p>
-            )}
+            <Button
+              variant="secondary"
+              disabled={retargeting}
+              onClick={() => setPickTeamOpen(true)}
+            >
+              Select another
+            </Button>
           </div>
-          <Button
-            variant="secondary"
-            disabled={retargeting}
-            onClick={() => setPickTeamOpen(true)}
-          >
-            Select another
-          </Button>
-        </div>
+        )}
 
         {/**
          * The one consequence worth stopping on, in its own small card right under the
@@ -515,7 +615,7 @@ export function ReviewStep({
             retargeting
           }
         >
-          Start migration
+          {bulk ? `Migrate ${groups.length} teams` : "Start migration"}
         </Button>
       </div>
     </StepShell>

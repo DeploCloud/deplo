@@ -43,8 +43,8 @@ import {
   type SourceKind,
 } from "./sources";
 import { RemoveMigrationSources } from "./remove-sources";
-import { ReviewStep } from "./review-step";
-import { PeopleStep } from "./people-step";
+import { ReviewStep, type ReviewGroup } from "./review-step";
+import { PeopleStep, type PeopleGroup } from "./people-step";
 import { MigrationConsole } from "./migration-console";
 import { StepShell } from "./step-shell";
 import { ChooseStep } from "./choose-step";
@@ -229,6 +229,15 @@ const SCAN = /* GraphQL */ `
 const STOP = /* GraphQL */ `
   mutation StopMigration($runId: String!) {
     stopMigration(runId: $runId)
+  }
+`;
+
+/** A team of its own for a team of the list, named as it was over there. */
+const CREATE_TEAM = /* GraphQL */ `
+  mutation CreateMigrationTeam($name: String!) {
+    createTeam(name: $name) {
+      id
+    }
   }
 `;
 
@@ -534,6 +543,26 @@ export function MigrationWizard({
   const [panelTeams, setPanelTeams] = React.useState<string[] | null>(null);
   /** The queued team waiting for a Deplo team of its own to be created. */
   const [pendingTeam, setPendingTeam] = React.useState<number | null>(null);
+  /**
+   * Several teams at once. Each team's plan by its place on the list, and what
+   * its run left behind - the run, the Deplo team it landed in, its report -
+   * so one Review shows every list and one People step hands out every link.
+   */
+  const [teamPlans, setTeamPlans] = React.useState<Record<number, Plan>>({});
+  const [teamRuns, setTeamRuns] = React.useState<
+    Record<number, { runId: string; teamId: string; report: RunReport }>
+  >({});
+  const [teamInvites, setTeamInvites] = React.useState<
+    Record<number, Invite[] | null>
+  >({});
+  const [teamLinks, setTeamLinks] = React.useState<
+    Record<number, string | null>
+  >({});
+  const [mintingFor, setMintingFor] = React.useState<number | null>(null);
+  const bulk = queue.length > 1;
+  /** The plan the last scan read: a run started right after a re-read must not
+   *  start from the plan the state still holds. */
+  const latestPlan = React.useRef<Plan | null>(null);
   const [plan, setPlan] = React.useState<Plan | null>(null);
   /** Pinned by the person after a scan that could not identify the panel. */
   const [forcedKind, setForcedKind] = React.useState<SourceKind | null>(
@@ -652,7 +681,7 @@ export function MigrationWizard({
 
   /** Read the panel with ONE team's key. Every scan goes through here: the form's,
    *  the queue's next team, and the re-read a change of target team needs. */
-  async function scanWith(key: string): Promise<Plan | null> {
+  async function scanWith(key: string, stay = false): Promise<Plan | null> {
     setScanning(true);
     setScanError(null);
     const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
@@ -673,7 +702,9 @@ export function MigrationWizard({
     if (!res.data) return null;
     const scanned = res.data;
     setPlan(scanned);
+    latestPlan.current = scanned;
     if (scanned.otherTeams) setPanelTeams(scanned.otherTeams);
+    if (stay) return scanned;
     setChosen(defaultChoice(scanned));
     const defaults = landingDefaults(scanned, servers);
     setPlacements(defaults.placements);
@@ -686,12 +717,53 @@ export function MigrationWizard({
   }
 
   /**
+   * Every team of the list in one go: each token read, every list on one Review,
+   * and nothing to come back to Connect for. The re-read a team's own landing
+   * needs happens right before its run (see `runBulk`).
+   */
+  async function scanAll() {
+    setScanning(true);
+    setScanError(null);
+    const plans: Record<number, Plan> = {};
+    for (const [i, team] of queue.entries()) {
+      if (team.status !== "waiting") continue;
+      const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
+        SCAN,
+        { input: { url, apiKey: team.apiKey, kind: forcedKind } },
+        (d) => d.scanMigrationSource,
+      );
+      if (!res.ok || !res.data) {
+        setScanning(false);
+        setScanError(
+          `${team.name}: ${res.ok ? "Deplo could not read the panel." : res.error}`,
+        );
+        return;
+      }
+      plans[i] = res.data;
+    }
+    setScanning(false);
+    const all = Object.values(plans);
+    if (all.length === 0) return;
+    setTeamPlans(plans);
+    setPlan(all[0]);
+    latestPlan.current = all[0];
+    if (all[0].otherTeams) setPanelTeams(all[0].otherTeams);
+    setChosen(new Set(all.flatMap((p) => [...defaultChoice(p)])));
+    const defaults = all.map((p) => landingDefaults(p, servers));
+    setPlacements(Object.assign({}, ...defaults.map((d) => d.placements)));
+    setServerMap(Object.assign({}, ...defaults.map((d) => d.servers)));
+    setAt(Math.max(0, Number(Object.keys(plans)[0])));
+    setStep("install");
+  }
+
+  /**
    * The one button at the bottom of Connect, which does the one thing left to do:
    * add the token that is typed, or start on the list once there is one.
    */
   async function submitConnect(e: React.FormEvent) {
     e.preventDefault();
     if (apiKey.trim() && queue.length > 0) return identifyAndAdd();
+    if (queue.length > 1) return scanAll();
     if (queue.length > 0)
       return goToTeam(
         Math.max(
@@ -795,6 +867,7 @@ export function MigrationWizard({
       }
       if (!again.data) return "Deplo could not read the panel again.";
       setPlan(again.data);
+      latestPlan.current = again.data;
       // Nothing ticked means this plan is NEW to the wizard - the next team of the
       // queue arriving, not a re-read of the one on screen - so it gets the same
       // default a first scan gives.
@@ -815,11 +888,15 @@ export function MigrationWizard({
   /**
    * Hand the whole thing to the control plane and stop being the driver.
    */
-  async function runImport() {
+  async function runImport(
+    opts: { from?: Plan | null; fresh?: boolean; keepSources?: boolean } = {},
+  ) {
+    const from = opts.from ?? plan;
     // A run this tab already holds is never started twice: the server refuses it
-    // as somebody else's, which is what the second press used to produce.
-    if (!plan || running || runId) return;
-    const targets = plan.projects.flatMap((p) =>
+    // as somebody else's, which is what the second press used to produce. `fresh`
+    // is the bulk chain, which has just put the last run's id away itself.
+    if (!from || running || (runId && !opts.fresh)) return;
+    const targets = from.projects.flatMap((p) =>
       importableOf(p)
         .filter((svc) => chosen.has(svc.sourceId))
         .map((svc) => ({
@@ -849,7 +926,7 @@ export function MigrationWizard({
       START,
       {
         input: connectInput,
-        orgName: plan.orgName,
+        orgName: from.orgName,
         targets,
         servers: Object.entries(landing.servers)
           .filter(([, to]) => to)
@@ -857,7 +934,7 @@ export function MigrationWizard({
         // Another team of this panel is queued behind this run, so it must leave
         // Deplo's agents on the source machines: the next one reads the same
         // disks. It also holds the takeover until the list is done.
-        keepSources: teamsLeft > 0,
+        keepSources: opts.keepSources ?? teamsLeft > 0,
       },
       (d) => d.startMigration,
     );
@@ -877,6 +954,52 @@ export function MigrationWizard({
     // it. Holding it after handing it over is a copy nobody remembers exists.
     setApiKey("");
   }
+
+  /**
+   * Team `i` of the list, and then the next, with nobody pressing anything in
+   * between: the Deplo team it lands in is made when there is none, the panel is
+   * read again under it, and its run starts. `settleFinished` calls this again
+   * for the team after, and shows one report when the last one has landed.
+   */
+  async function runBulk(i: number) {
+    const team = queue[i];
+    if (!team) return;
+    if (team.status !== "waiting") return runBulk(i + 1);
+    setAt(i);
+    setRunId(null);
+    setAdoptedId(null);
+    setReport(null);
+    let home = homeFor(team);
+    if (!home && team.name) {
+      const made = await gqlAction<{ createTeam: { id: string } }, string>(
+        CREATE_TEAM,
+        { name: team.name },
+        (d) => d.createTeam.id,
+      );
+      if (!made.ok || !made.data)
+        return toast.error(
+          made.ok ? "Deplo could not create the team." : made.error,
+        );
+      home = made.data;
+    }
+    if (home && home !== targetTeamId) {
+      const failed = await retargetTeam(home, team.apiKey);
+      if (failed) return toast.error(failed);
+    } else if (!(await scanWith(team.apiKey, true))) return;
+    await runImport({
+      from: latestPlan.current,
+      fresh: true,
+      keepSources: queue.some((q, j) => j > i && q.status === "waiting"),
+    });
+  }
+  const runBulkRef = React.useRef(runBulk);
+  runBulkRef.current = runBulk;
+  const bulkRef = React.useRef(bulk);
+  bulkRef.current = bulk;
+  const queueRef = React.useRef(queue);
+  queueRef.current = queue;
+  const targetTeamRef = React.useRef(targetTeamId);
+  targetTeamRef.current = targetTeamId;
 
   /**
    * Everything ONE team chose. Which teams are still to come is not one team's,
@@ -1030,10 +1153,27 @@ export function MigrationWizard({
         q.map((e, i) => (i === at ? { ...e, status: outcome } : e)),
       );
       if (res.data.status === "done") {
+        const { created, skipped, failed, manual } = res.data;
+        const landed = { created, skipped, failed, manual };
+        // Several teams: this one is written down, and the next starts on its
+        // own. Only the last one's landing opens the report.
+        if (bulkRef.current) {
+          setTeamRuns((prev) => ({
+            ...prev,
+            [at]: { runId: id, teamId: targetTeamRef.current, report: landed },
+          }));
+          const next = queueRef.current.findIndex(
+            (q, j) => j > at && q.status === "waiting",
+          );
+          if (next !== -1) {
+            await gqlAction(DISMISS, { runId: id });
+            void runBulkRef.current(next);
+            return;
+          }
+        }
         // The step does NOT move: the report IS this step's finished state, and
         // the way on is the person acknowledging it (see `acknowledgeReport`).
-        const { created, skipped, failed, manual } = res.data;
-        setReport({ created, skipped, failed, manual });
+        setReport(landed);
         setStep("review");
         return;
       }
@@ -1061,6 +1201,135 @@ export function MigrationWizard({
   }
 
   /* ---- step: people ------------------------------------------------ */
+
+  /**
+   * One team of the list. Its invites are minted in ITS Deplo team, where its
+   * run lives, so the active team is switched there first - and one team at a
+   * time, because two switches in flight would mint one team's links in the
+   * other's.
+   */
+  const inviteChain = React.useRef(Promise.resolve());
+  function inviteFor(i: number) {
+    inviteChain.current = inviteChain.current.then(async () => {
+      const run = teamRuns[i];
+      const team = queue[i];
+      if (!run || !team) return;
+      setInviting(true);
+      const switched = await gqlAction(SWITCH_TEAM, { teamId: run.teamId });
+      const res = switched.ok
+        ? await gqlAction<{ importMigrationMembers: Invite[] }, Invite[]>(
+            IMPORT_MEMBERS,
+            {
+              input: { url, apiKey: team.apiKey, kind: plan?.platform ?? null },
+              runId: run.runId,
+            },
+            (d) => d.importMigrationMembers,
+          )
+        : switched;
+      setInviting(false);
+      if (!res.ok) {
+        toast.error(`${team.name}: ${res.error}`);
+        return;
+      }
+      setTeamInvites((prev) => ({ ...prev, [i]: res.data ?? [] }));
+      router.refresh();
+    });
+  }
+
+  async function mintLinkFor(i: number) {
+    const run = teamRuns[i];
+    if (!run) return;
+    setMintingFor(i);
+    const res = await gqlAction<{ mintRegistrationLink: string }, string>(
+      MINT_LINK,
+      {
+        input: {
+          mode: "existing_teams",
+          teamAssignments: [{ teamId: run.teamId, role: "member" }],
+        },
+      },
+      (d) => d.mintRegistrationLink,
+    );
+    setMintingFor(null);
+    if (!res.ok) return toast.error(res.error);
+    setTeamLinks((prev) => ({ ...prev, [i]: res.data ?? null }));
+    router.refresh();
+  }
+
+  /** Where each team of the list lands, as the Review names it. */
+  const reviewGroups: ReviewGroup[] = bulk
+    ? queue.flatMap((q, i) => {
+        const p = teamPlans[i];
+        if (!p) return [];
+        const home = targetTeams.find((t) => sameTeamName(t.name, q.name));
+        return [
+          {
+            key: String(i),
+            team: { name: q.name, avatarUrl: q.avatarUrl },
+            landsIn: home
+              ? { name: home.name, avatarUrl: home.avatarUrl, isNew: false }
+              : { name: q.name, avatarUrl: q.avatarUrl, isNew: true },
+            plan: p,
+          },
+        ];
+      })
+    : [];
+
+  const peopleGroups: PeopleGroup[] = bulk
+    ? queue.flatMap((q, i) => {
+        const p = teamPlans[i];
+        if (!p || !teamRuns[i]) return [];
+        return [
+          {
+            key: String(i),
+            team: { name: q.name, avatarUrl: q.avatarUrl },
+            people: p.members.filter((m) => !m.inTeam),
+            invites: teamInvites[i] ?? null,
+            canInvite: true,
+            onInvite: () => inviteFor(i),
+            inviteLink: teamLinks[i] ?? null,
+            minting: mintingFor === i,
+            onMintLink: () => void mintLinkFor(i),
+          },
+        ];
+      })
+    : [
+        {
+          key: "0",
+          team: { name: teamName, avatarUrl: teamAvatarUrl },
+          people: (plan?.members ?? []).filter((m) => !m.inTeam),
+          invites,
+          canInvite: runId != null,
+          onInvite: inviteMembers,
+          inviteLink,
+          minting,
+          onMintLink: () => void mintInviteLink(),
+        },
+      ];
+
+  /** Every team's landing, for the one report at the end. */
+  const teamReports = bulk
+    ? queue.flatMap((q, i) =>
+        teamRuns[i]
+          ? [
+              {
+                name: q.name,
+                avatarUrl: q.avatarUrl,
+                report: teamRuns[i].report,
+              },
+            ]
+          : [],
+      )
+    : [];
+  const totals = teamReports.reduce(
+    (sum, t) => ({
+      created: sum.created + t.report.created,
+      skipped: sum.skipped + t.report.skipped,
+      failed: sum.failed + t.report.failed,
+      manual: sum.manual + t.report.manual,
+    }),
+    { created: 0, skipped: 0, failed: 0, manual: 0 },
+  );
 
   async function inviteMembers() {
     if (!runId) return;
@@ -1475,11 +1744,14 @@ export function MigrationWizard({
                 report && (
                   <ReportCard
                     kind={kind}
-                    report={report}
+                    report={bulk && teamReports.length > 0 ? totals : report}
+                    teams={bulk ? teamReports : null}
                     teamNo={at + 1}
                     teamCount={queue.length}
                     nextName={
-                      teamsLeft > 0 ? (queue[at + 1]?.name ?? "") : null
+                      !bulk && teamsLeft > 0
+                        ? (queue[at + 1]?.name ?? "")
+                        : null
                     }
                     onNext={() => void nextTeam()}
                     uncovered={uncovered}
@@ -1518,6 +1790,7 @@ export function MigrationWizard({
                   <ReviewStep
                     kind={kind}
                     plan={plan}
+                    groups={bulk ? reviewGroups : null}
                     teamId={targetTeamId}
                     teamName={teamName}
                     teamAvatarUrl={teamAvatarUrl}
@@ -1534,21 +1807,15 @@ export function MigrationWizard({
                     canExposePorts={canExposePorts}
                     isInstanceAdmin={isInstanceAdmin}
                     onBack={() => setStep("install")}
-                    onStart={() => void runImport()}
+                    onStart={() => void (bulk ? runBulk(0) : runImport())}
                   />
                 ) : null)}
 
               {!takenOver && step === "people" && (
                 <PeopleStep
                   kind={kind}
-                  people={(plan?.members ?? []).filter((m) => !m.inTeam)}
-                  invites={invites}
+                  groups={peopleGroups}
                   inviting={inviting}
-                  onInvite={inviteMembers}
-                  canInvitePeople={runId != null}
-                  inviteLink={inviteLink}
-                  minting={minting}
-                  onMintLink={() => void mintInviteLink()}
                   onContinue={() => setStep(isTakeover ? "takeover" : "done")}
                 />
               )}
@@ -2093,6 +2360,7 @@ function ElapsedLine({
 function ReportCard({
   kind,
   report,
+  teams = null,
   teamNo,
   teamCount,
   nextName,
@@ -2105,6 +2373,10 @@ function ReportCard({
 }: {
   kind: SourceKind | null;
   report: RunReport;
+  /** Several teams landed in one go: each one's numbers, under its name. Then
+   *  `report` is their sum. */
+  teams?:
+    { name: string; avatarUrl: string | null; report: RunReport }[] | null;
   /** Which team of the list this was, and how many there are. */
   teamNo: number;
   teamCount: number;
@@ -2149,6 +2421,26 @@ function ReportCard({
           <Badge variant="destructive">{report.failed} failed</Badge>
         )}
       </div>
+      {teams && teams.length > 1 && (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {teams.map((t) => (
+            <li
+              key={t.name}
+              className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"
+            >
+              <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="sm" />
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {t.name}
+              </span>
+              <span className="text-muted-foreground">
+                {t.report.created} created
+                {t.report.manual > 0 ? `, ${t.report.manual} need you` : ""}
+                {t.report.failed > 0 ? `, ${t.report.failed} failed` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* The acknowledgement's other half: the button says "I understand", so
           this has to say what there is to understand. */}
