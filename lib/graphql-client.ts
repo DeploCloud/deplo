@@ -156,6 +156,7 @@ export function gqlSubscribe<TData = unknown>(
   variables: Record<string, unknown> | undefined,
   onData: (data: TData) => void,
   onError?: (error: Error) => void,
+  opts?: Pick<GqlOptions, "teamId">,
 ): () => void {
   const controller = new AbortController();
   let closed = false;
@@ -168,7 +169,7 @@ export function gqlSubscribe<TData = unknown>(
         headers: {
           "content-type": "application/json",
           accept: "text/event-stream",
-          ...teamHeader(),
+          ...teamHeader(opts?.teamId),
         },
         body: JSON.stringify({ query, variables }),
         credentials: "same-origin",

@@ -48,7 +48,7 @@ export function assertNotMigrating(
   if (!migrationRunId || inMigration()) return;
   throw new Error(
     `${name} is still being brought over by a migration. Wait for it to finish, ` +
-      `or stop it from Settings → Migrations - until then this ${what} is the ` +
+      `or stop it from Settings → System → Migrations - until then this ${what} is the ` +
       `migration's to write.`,
   );
 }

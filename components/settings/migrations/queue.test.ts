@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   addTeam,
+  defaultTarget,
+  retarget,
   teamsAfter,
   uncoveredTeams,
   type QueuedTeam,
@@ -18,8 +20,13 @@ const team = (over: Partial<SourceTeam> = {}): SourceTeam => ({
   ...over,
 });
 
-const added = (q: QueuedTeam[], t: SourceTeam, key: string): QueuedTeam[] => {
-  const res = addTeam(q, t, key);
+const added = (
+  q: QueuedTeam[],
+  t: SourceTeam,
+  key: string,
+  teams: { id: string; name: string }[] = [],
+): QueuedTeam[] => {
+  const res = addTeam(q, t, key, teams);
   assert.equal(res.error, null);
   return res.queue ?? [];
 };
@@ -32,9 +39,41 @@ test("a token becomes a team on the list", () => {
       sourceTeamId: "1",
       name: "Acme Corp",
       avatarUrl: null,
+      target: { kind: "new" },
       status: "waiting",
     },
   ]);
+});
+
+// Where a source team lands unless somebody says otherwise: the team here of
+// the same name, else one made for it - the separation they had over there.
+test("a source team lands in its namesake, else in a team of its own", () => {
+  const teams = [
+    { id: "team_1", name: "Acme Corp" },
+    { id: "team_2", name: "Ops" },
+  ];
+  assert.deepEqual(defaultTarget("acme corp ", teams), {
+    kind: "existing",
+    teamId: "team_1",
+  });
+  assert.deepEqual(defaultTarget("Marketing", teams), { kind: "new" });
+  assert.deepEqual(defaultTarget("", teams), { kind: "new" });
+  // The default rides onto the row.
+  const q = added([], team(), "tok-a", teams);
+  assert.deepEqual(q[0]?.target, { kind: "existing", teamId: "team_1" });
+  // A team the panel would not name is "that team" here, which is nobody's namesake.
+  const nameless = added([], team({ teamId: null, teamName: null }), "tok-b", [
+    { id: "team_9", name: "that team" },
+  ]);
+  assert.deepEqual(nameless[0]?.target, { kind: "new" });
+});
+
+test("a row can be pointed somewhere else, and the rest stay put", () => {
+  const q = added(added([], team(), "tok-a"), team({ teamId: "2" }), "tok-b");
+  const next = retarget(q, 1, { kind: "existing", teamId: "team_7" });
+  assert.deepEqual(next[0]?.target, { kind: "new" });
+  assert.deepEqual(next[1]?.target, { kind: "existing", teamId: "team_7" });
+  assert.equal(next[1]?.apiKey, "tok-b");
 });
 
 // The row draws the panel's own picture for that team, so it has to survive the

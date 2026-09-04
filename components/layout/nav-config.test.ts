@@ -10,6 +10,7 @@ import {
   databaseSettingsNav,
   SETTINGS_NAV,
   type AppNavFlags,
+  isNonTeamSettings,
   sidebarMenuFor,
 } from "./nav-config";
 
@@ -220,5 +221,21 @@ test("System opens on Deplo, wearing the mark", () => {
   // mark, because SlidersHorizontal is the Advanced glyph everywhere else.
   assert.equal(system.items[0]?.href, "/settings/deplo");
   assert.equal(system.items[0]?.icon, DeploMark);
-  assert.equal(system.items[1]?.href, "/settings/servers");
+  assert.equal(system.items[1]?.href, "/settings/migrations");
+  assert.equal(system.items[2]?.href, "/settings/servers");
+});
+
+// A migration lands each source team in a team of the operator's choosing, so
+// it is the instance's page, not one team's: under System, admins only, and
+// without a team switcher that would suggest the page's team matters.
+test("Migrations is an instance page", () => {
+  const team = SETTINGS_NAV.find((s) => s.title === "Team");
+  assert.ok(!team?.items.some((i) => i.href === "/settings/migrations"));
+  const system = SETTINGS_NAV.find((s) => s.title === "System");
+  const migrations = system?.items.find(
+    (i) => i.href === "/settings/migrations",
+  );
+  assert.equal(migrations?.requiresAdmin, true);
+  assert.equal(migrations?.requires, undefined);
+  assert.equal(isNonTeamSettings("/settings/migrations"), true);
 });

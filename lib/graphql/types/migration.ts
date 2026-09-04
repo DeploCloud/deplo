@@ -653,7 +653,11 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
 builder.mutationFields((t) => ({
   identifyMigrationSource: t.field({
     type: SourceIdentityRef,
-    authScopes: { capability: "create_projects" },
+    // Reading the panel touches no team, so the instance's admins may from any
+    // page of theirs; landing in a team keeps its own gate.
+    authScopes: {
+      $any: { instanceAdmin: true, capability: "create_projects" },
+    },
     description:
       "WHICH team a token reads, without reading it all. A token covers one team of the panel, so bringing several over takes one token each, and this is what lets the wizard collect them without paying for a full scan per token. Refuses a token that cannot read values, exactly as the scan does. Writes nothing.",
     args: { input: t.arg({ type: ConnectInputRef, required: true }) },
@@ -666,16 +670,28 @@ builder.mutationFields((t) => ({
   }),
   scanMigrationSource: t.field({
     type: MigrationPlanRef,
-    authScopes: { capability: "create_projects" },
+    authScopes: {
+      $any: { instanceAdmin: true, capability: "create_projects" },
+    },
     description:
-      "Read a source panel and describe what an import would do. Works out which product it is when `kind` is omitted. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.",
-    args: { input: t.arg({ type: ConnectInputRef, required: true }) },
-    resolve: (_r, { input }) =>
-      scanMigrationSource({
-        url: input.url,
-        apiKey: input.apiKey,
-        kind: input.kind ?? undefined,
+      "Read a source panel and describe what an import would do. Works out which product it is when `kind` is omitted. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here. Answers about the request's team, which needs `create_projects` there - or, with `newTeam`, about a team not made yet, which an instance admin may ask from any team of theirs.",
+    args: {
+      input: t.arg({ type: ConnectInputRef, required: true }),
+      newTeam: t.arg.boolean({
+        required: false,
+        description:
+          "Describe the import into a team that does not exist yet: nothing counts as already here, and every hostname another team serves is another team's. Instance admins only; the wizard sends it for a source team it will land in a team made at Start.",
       }),
+    },
+    resolve: (_r, { input, newTeam }) =>
+      scanMigrationSource(
+        {
+          url: input.url,
+          apiKey: input.apiKey,
+          kind: input.kind ?? undefined,
+        },
+        { newTeam: newTeam ?? false },
+      ),
   }),
   beginMigration: t.field({
     type: "String",
@@ -885,7 +901,9 @@ builder.mutationFields((t) => ({
   }),
   abandonMigration: t.field({
     type: "Int",
-    authScopes: { capability: "create_projects" },
+    authScopes: {
+      $any: { instanceAdmin: true, capability: "create_projects" },
+    },
     description:
       "Leaving the wizard behind: take Deplo's agent back off the machines it registered to read, exactly the way finishing does. No-op while a run is in flight (it owns those agents) and after one whose volume copy failed (the bytes are still over there). Returns how many sources it is removing.",
     resolve: () => abandonMigration(),

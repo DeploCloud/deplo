@@ -69,6 +69,8 @@ import {
   beginMigration,
   dismissMigrationReport,
   resumableMigration,
+  resumableMigrationAnywhere,
+  listAllMigrationRuns,
   migrationMachines,
   setMigrationMachineAddress,
   drainMigrationSourceUninstalls,
@@ -391,6 +393,15 @@ beforeEach(async () => {
           "configure_apps",
         ],
       },
+      // An instance admin who is only a VIEWER of team A: the Migrations page
+      // is theirs (it is the instance's), the team is not.
+      {
+        id: USER_4,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view"],
+        isInstanceAdmin: true,
+      },
     ],
   });
   await seedServer(db);
@@ -406,6 +417,13 @@ beforeEach(async () => {
 const USER_2 = "user_2";
 /** A member who may migrate, holding neither host-volumes nor expose-ports. */
 const USER_3 = "user_3";
+/** An instance admin who is only a viewer of team A. */
+const USER_4 = "user_4";
+
+/** Run as the instance admin from team A's page, where they may not import. */
+function asViewerAdmin<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithIdentity({ userId: USER_4, teamId: TEAM_A }, fn);
+}
 
 /** Run as the seeded owner of team A, the way a resolver would. */
 function asOwner<T>(fn: () => Promise<T>): Promise<T> {
@@ -3240,3 +3258,139 @@ async function inBothTeams(
     })),
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* The instance's page                                                 */
+/* ------------------------------------------------------------------ */
+
+// Settings → System → Migrations is an admin's page, open from whichever team
+// they happen to be in. Reading the panel touches no team; landing in one does.
+test("an instance admin reads the panel from a team they cannot import into", async () => {
+  const who = await asViewerAdmin(() => identifyMigrationSource(CONNECT));
+  assert.equal(who.teamName, "Acme Inc");
+  // Nothing of theirs to take back, and no refusal either.
+  assert.equal(await asViewerAdmin(() => abandonMigration()), 0);
+  // Landing in THIS team is still this team's gate.
+  await assert.rejects(
+    () => asViewerAdmin(() => scanMigrationSource(CONNECT)),
+    /permission/i,
+  );
+  await assert.rejects(
+    () => asViewerAdmin(() => beginMigration({ url: URL_BASE })),
+    /permission/i,
+  );
+});
+
+// A source team that lands in a team made at Start is planned before that team
+// exists: nothing is there yet, and every hostname on the instance is somebody
+// else's - including the ones of the team the page is open in.
+test("the plan for a team not made yet counts nothing as already here", async () => {
+  await seedApp(db, { id: "prj_here", teamId: TEAM_A, slug: "blink-web" });
+  await db.insert(domainsTable).values({
+    id: "dom_here",
+    appId: "prj_here",
+    name: "blink.acme.test",
+    status: "valid",
+    isPrimary: true,
+    ssl: true,
+    source: "custom",
+    entrypoint: "websecure",
+    certProvider: "letsencrypt",
+    stripPrefix: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const into = await asOwner(() => scanMigrationSource(CONNECT));
+  const wasHere = into.projects.find((p) => p.sourceId === "dok-prj-blink")!;
+  assert.equal(wasHere.exists, true);
+  assert.doesNotMatch(
+    wasHere.environments[0].services[0].notes.join(" "),
+    /already routed by another team/,
+  );
+
+  const fresh = await asViewerAdmin(() =>
+    scanMigrationSource(CONNECT, { newTeam: true }),
+  );
+  const blink = fresh.projects.find((p) => p.sourceId === "dok-prj-blink")!;
+  assert.equal(blink.exists, false);
+  for (const env of blink.environments) {
+    assert.equal(env.exists, false);
+    for (const svc of env.services) assert.notEqual(svc.status, "exists");
+  }
+  assert.match(
+    blink.environments[0].services[0].notes.join(" "),
+    /already routed by another team/,
+  );
+});
+
+test("the instance's history lists every team's runs, with the team each landed in", async () => {
+  await inBothTeams("mem_1_b", USER_1, ["view", "create_projects"]);
+  const inA = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const inB = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    beginMigration({ url: URL_BASE }),
+  );
+
+  const all = await asOwner(() => listAllMigrationRuns());
+  assert.deepEqual(
+    all.map((r) => [r.id, r.teamId, r.teamSlug]).sort(),
+    [
+      [inA, TEAM_A, "alpha"],
+      [inB, TEAM_B, "beta"],
+    ].sort(),
+  );
+  // One team's own list is still one team's.
+  assert.deepEqual(
+    (await asOwner(() => listMigrationRuns())).map((r) => r.id),
+    [inA],
+  );
+  // Somebody who may migrate is not thereby shown the other teams' runs.
+  await assert.rejects(() => asMember(() => listAllMigrationRuns()), /admin/i);
+});
+
+test("the wizard opens on the run you left, whichever team it landed in", async () => {
+  await inBothTeams("mem_1_b", USER_1, ["view", "create_projects"]);
+  const inB = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    beginMigration({ url: URL_BASE }),
+  );
+
+  // From team A's page, where nothing is running.
+  assert.equal(await asOwner(() => resumableMigration()), null);
+  const open = await asOwner(() => resumableMigrationAnywhere());
+  assert.equal(open?.id, inB);
+  assert.equal(open?.teamId, TEAM_B);
+
+  await db.execute(
+    `update migration_runs set status = 'done' where id = '${inB}'`,
+  );
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    dismissMigrationReport(inB),
+  );
+  assert.equal(await asOwner(() => resumableMigrationAnywhere()), null);
+});
+
+// The machines are registered from the page's team, which the admin may only be
+// viewing; the run that reads them lands somewhere they may import.
+test("an instance admin moves the machines their page registered", async () => {
+  const { server: source } = await asViewerAdmin(() =>
+    addServer({
+      name: "dokploy-host",
+      host: "203.0.113.77",
+      importOnly: true,
+    }),
+  );
+  await inBothTeams("mem_4_b", USER_4, ["view", "create_projects"]);
+
+  const moved = await runWithIdentity({ userId: USER_4, teamId: TEAM_B }, () =>
+    handOverMigrationSources(TEAM_A),
+  );
+  assert.equal(moved, 1);
+  const grants = await db.execute(
+    `select team_id from server_teams where server_id = '${source.id}'`,
+  );
+  assert.deepEqual(
+    grants.rows.map((r) => r.team_id),
+    [TEAM_B],
+  );
+});

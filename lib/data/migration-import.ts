@@ -31,6 +31,7 @@ import {
   projects as projectsTable,
   serverTeams as serverTeamsTable,
   servers as serversTable,
+  teams as teamsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
@@ -39,12 +40,13 @@ import { lookup } from "node:dns/promises";
 import { mapLimit } from "../utils";
 import { sourceAgentReachable } from "./agent-reach";
 import { getCurrentUser } from "../auth";
-import { avatarResolver } from "../avatar";
+import { avatarResolver, teamAvatarUrl as deploTeamAvatarUrl } from "../avatar";
 import {
   canExposePorts,
   canMountHostVolumes,
   hasCapability,
   holdsTeamWideCapability,
+  isInstanceAdmin,
   requireActiveTeamId,
   requireCapability,
   requireInstanceAdmin,
@@ -298,6 +300,12 @@ export interface ImportItemDTO {
 
 export interface ImportRunDTO {
   id: string;
+  /** The team it landed in. Every call about the run names it, and the
+   *  instance-wide history shows it. */
+  teamId: string;
+  teamName: string;
+  teamSlug: string;
+  teamAvatarUrl: string | null;
   /** Which product this run read. */
   platform: MigrationPlatform;
   sourceUrl: string;
@@ -387,6 +395,17 @@ export async function assertImportGate(): Promise<{ teamId: string }> {
 }
 
 /**
+ * The gate for what touches no team's data - reading the panel, taking the
+ * wizard's agents back: the instance's page is an admin's, whatever their role
+ * in the team it happens to be open in. Landing in a team keeps {@link
+ * assertImportGate}.
+ */
+export async function assertPanelReadGate(): Promise<{ teamId: string }> {
+  if (await isInstanceAdmin()) return { teamId: await requireActiveTeamId() };
+  return assertImportGate();
+}
+
+/**
  * The teams a migration may land in: the viewer's own, minus the ones where they
  * do not hold `create_projects` across the WHOLE team - the same bar this page
  * itself is gated on, so switching into one never lands on "outside your access".
@@ -416,8 +435,12 @@ export async function handOverMigrationSources(
 ): Promise<number> {
   const { teamId } = await assertImportGate();
   if (fromTeamId === teamId) return 0;
-  // Prove the mover could use those machines BEFORE, not only where they land.
-  if (!(await holdsTeamWideCapability(fromTeamId, "create_projects")))
+  // Prove the mover could use those machines BEFORE, not only where they land -
+  // or is the admin whose instance page registered them.
+  if (
+    !(await holdsTeamWideCapability(fromTeamId, "create_projects")) &&
+    !(await isInstanceAdmin())
+  )
     throw new Error("You cannot move a migration source out of that team.");
   // A run in flight is reading their disks right now; they are not yours to move.
   if (await activeMigrationForTeam(fromTeamId))
@@ -643,7 +666,7 @@ export interface SourceIdentity {
 export async function identifyMigrationSource(
   input: ConnectInput,
 ): Promise<SourceIdentity> {
-  await assertImportGate();
+  await assertPanelReadGate();
   const c = await credentialFor(input);
   // The same refusal the scan opens with, one token earlier: a token that cannot
   // read values is worth catching while it is still one line in a list.
@@ -667,8 +690,13 @@ export async function identifyMigrationSource(
  */
 export async function scanMigrationSource(
   input: ConnectInput,
+  /** `newTeam`: the plan for a team that does not exist yet. Nothing is there
+   *  already, and every other team's hostname is somebody else's. */
+  opts: { newTeam?: boolean } = {},
 ): Promise<MigrationPlan> {
-  const { teamId } = await assertImportGate();
+  const { teamId } = opts.newTeam
+    ? await assertPanelReadGate()
+    : await assertImportGate();
   const c = await credentialFor(input);
   // Before anything is read in bulk: can this credential read at all? A panel that
   // hides values silently would produce a migration that looks like it worked.
@@ -683,10 +711,12 @@ export async function scanMigrationSource(
     sourceClient(c).listProjects(),
   ]);
 
-  const existing = await existingNames(teamId);
+  const existing = opts.newTeam ? nothingHere() : await existingNames(teamId);
   const mayMountHost = await canMountHostVolumes();
   const mayExposePorts = await canExposePorts();
-  const foreignHosts = await hostnamesOwnedElsewhere(teamId);
+  const foreignHosts = await hostnamesOwnedElsewhere(
+    opts.newTeam ? null : teamId,
+  );
 
   // Which source machines ARE Deplo servers, for the address note below. Read
   // once and lazily: the listing is a call to the panel.
@@ -1005,13 +1035,25 @@ function composeBlockers(
   return out;
 }
 
-/** Everything already in this team, by lowercase name, for the skip decision. */
-async function existingNames(teamId: string): Promise<{
+interface ExistingNames {
   projects: Map<string, string>;
   environments: Map<string, string>;
   apps: Map<string, string>;
   databases: Map<string, string>;
-}> {
+}
+
+/** What a team that is not made yet already holds. */
+function nothingHere(): ExistingNames {
+  return {
+    projects: new Map(),
+    environments: new Map(),
+    apps: new Map(),
+    databases: new Map(),
+  };
+}
+
+/** Everything already in this team, by lowercase name, for the skip decision. */
+async function existingNames(teamId: string): Promise<ExistingNames> {
   const projects = new Map<string, string>();
   const environments = new Map<string, string>();
   for (const p of await listProjects()) {
@@ -1046,15 +1088,19 @@ async function existingNames(teamId: string): Promise<{
 /**
  * Every hostname on this instance that belongs to a DIFFERENT team. Knowing the
  * set up front is what lets the preview say so before anything is written.
+ * `null` is a team not made yet, to which every hostname is another team's.
  */
-async function hostnamesOwnedElsewhere(teamId: string): Promise<Set<string>> {
+async function hostnamesOwnedElsewhere(
+  teamId: string | null,
+): Promise<Set<string>> {
   const rows = await getDb()
     .select({ name: domainsTable.name, teamId: appsTable.teamId })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId));
   const out = new Set<string>();
   for (const r of rows)
-    if (r.teamId !== teamId) out.add(r.name.trim().toLowerCase());
+    if (teamId === null || r.teamId !== teamId)
+      out.add(r.name.trim().toLowerCase());
   return out;
 }
 
@@ -1432,7 +1478,7 @@ export async function beginMigration(input: {
   );
   if (alive)
     throw new Error(
-      `${alive.actor} already has a migration running in this team. Wait for it to finish, or stop it from Settings → Migrations.`,
+      `${alive.actor} already has a migration running in this team. Wait for it to finish, or stop it from Settings → System → Migrations.`,
     );
 
   const interrupted = await db
@@ -1671,7 +1717,7 @@ async function scheduleSourceUninstalls(
  * and the capability is the one that registered the sources in the first place.
  */
 export async function abandonMigration(): Promise<number> {
-  const { teamId } = await assertImportGate();
+  const { teamId } = await assertPanelReadGate();
   const actor = (await getCurrentUser())?.name ?? "the migration";
 
   const [latest] = await getDb()
@@ -4652,6 +4698,31 @@ export async function resumableMigration(): Promise<ImportRunDTO | null> {
 }
 
 /**
+ * {@link resumableMigration} across every team this person is in: the page is
+ * the instance's, and the run it should open on may have landed in any of them.
+ */
+export async function resumableMigrationAnywhere(): Promise<ImportRunDTO | null> {
+  await requireInstanceAdmin();
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const mine = (await teamsForUser(user.id)).map((t) => t.id);
+  if (mine.length === 0) return null;
+  const [row] = await getDb()
+    .select()
+    .from(runsTable)
+    .where(
+      and(
+        inArray(runsTable.teamId, mine),
+        isNull(runsTable.reportSeenAt),
+        or(eq(runsTable.actorUserId, user.id), eq(runsTable.status, "running")),
+      ),
+    )
+    .orderBy(desc(runsTable.seq))
+    .limit(1);
+  return row ? (await toRunDTOs([row]))[0] : null;
+}
+
+/**
  * "I am done looking at this run" - the wizard stops opening on it.
  */
 export async function dismissMigrationReport(runId: string): Promise<void> {
@@ -4694,14 +4765,26 @@ export async function listMigrationRuns(): Promise<ImportRunDTO[]> {
     .select()
     .from(runsTable)
     .where(eq(runsTable.teamId, teamId));
-  const sorted = rows.sort((a, b) =>
+  return toRunDTOs(newestFirst(rows));
+}
+
+/** Every team's migrations: the instance's history, for its admins. */
+export async function listAllMigrationRuns(): Promise<ImportRunDTO[]> {
+  await requireInstanceAdmin();
+  const rows = await getDb().select().from(runsTable);
+  return toRunDTOs(newestFirst(rows));
+}
+
+function newestFirst<T extends { startedAt: string; seq: number }>(
+  rows: T[],
+): T[] {
+  return rows.sort((a, b) =>
     a.startedAt === b.startedAt
       ? b.seq - a.seq
       : a.startedAt < b.startedAt
         ? 1
         : -1,
   );
-  return toRunDTOs(sorted);
 }
 
 export async function getMigrationRun(
@@ -4783,18 +4866,45 @@ async function actorFaces(
 async function toRunDTOs(
   rows: (typeof runsTable.$inferSelect)[],
 ): Promise<ImportRunDTO[]> {
-  const faces = await actorFaces(rows);
+  const [faces, homes] = await Promise.all([actorFaces(rows), teamsOf(rows)]);
   return rows.map((r) =>
-    toRunDTO(r, (r.actorUserId && faces.get(r.actorUserId)) || null),
+    toRunDTO(
+      r,
+      (r.actorUserId && faces.get(r.actorUserId)) || null,
+      homes.get(r.teamId) ?? null,
+    ),
   );
+}
+
+/** The teams these runs landed in, one read for the whole list. */
+async function teamsOf(
+  rows: { teamId: string }[],
+): Promise<Map<string, { name: string; slug: string; image: string | null }>> {
+  const ids = [...new Set(rows.map((r) => r.teamId))];
+  if (ids.length === 0) return new Map();
+  const found = await getDb()
+    .select({
+      id: teamsTable.id,
+      name: teamsTable.name,
+      slug: teamsTable.slug,
+      image: teamsTable.image,
+    })
+    .from(teamsTable)
+    .where(inArray(teamsTable.id, ids));
+  return new Map(found.map((t) => [t.id, t]));
 }
 
 function toRunDTO(
   r: typeof runsTable.$inferSelect,
   face: ActorFace | null,
+  home: { name: string; slug: string; image: string | null } | null,
 ): ImportRunDTO {
   return {
     id: r.id,
+    teamId: r.teamId,
+    teamName: home?.name ?? "",
+    teamSlug: home?.slug ?? "",
+    teamAvatarUrl: deploTeamAvatarUrl(home?.image),
     platform: isMigrationPlatform(r.platform) ? r.platform : "dokploy",
     sourceUrl: r.sourceUrl,
     orgName: r.orgName,

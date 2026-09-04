@@ -15,8 +15,8 @@ import { MigrationsHistory } from "./migrations-history";
 import type { ImportRun, ServerChoice, TargetTeam } from "./types";
 
 /**
- * The two halves of the migrations page: bringing a platform over, and what has
- * already come over.
+ * The two halves of the migrations page: bringing a panel over, and what has
+ * already come over - every team's, since the page is the instance's.
  */
 
 const TABS = ["migrate", "history"] as const;
@@ -24,31 +24,26 @@ type TabId = (typeof TABS)[number];
 
 export function MigrationsTabs({
   teamId,
-  teamName,
-  teamAvatarUrl,
   targetTeams,
   servers,
   buildServers,
   runs,
   resumable,
   sameMachineHost,
-  isInstanceAdmin,
   canExposePorts,
 }: {
+  /** The page's team - where the source machines are registered. */
   teamId: string;
-  teamName: string;
-  teamAvatarUrl: string | null;
-  /** Every team the migration could land in, the active one included. */
+  /** Every team a source team could land in. */
   targetTeams: TargetTeam[];
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   runs: ImportRun[];
-  /** The run the wizard opens on: the team's, if one is in flight, or one whose
-   *  report this person has not closed yet. Null for the empty connect form. */
+  /** The run the wizard opens on: one in flight, or one whose report this person
+   *  has not closed yet, whichever team it landed in. Null for the empty form. */
   resumable: ImportRun | null;
   /** The address a container on this instance reaches its own host on. */
   sameMachineHost: string;
-  isInstanceAdmin: boolean;
   canExposePorts: boolean;
 }) {
   const params = useSearchParams();
@@ -57,11 +52,6 @@ export function MigrationsTabs({
     ? (requested as TabId)
     : "migrate";
 
-  /**
-   * An address handed over from the History tab. The nonce is what makes
-   * picking the SAME run twice still land in the field - the wizard reacts to
-   * the object identity, and a bare string would look unchanged.
-   */
   function selectTab(tab: string) {
     const next = new URLSearchParams(params.toString());
     if (tab === "migrate") next.delete("tab");
@@ -97,14 +87,14 @@ export function MigrationsTabs({
         forceMount
         className="data-[state=inactive]:hidden"
       >
+        {/* The page itself is instance-admin only, so the wizard's admin-gated
+            steps are always on here. */}
         <MigrationWizard
           teamId={teamId}
-          teamName={teamName}
-          teamAvatarUrl={teamAvatarUrl}
           targetTeams={targetTeams}
           servers={servers}
           buildServers={buildServers}
-          isInstanceAdmin={isInstanceAdmin}
+          isInstanceAdmin
           canExposePorts={canExposePorts}
           resumable={resumable}
           sameMachineHost={sameMachineHost}

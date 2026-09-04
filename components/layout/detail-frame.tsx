@@ -68,7 +68,7 @@ function MigrationNotice() {
         <p className="font-medium">Still being brought over by a migration</p>
         <p className="mt-1 text-muted-foreground">
           Nothing here can be changed until the run finishes, in Settings →
-          Migrations.
+          System → Migrations.
         </p>
       </div>
     </div>

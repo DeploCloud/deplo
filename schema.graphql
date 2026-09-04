@@ -3398,9 +3398,16 @@ type Mutation {
   saveSharedVar(input: SaveSharedVarInput!): SharedVar
 
   """
-  Read a source panel and describe what an import would do. Works out which product it is when `kind` is omitted. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.
+  Read a source panel and describe what an import would do. Works out which product it is when `kind` is omitted. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here. Answers about the request's team, which needs `create_projects` there - or, with `newTeam`, about a team not made yet, which an instance admin may ask from any team of theirs.
   """
-  scanMigrationSource(input: MigrationSourceInput!): MigrationPlan
+  scanMigrationSource(
+    input: MigrationSourceInput!
+
+    """
+    Describe the import into a team that does not exist yet: nothing counts as already here, and every hostname another team serves is another team's. Instance admins only; the wizard sends it for a source team it will land in a team made at Start.
+    """
+    newTeam: Boolean
+  ): MigrationPlan
 
   """
   Read the Let's Encrypt account email off every server's proxy, live. Per host, because the address is a flag in each host's own stack file and a fleet installed over time can genuinely disagree with itself. A host Deplo cannot manage reports why instead of an address.

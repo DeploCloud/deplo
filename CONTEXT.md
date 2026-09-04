@@ -686,18 +686,21 @@ does the dump); **migration source** (a different role entirely - that one has D
 not ours).
 
 **Migration**:
-Bringing another platform's projects into a team, and the word the UI uses everywhere:
-`Settings → Migrations`, two tabs - the wizard that runs one, and the History of the ones
-already run. A **migration run** is the stored row plus the **report** it leaves behind
-(`migration_runs` + `migration_run_items`), readable from either tab in the same dialog.
-The wizard is five steps - Connect, Install, Review, People, Done - and Install is where the
-**migration source** gets its agent.
+Bringing another platform's teams into Deplo, and the word the UI uses everywhere:
+`Settings → System → Migrations` (instance admins), two tabs - the wizard that runs one,
+and the History of every team's runs. A **migration run** is the stored row plus the
+**report** it leaves behind (`migration_runs` + `migration_run_items`), readable from either
+tab in the same dialog. The wizard is five steps - Connect, Install, Review, People, Done -
+and Install is where the **migration source** gets its agent.
 A token of either panel reads exactly ONE team over there (Coolify binds it to the team it
 was minted in, a Dokploy key carries one `organizationId`), so a panel with three teams is
-three tokens and **three runs**, one after another, each landing in a Deplo team of its own.
-Connect collects them as a list; a run that is not the last of the series carries
-`keep_sources`, which is what stops it taking the agents off machines the next team still
-has to read.
+three tokens and **three runs**, one after another. Connect collects them as the **Teams to
+bring over** list, and each row names the Deplo team it **lands in** (`TeamTarget`): one
+that exists, where the admin holds `create_projects`, or a **new team** named after the
+source team and created as its turn comes. The default is the namesake when there is one.
+A run that is not the last of the series carries `keep_sources`, which is what stops it
+taking the agents off machines the next team still has to read; the sources are handed
+from team to team with each run (`handOverMigrationSources`).
 The whole domain is spelled **migration**, wire included (`scanMigrationSource`,
 `importMigrationProject`, `migrationRuns`, `lib/data/migration-import.ts`). The older `import`
 spelling was kept for a while on the argument that renaming a published schema would break the

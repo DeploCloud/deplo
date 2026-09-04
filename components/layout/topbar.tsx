@@ -125,7 +125,7 @@ export function Topbar({
          * Creation lives on the Overview's "Add New" menu only - the header stays lean
          * (theme + account).
          */}
-        <MigrationChip canOpen={capabilities.includes("create_projects")} />
+        <MigrationChip canOpen={isAdmin} />
         <ThemeToggle />
         <UserMenu user={user} />
       </div>

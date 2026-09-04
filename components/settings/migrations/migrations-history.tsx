@@ -19,11 +19,12 @@ import { MigrationConsole } from "./migration-console";
 import type { ImportRun } from "./types";
 import { SOURCE_COPY, SourceMark } from "./sources";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { UserAvatar } from "@/components/shared/user-avatar";
+import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 
 /**
- * Every migration this team has run, and the report each one left behind. The
- * wizard next door is where you start one, so this tab never offers to.
+ * Every migration this instance has run, the team each landed in, and the report
+ * each one left behind. The wizard next door is where you start one, so this
+ * tab never offers to.
  */
 
 export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
@@ -42,10 +43,11 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
   return (
     <>
       <div className="overflow-hidden rounded-lg border border-border">
-        <Table className="min-w-[42rem]">
+        <Table className="min-w-[50rem]">
           <TableHeader>
             <TableRow>
               <TableHead>Source</TableHead>
+              <TableHead>Team</TableHead>
               <TableHead>When</TableHead>
               <TableHead>Outcome</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -68,6 +70,16 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
                       {r.sourceUrl}
                     </div>
                   )}
+                </TableCell>
+                <TableCell className="max-w-[12rem]">
+                  <div className="flex items-center gap-2 text-sm">
+                    <TeamAvatar
+                      name={r.teamName}
+                      avatarUrl={r.teamAvatarUrl}
+                      size="xs"
+                    />
+                    <span className="truncate">{r.teamName}</span>
+                  </div>
                 </TableCell>
                 <TableCell className="text-sm whitespace-nowrap">
                   {/* No seconds: nobody has two migrations in the same minute,
@@ -118,6 +130,7 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
 
       <MigrationConsole
         runId={open?.id ?? null}
+        teamId={open?.teamId}
         open={open !== null}
         onOpenChange={(o) => !o && setOpen(null)}
         // A run still moving is watchable from here too - History is just

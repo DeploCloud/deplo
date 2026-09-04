@@ -1,66 +1,43 @@
-import {
-  canExposePorts,
-  hasCapability,
-  isInstanceAdmin,
-  reachesWholeTeam,
-} from "@/lib/membership";
+import { notFound } from "next/navigation";
+
+import { canExposePorts, isInstanceAdmin } from "@/lib/membership";
 import { getTeamIdentity } from "@/lib/data/teams";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import {
-  listMigrationRuns,
+  listAllMigrationRuns,
   listMigrationTargetTeams,
-  resumableMigration,
+  resumableMigrationAnywhere,
 } from "@/lib/data/migration-import";
 import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
-import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { MigrationsTabs } from "@/components/settings/migrations/migrations-tabs";
 import { sameMachineHost } from "@/lib/deploy/domains";
 
 export const metadata = { title: "Settings · Migrations" };
 
 /**
- * Migrations - bringing another platform's projects over to Deplo.
- * `create_projects` is the entry gate, mirrored server-side in every mutation.
+ * Settings → System → Migrations: another panel's teams, each landing in a team
+ * of the operator's choosing. Instance admins, like its neighbours; landing in a
+ * team still needs `create_projects` there, checked server-side on every call.
  */
 export default async function SettingsMigrationsPage() {
-  if (!(await reachesWholeTeam()) || !(await hasCapability("create_projects")))
-    return (
-      <OutsideYourAccess
-        title="Migrations"
-        description="Bring projects over from Dokploy or Coolify."
-        what="Migrations"
-      />
-    );
+  if (!(await isInstanceAdmin())) notFound();
 
-  const [
-    team,
-    targetTeams,
-    servers,
-    buildServers,
-    runs,
-    resumable,
-    admin,
-    mayExposePorts,
-  ] = await Promise.all([
-    getTeamIdentity(),
-    // Where else this migration could land: the other teams this person may
-    // create projects in, offered on the review step.
-    listMigrationTargetTeams(),
-    listServerChoices(),
-    // A second, wider list: a build-only host cannot RUN anything, which is
-    // exactly why it belongs in the other column.
-    listBuildServerChoices(),
-    listMigrationRuns(),
-    // The run to open on, if any: the team's one in flight, or one this person has not
-    // closed the report of.
-    resumableMigration(),
-    isInstanceAdmin(),
-    // A migrated database keeps the host port it had over there, and that is a
-    // published port like any other - so the review only offers to sort one out
-    // for somebody who could publish it.
-    canExposePorts(),
-  ]);
+  const [team, targetTeams, servers, buildServers, runs, resumable, mayExpose] =
+    await Promise.all([
+      getTeamIdentity(),
+      // Where a source team may land: the teams this person may create
+      // projects in. A new team is always on offer besides these.
+      listMigrationTargetTeams(),
+      // The page's own team's fleet, as the first answer; the wizard re-reads
+      // the fleet of each team a source team lands in.
+      listServerChoices(),
+      listBuildServerChoices(),
+      listAllMigrationRuns(),
+      // The run to open on, whichever team it landed in.
+      resumableMigrationAnywhere(),
+      canExposePorts(),
+    ]);
 
   return (
     <div className="space-y-3">
@@ -72,20 +49,17 @@ export default async function SettingsMigrationsPage() {
             <BetaChip />
           </span>
         }
-        description="Bring projects, apps and their configuration over from Dokploy or Coolify."
+        description="Bring another panel's teams over, each into a team here."
       />
       <MigrationsTabs
         teamId={team.id}
-        teamName={team.name}
-        teamAvatarUrl={team.avatarUrl}
         targetTeams={targetTeams}
         servers={servers}
         buildServers={buildServers}
         runs={runs}
         resumable={resumable}
         sameMachineHost={sameMachineHost()}
-        isInstanceAdmin={admin}
-        canExposePorts={mayExposePorts}
+        canExposePorts={mayExpose}
       />
     </div>
   );

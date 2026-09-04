@@ -293,14 +293,6 @@ export const SETTINGS_NAV: NavSection[] = [
         // work to do here.
         requiresAny: ["manage_mcp", "manage_team"],
       },
-      {
-        label: "Migrations",
-        href: "/settings/migrations",
-        icon: Cable,
-        tooltip: "Bring projects over from Dokploy or Coolify",
-        // The smallest capability that can produce what an import produces.
-        requires: "create_projects",
-      },
     ],
   },
   // Account - the signed-in user's own settings (no team context).
@@ -340,6 +332,15 @@ export const SETTINGS_NAV: NavSection[] = [
         tooltip: "This instance: its address, certificates and version",
         // Instance admins, like its neighbours: everything on it is one setting
         // for the whole instance, and applying it touches every host.
+        requiresAdmin: true,
+      },
+      {
+        label: "Migrations",
+        href: "/settings/migrations",
+        icon: Cable,
+        tooltip: "Bring another panel's teams over, each into a team here",
+        // One panel is several teams, and each lands in a team of the
+        // operator's choosing: an instance-wide act, not one team's.
         requiresAdmin: true,
       },
       {
@@ -823,6 +824,9 @@ export const NON_TEAM_SETTINGS_PREFIXES = [
   // Instance-wide: the panel's own address and the certificate account are facts
   // about this Deplo, not about whichever team you happen to be looking at.
   "/settings/deplo",
+  // A migration names the team each source team lands in; the page's own team
+  // is not one of its inputs.
+  "/settings/migrations",
 ];
 
 /** True when the path is a personal/system settings route (team header hidden). */

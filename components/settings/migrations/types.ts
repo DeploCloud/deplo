@@ -104,6 +104,12 @@ export interface Invite {
 
 export interface ImportRun {
   id: string;
+  /** The team it landed in - named on every call about the run, and shown in
+   *  the instance-wide history. */
+  teamId: string;
+  teamName: string;
+  teamSlug: string;
+  teamAvatarUrl: string | null;
   /** Which product this run read. */
   platform: SourceKind;
   sourceUrl: string;

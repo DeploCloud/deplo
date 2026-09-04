@@ -10,13 +10,14 @@ import {
 import { getTeamIdentity } from "@/lib/data/teams";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import {
+  listAllMigrationRuns,
   listMigrationRuns,
   listMigrationTargetTeams,
   resumableMigration,
+  resumableMigrationAnywhere,
 } from "@/lib/data/migration-import";
 import { canExposePorts } from "@/lib/membership";
 import { panelFallbackHost, sameMachineHost } from "@/lib/deploy/domains";
-import { MigrationActivityProvider } from "@/components/layout/migration-activity";
 import { MigrationWizard } from "@/components/settings/migrations/migration-wizard";
 import { TakeoverCancel } from "@/components/takeover/takeover-actions";
 import { TakeoverPreflight } from "@/components/takeover/takeover-preflight";
@@ -50,25 +51,20 @@ export default async function TakeoverPage() {
   const copy = SOURCE_COPY[status.platform];
   const sourceUrl = takeoverSourceUrl(status.platform);
 
-  const [
-    team,
-    targetTeams,
-    servers,
-    buildServers,
-    runs,
-    resumable,
-    admin,
-    mayExposePorts,
-  ] = await Promise.all([
-    getTeamIdentity(),
-    listMigrationTargetTeams(),
-    listServerChoices(),
-    listBuildServerChoices(),
-    listMigrationRuns(),
-    resumableMigration(),
-    isInstanceAdmin(),
-    canExposePorts(),
-  ]);
+  // Each source team lands in a team of the operator's choosing, so the runs
+  // and the one to open on are read across every team - for the admin, which
+  // whoever installed Deplo is.
+  const admin = await isInstanceAdmin();
+  const [team, targetTeams, servers, buildServers, runs, resumable, mayExpose] =
+    await Promise.all([
+      getTeamIdentity(),
+      listMigrationTargetTeams(),
+      listServerChoices(),
+      listBuildServerChoices(),
+      admin ? listAllMigrationRuns() : listMigrationRuns(),
+      admin ? resumableMigrationAnywhere() : resumableMigration(),
+      canExposePorts(),
+    ]);
 
   // Something has to have come across before there is any point taking the ports.
   const finished = runs.find((r) => r.status === "done") ?? null;
@@ -78,39 +74,35 @@ export default async function TakeoverPage() {
 
   return (
     <Screen>
-      {/* The live migration feed, which the dashboard shell provides everywhere
-          else. Without it this screen cannot see the run it just started. */}
-      <MigrationActivityProvider key={team.id}>
-        <MigrationWizard
-          teamId={team.id}
-          teamName={team.name}
-          teamAvatarUrl={team.avatarUrl}
-          targetTeams={targetTeams}
-          servers={servers}
-          buildServers={buildServers}
-          resumable={resumable}
-          sameMachineHost={sameMachineHost()}
-          isInstanceAdmin={admin}
-          canExposePorts={mayExposePorts}
-          prefill={{ url: sourceUrl, kind: status.platform }}
-          // Measured before anything moves, and only when something is going to
-          // be copied - it probes the agent, which the cutover is busy with.
-          preflight={
-            admin && status.state === "pending" ? <TakeoverPreflight /> : null
-          }
-          takeover={{
-            platformLabel: copy.name,
-            state: status.state,
-            finishedRunId: finished?.id ?? null,
-            finalUrl: finalPanelUrl(),
-            error: status.error,
-            dataLoss,
-          }}
-          // Everything came across and the report has been closed, so the last
-          // step is the only one with anything left in it.
-          startOnTakeover={finished != null && resumable == null}
-        />
-      </MigrationActivityProvider>
+      {/* The wizard watches the run it started itself, in whichever team it
+          lands, so this screen needs no shell around it to see it. */}
+      <MigrationWizard
+        teamId={team.id}
+        targetTeams={targetTeams}
+        servers={servers}
+        buildServers={buildServers}
+        resumable={resumable}
+        sameMachineHost={sameMachineHost()}
+        isInstanceAdmin={admin}
+        canExposePorts={mayExpose}
+        prefill={{ url: sourceUrl, kind: status.platform }}
+        // Measured before anything moves, and only when something is going to
+        // be copied - it probes the agent, which the cutover is busy with.
+        preflight={
+          admin && status.state === "pending" ? <TakeoverPreflight /> : null
+        }
+        takeover={{
+          platformLabel: copy.name,
+          state: status.state,
+          finishedRunId: finished?.id ?? null,
+          finalUrl: finalPanelUrl(),
+          error: status.error,
+          dataLoss,
+        }}
+        // Everything came across and the report has been closed, so the last
+        // step is the only one with anything left in it.
+        startOnTakeover={finished != null && resumable == null}
+      />
       {(status.state === "pending" ||
         status.state === "ready" ||
         status.state === "failed") && (

@@ -57,8 +57,11 @@ interface Source {
   uninstallError: string;
 }
 
-export function RemoveMigrationSources() {
+export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
   const router = useRouter();
+  /** The sources are granted to the team the last run landed in, which need
+   *  not be the page's. */
+  const opts = React.useMemo(() => (teamId ? { teamId } : undefined), [teamId]);
   const [sources, setSources] = React.useState<Source[]>([]);
   const [command, setCommand] = React.useState("");
   /** Machines Deplo has stopped tracking whose agent is still on them. */
@@ -75,7 +78,7 @@ export function RemoveMigrationSources() {
       const data = await gql<{
         servers: Source[] | null;
         agentUninstallCommand: string | null;
-      }>(SOURCES);
+      }>(SOURCES, undefined, undefined, opts);
       return {
         rows: (data.servers ?? []).filter(
           (s) => s.role === "import" && s.uninstallError,
@@ -87,7 +90,7 @@ export function RemoveMigrationSources() {
       // take it down.
       return { rows: [], command: "" };
     }
-  }, []);
+  }, [opts]);
 
   const reload = React.useCallback(async () => {
     const next = await load();
@@ -123,12 +126,12 @@ export function RemoveMigrationSources() {
       const un = await gqlAction<
         { uninstallServerAgent: { removed: boolean; error: string | null } },
         { removed: boolean; error: string | null }
-      >(UNINSTALL, { id: s.id }, (d) => d.uninstallServerAgent);
+      >(UNINSTALL, { id: s.id }, (d) => d.uninstallServerAgent, opts);
       if (un.ok && un.data?.removed) continue;
       const rm = await gqlAction<
         { removeServer: { warning: string | null } },
         { warning: string | null }
-      >(FORGET, { id: s.id }, (d) => d.removeServer);
+      >(FORGET, { id: s.id }, (d) => d.removeServer, opts);
       // Both halves go through the same removable check, so this is a genuine
       // blocker (something still depends on that host), not an unreachable one.
       if (!rm.ok) {

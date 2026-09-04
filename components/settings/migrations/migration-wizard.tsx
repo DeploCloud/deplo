@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   CircleStop,
   Loader2,
+  Plus,
   Repeat,
   ScrollText,
   Server as ServerIcon,
@@ -15,12 +16,23 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
+import { TEAM_HEADER } from "@/lib/team-path";
+import { isValidTeamAvatarValue } from "@/lib/apps/avatar-shared";
 import { docsUrl } from "@/lib/docs";
 import { formatBuildDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { KindCard } from "@/components/shared/kind-card";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -30,7 +42,7 @@ import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import {
   isDriven,
-  useActiveMigration,
+  useMigrationFeed,
   type ActiveMigration,
 } from "@/components/layout/migration-activity";
 import { InstallStep, type PendingMachine } from "./install-step";
@@ -61,12 +73,13 @@ import {
 } from "@/components/takeover/takeover-actions";
 import {
   addTeam,
+  retarget,
   teamsAfter,
   uncoveredTeams,
   type QueuedTeam,
   type SourceTeam,
+  type TeamTarget,
 } from "./queue";
-import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import {
   importableOf,
   type ImportRun,
@@ -79,8 +92,9 @@ import {
 } from "./types";
 
 /**
- * Migrating a Dokploy over, as one screen. The API key never leaves this
- * component's state.
+ * Migrating a panel over, as one screen: every team of it, each into a Deplo
+ * team of the operator's choosing. The API keys never leave this component's
+ * state.
  */
 
 /** Dokploy's own host has no server row over there; it is the empty id. */
@@ -94,11 +108,6 @@ function stepForHandover(
   if (!state || state === "pending") return null;
   // `failed` lands on the step too: it is where Try again lives.
   return state === "removed" ? "done" : "takeover";
-}
-
-/** Two names for one team, whatever anyone typed around them. */
-function sameTeamName(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 /**
@@ -168,9 +177,13 @@ const IDENTIFY = /* GraphQL */ `
   }
 `;
 
+/** `newTeam`: the plan for a team not made yet - see the mutation's own doc. */
 const SCAN = /* GraphQL */ `
-  mutation ScanMigrationSource($input: MigrationSourceInput!) {
-    scanMigrationSource(input: $input) {
+  mutation ScanMigrationSource(
+    $input: MigrationSourceInput!
+    $newTeam: Boolean
+  ) {
+    scanMigrationSource(input: $input, newTeam: $newTeam) {
       platform
       sourceUrl
       orgName
@@ -234,18 +247,47 @@ const STOP = /* GraphQL */ `
 
 /** A team of its own for a team of the list, named as it was over there. */
 const CREATE_TEAM = /* GraphQL */ `
-  mutation CreateMigrationTeam($name: String!) {
-    createTeam(name: $name) {
+  mutation CreateMigrationTeam($name: String!, $image: String) {
+    createTeam(name: $name, image: $image) {
       id
     }
   }
 `;
 
-const SWITCH_TEAM = /* GraphQL */ `
-  mutation SwitchTeam($teamId: String!) {
-    switchTeam(teamId: $teamId)
+/**
+ * One team's fleet: what a source team's services may be placed on once it lands
+ * there. Read per landing team, since servers are per-team.
+ */
+const FLEET = /* GraphQL */ `
+  query MigrationFleet {
+    servers {
+      id
+      name
+      role
+      isDeploHost
+    }
+    buildServerChoices {
+      id
+      name
+      buildOnly
+      isDeploHost
+    }
   }
 `;
+
+/** A server as the fleet query lists it; `role` "everything" is one that runs. */
+interface FleetServer {
+  id: string;
+  name: string;
+  role: string;
+  isDeploHost: boolean;
+}
+
+/** What one landing team may place services on. */
+interface Fleet {
+  servers: ServerChoice[];
+  buildServers: ServerChoice[];
+}
 
 const HAND_OVER_SOURCES = /* GraphQL */ `
   mutation HandOverMigrationSources($fromTeamId: String!) {
@@ -430,8 +472,6 @@ export function reconcilePlacements(
 
 export function MigrationWizard({
   teamId,
-  teamName,
-  teamAvatarUrl,
   targetTeams,
   servers,
   buildServers,
@@ -444,11 +484,12 @@ export function MigrationWizard({
   preflight = null,
   startOnTakeover = false,
 }: {
+  /** The page's team: where the source machines are registered, and where every
+   *  call that is about no team in particular goes. */
   teamId: string;
-  teamName: string;
-  teamAvatarUrl: string | null;
-  /** Every team this migration could land in, this one included. */
+  /** Every team a source team may land in. A new one is always on offer too. */
   targetTeams: TargetTeam[];
+  /** The page's team's fleet - the first answer, until a landing team's is read. */
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   isInstanceAdmin: boolean;
@@ -456,7 +497,7 @@ export function MigrationWizard({
   canExposePorts: boolean;
   /**
    * The run this person is in the middle of, read at page load: one still moving,
-   * or one whose report they have not closed yet.
+   * or one whose report they have not closed yet - in whichever team it landed.
    */
   resumable: ImportRun | null;
   /** The address a container on this instance reaches its own host on. */
@@ -489,10 +530,6 @@ export function MigrationWizard({
   /** A takeover whose migration already finished and whose report was closed:
    *  the only thing left is the last step, so open on it. */
   startOnTakeover?: boolean;
-  /**
-   * An address handed over from the History tab. The nonce is what makes
-   * picking the same run twice still land in the field.
-   */
 }) {
   const router = useRouter();
 
@@ -530,9 +567,10 @@ export function MigrationWizard({
   const [apiKey, setApiKey] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
   /**
-   * The panel's teams and the token that reads each, in the order they are
-   * brought over - a token reads exactly one team on both products. `at` is whose
-   * turn it is; both outlive one team's run, which is what makes this a queue.
+   * The panel's teams, the token that reads each and the Deplo team each lands
+   * in, in the order they are brought over - a token reads exactly one team on
+   * both products. `at` is whose turn it is; both outlive one team's run, which
+   * is what makes this a queue.
    */
   const [queue, setQueue] = React.useState<QueuedTeam[]>([]);
   const [at, setAt] = React.useState(0);
@@ -541,12 +579,10 @@ export function MigrationWizard({
   /** Every team the panel would name, so the ones no token covers can be listed.
    *  Null from a panel that cannot say, which is Coolify always. */
   const [panelTeams, setPanelTeams] = React.useState<string[] | null>(null);
-  /** The queued team waiting for a Deplo team of its own to be created. */
-  const [pendingTeam, setPendingTeam] = React.useState<number | null>(null);
   /**
-   * Several teams at once. Each team's plan by its place on the list, and what
-   * its run left behind - the run, the Deplo team it landed in, its report -
-   * so one Review shows every list and one People step hands out every link.
+   * Each team's plan by its place on the list, and what its run left behind -
+   * the run, the Deplo team it landed in, its report - so one Review shows every
+   * list and one People step hands out every link.
    */
   const [teamPlans, setTeamPlans] = React.useState<Record<number, Plan>>({});
   const [teamRuns, setTeamRuns] = React.useState<
@@ -559,7 +595,9 @@ export function MigrationWizard({
     Record<number, string | null>
   >({});
   const [mintingFor, setMintingFor] = React.useState<number | null>(null);
-  const bulk = queue.length > 1;
+  const [inviting, setInviting] = React.useState(false);
+  /** Each landing team's fleet, read when a source team is pointed at it. */
+  const [fleets, setFleets] = React.useState<Record<string, Fleet>>({});
   /** The plan the last scan read: a run started right after a re-read must not
    *  start from the plan the state still holds. */
   const latestPlan = React.useRef<Plan | null>(null);
@@ -609,49 +647,43 @@ export function MigrationWizard({
   /** The run this tab took over rather than started - what `closeReport` needs. */
   const [adoptedId, setAdoptedId] = React.useState<string | null>(null);
   const [logOpen, setLogOpen] = React.useState(false);
-
-  /** A team change is in flight, plan and all - see `retargetTeam`. */
-  const [retargeting, setRetargeting] = React.useState(false);
-  /** The last team change whose re-read failed: the plan is another team's. */
-  const [retargetError, setRetargetError] = React.useState<string | null>(null);
   /** Whether this tab has already decided which run to open on. */
   const restored = React.useRef(false);
-  /**
-   * The team this tab switched to, which LEADS the prop: the page's own read of it
-   * lands a refresh later, and what a migration is for cannot briefly be the team
-   * it just left. Dropped the moment the prop moves - by that refresh, or by
-   * somebody switching team in the topbar, which this must never outlive.
-   */
-  const [landed, setLanded] = React.useState<{
-    from: string;
-    to: string;
-  } | null>(null);
-  // Adjusting state during the render, which is what React prescribes for state
-  // that a prop invalidates - no effect, no second paint.
-  if (landed && landed.from !== teamId) setLanded(null);
-  const targetTeamId = landed?.to ?? teamId;
-
-  const [invites, setInvites] = React.useState<Invite[] | null>(null);
-  const [inviting, setInviting] = React.useState(false);
-  const [inviteLink, setInviteLink] = React.useState<string | null>(null);
-  const [minting, setMinting] = React.useState(false);
 
   /**
-   * What the RUN and the invites are sent with. It carries what the SCAN found,
-   * never what somebody pinned: walking back to Connect after scanning one panel
-   * and typing another address would otherwise fix the wrong platform.
+   * The team the run on screen lands in, or landed in. Null before a turn has
+   * begun; then every call about the run goes to the page's own team.
    */
-  const connectInput = React.useMemo(
-    () => ({
-      url,
-      // Whose turn it is, not what is in the field: the field is emptied the
-      // moment a token joins the list, and the People step still needs the key
-      // its team was read with.
-      apiKey: queue[at]?.apiKey || apiKey,
-      kind: plan?.platform ?? null,
-    }),
-    [url, apiKey, plan, queue, at],
+  const [targetTeamId, setTargetTeamId] = React.useState<string | null>(
+    resumable?.teamId ?? null,
   );
+  const targetTeamRef = React.useRef(targetTeamId ?? teamId);
+  targetTeamRef.current = targetTeamId ?? teamId;
+  /** Every call about the run goes to the team it lands in, not the page's. */
+  const inTarget = () => ({ teamId: targetTeamRef.current });
+  /**
+   * Where the machines Deplo installed to READ the panel are granted right now:
+   * the page's team, where Install registers them, until a run hands them to
+   * the team it lands in.
+   */
+  const sourcesTeam = React.useRef(teamId);
+
+  // The chain of runs reads these between renders, so the latest value of each
+  // rides on a ref beside its state.
+  const queueRef = React.useRef(queue);
+  queueRef.current = queue;
+  const atRef = React.useRef(at);
+  atRef.current = at;
+  const chosenRef = React.useRef(chosen);
+  chosenRef.current = chosen;
+  const placementsRef = React.useRef(placements);
+  placementsRef.current = placements;
+  const serverMapRef = React.useRef(serverMap);
+  serverMapRef.current = serverMap;
+  const fleetsRef = React.useRef(fleets);
+  fleetsRef.current = fleets;
+  const teamPlansRef = React.useRef(teamPlans);
+  teamPlansRef.current = teamPlans;
 
   /** How many teams of this panel are still behind the one on screen. */
   const teamsLeft = teamsAfter(queue, at);
@@ -662,129 +694,59 @@ export function MigrationWizard({
   /** What is known about the panel so far: what answered, or what was pinned. */
   const kind: SourceKind | null = plan?.platform ?? forcedKind;
 
-  /**
-   * The fleet moves under the plan whenever the team does, so what was picked is
-   * READ through the servers this team has rather than stored back - a host that
-   * comes home then gives its services their own machine again.
-   */
-  const landing = React.useMemo(
-    () => reconcilePlacements(placements, serverMap, servers, buildServers),
-    [placements, serverMap, servers, buildServers],
-  );
-
   const STEPS = React.useMemo(
     () => stepsFor(isInstanceAdmin, isTakeover, mode),
     [isInstanceAdmin, isTakeover, mode],
   );
 
-  /* ---- step 1: connect --------------------------------------------- */
-
-  /** Read the panel with ONE team's key. Every scan goes through here: the form's,
-   *  the queue's next team, and the re-read a change of target team needs. */
-  async function scanWith(key: string, stay = false): Promise<Plan | null> {
-    setScanning(true);
-    setScanError(null);
-    const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
-      SCAN,
-      {
-        input: { url, apiKey: key, kind: forcedKind },
-      },
-      (d) => d.scanMigrationSource,
-    );
-    setScanning(false);
-    if (!res.ok) {
-      // Kept on screen rather than toasted: for an API that is switched off, an
-      // IP allowlist or a token short of a permission, the fix is minutes away in
-      // another tab, and a toast is gone before anyone gets back.
-      setScanError(res.error);
-      return null;
-    }
-    if (!res.data) return null;
-    const scanned = res.data;
-    setPlan(scanned);
-    latestPlan.current = scanned;
-    if (scanned.otherTeams) setPanelTeams(scanned.otherTeams);
-    if (stay) return scanned;
-    setChosen(defaultChoice(scanned));
-    const defaults = landingDefaults(scanned, servers);
-    setPlacements(defaults.placements);
-    setServerMap(defaults.servers);
-    // Straight on to Install, which is where "can Deplo reach every machine
-    // behind this" gets answered - and which ends itself either way, so nobody
-    // whose machines are already ours has a screen to click through.
-    setStep("install");
-    return scanned;
-  }
+  /** The page's team's fleet, which stands in until a landing team's is read. */
+  const ownFleet = React.useMemo<Fleet>(
+    () => ({ servers, buildServers }),
+    [servers, buildServers],
+  );
+  /** What a source team's services may be placed on: its landing team's hosts. */
+  const fleetFor = React.useCallback(
+    (target: TeamTarget): Fleet =>
+      (target.kind === "existing" && fleets[target.teamId]) || ownFleet,
+    [fleets, ownFleet],
+  );
 
   /**
-   * Every team of the list in one go: each token read, every list on one Review,
-   * and nothing to come back to Connect for. The re-read a team's own landing
-   * needs happens right before its run (see `runBulk`).
+   * One team's fleet. Servers are per-team, so where a source team lands decides
+   * what its services can be placed on - and a host the page's team may use is
+   * not thereby one the landing team may.
    */
-  async function scanAll() {
-    setScanning(true);
-    setScanError(null);
-    const plans: Record<number, Plan> = {};
-    for (const [i, team] of queue.entries()) {
-      if (team.status !== "waiting") continue;
-      const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
-        SCAN,
-        { input: { url, apiKey: team.apiKey, kind: forcedKind } },
-        (d) => d.scanMigrationSource,
-      );
-      if (!res.ok || !res.data) {
-        setScanning(false);
-        setScanError(
-          `${team.name}: ${res.ok ? "Deplo could not read the panel." : res.error}`,
-        );
-        return;
-      }
-      plans[i] = res.data;
-    }
-    setScanning(false);
-    const all = Object.values(plans);
-    if (all.length === 0) return;
-    setTeamPlans(plans);
-    setPlan(all[0]);
-    latestPlan.current = all[0];
-    if (all[0].otherTeams) setPanelTeams(all[0].otherTeams);
-    setChosen(new Set(all.flatMap((p) => [...defaultChoice(p)])));
-    const defaults = all.map((p) => landingDefaults(p, servers));
-    setPlacements(Object.assign({}, ...defaults.map((d) => d.placements)));
-    setServerMap(Object.assign({}, ...defaults.map((d) => d.servers)));
-    setAt(Math.max(0, Number(Object.keys(plans)[0])));
-    setStep("install");
+  async function loadFleet(id: string): Promise<Fleet> {
+    const res = await gqlAction<
+      { servers: FleetServer[]; buildServerChoices: ServerChoice[] },
+      Fleet
+    >(
+      FLEET,
+      {},
+      (d) => ({
+        servers: d.servers
+          .filter((s) => s.role === "everything")
+          .map((s) => ({ id: s.id, name: s.name, isDeploHost: s.isDeploHost })),
+        buildServers: d.buildServerChoices,
+      }),
+      { teamId: id },
+    );
+    const fleet = res.ok && res.data ? res.data : ownFleet;
+    fleetsRef.current = { ...fleetsRef.current, [id]: fleet };
+    setFleets(fleetsRef.current);
+    return fleet;
   }
+
+  /* ---- step 1: connect --------------------------------------------- */
 
   /**
    * The one button at the bottom of Connect, which does the one thing left to do:
-   * add the token that is typed, or start on the list once there is one.
+   * add the token that is typed, or set off down the list.
    */
   async function submitConnect(e: React.FormEvent) {
     e.preventDefault();
-    if (apiKey.trim() && queue.length > 0) return identifyAndAdd();
-    if (queue.length > 1) return scanAll();
-    if (queue.length > 0)
-      return goToTeam(
-        Math.max(
-          0,
-          queue.findIndex((q) => q.status === "waiting"),
-        ),
-      );
-    // One team and one token is the common case, and it stays one click: the key
-    // in the field IS the list then, named by what the scan read.
-    const key = apiKey;
-    const scanned = await scanWith(key);
-    if (scanned)
-      setQueue([
-        {
-          apiKey: key,
-          sourceTeamId: null,
-          name: scanned.orgName ?? "",
-          avatarUrl: scanned.orgAvatarUrl,
-          status: "waiting",
-        },
-      ]);
+    if (apiKey.trim()) return identifyAndAdd();
+    if (queue.length > 0) return scanAll();
   }
 
   /** Put the typed token on the list, once the panel has said which team it reads. */
@@ -805,112 +767,150 @@ export function MigrationWizard({
       return;
     }
     if (!res.data) return;
-    const next = addTeam(queue, res.data, apiKey);
+    const next = addTeam(queue, res.data, apiKey, targetTeams);
     if (next.error !== null) {
       setScanError(next.error);
       return;
     }
     setQueue(next.queue);
     if (res.data.otherTeams) setPanelTeams(res.data.otherTeams);
+    if (!forcedKind) setForcedKind(res.data.platform);
     // Out of the field the moment it is on the list: what holds it now is the
     // team it belongs to.
     setApiKey("");
   }
 
   /**
-   * Land somewhere else. The import runs as this person in whatever team is active,
-   * so the target IS the active team - and the plan is read again under it: "already
-   * here" and the domain notes are answers about a team, the ticks are not.
+   * Every team of the list in one go: each token read in the team it lands in -
+   * or, for a team not made yet, as into one - so every list on one Review
+   * answers about its own landing. The re-read a landing needs happens right
+   * before its run (see `runTeam`).
    */
-  const retargetTeam = React.useCallback(
-    async (nextTeamId: string, withKey?: string): Promise<string | null> => {
-      const from = targetTeamId;
-      setRetargeting(true);
-      setRetargetError(null);
-      // This tab has already chosen its screen. Without this, landing in a team
-      // that has a report nobody closed would swap the plan for that old run.
-      restored.current = true;
-      // Idempotent when the team is already active: creating one switches into
-      // it, and picking the current team is how a failed re-read is retried.
-      const switched = await gqlAction(SWITCH_TEAM, { teamId: nextTeamId });
-      if (!switched.ok) {
-        setRetargeting(false);
-        setRetargetError(switched.error);
-        return switched.error;
-      }
-      // `from` is the PAGE's team, which is what the guard above compares: a
-      // second hop (team B after team A) starts from A, and recording A here
-      // made the guard read the landing as stale and drop it.
-      setLanded({ from: teamId, to: nextTeamId });
-      if (from !== nextTeamId) {
-        // The machines Deplo installed to read the panel are granted to ONE team,
-        // and every lookup that reads one is team-scoped: left behind, the run
-        // refuses to start and their agents are stranded.
-        const moved = await gqlAction(
-          HAND_OVER_SOURCES,
-          { fromTeamId: from },
-          undefined,
-          { teamId: nextTeamId },
-        );
-        if (!moved.ok) {
-          setRetargeting(false);
-          setRetargetError(moved.error);
-          return moved.error;
-        }
-      }
-      router.refresh();
-      // In the team it lands in, said outright: the page's URL names the team
-      // every call is for (lib/graphql-client.ts), and this page stays where it
-      // was opened while the run lands somewhere else.
-      const again = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
+  async function scanAll() {
+    setScanning(true);
+    setScanError(null);
+    const plans: Record<number, Plan> = {};
+    const fleetOf: Record<number, Fleet> = {};
+    for (const [i, team] of queue.entries()) {
+      if (team.status !== "waiting") continue;
+      const into = team.target.kind === "existing" ? team.target.teamId : null;
+      const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
         SCAN,
-        // A team of the queue arrives with its own key: the state that would hold
-        // it is set in the same tick as this call, so it is passed, not read.
-        { input: { ...connectInput, apiKey: withKey || connectInput.apiKey } },
+        {
+          input: { url, apiKey: team.apiKey, kind: forcedKind },
+          newTeam: into == null,
+        },
         (d) => d.scanMigrationSource,
-        { teamId: nextTeamId },
+        into ? { teamId: into } : undefined,
       );
-      setRetargeting(false);
-      if (!again.ok) {
-        // Kept on the card, not toasted: the plan on screen now answers about the
-        // team it was read in, and a toast is gone before that matters.
-        setRetargetError(again.error);
-        return again.error;
+      if (!res.ok || !res.data) {
+        setScanning(false);
+        setScanError(
+          `${team.name}: ${res.ok ? "Deplo could not read the panel." : res.error}`,
+        );
+        return;
       }
-      if (!again.data) return "Deplo could not read the panel again.";
-      setPlan(again.data);
-      latestPlan.current = again.data;
-      // Nothing ticked means this plan is NEW to the wizard - the next team of the
-      // queue arriving, not a re-read of the one on screen - so it gets the same
-      // default a first scan gives.
-      const fresh = again.data;
-      setChosen((prev) => (prev.size > 0 ? prev : defaultChoice(fresh)));
-      const defaults = landingDefaults(again.data, servers);
-      // What was already chosen wins: a service the source has grown since the
-      // first scan gets a default, nobody's review gets thrown away.
-      setPlacements((prev) => ({ ...defaults.placements, ...prev }));
-      setServerMap((prev) => ({ ...defaults.servers, ...prev }));
-      return null;
-    },
-    [connectInput, router, servers, targetTeamId, teamId],
-  );
+      plans[i] = res.data;
+      fleetOf[i] = into ? await loadFleet(into) : ownFleet;
+    }
+    setScanning(false);
+    const indexes = Object.keys(plans).map(Number);
+    if (indexes.length === 0) return;
+    const first = plans[indexes[0]];
+    setTeamPlans(plans);
+    setPlan(first);
+    latestPlan.current = first;
+    if (first.otherTeams) setPanelTeams(first.otherTeams);
+    setChosen(
+      new Set(Object.values(plans).flatMap((p) => [...defaultChoice(p)])),
+    );
+    const defaults = indexes.map((i) =>
+      landingDefaults(plans[i], fleetOf[i].servers),
+    );
+    setPlacements(Object.assign({}, ...defaults.map((d) => d.placements)));
+    setServerMap(Object.assign({}, ...defaults.map((d) => d.servers)));
+    setAt(indexes[0]);
+    // Straight on to Install, which is where "can Deplo reach every machine
+    // behind this" gets answered - and which ends itself either way, so nobody
+    // whose machines are already ours has a screen to click through.
+    setStep("install");
+  }
 
   /* ---- the move itself ---------------------------------------------- */
 
   /**
-   * Hand the whole thing to the control plane and stop being the driver.
+   * Point Deplo at the team this turn lands in: the machines it installed to read
+   * the panel go there, and the panel is read again under it - "already here" and
+   * the domain notes are answers about a team, the ticks are not.
    */
-  async function runImport(
-    opts: { from?: Plan | null; fresh?: boolean; keepSources?: boolean } = {},
-  ) {
-    const from = opts.from ?? plan;
-    // A run this tab already holds is never started twice: the server refuses it
-    // as somebody else's, which is what the second press used to produce. `fresh`
-    // is the bulk chain, which has just put the last run's id away itself.
-    if (!from || running || (runId && !opts.fresh)) return;
-    const targets = from.projects.flatMap((p) =>
+  async function landIn(
+    i: number,
+    home: string,
+    key: string,
+  ): Promise<string | null> {
+    if (sourcesTeam.current !== home) {
+      // Every lookup that reads a source is team-scoped: left behind, the run
+      // refuses to start and their agents are stranded.
+      const moved = await gqlAction(
+        HAND_OVER_SOURCES,
+        { fromTeamId: sourcesTeam.current },
+        undefined,
+        { teamId: home },
+      );
+      if (!moved.ok) return moved.error;
+      sourcesTeam.current = home;
+    }
+    setTargetTeamId(home);
+    targetTeamRef.current = home;
+    const fleet = await loadFleet(home);
+    const again = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
+      SCAN,
+      { input: { url, apiKey: key, kind: forcedKind } },
+      (d) => d.scanMigrationSource,
+      { teamId: home },
+    );
+    if (!again.ok) return again.error;
+    if (!again.data) return "Deplo could not read the panel again.";
+    const fresh = again.data;
+    setPlan(fresh);
+    latestPlan.current = fresh;
+    setTeamPlans((prev) => ({ ...prev, [i]: fresh }));
+    // What was already chosen wins: a service the source has grown since the
+    // first scan gets a default, nobody's review gets thrown away.
+    const defaults = landingDefaults(fresh, fleet.servers);
+    placementsRef.current = {
+      ...defaults.placements,
+      ...placementsRef.current,
+    };
+    setPlacements(placementsRef.current);
+    serverMapRef.current = { ...defaults.servers, ...serverMapRef.current };
+    setServerMap(serverMapRef.current);
+    return null;
+  }
+
+  /**
+   * Hand one team's run to the control plane and stop being the driver.
+   */
+  async function runImport(opts: {
+    from: Plan;
+    key: string;
+    home: string;
+    keepSources: boolean;
+  }) {
+    if (running) return;
+    // Placed on the landing team's fleet: a host that team may not use is not a
+    // placement, it is a deploy that dies halfway with the services stopped.
+    const fleet = fleetsRef.current[opts.home] ?? ownFleet;
+    const landing = reconcilePlacements(
+      placementsRef.current,
+      serverMapRef.current,
+      fleet.servers,
+      fleet.buildServers,
+    );
+    const ticked = chosenRef.current;
+    const targets = opts.from.projects.flatMap((p) =>
       importableOf(p)
-        .filter((svc) => chosen.has(svc.sourceId))
+        .filter((svc) => ticked.has(svc.sourceId))
         .map((svc) => ({
           projectId: p.sourceId,
           projectName: p.name,
@@ -937,8 +937,8 @@ export function MigrationWizard({
     const res = await gqlAction<{ startMigration: string }, string>(
       START,
       {
-        input: connectInput,
-        orgName: from.orgName,
+        input: { url, apiKey: opts.key, kind: opts.from.platform },
+        orgName: opts.from.orgName,
         targets,
         servers: Object.entries(landing.servers)
           .filter(([, to]) => to)
@@ -946,10 +946,10 @@ export function MigrationWizard({
         // Another team of this panel is queued behind this run, so it must leave
         // Deplo's agents on the source machines: the next one reads the same
         // disks. It also holds the takeover until the list is done.
-        keepSources: opts.keepSources ?? teamsLeft > 0,
+        keepSources: opts.keepSources,
       },
       (d) => d.startMigration,
-      inTarget(),
+      { teamId: opts.home },
     );
     setRunning(false);
     if (!res.ok) {
@@ -968,25 +968,61 @@ export function MigrationWizard({
     setApiKey("");
   }
 
+  /** The list with one row changed, kept in step for the chain. */
+  function updateQueue(next: QueuedTeam[]) {
+    queueRef.current = next;
+    setQueue(next);
+  }
+
   /**
    * Team `i` of the list, and then the next, with nobody pressing anything in
-   * between: the Deplo team it lands in is made when there is none, the panel is
+   * between: the Deplo team it lands in is made when it is to be, the panel is
    * read again under it, and its run starts. `settleFinished` calls this again
    * for the team after, and shows one report when the last one has landed.
    */
-  async function runBulk(i: number) {
-    const team = queue[i];
-    if (!team) return;
-    if (team.status !== "waiting") return runBulk(i + 1);
+  /** Team `j` still has a turn coming, with something ticked to run it for. */
+  function hasWork(j: number): boolean {
+    const own = teamPlansRef.current[j];
+    return (
+      queueRef.current[j]?.status === "waiting" &&
+      own != null &&
+      own.projects
+        .flatMap(importableOf)
+        .some((s) => chosenRef.current.has(s.sourceId))
+    );
+  }
+
+  async function runTeam(i: number) {
+    const team = queueRef.current[i];
+    if (!team) return showLastReport();
+    if (team.status !== "waiting") return runTeam(i + 1);
     setAt(i);
+    atRef.current = i;
+    // Nothing ticked under it: nothing to run, and nothing to stop the rest for.
+    if (!hasWork(i)) {
+      updateQueue(
+        queueRef.current.map((e, j) =>
+          j === i ? { ...e, status: "skipped" } : e,
+        ),
+      );
+      return runTeam(i + 1);
+    }
     setRunId(null);
     setAdoptedId(null);
     setReport(null);
-    let home = homeFor(team);
-    if (!home && team.name) {
+    let home: string;
+    if (team.target.kind === "existing") home = team.target.teamId;
+    else {
+      // Named as it was over there, with its picture when the panel had one.
       const made = await gqlAction<{ createTeam: { id: string } }, string>(
         CREATE_TEAM,
-        { name: team.name },
+        {
+          name: team.name,
+          image:
+            team.avatarUrl && isValidTeamAvatarValue(team.avatarUrl)
+              ? team.avatarUrl
+              : null,
+        },
         (d) => d.createTeam.id,
       );
       if (!made.ok || !made.data)
@@ -994,27 +1030,32 @@ export function MigrationWizard({
           made.ok ? "Deplo could not create the team." : made.error,
         );
       home = made.data;
+      updateQueue(
+        retarget(queueRef.current, i, { kind: "existing", teamId: home }),
+      );
+      // The page's list of teams has one more in it now.
+      router.refresh();
     }
-    if (home && home !== targetTeamId) {
-      const failed = await retargetTeam(home, team.apiKey);
-      if (failed) return toast.error(failed);
-    } else if (!(await scanWith(team.apiKey, true))) return;
+    const failed = await landIn(i, home, team.apiKey);
+    if (failed) return toast.error(failed);
     await runImport({
-      from: latestPlan.current,
-      fresh: true,
-      keepSources: queue.some((q, j) => j > i && q.status === "waiting"),
+      from: latestPlan.current!,
+      key: team.apiKey,
+      home,
+      // Only a team that will actually run still needs the agents there.
+      keepSources: queueRef.current.some((_, j) => j > i && hasWork(j)),
     });
   }
-  const runBulkRef = React.useRef(runBulk);
-  runBulkRef.current = runBulk;
-  const bulkRef = React.useRef(bulk);
-  bulkRef.current = bulk;
-  const queueRef = React.useRef(queue);
-  queueRef.current = queue;
-  const targetTeamRef = React.useRef(targetTeamId);
-  targetTeamRef.current = targetTeamId;
-  /** Every call about the run goes to the team it lands in, not the page's. */
-  const inTarget = () => ({ teamId: targetTeamRef.current });
+  const runTeamRef = React.useRef(runTeam);
+  runTeamRef.current = runTeam;
+
+  /** What the last run of the chain did - the report, once the list is walked. */
+  const lastLanded = React.useRef<RunReport | null>(null);
+  function showLastReport() {
+    if (!lastLanded.current) return;
+    setReport(lastLanded.current);
+    setStep("review");
+  }
 
   /**
    * Everything ONE team chose. Which teams are still to come is not one team's,
@@ -1034,10 +1075,7 @@ export function MigrationWizard({
     attemptedMachines.current = new Set();
     setApiKey("");
     setScanError(null);
-    setRetargetError(null);
     setLogOpen(false);
-    setInvites(null);
-    setInviteLink(null);
   }, []);
 
   /**
@@ -1057,65 +1095,19 @@ export function MigrationWizard({
 
   /** Nothing of this panel is wanted any more - another panel, or the way out. */
   const forgetQueue = React.useCallback(() => {
-    setQueue([]);
+    updateQueue([]);
     setAt(0);
     setPanelTeams(null);
-    setPendingTeam(null);
-  }, []);
-
-  /**
-   * Begin one team of the list: point Deplo at the team of its own it lands in,
-   * then read the panel with its key.
-   */
-  async function startTeam(i: number, teamHere?: string) {
-    const team = queue[i];
-    if (!team) return;
-    setAt(i);
-    resetTeamState();
-    if (!teamHere || teamHere === targetTeamId) {
-      await scanWith(team.apiKey);
-      return;
-    }
-    // Said out loud here: the card that carries this error is a step away from
-    // where the list left the operator standing.
-    const failed = await retargetTeam(teamHere, team.apiKey);
-    if (failed) return toast.error(failed);
-    setStep("install");
-  }
-
-  /**
-   * Where one team of the list lands: the Deplo team already named after it, or
-   * one created for it, because that is the separation they had over there. With
-   * a single team nothing moves - a lone migration lands where it always did.
-   */
-  function homeFor(team: QueuedTeam): string | undefined {
-    if (queue.length < 2 || !team.name) return undefined;
-    return targetTeams.find((t) => sameTeamName(t.name, team.name))?.id;
-  }
-
-  /** Team `i`, wherever it belongs - creating that team first when there is none. */
-  async function goToTeam(i: number) {
-    const team = queue[i];
-    if (!team) return;
-    const home = homeFor(team);
-    // No team of that name here yet: the dialog carries it, and creating it is
-    // the click that says yes. `at` only moves once there is somewhere to land.
-    if (!home && queue.length > 1 && team.name) {
-      setPendingTeam(i);
-      return;
-    }
-    await startTeam(i, home);
-  }
-
-  /** On to the next team of the panel. */
-  async function nextTeam() {
-    const i = at + 1;
-    if (!queue[i]) return;
-    await closeReport();
-    // The key dies with its turn.
-    setQueue((q) => q.map((e, j) => (j === at ? { ...e, apiKey: "" } : e)));
-    await goToTeam(i);
-  }
+    setTeamPlans({});
+    setTeamRuns({});
+    setTeamInvites({});
+    setTeamLinks({});
+    setTargetTeamId(null);
+    lastLanded.current = null;
+    // The last run took the agents off the source machines; the next panel's
+    // are registered afresh, by the page's team.
+    sourcesTeam.current = teamId;
+  }, [teamId]);
 
   /**
    * Stop, which means undo.
@@ -1138,9 +1130,6 @@ export function MigrationWizard({
    * The run ended somewhere else - in the control plane, which is where it runs
    * now - so this tab has to find out how.
    */
-  /** Read by `settleFinished`, which must not change identity every time the
-   *  plan does - it is the dependency of an effect that watches the live feed. */
-  const hasPlan = plan != null;
   const settleFinished = React.useCallback(
     async (id: string) => {
       const res = await gqlAction<
@@ -1158,33 +1147,33 @@ export function MigrationWizard({
       setSnapshot(null);
       // The list says how each team went, so a report closed hours later still
       // reads as "two over, one to go".
-      const outcome =
+      const outcome: QueuedTeam["status"] =
         res.data.status === "done"
           ? "done"
           : res.data.status === "stopped"
             ? "stopped"
             : "failed";
-      setQueue((q) =>
-        q.map((e, i) => (i === at ? { ...e, status: outcome } : e)),
+      const i = atRef.current;
+      const next = queueRef.current.map((e, j) =>
+        j === i ? { ...e, status: outcome } : e,
       );
+      queueRef.current = next;
+      setQueue(next);
       if (res.data.status === "done") {
         const { created, skipped, failed, manual } = res.data;
         const landed = { created, skipped, failed, manual };
-        // Several teams: this one is written down, and the next starts on its
-        // own. Only the last one's landing opens the report.
-        if (bulkRef.current) {
-          setTeamRuns((prev) => ({
-            ...prev,
-            [at]: { runId: id, teamId: targetTeamRef.current, report: landed },
-          }));
-          const next = queueRef.current.findIndex(
-            (q, j) => j > at && q.status === "waiting",
-          );
-          if (next !== -1) {
-            await gqlAction(DISMISS, { runId: id }, undefined, inTarget());
-            void runBulkRef.current(next);
-            return;
-          }
+        lastLanded.current = landed;
+        setTeamRuns((prev) => ({
+          ...prev,
+          [i]: { runId: id, teamId: targetTeamRef.current, report: landed },
+        }));
+        // Another team is still on the list: this one is written down, and the
+        // next starts on its own. Only the last one's landing opens the report.
+        const after = next.findIndex((q, j) => j > i && q.status === "waiting");
+        if (after !== -1) {
+          await gqlAction(DISMISS, { runId: id }, undefined, inTarget());
+          void runTeamRef.current(after);
+          return;
         }
         // The step does NOT move: the report IS this step's finished state, and
         // the way on is the person acknowledging it (see `acknowledgeReport`).
@@ -1202,7 +1191,7 @@ export function MigrationWizard({
         );
       resetToStart();
     },
-    [resetToStart, at],
+    [resetToStart],
   );
 
   /**
@@ -1262,71 +1251,63 @@ export function MigrationWizard({
     router.refresh();
   }
 
-  /** Where each team of the list lands, as the Review names it. */
-  const reviewGroups: ReviewGroup[] = bulk
-    ? queue.flatMap((q, i) => {
-        const p = teamPlans[i];
-        if (!p) return [];
-        const home = targetTeams.find((t) => sameTeamName(t.name, q.name));
-        return [
-          {
-            key: String(i),
-            team: { name: q.name, avatarUrl: q.avatarUrl },
-            landsIn: home
-              ? { name: home.name, avatarUrl: home.avatarUrl, isNew: false }
-              : { name: q.name, avatarUrl: q.avatarUrl, isNew: true },
-            plan: p,
-          },
-        ];
-      })
-    : [];
+  /**
+   * The Deplo team a row lands in, as the Review and the report name it. A team
+   * made at Start is on the page's list a refresh later; until then the row's
+   * own name stands in.
+   */
+  function landingOf(q: QueuedTeam) {
+    const target = q.target;
+    const home =
+      target.kind === "existing"
+        ? targetTeams.find((t) => t.id === target.teamId)
+        : undefined;
+    return home
+      ? { name: home.name, avatarUrl: home.avatarUrl, isNew: false }
+      : { name: q.name, avatarUrl: q.avatarUrl, isNew: true };
+  }
 
-  const peopleGroups: PeopleGroup[] = bulk
-    ? queue.flatMap((q, i) => {
-        const p = teamPlans[i];
-        if (!p || !teamRuns[i]) return [];
-        return [
-          {
-            key: String(i),
-            team: { name: q.name, avatarUrl: q.avatarUrl },
-            people: p.members.filter((m) => !m.inTeam),
-            invites: teamInvites[i] ?? null,
-            canInvite: true,
-            onInvite: () => inviteFor(i),
-            inviteLink: teamLinks[i] ?? null,
-            minting: mintingFor === i,
-            onMintLink: () => void mintLinkFor(i),
-          },
-        ];
-      })
-    : [
-        {
-          key: "0",
-          team: { name: teamName, avatarUrl: teamAvatarUrl },
-          people: (plan?.members ?? []).filter((m) => !m.inTeam),
-          invites,
-          canInvite: runId != null,
-          onInvite: inviteMembers,
-          inviteLink,
-          minting,
-          onMintLink: () => void mintInviteLink(),
-        },
-      ];
+  /** Where each team of the list lands, as the Review names it. */
+  const reviewGroups: ReviewGroup[] = queue.flatMap((q, i) => {
+    const p = teamPlans[i];
+    if (!p) return [];
+    const fleet = fleetFor(q.target);
+    return [
+      {
+        key: String(i),
+        team: { name: q.name, avatarUrl: q.avatarUrl },
+        landsIn: landingOf(q),
+        plan: p,
+        servers: fleet.servers,
+        buildServers: fleet.buildServers,
+      },
+    ];
+  });
+
+  const peopleGroups: PeopleGroup[] = queue.flatMap((q, i) => {
+    const p = teamPlans[i];
+    if (!p || !teamRuns[i]) return [];
+    return [
+      {
+        key: String(i),
+        team: { name: q.name, avatarUrl: q.avatarUrl },
+        people: p.members.filter((m) => !m.inTeam),
+        invites: teamInvites[i] ?? null,
+        canInvite: true,
+        onInvite: () => inviteFor(i),
+        inviteLink: teamLinks[i] ?? null,
+        minting: mintingFor === i,
+        onMintLink: () => void mintLinkFor(i),
+      },
+    ];
+  });
 
   /** Every team's landing, for the one report at the end. */
-  const teamReports = bulk
-    ? queue.flatMap((q, i) =>
-        teamRuns[i]
-          ? [
-              {
-                name: q.name,
-                avatarUrl: q.avatarUrl,
-                report: teamRuns[i].report,
-              },
-            ]
-          : [],
-      )
-    : [];
+  const teamReports = queue.flatMap((q, i) =>
+    teamRuns[i]
+      ? [{ name: q.name, avatarUrl: q.avatarUrl, report: teamRuns[i].report }]
+      : [],
+  );
   const totals = teamReports.reduce(
     (sum, t) => ({
       created: sum.created + t.report.created,
@@ -1336,45 +1317,6 @@ export function MigrationWizard({
     }),
     { created: 0, skipped: 0, failed: 0, manual: 0 },
   );
-
-  async function inviteMembers() {
-    if (!runId) return;
-    setInviting(true);
-    const res = await gqlAction<{ importMigrationMembers: Invite[] }, Invite[]>(
-      IMPORT_MEMBERS,
-      { input: connectInput, runId },
-      (d) => d.importMigrationMembers,
-      inTarget(),
-    );
-    setInviting(false);
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    setInvites(res.data ?? []);
-    router.refresh();
-  }
-
-  async function mintInviteLink() {
-    setMinting(true);
-    const res = await gqlAction<{ mintRegistrationLink: string }, string>(
-      MINT_LINK,
-      {
-        input: {
-          mode: "existing_teams",
-          teamAssignments: [{ teamId: targetTeamId, role: "member" }],
-        },
-      },
-      (d) => d.mintRegistrationLink,
-    );
-    setMinting(false);
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    setInviteLink(res.data ?? null);
-    router.refresh();
-  }
 
   /**
    * A machine's agent just came up: it is now one of ours.
@@ -1414,7 +1356,11 @@ export function MigrationWizard({
   function acknowledgeReport() {
     void closeReport();
     setStep(
-      isInstanceAdmin && hasPlan ? "people" : isTakeover ? "takeover" : "done",
+      isInstanceAdmin && peopleGroups.length > 0
+        ? "people"
+        : isTakeover
+          ? "takeover"
+          : "done",
     );
   }
 
@@ -1430,14 +1376,10 @@ export function MigrationWizard({
   );
 
   /**
-   * Nothing here holds the page any more, and that is the point: the run is the
-   * control plane's, and every screen this wizard shows is restored from it (see
-   * `resumable`).
+   * The run in flight in the team this turn lands in, whoever started it. The
+   * wizard's own feed, not the shell's: the page's team need not be that team.
    */
-  /**
-   * The team's run in flight, whoever started it.
-   */
-  const watched = useActiveMigration();
+  const watched = useMigrationFeed(targetTeamId ?? teamId);
 
   /** The run on screen: the live feed when there is one, the page's own snapshot
    *  until it arrives. */
@@ -1576,9 +1518,13 @@ export function MigrationWizard({
     const abandon = () => {
       if (!abandonRef.current) return;
       abandonRef.current = false;
+      // Sent to the team the sources are granted to, the way the client would.
       void fetch("/api/graphql", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          [TEAM_HEADER]: sourcesTeam.current,
+        },
         body: JSON.stringify({ query: ABANDON }),
         credentials: "same-origin",
         keepalive: true,
@@ -1721,10 +1667,16 @@ export function MigrationWizard({
                   setForcedKind={setForcedKind}
                   scanError={scanError}
                   queue={queue}
+                  targetTeams={targetTeams}
                   uncovered={uncovered}
                   adding={adding}
                   onAdd={() => void identifyAndAdd()}
-                  onRemove={(i) => setQueue((q) => q.filter((_, j) => j !== i))}
+                  onRetarget={(i, target) =>
+                    updateQueue(retarget(queueRef.current, i, target))
+                  }
+                  onRemove={(i) =>
+                    updateQueue(queueRef.current.filter((_, j) => j !== i))
+                  }
                   onSubmit={submitConnect}
                 />
               )}
@@ -1750,22 +1702,14 @@ export function MigrationWizard({
                 showing === "report" &&
                 report && (
                   <ReportCard
-                    kind={kind}
-                    report={bulk && teamReports.length > 0 ? totals : report}
-                    teams={bulk ? teamReports : null}
-                    teamNo={at + 1}
-                    teamCount={queue.length}
-                    nextName={
-                      !bulk && teamsLeft > 0
-                        ? (queue[at + 1]?.name ?? "")
-                        : null
-                    }
-                    onNext={() => void nextTeam()}
+                    report={teamReports.length > 0 ? totals : report}
+                    teams={teamReports.length > 1 ? teamReports : null}
                     uncovered={uncovered}
                     onAddTeam={() => setStep("connect")}
                     onShowLog={() => setLogOpen(true)}
                     onContinue={acknowledgeReport}
                     isInstanceAdmin={isInstanceAdmin}
+                    sourcesTeamId={sourcesTeam.current}
                   />
                 )}
 
@@ -1793,28 +1737,18 @@ export function MigrationWizard({
                     onStop={runId ? () => void stopRun(runId) : undefined}
                     onBack={() => setFailure(null)}
                   />
-                ) : showing === "plan" && plan ? (
+                ) : showing === "plan" && reviewGroups.length > 0 ? (
                   <ReviewStep
                     kind={kind}
-                    plan={plan}
-                    groups={bulk ? reviewGroups : null}
-                    teamId={targetTeamId}
-                    teamName={teamName}
-                    teamAvatarUrl={teamAvatarUrl}
-                    targetTeams={targetTeams}
-                    retargeting={retargeting}
-                    retargetError={retargetError}
-                    onRetarget={(id) => void retargetTeam(id)}
+                    groups={reviewGroups}
                     chosen={chosen}
                     setChosen={setChosen}
-                    servers={servers}
-                    buildServers={buildServers}
-                    placements={landing.placements}
+                    placements={placements}
                     setPlacements={setPlacements}
                     canExposePorts={canExposePorts}
-                    isInstanceAdmin={isInstanceAdmin}
+                    onChangeTarget={() => setStep("connect")}
                     onBack={() => setStep("install")}
-                    onStart={() => void (bulk ? runBulk(0) : runImport())}
+                    onStart={() => void runTeam(0)}
                   />
                 ) : null)}
 
@@ -1849,31 +1783,11 @@ export function MigrationWizard({
       )}
 
       {/**
-       * The team the next one of the list lands in, when this Deplo has none by
-       * that name. Mounted here rather than in the Review, which is a step past
-       * where the queue needs the answer.
-       */}
-      {pendingTeam != null && (
-        <CreateTeamDialog
-          open
-          redirect={false}
-          defaultName={queue[pendingTeam]?.name}
-          onOpenChange={(o) => {
-            if (!o) setPendingTeam(null);
-          }}
-          onCreated={(id) => {
-            const i = pendingTeam;
-            setPendingTeam(null);
-            void startTeam(i, id);
-          }}
-        />
-      )}
-
-      {/**
        * Line by line, while it happens.
        */}
       <MigrationConsole
         runId={adoptedId ?? runId ?? feed?.id ?? null}
+        teamId={targetTeamId ?? teamId}
         open={logOpen}
         onOpenChange={setLogOpen}
         live={feed != null}
@@ -1899,9 +1813,11 @@ function ConnectStep({
   setForcedKind,
   scanError,
   queue,
+  targetTeams,
   uncovered,
   adding,
   onAdd,
+  onRetarget,
   onRemove,
   onSubmit,
 }: {
@@ -1921,19 +1837,22 @@ function ConnectStep({
   scanError: string | null;
   /** The teams added so far - see `./queue`. */
   queue: QueuedTeam[];
+  /** The teams a row may land in, besides a new one. */
+  targetTeams: TargetTeam[];
   /** The panel's teams no token here covers, when the panel will name them. */
   uncovered: string[];
   adding: boolean;
   onAdd: () => void;
+  onRetarget: (i: number, target: TeamTarget) => void;
   onRemove: (i: number) => void;
   onSubmit: (e: React.FormEvent) => void;
 }) {
   const copy = copyFor(kind);
   const busy = scanning || adding;
   /**
-   * One button, and it does the one thing left to do: add what is typed, or set
-   * off down the list. A first token is both at once, which is what keeps the
-   * single-team migration at the one click it has always been.
+   * One button, and it does the one thing left to do: put the typed token on the
+   * list, or set off down the list. Adding is what shows where a team lands,
+   * so even one token goes onto the list before the panel is read in full.
    */
   const label = scanning
     ? copy.scanBusy
@@ -2032,7 +1951,7 @@ function ConnectStep({
               {queue.map((q, i) => (
                 <li
                   key={`${q.sourceTeamId ?? ""}-${i}`}
-                  className="flex items-center gap-2 px-3 py-2 text-sm"
+                  className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"
                 >
                   {/* The panel's own picture for it, and the team's monogram
                       when it keeps none - the same renderer every other team
@@ -2046,6 +1965,9 @@ function ConnectStep({
                     {q.name || `An unnamed ${copy.teamLabel}`}
                   </span>
                   {q.status === "done" && <Badge variant="success">Done</Badge>}
+                  {q.status === "skipped" && (
+                    <Badge variant="secondary">Skipped</Badge>
+                  )}
                   {q.status === "stopped" && (
                     <Badge variant="secondary">Stopped</Badge>
                   )}
@@ -2053,14 +1975,24 @@ function ConnectStep({
                     <Badge variant="destructive">Failed</Badge>
                   )}
                   {q.status === "waiting" && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Remove ${q.name}`}
-                      onClick={() => onRemove(i)}
-                    >
-                      <X className="size-4" />
-                    </Button>
+                    <>
+                      <span className="text-muted-foreground">lands in</span>
+                      <TargetSelect
+                        value={q.target}
+                        teams={targetTeams}
+                        sourceName={q.name || `an unnamed ${copy.teamLabel}`}
+                        disabled={busy}
+                        onChange={(target) => onRetarget(i, target)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Remove ${q.name}`}
+                        onClick={() => onRemove(i)}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </>
                   )}
                 </li>
               ))}
@@ -2151,6 +2083,70 @@ function ConnectStep({
         </div>
       </form>
     </StepShell>
+  );
+}
+
+/** The value a Select carries for "a team made for it at Start". */
+const NEW_TEAM = "new";
+
+/**
+ * Where one source team lands: a team that exists, or one named after it. The
+ * namesake is the default (see `defaultTarget`); this is the way to say otherwise.
+ */
+function TargetSelect({
+  value,
+  teams,
+  sourceName,
+  disabled,
+  onChange,
+}: {
+  value: TeamTarget;
+  teams: TargetTeam[];
+  /** What the new team would be called. */
+  sourceName: string;
+  disabled: boolean;
+  onChange: (target: TeamTarget) => void;
+}) {
+  return (
+    <Select
+      value={value.kind === "new" ? NEW_TEAM : value.teamId}
+      onValueChange={(v) =>
+        onChange(
+          v === NEW_TEAM ? { kind: "new" } : { kind: "existing", teamId: v },
+        )
+      }
+      disabled={disabled}
+    >
+      <SelectTrigger
+        className="w-[13rem]"
+        aria-label={`Where ${sourceName} lands`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {teams.length > 0 && (
+          <SelectGroup>
+            <SelectLabel>Existing teams</SelectLabel>
+            {teams.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                <span className="flex items-center gap-2">
+                  <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="xs" />
+                  <span className="truncate">{t.name}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+        <SelectItem value={NEW_TEAM}>
+          <span className="flex items-center gap-2">
+            <Plus className="size-4 text-muted-foreground" />
+            <span className="truncate">
+              New team &ldquo;{sourceName}&rdquo;
+            </span>
+          </span>
+        </SelectItem>
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -2365,31 +2361,20 @@ function ElapsedLine({
  * this" gets said, and an error is acknowledged rather than a dead end.
  */
 function ReportCard({
-  kind,
   report,
   teams = null,
-  teamNo,
-  teamCount,
-  nextName,
-  onNext,
   uncovered,
   onAddTeam,
   onShowLog,
   onContinue,
   isInstanceAdmin,
+  sourcesTeamId,
 }: {
-  kind: SourceKind | null;
   report: RunReport;
   /** Several teams landed in one go: each one's numbers, under its name. Then
    *  `report` is their sum. */
   teams?:
     { name: string; avatarUrl: string | null; report: RunReport }[] | null;
-  /** Which team of the list this was, and how many there are. */
-  teamNo: number;
-  teamCount: number;
-  /** The next team of the list, or null when this was the last one. */
-  nextName: string | null;
-  onNext: () => void;
   /** Teams of the panel no token covers - only ever named on a panel that lists
    *  them, which is Dokploy alone. */
   uncovered: string[];
@@ -2399,22 +2384,15 @@ function ReportCard({
   onContinue: () => void;
   /** Uninstalling an agent is instance-admin, like every server action. */
   isInstanceAdmin: boolean;
+  /** The team the source machines are granted to, where a leftover would be. */
+  sourcesTeamId: string;
 }) {
-  const more = nextName != null;
   const needsAPerson = report.failed + report.manual;
 
   return (
     <StepShell
-      title={
-        more
-          ? `Team ${teamNo} of ${teamCount} is on Deplo`
-          : "Your projects are on Deplo"
-      }
-      lead={
-        more
-          ? `${nextName} is next, and it lands in a team of its own. Nothing is deployed yet.`
-          : "Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
-      }
+      title="Your projects are on Deplo"
+      lead="Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
     >
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="success">{report.created} created</Badge>
@@ -2465,7 +2443,7 @@ function ReportCard({
 
       {/* Only a panel that lists its teams gets here - the operator is one key
           short of a team they have not thought about. */}
-      {!more && uncovered.length > 0 && (
+      {uncovered.length > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 flex-1 text-muted-foreground">
@@ -2482,19 +2460,15 @@ function ReportCard({
           <ScrollText className="size-4" />
           Show log
         </Button>
-        <Button onClick={more ? onNext : onContinue}>
-          {more
-            ? `Migrate ${nextName}`
-            : needsAPerson > 0
-              ? "I understand, continue"
-              : "Continue"}
+        <Button onClick={onContinue}>
+          {needsAPerson > 0 ? "I understand, continue" : "Continue"}
         </Button>
       </div>
 
       {/* Only ever shown when an agent really is still out there: finishing the
           run uninstalls them, so this is the line for the one that would not go
-          quietly. Never while a team is still queued - those agents are its way in. */}
-      {isInstanceAdmin && !more && <RemoveMigrationSources />}
+          quietly. */}
+      {isInstanceAdmin && <RemoveMigrationSources teamId={sourcesTeamId} />}
     </StepShell>
   );
 }

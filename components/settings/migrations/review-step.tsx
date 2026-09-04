@@ -4,21 +4,16 @@ import * as React from "react";
 import {
   ArrowRight,
   Layers,
-  Loader2,
   Server as ServerIcon,
   TriangleAlert,
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
-import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
-import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
-import { TeamTargetGraphic } from "./team-target-graphic";
-import { TargetTeamDialog } from "./target-team-dialog";
 import { MigrationTree, type PortConflict } from "./migration-tree";
 import { StepShell } from "./step-shell";
 import { copyFor, type SourceKind, stepDocs } from "./sources";
@@ -28,7 +23,6 @@ import {
   type Plan,
   type PortCheck,
   type ServerChoice,
-  type TargetTeam,
 } from "./types";
 
 const PORTS_IN_USE = /* GraphQL */ `
@@ -283,14 +277,17 @@ function usePortConflicts({
 /* ------------------------------------------------------------------ */
 
 /**
- * One team of the list when several come over at once: what its token read, and
- * the Deplo team it lands in - one that exists, or one made for it at Start.
+ * One team of the list: what its token read, the Deplo team it lands in - one
+ * that exists, or one made for it at Start - and that team's fleet, which is
+ * what its services may be placed on.
  */
 export interface ReviewGroup {
   key: string;
   team: { name: string; avatarUrl: string | null };
   landsIn: { name: string; avatarUrl: string | null; isNew: boolean };
   plan: Plan;
+  servers: ServerChoice[];
+  buildServers: ServerChoice[];
 }
 
 /** Every team's projects as one plan, which is what the port check reads. */
@@ -301,66 +298,43 @@ function mergedPlan(groups: ReviewGroup[]): Plan {
   };
 }
 
+/** Every landing team's hosts, once each - for the port check's names. */
+function everyServer(groups: ReviewGroup[]): ServerChoice[] {
+  const seen = new Map<string, ServerChoice>();
+  for (const g of groups) for (const s of g.servers) seen.set(s.id, s);
+  return [...seen.values()];
+}
+
 export function ReviewStep({
   kind,
-  plan,
-  groups = null,
-  teamId,
-  teamName,
-  teamAvatarUrl,
-  targetTeams,
-  retargeting,
-  retargetError,
-  onRetarget,
+  groups,
   chosen,
   setChosen,
-  servers,
-  buildServers,
   placements,
   setPlacements,
   canExposePorts,
-  isInstanceAdmin,
+  onChangeTarget,
   onBack,
   onStart,
 }: {
   /** Which panel the plan was read from. */
   kind: SourceKind | null;
-  plan: Plan;
-  /** Several teams at once, each with its own list and its own landing team.
-   *  Then `plan` is only the first of them, and nothing is re-targeted here. */
-  groups?: ReviewGroup[] | null;
-  /** The active team, named in the card at the top: everything lands there. */
-  teamId: string;
-  teamName: string;
-  teamAvatarUrl: string | null;
-  /** Where else it could land - every team this person may create projects in. */
-  targetTeams: TargetTeam[];
-  /** A team change is in flight: the plan is being read again under it. */
-  retargeting: boolean;
-  /** Why the last re-read failed - the plan below answers about another team. */
-  retargetError: string | null;
-  onRetarget: (teamId: string) => void;
+  /** One per team of the list, each with its own list and its own landing team. */
+  groups: ReviewGroup[];
   chosen: Set<string>;
   setChosen: (v: Set<string>) => void;
-  servers: ServerChoice[];
-  buildServers: ServerChoice[];
   placements: Record<string, Placement>;
   setPlacements: React.Dispatch<
     React.SetStateAction<Record<string, Placement>>
   >;
   canExposePorts: boolean;
-  /** Creating a team is instance-admin, like every other way of making one. */
-  isInstanceAdmin: boolean;
+  /** Where a team lands is decided on Connect; this is the way back to it. */
+  onChangeTarget: () => void;
   onBack: () => void;
   onStart: () => void;
 }) {
-  const [newTeamOpen, setNewTeamOpen] = React.useState(false);
-  const [pickTeamOpen, setPickTeamOpen] = React.useState(false);
-  const bulk = groups != null && groups.length > 1;
-  const all = React.useMemo(
-    () => (bulk ? mergedPlan(groups) : plan),
-    [bulk, groups, plan],
-  );
+  const all = React.useMemo(() => mergedPlan(groups), [groups]);
+  const servers = React.useMemo(() => everyServer(groups), [groups]);
   const ports = usePortConflicts({
     plan: all,
     placements,
@@ -370,13 +344,13 @@ export function ReviewStep({
     enabled: canExposePorts,
   });
   const pickable = all.projects.flatMap((p) => importableOf(p));
-  const allChosen = pickable.length > 0 && chosen.size === pickable.length;
   // The confirm names them, in a tooltip. A search box above the tree filters
   // what you SEE and not what is ticked, so a count alone let somebody stop
   // three services while looking at one.
   const chosenNames = pickable
     .filter((s) => chosen.has(s.sourceId))
     .map((s) => s.name);
+  const panel = copyFor(kind).name;
 
   return (
     <StepShell
@@ -415,11 +389,12 @@ export function ReviewStep({
         <EmptyState
           icon={Layers}
           title="Nothing to bring over"
-          description={`That ${copyFor(kind).name} has no projects, or the token cannot see them.`}
+          description={`That ${panel} has no projects, or the token cannot see them.`}
         />
-      ) : bulk ? (
+      ) : (
         // One section per team, each under the name it has over there and the
-        // team it lands in here - so two lists never read as one.
+        // team it lands in here - so two lists never read as one, and where a
+        // team lands is in sight while its list is ticked.
         <div className="space-y-4">
           {groups.map((g) => {
             const own = g.plan.projects.flatMap((p) => importableOf(p));
@@ -437,9 +412,7 @@ export function ReviewStep({
                     size="sm"
                   />
                   <span className="font-medium">{g.team.name}</span>
-                  <span className="text-muted-foreground">
-                    on {copyFor(kind).name}
-                  </span>
+                  <span className="text-muted-foreground">on {panel}</span>
                   <ArrowRight className="size-3.5 text-muted-foreground" />
                   <TeamAvatar
                     name={g.landsIn.name}
@@ -450,6 +423,14 @@ export function ReviewStep({
                   {g.landsIn.isNew && (
                     <Badge variant="secondary">New team</Badge>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={onChangeTarget}
+                  >
+                    Change
+                  </Button>
                 </div>
                 {g.plan.projects.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
@@ -460,8 +441,8 @@ export function ReviewStep({
                     projects={g.plan.projects}
                     chosen={chosen}
                     onChange={setChosen}
-                    servers={servers}
-                    buildServers={buildServers}
+                    servers={g.servers}
+                    buildServers={g.buildServers}
                     placements={placements}
                     onPlacementsChange={setPlacements}
                     portConflicts={ports.conflicts}
@@ -480,127 +461,26 @@ export function ReviewStep({
             );
           })}
         </div>
-      ) : (
-        <div
-          className={cn(
-            retargeting && "pointer-events-none opacity-50 transition-opacity",
-          )}
-        >
-          <MigrationTree
-            projects={plan.projects}
-            chosen={chosen}
-            onChange={setChosen}
-            servers={servers}
-            buildServers={buildServers}
-            placements={placements}
-            onPlacementsChange={setPlacements}
-            portConflicts={ports.conflicts}
-            showPorts={canExposePorts}
-            allChosen={allChosen}
-            onToggleAll={() =>
-              setChosen(
-                allChosen
-                  ? new Set()
-                  : new Set(pickable.map((s) => s.sourceId)),
-              )
-            }
-          />
-        </div>
       )}
 
       {/**
-       * Where it all ends up, and it sits AFTER the list: the question this step asks is
-       * "what comes over", and the answer to "into which team" is the one you check once
-       * you have seen the list - not a card to read past on the way to it.
+       * The one consequence worth stopping on, in its own small card right under the
+       * lists - and NOT behind a confirm dialog.
        */}
-      <div className="space-y-3">
-        {/* Several teams say where each lands on its own section above. */}
-        {!bulk && (
-          <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
-            <TeamTargetGraphic />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-sm font-medium">
-                Everything lands in
-                <TeamAvatar
-                  name={teamName}
-                  avatarUrl={teamAvatarUrl}
-                  size="sm"
-                />
-                {teamName}
-              </div>
-              {retargeting ? (
-                <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Loader2 className="size-3.5 animate-spin" />
-                  Re-checking what is already there
-                </p>
-              ) : retargetError ? (
-                <p className="mt-1 flex items-start gap-1.5 text-sm text-warning">
-                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                  <span className="min-w-0 text-muted-foreground">
-                    {retargetError} What is marked &ldquo;Already here&rdquo;
-                    below is another team&rsquo;s answer - pick this team again
-                    to re-check.
-                  </span>
-                </p>
-              ) : (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Apps, databases and the variables that go with them.
-                </p>
-              )}
-            </div>
-            <Button
-              variant="secondary"
-              disabled={retargeting}
-              onClick={() => setPickTeamOpen(true)}
-            >
-              Select another
-            </Button>
-          </div>
-        )}
-
-        {/**
-         * The one consequence worth stopping on, in its own small card right under the
-         * destination - and NOT behind a confirm dialog.
-         */}
-        {chosenNames.length > 0 && (
-          <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
-            <p className="min-w-0 text-muted-foreground">
-              <SimpleTooltip content={chosenNames.join(", ")}>
-                <span className="font-medium text-warning underline decoration-dotted underline-offset-4">
-                  {chosenNames.length}
-                </span>
-              </SimpleTooltip>{" "}
-              {chosenNames.length === 1 ? "service is" : "services are"} stopped
-              on {copyFor(kind).name} when this starts, and not started again.
-            </p>
-          </div>
-        )}
-      </div>
-      <TargetTeamDialog
-        open={pickTeamOpen}
-        onOpenChange={setPickTeamOpen}
-        teams={targetTeams}
-        activeId={teamId}
-        canCreate
-        onSelect={(id) => onRetarget(id)}
-        onCreate={() => setNewTeamOpen(true)}
-      />
-
-      {/* `redirect={false}`: creating a team switches you into it, and the
-          dialog's usual trip to the overview would throw away the scan, the
-          selection and the key that are only in this tab. Not instance-admin
-          gated: `createTeam` asks for no Capability, and the team switcher
-          offers it to everyone. */}
-      <CreateTeamDialog
-        open={newTeamOpen}
-        onOpenChange={setNewTeamOpen}
-        redirect={false}
-        // The panel's own team is what it is called over there, so that is the
-        // name it lands under here.
-        defaultName={plan.orgName ?? undefined}
-        onCreated={(id) => onRetarget(id)}
-      />
+      {chosenNames.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+          <p className="min-w-0 text-muted-foreground">
+            <SimpleTooltip content={chosenNames.join(", ")}>
+              <span className="font-medium text-warning underline decoration-dotted underline-offset-4">
+                {chosenNames.length}
+              </span>
+            </SimpleTooltip>{" "}
+            {chosenNames.length === 1 ? "service is" : "services are"} stopped
+            on {panel} when this starts, and not started again.
+          </p>
+        </div>
+      )}
 
       <div className="flex justify-between">
         <Button variant="outline" onClick={onBack}>
@@ -608,14 +488,11 @@ export function ReviewStep({
         </Button>
         <Button
           onClick={onStart}
-          disabled={
-            chosen.size === 0 ||
-            servers.length === 0 ||
-            ports.blocked ||
-            retargeting
-          }
+          disabled={chosen.size === 0 || servers.length === 0 || ports.blocked}
         >
-          {bulk ? `Migrate ${groups.length} teams` : "Start migration"}
+          {groups.length > 1
+            ? `Migrate ${groups.length} teams`
+            : "Start migration"}
         </Button>
       </div>
     </StepShell>

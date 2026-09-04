@@ -140,11 +140,14 @@ function clock(at: string | null | undefined): string {
 
 export function MigrationConsole({
   runId,
+  teamId,
   open,
   onOpenChange,
   live,
 }: {
   runId: string | null;
+  /** The team the run landed in, when it is not the page's. */
+  teamId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Keep polling. False once the run is over: the list cannot change again. */
@@ -174,9 +177,12 @@ export function MigrationConsole({
     let timer: ReturnType<typeof setInterval> | null = null;
     const read = async () => {
       try {
-        const d = await gql<{ migrationRun: RunLog | null }>(RUN_LOG, {
-          id: runId,
-        });
+        const d = await gql<{ migrationRun: RunLog | null }>(
+          RUN_LOG,
+          { id: runId },
+          undefined,
+          teamId ? { teamId } : undefined,
+        );
         if (!alive) return;
         setError(null);
         setFetched({ runId, log: d.migrationRun });
@@ -196,7 +202,7 @@ export function MigrationConsole({
       alive = false;
       if (timer) clearInterval(timer);
     };
-  }, [open, runId, live]);
+  }, [open, runId, teamId, live]);
 
   // Its own memo: a fresh `[]` on every render would re-run the filter below on
   // every render too, which on a four-hundred-line log while polling is the

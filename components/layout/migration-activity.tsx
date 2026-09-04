@@ -81,25 +81,41 @@ const MigrationActivityContext = React.createContext<ActiveMigration | null>(
   null,
 );
 
-export function MigrationActivityProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [run, setRun] = React.useState<ActiveMigration | null>(null);
+/**
+ * One team's run in flight, live. The page's team unless one is named - the
+ * migration wizard watches the team a run LANDS in, which its page need not be.
+ */
+export function useMigrationFeed(teamId?: string): ActiveMigration | null {
+  // Stamped with the team it came from, so a change of team never shows the
+  // old team's run while the new stream is still connecting.
+  const [feed, setFeed] = React.useState<{
+    teamId?: string;
+    run: ActiveMigration | null;
+  }>({ teamId, run: null });
 
   React.useEffect(
     () =>
       gqlSubscribe<{ activeMigration: ActiveMigration | null }>(
         ACTIVE_MIGRATION_SUBSCRIPTION,
         undefined,
-        (data) => setRun(data.activeMigration ?? null),
+        (data) => setFeed({ teamId, run: data.activeMigration ?? null }),
         // A stream we can no longer open stops decorating the header - never a
         // toast about a decoration.
-        () => setRun(null),
+        () => setFeed({ teamId, run: null }),
+        teamId ? { teamId } : undefined,
       ),
-    [],
+    [teamId],
   );
+
+  return feed.teamId === teamId ? feed.run : null;
+}
+
+export function MigrationActivityProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const run = useMigrationFeed();
 
   return (
     <MigrationActivityContext.Provider value={run}>
