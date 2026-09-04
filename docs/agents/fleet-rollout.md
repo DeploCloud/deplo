@@ -98,19 +98,19 @@ docker exec postgres psql "$DEPLO_DATABASE_URL" -c \
 
 At time of writing this fleet is:
 
-| order      | server      | id                     | apps | note                                   |
-| ---------- | ----------- | ---------------------- | ---- | -------------------------------------- |
-| 1 (canary) | `eu-east-1` | `srv_c265c2a57656547a` | 0    | fewest Apps                            |
-| 2          | `neon-s1`   | `srv_f47d8cba7db4c813` | 2    |                                        |
-| 3          | `neon-s2`   | `srv_07b0be4ab9ef9533` | 3    |                                        |
-| 4 (last)   | `eu-main-1` | `srv_3667cf1973005952` | 10   | **agent 0** - `ip` = `DEPLO_SERVER_IP` |
+| order      | server          | id                     | apps | note                                   |
+| ---------- | --------------- | ---------------------- | ---- | -------------------------------------- |
+| 1 (canary) | `neon-s1`       | `srv_f47d8cba7db4c813` | 2    | fewest Apps                            |
+| 2          | `151.243.213.9` | `srv_905da16a400243c3` | 2    |                                        |
+| 3          | `neon-s2`       | `srv_07b0be4ab9ef9533` | 3    |                                        |
+| 4 (last)   | `eu-main-1`     | `srv_3667cf1973005952` | 10   | **agent 0** - `ip` = `DEPLO_SERVER_IP` |
 
 **Why agent 0 goes last.** It runs the control plane itself. A bad agent there takes out the
 _observer_ as well as the observed: the process that would tell you the rollout went wrong, that
 serves the Servers page, that dials the other agents, and that hosts the app you would use to roll
 forward. Break a leaf server and you have a healthy control plane and two good agents to compare
 against; break agent 0 first and you are debugging blind, on the box, over SSH - the exact failure
-mode the platform exists to avoid. It is also the biggest blast radius here (66 Apps).
+mode the platform exists to avoid. It is also the biggest blast radius here (10 Apps).
 
 **Why a canary at all.** `go test ./...` gates the release but proves nothing about _this_ fleet's
 kernels, Docker versions and install layouts. The canary is the smallest real host that can
