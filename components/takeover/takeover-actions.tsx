@@ -225,15 +225,17 @@ function TakeoverConfirm({
               clean ? (
                 <>
                   {platformLabel} comes off this machine with everything on it:
-                  its apps, their data, their volumes and networks, its teams,
-                  its images and its directory. None of it can be brought back.
+                  its apps, its teams, its networks, its images and its
+                  directory. Nothing comes across. The volumes its apps held
+                  stay on the disk until you remove them yourself.
                 </>
               ) : (
                 <>
                   Deplo takes the ports, then {platformLabel} comes off this
-                  machine: its containers, the workloads it ran, their volumes
-                  and networks, its images and its directory. None of it can be
-                  brought back.
+                  machine: its containers, the workloads it ran, their networks,
+                  its images and its directory. The volumes those workloads held
+                  stay on the disk, so a copy that went wrong can still be
+                  recovered.
                 </>
               )
             }
