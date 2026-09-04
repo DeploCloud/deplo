@@ -1781,11 +1781,11 @@ function ConnectStep({
                 </li>
               ))}
             </ul>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {uncovered.length > 0
-                ? `Not covered yet: ${uncovered.join(", ")}. Each needs its own ${copy.tokenLabel}.`
-                : `One ${copy.tokenLabel} reads one ${copy.teamLabel}. Add one per ${copy.teamLabel}.`}
-            </p>
+            {uncovered.length > 0 && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {`Not covered yet: ${uncovered.join(", ")}. Each needs its own ${copy.tokenLabel}.`}
+              </p>
+            )}
           </div>
         )}
 
