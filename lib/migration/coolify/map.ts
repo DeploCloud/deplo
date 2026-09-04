@@ -1086,13 +1086,20 @@ export function coolifyNotes(row: CoolifyApplication): string[] {
   // The proxy labels {panel} generates itself are dropped: Deplo owns that
   // grammar and writes its own. A middleware somebody WROTE (an allow-list, a
   // header, a rate limit) is a decision, and it is named so it can be repeated.
+  // `http-basic-auth-<uuid>` is Coolify's own rendering of the basic auth the
+  // import carries through its columns - and its value is the htpasswd line.
   const generated = new RegExp(
-    `^(traefik\\.enable=|traefik\\.http\\.(routers|services)\\.${row.uuid}|traefik\\.http\\.routers\\.https-|traefik\\.http\\.routers\\.http-|traefik\\.http\\.services\\.https-|traefik\\.http\\.services\\.http-|traefik\\.http\\.middlewares\\.(gzip|redirect-to-https|redirect-to-http)\\.|caddy_)`,
+    `^(traefik\\.enable=|traefik\\.http\\.(routers|services)\\.${row.uuid}|traefik\\.http\\.routers\\.https-|traefik\\.http\\.routers\\.http-|traefik\\.http\\.services\\.https-|traefik\\.http\\.services\\.http-|traefik\\.http\\.middlewares\\.(gzip|redirect-to-https|redirect-to-http|http-basic-auth-)|caddy_)`,
     "i",
   );
-  const labels = decodeLabels(row.custom_labels).filter(
-    (l) => !generated.test(l),
-  );
+  const labels = decodeLabels(row.custom_labels)
+    .filter((l) => !generated.test(l))
+    // A credential never rides in a report line, whoever wrote the middleware.
+    .map((l) =>
+      /\.(basicauth|digestauth)\.users(file)?=/i.test(l)
+        ? l.replace(/=.*$/, "=<credentials>")
+        : l,
+    );
   if (labels.length > 0)
     notes.push(
       `Custom container label(s) on {panel} that Deplo does not carry: ${labels.join(", ")}.`,

@@ -617,6 +617,30 @@ test("a backup destination needs its credentials to be worth importing", () => {
 
 /* ---- what has no twin ----------------------------------------------- */
 
+// Measured on 4.3.16: the basic auth the import carries through its own columns
+// is ALSO a custom label, with the htpasswd line as its value - and the report
+// printed the hash. Coolify's own label is dropped; a hand-written one is named
+// without its credential.
+test("coolifyNotes never puts a basic-auth credential in the report", () => {
+  const notes = coolifyNotes({
+    uuid: "app-9",
+    build_pack: "dockerimage",
+    custom_labels: Buffer.from(
+      [
+        "traefik.http.middlewares.http-basic-auth-app-9.basicauth.users=mxadmin:$2y$10$abcdefghijklmnopqrstuv",
+        "traefik.http.routers.http-0-app-9.middlewares=http-basic-auth-app-9",
+        "traefik.http.middlewares.staff.basicauth.users=ops:$apr1$xyz",
+        "traefik.http.middlewares.staff.basicauth.usersfile=/etc/htpasswd",
+      ].join("\n"),
+      "utf8",
+    ).toString("base64"),
+  });
+  assert.equal(notes.length, 1);
+  assert.doesNotMatch(notes[0], /\$2y\$|\$apr1\$|http-basic-auth-app-9/);
+  assert.match(notes[0], /staff\.basicauth\.users=<credentials>/);
+  assert.match(notes[0], /staff\.basicauth\.usersfile=<credentials>/);
+});
+
 test("coolifyNotes names everything Deplo has nowhere to put", () => {
   const notes = coolifyNotes({
     uuid: "app-3",
