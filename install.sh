@@ -2349,7 +2349,7 @@ traefik_reconnect_docker() {
 # The worker's whole life: ask the dashboard until it says so, then act. A cutover
 # that rolled back is reported and waited on again - Try again is `ready` once more.
 takeover_watch() {
-  local body state mute=0
+  local body state mute=0 tick=0
   spin_start "Waiting for the dashboard to ask for the machine"
   while :; do
     body="$(takeover_get)"
@@ -2385,6 +2385,10 @@ takeover_watch() {
         return 0
         ;;
     esac
+    # The side door rides the other panel's proxy, and that panel recreates its
+    # proxy on its own (measured: minutes after a rollback). Put the route and
+    # the network back while waiting, or Try again has no page to be pressed on.
+    if [ "$((tick % 30))" = 0 ]; then takeover_side_door >/dev/null; fi
     # An EMPTY answer is the panel not talking at all, which has to be said once
     # rather than left as a log that never moves.
     if [ -z "$body" ]; then
@@ -2396,6 +2400,7 @@ takeover_watch() {
     else
       mute=0
     fi
+    tick=$((tick + TAKEOVER_POLL_S))
     sleep "$TAKEOVER_POLL_S"
   done
 }
