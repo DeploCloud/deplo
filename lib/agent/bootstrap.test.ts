@@ -107,7 +107,7 @@ test("the one-liners download first and run second, so a failed download fails",
 // `prevent-clipboard-write` on every site, 2026-09-05). A match is a silent
 // no-op copy with a "Copied" toast on top: the operator pastes nothing.
 const UBO_CLICKFIX =
-  /^curl -s\b.+?\| (bash|sh|zsh)\b|^curl\b .+?chmod \+x.+?&&|^curl\b.+?-o\b.+?\/tmp\/.+?&&|^(bash <<<|curl -kfsSL) \$\(echo .+? base64 -d\b/ims;
+  /^curl -s\b[\s\S]+?\| (bash|sh|zsh)\b|^curl\b [\s\S]+?chmod \+x[\s\S]+?&&|^curl\b[\s\S]+?-o\b[\s\S]+?\/tmp\/[\s\S]+?&&|^(bash <<<|curl -kfsSL) \$\(echo [\s\S]+? base64 -d\b/im;
 
 test("the one-liners do not trip uBlock Origin's ClickFix filter", () => {
   const base = {
