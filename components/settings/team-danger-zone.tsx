@@ -59,7 +59,6 @@ export function TeamDangerZone({
   candidates: TransferCandidate[];
   viewerTwoFactorEnabled: boolean;
 }) {
-  const router = useRouter();
   // The one thing on this screen that reaches OUTSIDE the team being deleted.
   const sharedVarsCaveat =
     sharedVarsOtherTeamsUse > 0
@@ -130,9 +129,10 @@ export function TeamDangerZone({
                   { teamId },
                 );
                 if (res.ok) {
-                  // The active team is gone - land on the next team's overview.
-                  router.push("/");
-                  router.refresh();
+                  // A full navigation, not the router: it puts the team back on
+                  // the path, and this one no longer exists. `/` picks the next
+                  // team, or the create-team screen when there is none.
+                  window.location.assign("/");
                 }
                 return res;
               }}
