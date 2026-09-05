@@ -2276,24 +2276,37 @@ foreign_remove() {
 # them, on a box handed back to the other panel). By Deplo's own label, and a
 # volume only when its name is Deplo's as well: a copy, never the original.
 deplo_workloads() { docker ps -aq --filter label=deplo.project 2>/dev/null || true; }
+# The copies. An app that arrived stopped has no container to read its volumes off,
+# so they are found by Deplo's own namespace (`deplo-`, which an app may not pin a
+# name in) minus what any container still mounts - the panel's are all still here.
+deplo_orphan_volumes() {
+  local mounted
+  mounted="$(docker ps -aq 2>/dev/null | xargs -r docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' 2>/dev/null | sort -u)"
+  docker volume ls -q 2>/dev/null | grep -E '^deplo-' | grep -vxF -f <(printf '%s\n' "$mounted") || true
+}
 takeover_uninstall() {
   note "Taking Deplo back off this machine - $FOREIGN_LABEL keeps everything."
-  local ours vols nets c
+  local ours vols nets
   ours="$(deplo_workloads)"
   if [ -n "$ours" ]; then
-    vols="$(for c in $ours; do docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' 2>/dev/null; done | grep -E '^deplo-' | sort -u || true)"
-    nets="$(for c in $ours; do docker inspect "$c" --format '{{range $n, $v := .NetworkSettings.Networks}}{{println $n}}{{end}}' 2>/dev/null; done | grep -E '^deplo-' | sort -u || true)"
-    step "Removing $(printf '%s\n' "$ours" | wc -l | tr -d ' ') container(s) Deplo deployed here, with the volumes it copied"
+    step "Removing $(printf '%s\n' "$ours" | wc -l | tr -d ' ') container(s) Deplo deployed here"
     # shellcheck disable=SC2086
     docker rm -f $ours >&9 2>&9 || true
-    # shellcheck disable=SC2086
-    [ -z "$vols" ] || docker volume rm -f $vols >&9 2>&9 || true
-    # shellcheck disable=SC2086
-    [ -z "$nets" ] || docker network rm $nets >&9 2>&9 || true
   fi
   docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" down -v >&9 2>&9 || true
   docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" down >&9 2>&9 || true
   docker network rm deplo >&9 2>&9 || true
+  # After Traefik is down: it sits on every Environment network, and a `network rm`
+  # before that failed on its endpoint and left the network behind.
+  vols="$(deplo_orphan_volumes)"
+  nets="$(docker network ls --format '{{.Name}}' 2>/dev/null | grep -E '^deplo-(env|team|preview)-' || true)"
+  if [ -n "$vols" ]; then
+    step "Removing $(printf '%s\n' "$vols" | wc -l | tr -d ' ') volume(s) it copied"
+    # shellcheck disable=SC2086
+    docker volume rm -f $vols >&9 2>&9 || true
+  fi
+  # shellcheck disable=SC2086
+  [ -z "$nets" ] || docker network rm $nets >&9 2>&9 || true
   if [ -x /usr/local/bin/deplo-agent ]; then
     systemctl disable --now deplo-agent >&9 2>&9 || true
     rm -f /usr/local/bin/deplo-agent /etc/systemd/system/deplo-agent.service
