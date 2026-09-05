@@ -543,8 +543,10 @@ export async function destroyPreviewsForApp(appId: string): Promise<void> {
     );
   // The queue, not `teardownPreviewStack`: these rows are about to CASCADE away with
   // the app, so the stamp they retry on is gone in a moment and nothing would ever
-  // name these containers again.
+  // name these containers again. The comment goes first, and is awaited: the row
+  // it reads is what the cascade is about to drop.
   await mapLimit(rows, 4, async (r) => {
+    await syncPreviewComment(r.id, { kind: "destroyed" });
     await teardownOrQueue({
       serverId: r.serverId,
       deployKey: r.deployKey,
