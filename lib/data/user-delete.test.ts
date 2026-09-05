@@ -293,7 +293,7 @@ test("deleteOwnedWorkspaces takes the folder and the apps inside it", async () =
   assert.equal(folders.length, 0);
 });
 
-test("an unclaimed folder is kept and simply loses its owner", async () => {
+test("an unclaimed folder is kept, and passes to the team's primary owner", async () => {
   await seedAdminAndTarget();
   await addMembership(USER_2, TEAM_A, "member");
   await seedFolder("fld_theirs", TEAM_A, USER_2);
@@ -309,7 +309,33 @@ test("an unclaimed folder is kept and simply loses its owner", async () => {
       .from(foldersTable)
       .where(eq(foldersTable.id, "fld_theirs"))
   )[0]!;
-  assert.equal(folder.ownerUserId, null);
+  // A folder is private to its owner: ownerless, it would be visible to nobody
+  // but a super-user, and the apps inside it would vanish from the team.
+  assert.equal(folder.ownerUserId, USER_1, "TEAM_A's founder takes it");
+});
+
+test("a folder in a team they founded and leave behind goes to the deleting admin", async () => {
+  await seedAdminAndTarget();
+  // TEAM_B survives: founded by USER_2 but shared with USER_1, and not opted in.
+  await addMembership(USER_1, TEAM_B, "member");
+  await seedFolder("fld_founded", TEAM_B, USER_2);
+
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    deleteUser(USER_2, ALL_OFF),
+  );
+
+  assert.equal(await exists(teamsTable, TEAM_B), true);
+  const folder = (
+    await db
+      .select({ ownerUserId: foldersTable.ownerUserId })
+      .from(foldersTable)
+      .where(eq(foldersTable.id, "fld_founded"))
+  )[0]!;
+  assert.equal(
+    folder.ownerUserId,
+    USER_1,
+    "the crown left with the account, so the admin who deleted it holds the folder",
+  );
 });
 
 /* ------------------------------------------------------------------ */

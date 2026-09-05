@@ -21,6 +21,7 @@ import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
 import { pluginSlug } from "../plugins/runtime";
 import { teardownTeamResources, type TeardownPlan } from "./team-delete";
+import { handOverFolders } from "./node-grants";
 import type { Capability } from "../types";
 
 /**
@@ -439,7 +440,7 @@ export async function deleteUser(
   const { userId: actingUserId } = await requireInstanceAdmin();
   const actor = (await getCurrentUser())!;
 
-  const { result, plan, healedTeams } = await getDb().transaction(
+  const { result, plan, healedTeams, handed } = await getDb().transaction(
     async (tx) => {
       const target = (
         await tx
@@ -572,6 +573,18 @@ export async function deleteUser(
         await tx
           .delete(projectsTable)
           .where(inArray(projectsTable.id, ownedProjects));
+      // A folder they keep owning in a surviving team would go ownerless with the
+      // account and vanish for everyone but a super-user: the team's primary owner
+      // takes it, or the admin deleting the account when that crown was theirs.
+      const handed: string[] = [];
+      for (const t of teams) {
+        if (deletedTeamIds.includes(t.teamId)) continue;
+        const heir = t.isFounder
+          ? actingUserId
+          : ((await teamFounderOf(tx, t.teamId)) ?? actingUserId);
+        const n = await handOverFolders(tx, userId, t.teamId, heir);
+        if (n > 0) handed.push(`${n} in ${t.name}`);
+      }
       // One DELETE per team - the FK CASCADEs drop everything team-scoped, exactly
       // as deleteTeam does.
       if (deletedTeamIds.length > 0)
@@ -586,6 +599,7 @@ export async function deleteUser(
       const healed = await healCriticalCapabilities(tx, survivingTeamIds);
 
       return {
+        handed,
         healedTeams: healed.map(
           (id) => teams.find((t) => t.teamId === id)?.name ?? id,
         ),
@@ -622,6 +636,13 @@ export async function deleteUser(
     actor.username,
     null,
   );
+  if (handed.length > 0)
+    await recordActivity(
+      "member",
+      `Folders @${result.username} owned now belong to the primary owner: ${handed.join(", ")}`,
+      actor.username,
+      null,
+    );
   // A silent privilege grant would be the one part of this the log couldn't
   // explain later, so it gets its own line.
   if (healedTeams.length > 0)
@@ -633,6 +654,16 @@ export async function deleteUser(
       null,
     );
   return result;
+}
+
+/** The founder of a team, read through the transaction. */
+async function teamFounderOf(tx: DbTx, teamId: string): Promise<string | null> {
+  const rows = await tx
+    .select({ founderUserId: teamsTable.founderUserId })
+    .from(teamsTable)
+    .where(eq(teamsTable.id, teamId))
+    .limit(1);
+  return rows[0]?.founderUserId ?? null;
 }
 
 /**
