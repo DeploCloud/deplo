@@ -65,6 +65,7 @@ export function UsersPanel({
   links: RegistrationLinkDTO[];
   currentUserId: string;
 }) {
+  const router = useRouter();
   const [registerOpen, setRegisterOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [access, setAccess] = React.useState<"all" | "admin" | "member">("all");
@@ -212,7 +213,7 @@ export function UsersPanel({
 
       {pendingLinks.length > 0 && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Pending registration links
               <InfoTip
@@ -220,6 +221,40 @@ export function UsersPanel({
                 docs="team.registrationLink"
               />
             </CardTitle>
+            {pendingLinks.length > 1 && (
+              <ConfirmAction
+                trigger={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    Revoke all
+                  </Button>
+                }
+                title="Revoke all pending links?"
+                description={
+                  <>
+                    Every pending registration link is revoked{" "}
+                    <strong>at once</strong>.
+                  </>
+                }
+                consequence={`All ${pendingLinks.length} links stop working, whoever minted them. Anyone still holding one needs a new link.`}
+                confirmLabel="Revoke all"
+                successMessage="Pending links revoked"
+                optimistic
+                onConfirm={async () => {
+                  const ids = pendingLinks.map((l) => l.id);
+                  ids.forEach(remove);
+                  const res = await gqlAction(
+                    `mutation { revokeAllRegistrationLinks }`,
+                  );
+                  if (!res.ok) ids.forEach(restore);
+                  router.refresh();
+                  return res;
+                }}
+              />
+            )}
           </CardHeader>
           <CardContent className="space-y-3">
             {pendingLinks.map((l) => (

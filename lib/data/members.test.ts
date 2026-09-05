@@ -29,6 +29,7 @@ import {
   listMembers,
   mintRegistrationLink,
   revealRegistrationLink,
+  revokeAllRegistrationLinks,
   removeMember,
   updateMember,
   updateUserAdmin,
@@ -209,6 +210,53 @@ test("revealRegistrationLink is instance-admin only", async () => {
     () => asUser("user_plain", () => revealRegistrationLink("reg_1")),
     /Only an instance admin/,
   );
+});
+
+test("revokeAllRegistrationLinks kills every pending link and nothing else", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      {
+        id: "user_plain",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+      },
+    ],
+  });
+  await db.insert(registrationLinksTable).values([
+    linkRow("reg_mine", "mine", 12),
+    // Another admin's, and one already expired but still stored as pending -
+    // both are on screen, so both go.
+    { ...linkRow("reg_theirs", "theirs", 12), createdBy: "someone-else" },
+    linkRow("reg_expired", "expired", -1),
+    {
+      ...linkRow("reg_used", "used", 12),
+      status: "used",
+      usedByUsername: "bob",
+    },
+  ]);
+
+  await assert.rejects(
+    () => asUser("user_plain", () => revokeAllRegistrationLinks()),
+    /Only an instance admin/,
+  );
+
+  assert.equal(await asOwner(() => revokeAllRegistrationLinks()), 3);
+  const rows = await db
+    .select({
+      id: registrationLinksTable.id,
+      status: registrationLinksTable.status,
+    })
+    .from(registrationLinksTable);
+  assert.deepEqual(Object.fromEntries(rows.map((r) => [r.id, r.status])), {
+    reg_mine: "revoked",
+    reg_theirs: "revoked",
+    reg_expired: "revoked",
+    reg_used: "used",
+  });
+  // Nothing left to revoke.
+  assert.equal(await asOwner(() => revokeAllRegistrationLinks()), 0);
 });
 
 test("registration-link expiry is enforced on read and at consume", async () => {

@@ -3341,6 +3341,9 @@ type Mutation {
   """
   revertMigration(runId: String!): MigrationRevertResult
 
+  """Revoke every pending registration link. Returns how many were revoked."""
+  revokeAllRegistrationLinks: Int
+
   """
   Sign out every device except the one making the request, and return how many were ended.
   """

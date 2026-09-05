@@ -1574,6 +1574,20 @@ export async function revokeRegistrationLink(id: string): Promise<void> {
   }
 }
 
+/**
+ * Revoke every pending registration link at once - the "we handed out five and
+ * the hire fell through" button. Returns how many rows it killed.
+ */
+export async function revokeAllRegistrationLinks(): Promise<number> {
+  await requireInstanceAdmin();
+  const revoked = await getDb()
+    .update(registrationLinksTable)
+    .set({ status: "revoked" })
+    .where(eq(registrationLinksTable.status, "pending"))
+    .returning({ id: registrationLinksTable.id });
+  return revoked.length;
+}
+
 /** True if a pending, unexpired registration link exists for the raw token. */
 export async function isRegistrationTokenValid(
   rawToken: string,

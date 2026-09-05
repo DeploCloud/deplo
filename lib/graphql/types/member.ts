@@ -15,6 +15,7 @@ import {
   listRegistrationLinks,
   revealRegistrationLink,
   revokeRegistrationLink,
+  revokeAllRegistrationLinks,
   type MemberDTO,
   type UserSearchResult,
   type GlobalUserDTO,
@@ -512,6 +513,13 @@ builder.mutationFields((t) => ({
       await revokeRegistrationLink(id);
       return true;
     },
+  }),
+  revokeAllRegistrationLinks: t.field({
+    type: "Int",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Revoke every pending registration link. Returns how many were revoked.",
+    resolve: () => revokeAllRegistrationLinks(),
   }),
   updateUserAdmin: t.field({
     type: UserDetailRef,
