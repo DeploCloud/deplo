@@ -36,6 +36,7 @@ export function DataCopyNotice({
   name,
   error,
   canAccept,
+  move = false,
 }: {
   kind: "app" | "database";
   id: string;
@@ -44,6 +45,8 @@ export function DataCopyNotice({
   error: string;
   /** Whether the viewer holds the capability that would start it. */
   canAccept: boolean;
+  /** A server MOVE that could not copy: a redeploy is the retry, not a re-import. */
+  move?: boolean;
 }) {
   const router = useRouter();
   const [recopyOpen, setRecopyOpen] = React.useState(false);
@@ -57,11 +60,13 @@ export function DataCopyNotice({
         <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
         <div className="space-y-1">
           <p className="font-medium">
-            {name}&apos;s data did not come across from the migration
+            {name}&apos;s data did not come across from{" "}
+            {move ? "its previous server" : "the migration"}
           </p>
           <p className="text-muted-foreground">
-            Its storage is empty, so {verb.toLowerCase()} is held until the data
-            is copied again or you accept starting without it.
+            {move
+              ? "Its storage is empty, so it is kept stopped: redeploy to copy the data again, or accept starting without it."
+              : `Its storage is empty, so ${verb.toLowerCase()} is held until the data is copied again or you accept starting without it.`}
           </p>
           {/* Verbatim, and monospaced: this is the host's or the engine's own
               sentence, and it is what tells someone whether the copy is worth
@@ -72,9 +77,15 @@ export function DataCopyNotice({
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={() => setRecopyOpen(true)}>
-          Copy the data again
-        </Button>
+        {!move && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setRecopyOpen(true)}
+          >
+            Copy the data again
+          </Button>
+        )}
         {canAccept && (
           <ConfirmAction
             trigger={

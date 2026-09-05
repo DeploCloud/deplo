@@ -12,7 +12,10 @@ import { nowIso } from "../ids";
 import { recordActivity } from "./activity";
 import { getCurrentUser } from "../auth";
 import { requireCapability } from "../membership";
+import { loadAppGraph } from "./app-graph-load";
 import { requireAppCapability } from "./node-access";
+import { appOwnVolumeNames } from "./project-backup-descriptor";
+import { teardownOrQueue } from "./teardown-queue";
 
 /**
  * The one column that says "this workload's data did not arrive", and the refusal
@@ -127,9 +130,18 @@ export async function acceptDataCopyLoss(
   const user = (await getCurrentUser())!;
   if (target.kind === "app") {
     const { membership } = await requireAppCapability(target.id, "deploy_apps");
+    const app = await loadAppGraph(target.id);
+    // A held MOVE: accepting the loss also ends the move, and what the old host
+    // still holds goes the way a deleted app's data does.
+    const heldMove =
+      app?.teamId === membership.teamId ? app.migrateFromServerId : null;
     const [row] = await getDb()
       .update(appsTable)
-      .set({ dataCopyError: "", updatedAt: nowIso() })
+      .set({
+        dataCopyError: "",
+        migrateFromServerId: null,
+        updatedAt: nowIso(),
+      })
       .where(
         and(
           eq(appsTable.id, target.id),
@@ -138,9 +150,20 @@ export async function acceptDataCopyLoss(
       )
       .returning({ name: appsTable.name });
     if (!row) throw new Error("App not found");
+    if (app && heldMove)
+      await teardownOrQueue({
+        serverId: heldMove,
+        deployKey: app.slug,
+        projectLabel: app.id,
+        label: app.name,
+        teamId: app.teamId,
+        reclaimVolumes: appOwnVolumeNames(app),
+      }).catch(() => {});
     await recordActivity(
       "app",
-      `Deployed ${row.name} without the data a migration could not copy`,
+      heldMove
+        ? `Deployed ${row.name} without the data its previous server still holds`
+        : `Deployed ${row.name} without the data a migration could not copy`,
       user.name,
       target.id,
     );

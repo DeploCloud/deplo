@@ -42,7 +42,6 @@ import {
   composeClaimsReservedName,
   composeHostReach,
   composeInterpolatedHostname,
-  composeOwnVolumeKeys,
   composePublishesPorts,
   composeUsesExternalMerge,
   externalMergeMessage,
@@ -51,6 +50,7 @@ import {
   reservedNameMessage,
 } from "../deploy/compose-lint";
 import { hostPortClaimed } from "./host-ports";
+import { appOwnVolumeNames } from "./project-backup-descriptor";
 import {
   assertNoNameClash,
   namesTakenOnNetwork,
@@ -104,7 +104,7 @@ import type {
   UploadArchive,
   VolumeMount,
 } from "../types";
-import { hostVolumeName, mapLimit, usesComposeStack } from "../utils";
+import { mapLimit, usesComposeStack } from "../utils";
 import {
   startDeployment,
   stopContainer,
@@ -1678,29 +1678,56 @@ export async function updateAppSource(
   // on its own connection.
   const [current] = await getDb()
     .select({
+      name: appsTable.name,
       serverId: appsTable.serverId,
       previewServerId: appsTable.previewServerId,
       environmentId: appsTable.environmentId,
       compose: appsTable.compose,
       slug: appsTable.slug,
+      migrateFromServerId: appsTable.migrateFromServerId,
+      dataCopyError: appsTable.dataCopyError,
     })
     .from(appsTable)
     .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
     .limit(1);
+  const moving = Boolean(
+    current && input.serverId && input.serverId !== current.serverId,
+  );
+  if (current && moving) {
+    // Data an import could not copy is not there to move: the app deploys again
+    // only once that is resolved on its page (a move's own hold is retried by it).
+    if (current.dataCopyError && !current.migrateFromServerId)
+      throw new Error(
+        `${current.name}'s data did not come across from its migration - copy it again, or choose "Deploy anyway" on its page, before moving it.`,
+      );
+    // A host port is a singleton on the machine, and the new machine has its own
+    // claims. Same rows-only check `setAppPorts` makes, against the destination.
+    if (input.source !== "compose") {
+      const claimed = await getDb()
+        .select({ published: appPortsTable.published })
+        .from(appPortsTable)
+        .where(eq(appPortsTable.appId, id));
+      for (const { published } of claimed)
+        if (await hostPortClaimed(input.serverId!, published, { appId: id }))
+          throw new Error(
+            `Port ${published} is already published on ${serversById.get(input.serverId!)?.name ?? "that server"}. Change it under Ports first, or pick another server.`,
+          );
+    }
+  }
   // Pull request previews follow the app's server unless pinned elsewhere, and
   // their teardown resolves the host from the app row: once it names the new
   // machine, the stacks on the old one could never be reached again. Before the
   // transaction, like every call that runs on its own connection.
-  if (
-    current &&
-    input.serverId &&
-    input.serverId !== current.serverId &&
-    !current.previewServerId
-  ) {
-    await stopPreviewsForServerChange(id, input.serverId);
+  if (current && moving && !current.previewServerId) {
+    await stopPreviewsForServerChange(id, input.serverId!);
   }
-  // Set inside the tx, consumed after commit to trigger the move's deploy.
-  let migrateFromServerId: string | null = null;
+  // Set inside the tx, consumed after commit: the move's deploy, and the host a
+  // re-targeted or called-off move leaves a half-built stack on.
+  const after: {
+    moved: boolean;
+    stray: App | null;
+    strayServerId: string | null;
+  } = { moved: false, stray: null, strayServerId: null };
   // The repo this app deployed from BEFORE this save, so its push webhook can be
   // withdrawn after the commit when the app stops pointing at it. Held in an
   // object because a bare `let` assigned inside the callback narrows to `null`.
@@ -1762,14 +1789,22 @@ export async function updateAppSource(
           serverId = input.serverId;
         }
         const isMove = serverId !== oldServerId;
-        // On a MOVE, if the app was ever deployed (it may hold data on the old
-        // host), mark the OLD server as the migration source: the deploy we trigger on
-        // the new host below will copy the data volumes + files dir across once its
-        // fresh stack is up (completePendingAppMigration). A never-deployed app
-        // has no data, so it just moves cheaply with no marker. `latestDeploymentId`
-        // being set is the "was deployed" signal.
-        migrateFromServerId =
-          isMove && p.latestDeploymentId ? oldServerId : null;
+        // The marker names the host that still HOLDS the data; the deploy on the
+        // new host copies from it (completePendingAppMigration). An edit that is
+        // not a move leaves a pending one alone. A move while one is pending keeps
+        // its source - the data never left it - and the host in between is a stray;
+        // moving back onto the source calls the move off.
+        const pending = p.migrateFromServerId ?? null;
+        let migrateFromServerId = pending;
+        if (isMove) {
+          migrateFromServerId =
+            serverId === pending ? null : (pending ?? oldServerId);
+          if (pending) {
+            after.stray = p;
+            after.strayServerId = oldServerId;
+          }
+        }
+        after.moved = isMove;
 
         // MOVING the project to a different server: its auto nip.io domains encode
         // the OLD server's IP (as the trailing hex label), so re-host them onto the
@@ -1807,9 +1842,9 @@ export async function updateAppSource(
           .set({
             serverId,
             buildServerId,
-            // Record the migration source on a move (null clears any stale marker on a
-            // non-move edit). The post-commit deploy consumes it.
             migrateFromServerId,
+            // A fresh attempt clears a held move's block; an import's is refused above.
+            ...(isMove && pending ? { dataCopyError: "" } : {}),
             source: input.source,
             repoProvider: repo?.provider ?? null,
             repoUrl: repo?.url ?? null,
@@ -1851,6 +1886,17 @@ export async function updateAppSource(
       before.repo.repo !== repo?.repo);
   if (movedOff) await dropAppWebhook(before.repo).catch(() => {});
   await syncAppWebhook(repo).catch(() => {});
+  // The half-built stack on the host a re-targeted move passed through. Durable:
+  // an unreachable host lands in the retry queue.
+  if (after.stray && after.strayServerId)
+    await teardownOrQueue({
+      serverId: after.strayServerId,
+      deployKey: after.stray.slug,
+      projectLabel: after.stray.id,
+      label: after.stray.name,
+      teamId: membership.teamId,
+      reclaimVolumes: appOwnVolumeNames(after.stray),
+    }).catch(() => {});
   // A MOVE takes effect on a deploy (the container physically relocates to the new
   // host on the next build). Trigger it here so the move actually happens, and so
   // the data migration runs when that deploy succeeds (it consumes the marker set
@@ -1862,7 +1908,7 @@ export async function updateAppSource(
   // "Save & Deploy" button calls this to persist the move, then redeploys). That
   // redeploy consumes the same migration marker, so auto-deploying here too would
   // double-fire. Leave the marker set and let the caller's deploy complete the move.
-  if (migrateFromServerId && input.source !== "upload") {
+  if (after.moved && input.source !== "upload") {
     try {
       await startDeployment(id, {
         creator: user.name,
@@ -2925,17 +2971,6 @@ async function beginAppDelete(
  * host bind mount and a volume the compose points elsewhere are deliberately
  * absent: Deplo does not own those.
  */
-function appOwnVolumeNames(project: App): string[] {
-  return [
-    ...(project.volumes ?? [])
-      .filter((v) => (v.type ?? "named") === "named")
-      .map((v) => hostVolumeName(project.slug, v.name)),
-    ...composeOwnVolumeKeys(project.compose ?? "").map(
-      (key) => `deplo-${project.slug}_${key}`,
-    ),
-  ];
-}
-
 /**
  * Delete an app and WAIT for its host to be clear of it. The identity-free half
  * of the delete (`actor` is already resolved), so the boot reconcile can finish
@@ -2987,6 +3022,17 @@ async function destroyApp(project: App, actor: string): Promise<void> {
       // its imported volumes on the disk with nothing able to name them.
       reclaimVolumes: appOwnVolumeNames(project),
     });
+    // Mid-move, the data (and a running stack) is still on the host it is
+    // leaving; the row about to go is the only thing that names that host.
+    if (project.migrateFromServerId)
+      await teardownOrQueue({
+        serverId: project.migrateFromServerId,
+        deployKey: project.slug,
+        projectLabel: project.id,
+        label: project.name,
+        teamId: project.teamId,
+        reclaimVolumes: appOwnVolumeNames(project),
+      }).catch(() => {});
     // Drop any uploaded archive backing an "upload" source.
     await removeUploads(id).catch(() => {});
     // One DELETE - the FK CASCADEs do the rest: deployments (+ logs), env_vars

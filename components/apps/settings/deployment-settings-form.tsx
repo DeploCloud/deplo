@@ -158,6 +158,7 @@ export function DeploymentSettingsForm({
   compose: initialCompose,
   serverId: initialServerId,
   servers,
+  neighbours,
   installations,
   connections,
   providers,
@@ -190,6 +191,8 @@ export function DeploymentSettingsForm({
   compose: string | null;
   serverId: string;
   servers: SettingsServer[];
+  /** Apps and databases this one reaches by name on its current server. */
+  neighbours: string[];
   installations: GithubInstallationDTO[];
   /** The team's git connections (GitLab, Bitbucket, Gitea, plain git). */
   connections: GitConnectionDTO[];
@@ -312,6 +315,8 @@ export function DeploymentSettingsForm({
   // that save cannot go through anyway.
   const serverMoveWarned =
     serverId !== initialServerId && !(usesGithubApp && !ghSelection);
+  const currentServerName =
+    servers.find((s) => s.id === initialServerId)?.name ?? "its current server";
 
   const closedSummary = [
     servers.find((s) => s.id === serverId)?.name,
@@ -908,9 +913,19 @@ export function DeploymentSettingsForm({
                         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                         <span>
                           Saving redeploys this app on the new server and copies
-                          its data (volumes and files) across. It&apos;s briefly
-                          offline during the copy; if the copy fails the old
-                          server is left intact.
+                          its data (volumes and files) across. It&apos;s offline
+                          during the copy; if the copy fails, it stays on{" "}
+                          {currentServerName}.
+                          {neighbours.length > 0 && (
+                            <>
+                              {" "}
+                              {neighbours.join(", ")}{" "}
+                              {neighbours.length === 1 ? "stays" : "stay"} on{" "}
+                              {currentServerName}, and this app will no longer
+                              reach {neighbours.length === 1 ? "it" : "them"} by
+                              name.
+                            </>
+                          )}
                         </span>
                       </div>
                     </Collapse>

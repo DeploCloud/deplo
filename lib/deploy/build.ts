@@ -199,6 +199,32 @@ function log(depId: string, level: LogLine["level"], text: string): void {
 }
 
 /**
+ * Finish a pending server move once this production deploy is up on the new
+ * host. A copy that did not land fails the deploy: the row said "moved" and the
+ * log has to say it was not.
+ */
+async function settleMove(
+  depId: string,
+  appId: string,
+  serverId: string,
+): Promise<void> {
+  const outcome = await completePendingAppMigration(
+    appId,
+    serverId,
+    (level, text) => log(depId, level, text),
+  ).catch((e) => {
+    log(
+      depId,
+      "warn",
+      `data migration step failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return "nothing" as const;
+  });
+  if (outcome === "rolled-back" || outcome === "held")
+    await setDep(depId, { status: "error" });
+}
+
+/**
  * Patch a deployment row.
  */
 async function setDep(
@@ -1157,7 +1183,10 @@ export async function startDeployment(
   // Data a migration could not copy is a refusal, not a warning: the volumes it names
   // are empty or half-written, and deploying onto them is what turns a failed copy
   // into permanent loss.
-  if (!preview) assertDataCopyIntact(project.name, project.dataCopyError);
+  // Not while a move is pending: that deploy IS the retry of the copy, and the
+  // copy wipes the destination before writing.
+  if (!preview && !project.migrateFromServerId)
+    assertDataCopyIntact(project.name, project.dataCopyError);
   // Still being created by a migration. Here as well as in the capability gate,
   // because the git webhook reaches this function with no gate at all: a push
   // landing mid-import would deploy an app whose volumes are still filling.
@@ -2257,15 +2286,7 @@ async function runDeployment(depId: string): Promise<void> {
         // across now that the fresh stack + empty volumes exist on the new host. Errors are
         // surfaced into the deploy log but never fail the (already-successful) deploy.
         if (dep.environment === "production") {
-          await completePendingAppMigration(project.id, (level, text) =>
-            log(depId, level, text),
-          ).catch((e) =>
-            log(
-              depId,
-              "warn",
-              `data migration step failed: ${e instanceof Error ? e.message : String(e)}`,
-            ),
-          );
+          await settleMove(depId, project.id, serverId);
         }
         await sweepAfterDeploy(depId, serverId);
       }
@@ -2460,15 +2481,7 @@ async function finishComposeStack(
       // Same post-success data-migration hook as the single-image path - production
       // only (a preview must not consume the marker or tear down the old host).
       if (environment === "production") {
-        await completePendingAppMigration(project.id, (level, text) =>
-          log(depId, level, text),
-        ).catch((e) =>
-          log(
-            depId,
-            "warn",
-            `data migration step failed: ${e instanceof Error ? e.message : String(e)}`,
-          ),
-        );
+        await settleMove(depId, project.id, opts.serverId);
       }
       await sweepAfterDeploy(depId, opts.serverId);
     }

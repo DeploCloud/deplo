@@ -4,6 +4,7 @@ import yaml from "../yaml";
 
 import { decryptSecretOrThrow } from "../crypto";
 import { hostVolumeName, usesComposeStack } from "../utils";
+import { composeOwnVolumeKeys } from "../deploy/compose-lint";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import { loadEnvVarsForApp } from "./app-graph-load";
 import {
@@ -217,6 +218,55 @@ export function appMoveVolumeNames(
     names.push(`deplo-${slug}_${key}`);
   }
   return names;
+}
+
+/**
+ * Every host volume this app owns BY NAME - what a teardown reclaims when no
+ * compose file on the host can name them (an app never deployed there).
+ */
+export function appOwnVolumeNames(project: App): string[] {
+  return [
+    ...namedVolumeHostNames(project.slug, project.volumes),
+    ...composeOwnVolumeKeys(project.compose ?? "").map(
+      (key) => `deplo-${project.slug}_${key}`,
+    ),
+  ];
+}
+
+/**
+ * What a move leaves on the old host ON PURPOSE: host paths and `external:`
+ * volumes are not Deplo's to relocate. Named so the deploy log can say so.
+ */
+export function appMoveLeftBehind(
+  project: App,
+  renderedYaml: string,
+): string[] {
+  const out = (project.volumes ?? [])
+    .filter((v) => v.type === "host" && v.hostPath)
+    .map((v) => `host path ${v.hostPath}`);
+  let doc: unknown;
+  try {
+    doc = yaml.load(renderedYaml);
+  } catch {
+    return out;
+  }
+  const volumes = (doc as { volumes?: unknown } | null)?.volumes;
+  if (!volumes || typeof volumes !== "object") return out;
+  for (const [key, spec] of Object.entries(
+    volumes as Record<string, unknown>,
+  )) {
+    const s = (spec ?? {}) as { name?: unknown; external?: unknown };
+    if (!s.external) continue;
+    const ext = s.external as { name?: unknown };
+    const name =
+      typeof s.name === "string" && s.name
+        ? s.name
+        : typeof ext === "object" && typeof ext.name === "string" && ext.name
+          ? ext.name
+          : key;
+    out.push(`external volume ${name}`);
+  }
+  return out;
 }
 
 /**

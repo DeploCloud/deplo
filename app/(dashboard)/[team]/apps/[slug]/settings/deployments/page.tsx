@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Rocket } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { listServerChoices } from "@/lib/data/servers";
+import { neighboursOnNetwork } from "@/lib/data/name-clash";
 import { installationAccess, listGithubInstallations } from "@/lib/data/github";
 import {
   appWebhookStatus,
@@ -29,6 +30,15 @@ export default async function AppDeploymentSettingsPage(
   if (!project) notFound();
 
   const servers = await listServerChoices();
+  // Who this app talks to by name on its server: a move cuts it off from them.
+  const neighbours = await neighboursOnNetwork(
+    {
+      teamId: project.teamId,
+      environmentId: project.environmentId ?? null,
+      serverId: project.serverId,
+    },
+    project.id,
+  );
   const installations = await listGithubInstallations();
   const connections = await listGitConnections();
 
@@ -93,6 +103,7 @@ export default async function AppDeploymentSettingsPage(
           compose={project.compose}
           serverId={project.serverId}
           servers={servers}
+          neighbours={neighbours}
           installations={installations}
           connections={connections}
           providers={gitProviderChoices()}

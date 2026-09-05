@@ -69,6 +69,7 @@ export default async function AppOverview(
         name={project.name}
         error={project.dataCopyError}
         canAccept={canDeploy}
+        move={Boolean(project.migrateFromServerId)}
       />
 
       {/* An app that names a repository but has no credential to clone it with:

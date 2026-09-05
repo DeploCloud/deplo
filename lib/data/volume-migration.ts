@@ -248,6 +248,19 @@ function report(onBytes: OnBytes | undefined, chunkBytes: number): void {
 /** Tar entries that describe the NEXT entry rather than a file of their own. */
 const TAR_META_TYPES = new Set(["x", "g", "L", "K", "V"]);
 
+const ARCHIVE_ROOTS: ReadonlySet<string> = new Set([".", "./"]);
+/** A files-dir export is rooted at `files/` (deplo-agent addDirToTar). */
+const FILES_ROOTS: ReadonlySet<string> = new Set(["files", "files/"]);
+
+/** Whether the app's files dir on `source` holds anything. A missing dir exports
+ *  as a header-only tar, and importing that would WIPE the destination's dir. */
+export async function filesDirHasContent(
+  source: AgentConnection,
+  slug: string,
+): Promise<boolean> {
+  return archiveHasEntries(source.exportFiles(slug), FILES_ROOTS);
+}
+
 /**
  * Does this gzipped tar hold anything besides the directory root? Read from the
  * archive's own headers, because a size threshold calls a 300-byte file empty -
@@ -255,6 +268,8 @@ const TAR_META_TYPES = new Set(["x", "g", "L", "K", "V"]);
  */
 async function archiveHasEntries(
   stream: AsyncIterable<Uint8Array>,
+  /** Entry names that are the archive's own root, not content. */
+  roots: ReadonlySet<string> = ARCHIVE_ROOTS,
 ): Promise<boolean> {
   const src = Readable.from(stream);
   const gunzip = createGunzip();
@@ -273,8 +288,7 @@ async function archiveHasEntries(
           .toString("latin1")
           .replace(/\0.*$/, "");
         const type = String.fromCharCode(header[156] || 0x30);
-        if (!TAR_META_TYPES.has(type) && name !== "." && name !== "./")
-          return true;
+        if (!TAR_META_TYPES.has(type) && !roots.has(name)) return true;
         const size =
           parseInt(
             header.subarray(124, 136).toString("latin1").replace(/\0.*$/, ""),
@@ -541,7 +555,14 @@ export async function copyFilesBetween(
   source: AgentConnection,
   dest: AgentConnection,
   slug: string,
-): Promise<void> {
+): Promise<{ empty: boolean }> {
+  // Nothing over there means nothing to write here - never a wipe of the files
+  // the deploy just rendered on the destination.
+  try {
+    if (!(await filesDirHasContent(source, slug))) return { empty: true };
+  } catch (e) {
+    throw attributeCopyError(e);
+  }
   let res: { ok: boolean; error: string };
   try {
     res = await dest.importFiles(slug, true, source.exportFiles(slug));
@@ -552,6 +573,7 @@ export async function copyFilesBetween(
     throw new Error(
       res.error || `agent failed to import the files dir for "${slug}"`,
     );
+  return { empty: false };
 }
 
 /**

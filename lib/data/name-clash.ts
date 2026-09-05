@@ -106,6 +106,18 @@ export async function namesTakenOnNetwork(
 }
 
 /**
+ * Who else answers on this workload's network, by display name. A Docker network
+ * lives on one machine, so moving away from `to.serverId` cuts the app off from
+ * every one of them.
+ */
+export async function neighboursOnNetwork(
+  to: Placement,
+  exceptId: string,
+): Promise<string[]> {
+  return [...new Set((await namesOnNetwork(to, exceptId)).values())].sort();
+}
+
+/**
  * Refuse a workload whose DNS names a neighbour on the destination network already
  * answers to. Docker round-robins a name two containers both claim, so half the
  * lookups reach the wrong one - which reads as an intermittent network fault, not
