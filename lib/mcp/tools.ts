@@ -724,6 +724,28 @@ const APPS_CONFIG: McpToolDef[] = [
     }),
   }),
   tool({
+    name: "update_app_compose",
+    title: "Edit an app's compose file",
+    description:
+      "Replace a compose app's YAML with the whole edited file: read it with get_app, change it, send it back. Same rules as the editor; deploy_app applies it.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({
+      appId,
+      compose: z.string().describe("The complete compose YAML, not a diff."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpUpdateAppCompose($id: String!, $input: UpdateSourceInput!) {
+        updateAppSource(id: $id, input: $input) { ${APP_FIELDS} }
+      }
+    `,
+    variables: (a) => ({
+      id: a.appId,
+      input: { source: "COMPOSE", compose: a.compose },
+    }),
+  }),
+  tool({
     name: "set_app_resources",
     title: "Set an app's resource limits",
     description:

@@ -738,3 +738,27 @@ test("render_compose shows the agent the routing it just wrote", async () => {
     "the agent's own verification step must show the router",
   );
 });
+
+test("the compose file is the agent's to edit, whole, and get_app shows the edit", async () => {
+  const { raw } = await mintToken(["view", "configure_apps"]);
+  const edited = STACK.replace("redis:7", "redis:7.4");
+  const res = await callTool(raw, "update_app_compose", {
+    appId: "prj_analytics",
+    compose: edited,
+  });
+  assert.equal(res.error, false, res.text);
+  const app = await callTool(raw, "get_app", { slug: "analytics" });
+  assert.equal((json(app.text).app as { compose: string }).compose, edited);
+});
+
+test("an edit the editor would refuse is refused in the editor's words", async () => {
+  const { raw } = await mintToken(["view", "configure_apps"]);
+  const res = await callTool(raw, "update_app_compose", {
+    appId: "prj_analytics",
+    compose: `include:\n  - other.yml\n${STACK}`,
+  });
+  assert.equal(res.error, true);
+  assert.match(res.text, /merges configuration from another file/);
+  const app = await callTool(raw, "get_app", { slug: "analytics" });
+  assert.equal((json(app.text).app as { compose: string }).compose, STACK);
+});

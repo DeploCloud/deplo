@@ -114,6 +114,7 @@ How to work here:
 - Every call runs in ONE team. \`whoami\` names the default; \`list_teams\` names every team this connection can act in. To work in another team, pass its id or slug as the \`team\` argument of any tool - there is no "switch team" step, the argument IS the switch. \`find\` searches every team at once and says which team each hit is in.
 - What you may do is exactly the token's Capabilities, clamped to what its owner holds in each team. A refusal is an answer, not something to retry another way.
 - Secret variables are write-only: nothing reveals a secret's value, by design.
+- A compose app's YAML is the user's to edit, in full: \`get_app\` returns it, \`update_app_compose\` replaces it. Only the editor's own checks apply (host access needs an admin grant; Deplo's own names are reserved), nothing else is off limits.
 
 The user manual is at ${DOCS_BASE} - read it there when you need to explain how something works.`;
 
