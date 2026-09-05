@@ -342,10 +342,9 @@ export function PreviewsTable({
 
       {liveCount >= maxActive && (
         <p className="text-xs text-muted-foreground">
-          This app is at its limit of {maxActive} live previews. The next pull
-          request still gets one - the preview nobody has touched in the longest
-          is stopped to make room, and Redeploy brings it back on the same
-          address. Raise the limit in Settings to keep more running at once.
+          At the limit of {maxActive} live previews. The next pull request still
+          gets one: the least recently touched preview is stopped to make room.{" "}
+          <DocsLink topic="previews.limit" />
         </p>
       )}
     </div>

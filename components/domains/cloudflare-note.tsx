@@ -12,9 +12,8 @@ export function CloudflareNote({ serverIp }: { serverIp?: string | null }) {
       <div className="min-w-0">
         <p className="text-sm font-medium">Cloudflare detected</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Cloudflare answers for it and serves its HTTPS, so there is nothing
-          else to set up - but its records are Cloudflare&apos;s own, and Deplo
-          cannot tell from DNS whether they still reach{" "}
+          Cloudflare serves its HTTPS, so there is nothing else to set up. Deplo
+          cannot tell from DNS whether its records still reach{" "}
           {serverIp ? (
             <span className="inline-flex items-baseline gap-1">
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">

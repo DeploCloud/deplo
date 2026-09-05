@@ -872,14 +872,11 @@ function DangerZone({ server }: { server: ServerSummary }) {
             <Label>Uninstall command</Label>
             {uninstall ? <CommandLine command={uninstall} /> : null}
             <p className="mt-1 text-xs text-muted-foreground">
-              Removes the deplo-agent service and binary,{" "}
-              <code>/var/lib/deplo-agent</code> (its certificates and
-              Traefik&rsquo;s issued TLS certs), the <code>deplo-traefik</code>{" "}
-              container and the <code>Deplo</code> Docker network. It leaves
-              Docker itself alone, and it does <strong>not</strong> delete your
-              data - app and database volumes, built images and{" "}
-              <code>/data</code> survive. Add <code>--purge-data</code> to
-              delete those too; that is irreversible.
+              Removes the agent, its certificates, the{" "}
+              <code>deplo-traefik</code> container and the Deplo network.{" "}
+              <strong className="text-foreground">Your data survives</strong> -
+              add <code>--purge-data</code> to delete it too, irreversibly.{" "}
+              <DocsLink topic="servers.remove" />
             </p>
           </div>
           <DialogFooter>

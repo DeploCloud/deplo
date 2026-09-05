@@ -269,7 +269,7 @@ function TakeoverConfirm({
                           : `${dataLoss.length} services lose their data: ${dataLoss.join(", ")}`}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {`The copy failed, so ${platformLabel} still holds the only copy, and it stops for good at the takeover. Its volume stays on the disk, but nothing here reads it. Go back to Review and copy the data again instead.`}
+                        {`The copy failed, so ${platformLabel} still holds the only copy and it stops for good at the takeover. Go back to Review and copy the data again instead.`}
                       </span>
                     </span>
                   </label>

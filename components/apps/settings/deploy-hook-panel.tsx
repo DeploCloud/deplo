@@ -166,12 +166,8 @@ export function DeployHookPanel({
       <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <ShieldCheck className="mt-px size-3.5 shrink-0" />
         <span>
-          Calls need an API token that holds <strong>Deploy apps</strong>, sent
-          as{" "}
-          <code className="font-mono text-[0.7rem]">
-            Authorization: Bearer deplo_…
-          </code>
-          . Create one in{" "}
+          Calls need an API token that holds <strong>Deploy apps</strong>.
+          Create one in{" "}
           <Link
             href="/settings/tokens"
             className="underline underline-offset-2 hover:text-foreground"
@@ -179,7 +175,6 @@ export function DeployHookPanel({
             API tokens
           </Link>{" "}
           - the <strong>Deploy hook &amp; CI</strong> template is exactly this.
-          Revoking it stops every hook call made with it.
         </span>
       </p>
     </div>
