@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   canAcquire,
   acquireLease,
+  ownedByDeadLocalProcess,
   releaseLease,
   __resetLocalLeases,
   LEASE_STALE_MS,
@@ -75,4 +76,15 @@ test("in-process: a stale lease is stolen by another owner", async () => {
   assert.equal(await acquireLease("L", "a", NOW), true);
   const later = new Date(NOW.getTime() + LEASE_STALE_MS + 60_000);
   assert.equal(await acquireLease("L", "b", later), true); // a's heartbeat is stale
+});
+
+test("ownedByDeadLocalProcess: a dead pid on this host, and nothing else", () => {
+  const probe = { host: "ia-main", alive: (pid: number) => pid === 100 };
+  assert.equal(ownedByDeadLocalProcess("ia-main:200:abcd", probe), true);
+  assert.equal(ownedByDeadLocalProcess("ia-main:100:abcd", probe), false);
+  // Another host's process cannot be probed from here.
+  assert.equal(ownedByDeadLocalProcess("other:200:abcd", probe), false);
+  // The migration runner labels itself differently; leave it to the window.
+  assert.equal(ownedByDeadLocalProcess("4592-run_717dc455", probe), false);
+  assert.equal(ownedByDeadLocalProcess("ia-main:notapid:x", probe), false);
 });

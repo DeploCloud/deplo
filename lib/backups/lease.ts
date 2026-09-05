@@ -1,5 +1,8 @@
 import "server-only";
 
+import { existsSync } from "node:fs";
+import { hostname } from "node:os";
+
 import { getPool, isPostgresEnabled } from "../db/pg";
 
 /**
@@ -54,6 +57,28 @@ export function canAcquire(
   if (!existing) return true;
   if (existing.owner === me) return true;
   return now.getTime() - existing.heartbeatAt.getTime() > staleMs;
+}
+
+/**
+ * Is this owner a process on THIS host that no longer exists? Every scheduler
+ * labels itself `hostname:pid:rand`, so a control plane that was killed rather
+ * than stopped (SIGKILL, OOM, a crash) can be recognised without waiting out
+ * the two-hour window - during which no cron job would fire and a run in
+ * flight would outlive the agent's 30-minute memory of it. A pid the kernel
+ * has since reused reads as alive, which only falls back to the window.
+ */
+export function ownedByDeadLocalProcess(
+  owner: string,
+  probe: { host: string; alive: (pid: number) => boolean } = {
+    host: hostname(),
+    alive: (pid) => existsSync(`/proc/${pid}`),
+  },
+): boolean {
+  const [host, pid] = owner.split(":");
+  if (host !== probe.host) return false;
+  const n = Number(pid);
+  if (!Number.isInteger(n) || n <= 0) return false;
+  return !probe.alive(n);
 }
 
 /* ------------------------------------------------------------------ */
@@ -142,6 +167,15 @@ export async function acquireLease(
 ): Promise<boolean> {
   if (!isPostgresEnabled()) return acquireLocal(name, owner, now, staleMs);
   try {
+    if (await acquirePostgres(name, owner, staleMs)) return true;
+    // Denied by a holder that is a dead process on this host: reclaim it now.
+    const held = await getPool().query<{ owner: string }>(
+      `SELECT owner FROM scheduler_lease WHERE name = $1`,
+      [name],
+    );
+    const holder = held.rows[0]?.owner;
+    if (!holder || !ownedByDeadLocalProcess(holder)) return false;
+    await releasePostgres(name, holder);
     return await acquirePostgres(name, owner, staleMs);
   } catch (e) {
     console.warn(
