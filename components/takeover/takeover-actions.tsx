@@ -68,8 +68,10 @@ const POLL_MS = 3000;
 const SLOW_MS = 60_000;
 /** How long this origin may stay silent before the final one is tried instead. */
 const DEAD_MS = 90_000;
-/** How long the final address gets to answer over https before it is opened anyway. */
-const CERT_GRACE_MS = 45_000;
+/** How long the final address gets to answer over https before it is opened
+ *  anyway. Issuance follows a Docker restart and a Traefik restart, and a
+ *  measured Start clean took 80 s from `removed` to the certificate. */
+const CERT_GRACE_MS = 180_000;
 
 /** Where the browser lands once the machine is Deplo's: the home, celebrating. */
 export function takeoverLandingUrl(finalUrl: string, platformLabel: string) {
