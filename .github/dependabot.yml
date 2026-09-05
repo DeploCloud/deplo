@@ -8,3 +8,5 @@ updates:
       interval: weekly
     commit-message:
       prefix: "build(deps)"
+    # One label per PR; the default adds an ecosystem label too.
+    labels: ["dependencies"]
