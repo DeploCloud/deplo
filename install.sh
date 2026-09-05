@@ -1816,6 +1816,20 @@ YAML
   printf 'http://%s' "$host"
 }
 
+# Their proxy, started again while the worker waits. After a rollback its start
+# can fail on a port a stranger still holds, and Docker never retries a start that
+# failed: once the stranger was gone the side door and every app domain stayed dead.
+foreign_proxy_revive() {
+  local proxy id
+  case "$TAKEOVER" in dokploy) proxy=dokploy-traefik ;; coolify) proxy=coolify-proxy ;; *) return 0 ;; esac
+  id="$(docker inspect "$proxy" --format '{{.Id}}' 2>/dev/null || true)"
+  [ -n "$id" ] || return 0
+  # Only one the cutover found running: a proxy the operator had stopped stays so.
+  case " $(state_get foreign_restart || true) " in *" $id:"*":1 "*) ;; *) return 0 ;; esac
+  docker inspect "$proxy" --format '{{.State.Running}}' 2>/dev/null | grep -q true && return 0
+  docker start "$proxy" >&9 2>&9 || true
+}
+
 takeover_side_door_remove() {
   rm -f /etc/dokploy/traefik/dynamic/deplo-setup.yml \
         /data/coolify/proxy/dynamic/deplo-setup.yml 2>/dev/null || true
@@ -2401,7 +2415,7 @@ takeover_watch() {
     # The side door rides the other panel's proxy, and that panel recreates its
     # proxy on its own (measured: minutes after a rollback). Put the route and
     # the network back while waiting, or Try again has no page to be pressed on.
-    if [ "$((tick % 30))" = 0 ]; then takeover_side_door >/dev/null; fi
+    if [ "$((tick % 30))" = 0 ]; then foreign_proxy_revive; takeover_side_door >/dev/null; fi
     # An EMPTY answer is the panel not talking at all, which has to be said once
     # rather than left as a log that never moves.
     if [ -z "$body" ]; then
