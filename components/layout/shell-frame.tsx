@@ -19,13 +19,6 @@ const FULL_BLEED = [
   /^\/storage\/databases\/[^/]+\/console\/?$/,
 ];
 
-/** The Overview and a database's pages take the wizards' dotted ground. */
-const DOTTED = [/^\/$/, /^\/storage\/databases\/[^/]+/];
-
-export function isDottedRoute(pathname: string): boolean {
-  return DOTTED.some((re) => re.test(pathname));
-}
-
 /**
  * Is the current route one of the full-bleed ones? Exported because the shell is
  * not the only thing in the way: an app's own layout adds a `max-w-6xl` measure
@@ -51,7 +44,6 @@ export function ShellFrame({
   children: React.ReactNode;
 }) {
   const full = useFullBleedRoute();
-  const dotted = isDottedRoute(useFlatPathname());
 
   return (
     <div
@@ -68,10 +60,11 @@ export function ShellFrame({
           // marquee surface for pages with card selection (use-card-selection).
           data-selection-region=""
           className={cn(
+            // The dotted ground is the workspace itself; a full-bleed viewer
+            // covers it anyway.
             full
               ? "flex min-h-0 flex-1 flex-col overflow-hidden"
-              : "flex-1 px-4 py-6 sm:px-6 lg:px-8",
-            dotted && "deplo-grid-bg-soft",
+              : "deplo-grid-bg flex-1 px-4 py-6 sm:px-6 lg:px-8",
           )}
         >
           <div

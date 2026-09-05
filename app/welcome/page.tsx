@@ -17,7 +17,7 @@ export default async function WelcomePage() {
   if (teams.length > 0) redirect("/");
   return (
     <div className="relative grid min-h-dvh place-items-center px-4 pt-10 pb-16">
-      <div className="deplo-grid-bg pointer-events-none absolute inset-0 opacity-[0.35]" />
+      <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
       <AuthChrome />
       <div className="relative z-10 flex w-full justify-center">
         <WelcomeCreateTeam userName={user.name} />

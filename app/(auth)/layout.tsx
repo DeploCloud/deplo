@@ -17,7 +17,7 @@ export default async function AuthLayout({
 
   return (
     <div className="relative grid min-h-dvh place-items-center px-4 pt-10 pb-16">
-      <div className="deplo-grid-bg pointer-events-none absolute inset-0 opacity-[0.35]" />
+      <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
       <AuthChrome />
       <div className="relative z-10 w-full max-w-sm">
         <div className="animate-soft-in mb-8 flex justify-center">
