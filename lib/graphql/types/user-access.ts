@@ -139,7 +139,9 @@ builder.mutationFields((t) => ({
         teamId: input.teamId,
         roleId: input.roleId,
         granular: input.granular,
-        grants: (input.grants ?? []).map((g) => ({
+        // Absent stays absent: on a non-granular save it means "leave the
+        // member's shares alone", and `[]` would revoke every one of them.
+        grants: input.grants?.map((g) => ({
           projectIds: g.projectIds ?? undefined,
           folderIds: g.folderIds ?? undefined,
           appIds: g.appIds ?? undefined,
@@ -161,7 +163,9 @@ builder.mutationFields((t) => ({
         userId: input.userId,
         roleId: input.roleId,
         granular: input.granular,
-        grants: (input.grants ?? []).map((g) => ({
+        // Absent stays absent: on a non-granular save it means "leave the
+        // member's shares alone", and `[]` would revoke every one of them.
+        grants: input.grants?.map((g) => ({
           projectIds: g.projectIds ?? undefined,
           folderIds: g.folderIds ?? undefined,
           appIds: g.appIds ?? undefined,

@@ -39,6 +39,11 @@ import { instanceOwnerUserId } from "./instance-owner";
 import { ensureTeamRoles, roleAssignment } from "./roles";
 import { buildScopeTree, type ScopeTreeTeam } from "./tokens";
 import { nodeCapabilitiesFor, withView } from "./node-access";
+import {
+  clearNodeGrants,
+  handOverFolders,
+  recordFoldersHanded,
+} from "./node-grants";
 import type { Activity, AlertKey, Capability, Membership } from "../types";
 
 /**
@@ -386,9 +391,11 @@ async function writeAccess(
     if (target?.role === "owner" && actor.role !== "owner")
       throw new Error("Only an owner can change another owner's access");
   }
-  const resolved = input.granular
-    ? await resolveGrants(input.teamId, actingUserId, input.grants ?? [])
-    : [];
+  const resolved = await resolveGrants(
+    input.teamId,
+    actingUserId,
+    input.grants ?? [],
+  );
 
   await db.transaction(async (tx) => {
     const m = await requireEditableMembership(
@@ -416,8 +423,14 @@ async function writeAccess(
         capability: c,
       })),
     );
-    await clearNodeGrants(tx, input.userId, input.teamId);
-    await writeNodeGrants(tx, input.userId, resolved);
+    // The node rows are replaced when the reach is being set, when the caller
+    // named them (the page sends the shares it left alone), or when granular
+    // mode is turned off, so its rows never linger as overrides. A role-mode
+    // save that names none is leaving the member's shares alone.
+    if (input.granular || input.grants !== undefined || m.granular) {
+      await clearNodeGrants(tx, input.userId, input.teamId);
+      await writeNodeGrants(tx, input.userId, resolved);
+    }
   });
 
   await recordUserAccess(
@@ -506,6 +519,7 @@ export async function removeUserFromTeam(input: {
   teamId: string;
 }): Promise<UserTeamAccessDTO[]> {
   const { userId: actingUserId } = await requireInstanceAdmin();
+  let handed = 0;
   await getDb().transaction(async (tx) => {
     const m = await requireEditableMembership(
       tx,
@@ -514,13 +528,17 @@ export async function removeUserFromTeam(input: {
       actingUserId,
     );
     await assertAdminCoverage(tx, input.teamId, input.userId, null);
-    // The node grants are NOT cascaded by the membership FK (they hang off the
-    // app/folder/project), so removal has to clear them itself, otherwise
-    // re-adding the person later would silently restore their old corners.
     await clearNodeGrants(tx, input.userId, input.teamId);
+    handed = await handOverFolders(
+      tx,
+      input.userId,
+      input.teamId,
+      (await teamFounderUserId(tx, input.teamId)) ?? actingUserId,
+    );
     await tx.delete(membershipsTable).where(eq(membershipsTable.id, m.id));
   });
   await recordUserAccess(input.userId, input.teamId, "no access", "Removed");
+  await recordFoldersHanded(input.userId, input.teamId, handed);
   return listUserAccess(input.userId);
 }
 
@@ -538,7 +556,7 @@ async function requireEditableMembership(
   userId: string,
   teamId: string,
   actingUserId: string,
-): Promise<{ id: string }> {
+): Promise<{ id: string; granular: boolean }> {
   // Nobody edits their own access here, rank and instance-admin flag included. This
   // function writes reach as well as capabilities, and the one thing a boundary must
   // never be is self-serve: an actor who could widen themselves has no boundary.
@@ -558,7 +576,7 @@ async function requireEditableMembership(
     );
   }
   const rows = await tx
-    .select({ id: membershipsTable.id })
+    .select({ id: membershipsTable.id, granular: membershipsTable.granular })
     .from(membershipsTable)
     .where(
       and(
@@ -642,50 +660,6 @@ async function resolveGrants(
     }
   }
   return out;
-}
-
-/** Drop every node grant this user holds inside one team. */
-export async function clearNodeGrants(
-  tx: Tx,
-  userId: string,
-  teamId: string,
-): Promise<void> {
-  const projectIds = tx
-    .select({ id: projectsTable.id })
-    .from(projectsTable)
-    .where(eq(projectsTable.teamId, teamId));
-  const folderIds = tx
-    .select({ id: foldersTable.id })
-    .from(foldersTable)
-    .where(eq(foldersTable.teamId, teamId));
-  const appIds = tx
-    .select({ id: appsTable.id })
-    .from(appsTable)
-    .where(eq(appsTable.teamId, teamId));
-  await tx
-    .delete(projectGrantsTable)
-    .where(
-      and(
-        eq(projectGrantsTable.userId, userId),
-        inArray(projectGrantsTable.projectId, projectIds),
-      ),
-    );
-  await tx
-    .delete(folderGrantsTable)
-    .where(
-      and(
-        eq(folderGrantsTable.userId, userId),
-        inArray(folderGrantsTable.folderId, folderIds),
-      ),
-    );
-  await tx
-    .delete(appGrantsTable)
-    .where(
-      and(
-        eq(appGrantsTable.userId, userId),
-        inArray(appGrantsTable.appId, appIds),
-      ),
-    );
 }
 
 /**

@@ -14,7 +14,7 @@ import { requireCapability } from "../membership";
 import { capabilitiesForRole } from "../membership-shared";
 import { recordActivity } from "./activity";
 import { ensureTeamRoles } from "./roles";
-import { clearNodeGrants } from "./user-access";
+import { clearNodeGrants } from "./node-grants";
 import { stepUpCode, stepUpPassword } from "./two-factor";
 
 /**

@@ -72,6 +72,11 @@ import {
   roleAssignment,
 } from "./roles";
 import { boundedBy, withView } from "./folder-access";
+import {
+  clearNodeGrants,
+  handOverFolders,
+  recordFoldersHanded,
+} from "./node-grants";
 import { instancePublicBaseUrl } from "./instance-settings";
 import type {
   ActivityType,
@@ -856,9 +861,15 @@ export async function updateMember(input: {
       throw new Error("Only an owner can grant the owner role.");
     }
     await assertAdminCoverage(tx, teamId, input.userId, caps);
+    // Assigning a role IS choosing to follow it: a set an admin had made this
+    // member's own would otherwise keep the next role edit from reaching them.
     await tx
       .update(membershipsTable)
-      .set({ role: assignment.rank, roleId: assignment.roleId })
+      .set({
+        role: assignment.rank,
+        roleId: assignment.roleId,
+        customCapabilities: false,
+      })
       .where(eq(membershipsTable.id, m.id));
     await tx
       .delete(membershipCapabilitiesTable)
@@ -903,6 +914,7 @@ export async function removeMember(userId: string): Promise<void> {
   if (userId === actingUserId)
     throw new Error("You can't remove yourself from the team");
   let username = "";
+  let handed = 0;
   await getDb().transaction(async (tx) => {
     const founderId = await teamFounderUserId(tx, teamId);
     const rows = await tx
@@ -935,6 +947,16 @@ export async function removeMember(userId: string): Promise<void> {
       .where(eq(usersTable.id, userId))
       .limit(1);
     username = u[0]?.username ?? "";
+    // Neither hangs off the membership row: a grant names its node, a folder its
+    // owner. Left behind, the grants come back with the person and the folders
+    // stay private to someone who is no longer here.
+    await clearNodeGrants(tx, userId, teamId);
+    handed = await handOverFolders(
+      tx,
+      userId,
+      teamId,
+      founderId ?? actingUserId,
+    );
     // membership_capabilities cascades on the membership FK.
     await tx.delete(membershipsTable).where(eq(membershipsTable.id, m.id));
   });
@@ -946,6 +968,7 @@ export async function removeMember(userId: string): Promise<void> {
     teamId,
     "member_removed",
   );
+  await recordFoldersHanded(userId, teamId, handed);
 }
 
 /* ------------------------------------------------------------------ */
