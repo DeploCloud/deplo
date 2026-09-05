@@ -3,7 +3,7 @@ import "server-only";
 // https://deplo.build/docs/guides/networking/pull-request-previews
 
 import { cache } from "react";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 
 import { getCurrentUser } from "../auth";
 import { encryptSecret } from "../crypto";
@@ -23,6 +23,7 @@ import {
   parseRequiredLabels,
   previewSettings,
   refusalMessage,
+  stopPreviewsForServerChange,
   type PreviewForkPolicy,
 } from "../deploy/preview-lifecycle";
 import { isValidPreviewBaseDomain } from "../deploy/domains";
@@ -193,11 +194,18 @@ export const listAppPreviews = cache(
     }
     if (!unavailable && !settings.enabled) unavailable = "disabled";
 
+    // Open first, then most recently touched. `asc(state)` put "closed" ahead of
+    // "open" and every finished pull request above the ones being reviewed.
     const rows = await getDb()
       .select()
       .from(appPreviewsTable)
       .where(eq(appPreviewsTable.appId, appId))
-      .orderBy(asc(appPreviewsTable.state), asc(appPreviewsTable.prNumber));
+      .orderBy(
+        asc(
+          sql`case when ${appPreviewsTable.state} = 'open' then 0 else 1 end`,
+        ),
+        desc(appPreviewsTable.lastActivityAt),
+      );
     return {
       appId,
       unavailable,
@@ -469,6 +477,13 @@ export async function setAppPreviewSettings(
     // The app's own server IS the default, so storing it explicitly would only
     // pin what is already true and survive a later app move.
     patch.previewServerId = wanted && wanted !== app.serverId ? wanted : null;
+    // The stacks that are up live on the OLD machine, and every lifecycle verb
+    // finds a preview's host through this very column - so they are stopped now,
+    // while the column still names where they are. Redeploy rebuilds them there.
+    const current = (await previewSettings(appId))?.serverId ?? app.serverId;
+    if ((patch.previewServerId ?? app.serverId) !== current) {
+      await stopPreviewsForServerChange(appId);
+    }
   }
   if (input.https !== undefined) patch.previewHttps = Boolean(input.https);
   if (input.autoDeploy !== undefined) {

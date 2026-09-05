@@ -29,6 +29,7 @@ import {
 import {
   __settleCleanupSweeps,
   getCleanupPolicy,
+  liveNetworkNames,
   liveStackSlugs,
   listCleanupRuns,
   pruneCleanupRunHistory,
@@ -630,4 +631,40 @@ test("the live inventory names apps, their previews and databases", async () => 
   assert.ok(slugs.includes("web"), `apps: ${slugs}`);
   assert.ok(slugs.includes("web__pr-7"), `previews: ${slugs}`);
   assert.ok(slugs.includes("db-shop"), `databases: ${slugs}`);
+});
+
+/**
+ * A preview's row outlives its stack, and a row is not a stack: once the teardown
+ * is confirmed, its files dir and its network are litter the sweep must be free to
+ * reclaim. Counting every row kept one Docker network per closed pull request,
+ * which on a default daemon is a hard ceiling of about thirty.
+ */
+test("a torn-down preview vouches for neither a files dir nor a network", async () => {
+  await seedApp(db, { id: "prj_live", slug: "web" });
+  await seedPreview(db, { id: "prv_up", appId: "prj_live", prNumber: 7 });
+  await seedPreview(db, {
+    id: "prv_gone",
+    appId: "prj_live",
+    prNumber: 8,
+    state: "closed",
+    tornDownAt: "2026-01-01T00:00:00.000Z",
+  });
+  // Evicted, and the host was unreachable: the containers are still out there.
+  await seedPreview(db, {
+    id: "prv_evicted",
+    appId: "prj_live",
+    prNumber: 9,
+    status: "evicted",
+    tornDownAt: null,
+  });
+
+  const slugs = await asOwner(() => liveStackSlugs());
+  assert.ok(slugs.includes("web__pr-7"));
+  assert.ok(slugs.includes("web__pr-9"), "unconfirmed teardown stays live");
+  assert.ok(!slugs.includes("web__pr-8"), "confirmed gone is not live");
+
+  const nets = await asOwner(() => liveNetworkNames());
+  assert.ok(nets.includes("deplo-preview-web__pr-7"));
+  assert.ok(nets.includes("deplo-preview-web__pr-9"));
+  assert.ok(!nets.includes("deplo-preview-web__pr-8"), `networks: ${nets}`);
 });

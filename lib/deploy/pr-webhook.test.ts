@@ -188,7 +188,6 @@ test("converting back to a draft does NOT tear the preview down", () => {
 
 test("the chatty actions are ignored, not acted on", () => {
   for (const action of [
-    "edited",
     "labeled",
     "unlabeled",
     "assigned",
@@ -279,19 +278,44 @@ test("build drafts is opt-in, and only changes the draft answer", () => {
   });
 });
 
-test("auto-deploy off stops a new commit, but not opening the pull request", () => {
+test("auto-deploy off records a new commit without building it", () => {
   const c = cfg({ autoDeploy: false });
   const push = parsePullRequestEvent(payload({}, "synchronize"))!;
-  assert.deepEqual(previewIntent(c, push), {
-    kind: "ignore",
-    reason: "manual-only",
-  });
+  // Never `ignore`: the list has to know the head moved, and a fork's approval
+  // has to be re-asked for the commit nobody reviewed.
+  assert.deepEqual(previewIntent(c, push), { kind: "sync" });
   // The FIRST build still happens: "manual only" is about refreshing, not about
   // never getting a preview at all.
   for (const action of ["opened", "reopened", "ready_for_review"]) {
     const ev = parsePullRequestEvent(payload({}, action))!;
     assert.deepEqual(previewIntent(c, ev), { kind: "deploy" }, action);
   }
+});
+
+test("a title edit refreshes the facts and builds nothing", () => {
+  const ev = parsePullRequestEvent(payload({ title: "Renamed" }, "edited"))!;
+  assert.deepEqual(previewIntent(CFG, ev), { kind: "sync" });
+  // The label gate still applies: an unlabelled pull request has no preview to
+  // refresh, and must not get one through an edit.
+  assert.deepEqual(previewIntent(cfg({ requiredLabels: ["preview"] }), ev), {
+    kind: "ignore",
+    reason: "label",
+  });
+});
+
+test("retargeting the pull request off the tracked branch tears its preview down", () => {
+  const ev = parsePullRequestEvent(
+    payload({ base: { ref: "develop" } }, "edited"),
+  )!;
+  assert.deepEqual(previewIntent(CFG, ev), { kind: "destroy" });
+  // A push to a pull request that never targeted the branch is still nothing.
+  const push = parsePullRequestEvent(
+    payload({ base: { ref: "develop" } }, "synchronize"),
+  )!;
+  assert.deepEqual(previewIntent(CFG, push), {
+    kind: "ignore",
+    reason: "base-branch",
+  });
 });
 
 test("closed still tears down whatever the new gates say", () => {

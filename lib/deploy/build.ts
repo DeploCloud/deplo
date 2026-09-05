@@ -1899,7 +1899,9 @@ async function runDeployment(depId: string): Promise<void> {
       const composeYaml = renderCompose({
         name,
         image,
-        port: project.build.port,
+        // A preview's port override is where its router forwards AND the PORT its
+        // container is told to listen on: one without the other is a Bad Gateway.
+        port: preview?.port ?? project.build.port,
         appId: project.id,
         deployKey,
         trackingId,

@@ -1,6 +1,15 @@
 import "server-only";
 
-import { and, desc, eq, inArray, lt, ne, notInArray } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  notInArray,
+} from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -1000,10 +1009,14 @@ export async function liveStackSlugs(): Promise<string[]> {
   const db = getDb();
   const [apps, previews, databases] = await Promise.all([
     db.select({ slug: appsTable.slug }).from(appsTable),
+    // A preview's row outlives its stack (a closed pull request keeps it for a
+    // week; an evicted one keeps it while the pull request is open). Only one
+    // whose stack is NOT confirmed gone still vouches for anything on a host.
     db
       .select({ slug: appsTable.slug, prNumber: appPreviewsTable.prNumber })
       .from(appPreviewsTable)
-      .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId)),
+      .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
+      .where(isNull(appPreviewsTable.tornDownAt)),
     db.select({ host: databasesTable.host }).from(databasesTable),
   ]);
   const slugs = new Set<string>();
@@ -1031,10 +1044,13 @@ export async function liveNetworkNames(): Promise<string[]> {
         environmentId: appsTable.environmentId,
       })
       .from(appsTable),
+    // Same cut as `liveStackSlugs`: a torn-down preview's network is litter, and
+    // counting it live is what kept one Docker network per closed pull request.
     db
       .select({ slug: appsTable.slug, prNumber: appPreviewsTable.prNumber })
       .from(appPreviewsTable)
-      .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId)),
+      .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
+      .where(isNull(appPreviewsTable.tornDownAt)),
   ]);
   const dbs = await db
     .select({

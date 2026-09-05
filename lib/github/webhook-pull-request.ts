@@ -114,7 +114,6 @@ export async function handlePullRequestDelivery(
             existing[0].id,
             ev.merged ? "pull request merged" : "pull request closed",
           );
-          void syncPreviewComment(existing[0].id, { kind: "destroyed" });
         }
         continue;
       }
@@ -142,7 +141,11 @@ export async function handlePullRequestDelivery(
           baseBranch: ev.baseBranch,
           isFork: ev.isFork,
         },
-        { actor: ev.author || "github", actorProvider: "github" },
+        {
+          actor: ev.author || "github",
+          actorProvider: "github",
+          build: intent.kind === "deploy",
+        },
       );
 
       // Tell the pull request what happened, whatever happened. A refusal that
@@ -150,7 +153,9 @@ export async function handlePullRequestDelivery(
       // preview that was never going to come.
       if (res.previewId && res.refusal?.kind === "awaiting-approval") {
         void syncPreviewComment(res.previewId, { kind: "awaiting-approval" });
-      } else if (res.previewId && !res.refusal) {
+      } else if (res.previewId && res.refusal?.kind === "evicted") {
+        void syncPreviewComment(res.previewId, res.refusal);
+      } else if (res.previewId && !res.refusal && intent.kind === "deploy") {
         void syncPreviewComment(res.previewId, { kind: "building" });
       } else if (res.refusal && res.refusal.kind !== "previews-off") {
         console.warn(

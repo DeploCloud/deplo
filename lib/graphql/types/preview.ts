@@ -223,19 +223,22 @@ builder.mutationFields((t) => ({
       input: t.arg({ type: PreviewSettingsInput, required: true }),
     },
     resolve: async (_r, { appId, input }) => {
+      // An explicit null CLEARS a nullable setting (the port, the server, the base
+      // domain); only an omitted field leaves it alone. `?? undefined` here made
+      // the form's "back to the app's port" a save that changed nothing.
       await setAppPreviewSettings(String(appId), {
         enabled: input.enabled ?? undefined,
-        baseDomain: input.baseDomain ?? undefined,
-        maxActive: input.maxActive ?? undefined,
-        ttlDays: input.ttlDays ?? undefined,
-        forkPolicy: input.forkPolicy ?? undefined,
-        serverId: input.serverId ?? undefined,
+        baseDomain: input.baseDomain,
+        maxActive: input.maxActive,
+        ttlDays: input.ttlDays,
+        forkPolicy: input.forkPolicy,
+        serverId: input.serverId,
         https: input.https ?? undefined,
         autoDeploy: input.autoDeploy ?? undefined,
-        port: input.port ?? undefined,
+        port: input.port,
         buildDrafts: input.buildDrafts ?? undefined,
         comment: input.comment ?? undefined,
-        requiredLabels: input.requiredLabels ?? undefined,
+        requiredLabels: input.requiredLabels,
       });
       return true;
     },

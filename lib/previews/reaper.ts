@@ -12,7 +12,8 @@ import {
   closePreview,
   openPreviewsForStateCheck,
   previewsDueForReaping,
-  teardownPreviewStack,
+  pruneClosedPreviews,
+  retryPreviewTeardown,
 } from "../deploy/preview-lifecycle";
 import { drainTeardowns } from "../data/teardown-queue";
 import { drainMigrationSourceUninstalls } from "../data/migration-import";
@@ -92,7 +93,7 @@ export async function runPreviewReaperTick(
       // hour because twenty hosts were slow.
       if (!(await acquireLease(PREVIEW_REAPER_LEASE, state.owner, new Date())))
         return;
-      await teardownPreviewStack(p).catch(() => false);
+      await retryPreviewTeardown(p.id).catch(() => false);
     }
 
     for (const p of expired) {
@@ -102,6 +103,10 @@ export async function runPreviewReaperTick(
         () => false,
       );
     }
+
+    // Rows of pull requests closed a week ago, once their stack is confirmed gone:
+    // without this the list grew by one closed row per pull request, forever.
+    await pruneClosedPreviews(now, REAP_BATCH).catch(() => 0);
 
     // The missed-`closed`-webhook net, last because it is the only networked
     // step. A GitHub failure reports null, "don't know", and the preview is

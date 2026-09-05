@@ -2,13 +2,17 @@ import "server-only";
 
 import { eq, isNull, and } from "drizzle-orm";
 
-import { previewSettings } from "./preview-lifecycle";
 import { loadAppGraph } from "../data/app-graph-load";
+import { teamSlugById } from "../data/teams";
 import { getDb } from "../db/client";
-import { appPreviews as appPreviewsTable } from "../db/schema/control-plane";
+import {
+  apps as appsTable,
+  appPreviews as appPreviewsTable,
+} from "../db/schema/control-plane";
 import { upsertPullRequestComment } from "../github/app";
 import { githubFullName } from "../github/repo-id";
 import { PUBLIC_URL_PLACEHOLDER, resolveManifestBaseUrl } from "../public-url";
+import { withTeam } from "../team-path";
 
 /**
  * The ONE comment Deplo keeps on a pull request, edited in place. A pull request
@@ -24,6 +28,8 @@ export type PreviewCommentState =
   | { kind: "failed" }
   | { kind: "destroyed" }
   | { kind: "awaiting-approval" }
+  /** Stopped by the app's own limit; the pull request is still open. */
+  | { kind: "evicted"; max: number }
   | { kind: "refused"; reason: string };
 
 /** The comment body for one state. Markdown, no emoji, no ellipsis. */
@@ -62,6 +68,10 @@ export function previewCommentBody(input: {
       note =
         "This pull request comes from a fork, so a maintainer has to approve it in Deplo before a preview is built.";
       break;
+    case "evicted":
+      table = row("Stopped", "Not deployed");
+      note = `Stopped to stay within the app's limit of ${input.state.max} live previews. Redeploy it from Deplo to bring the same address back.`;
+      break;
     case "refused":
       table = row("Not built", "Not deployed");
       note = input.state.reason;
@@ -92,7 +102,12 @@ export async function syncPreviewComment(
     if (!p) return;
     // The app can turn the comment off. One guard here covers every caller: the deploy
     // outcome, the open, the sync and the teardown.
-    if (!(await previewSettings(p.appId))?.comment) return;
+    const wanted = await getDb()
+      .select({ comment: appsTable.previewComment })
+      .from(appsTable)
+      .where(eq(appsTable.id, p.appId))
+      .limit(1);
+    if (!wanted[0]?.comment) return;
     const app = await loadAppGraph(p.appId);
     const installationId = app?.repo?.installationId;
     const fullName = app?.repo ? githubFullName(app.repo) : null;
@@ -101,7 +116,11 @@ export async function syncPreviewComment(
     const base = resolveManifestBaseUrl();
     const buildLogUrl =
       base && base !== PUBLIC_URL_PLACEHOLDER && p.latestDeploymentId
-        ? `${base}/apps/${app.slug}/deployments/${p.latestDeploymentId}`
+        ? base +
+          withTeam(
+            `/apps/${app.slug}/deployments/${p.latestDeploymentId}`,
+            await teamSlugById(app.teamId),
+          )
         : null;
 
     const body = previewCommentBody({

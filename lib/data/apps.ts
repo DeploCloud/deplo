@@ -129,7 +129,10 @@ import {
 } from "../deploy/domains";
 import { redeploy } from "./deployments";
 import { descendantFolderIds } from "./folders";
-import { destroyPreviewsForApp } from "../deploy/preview-lifecycle";
+import {
+  destroyPreviewsForApp,
+  stopPreviewsForServerChange,
+} from "../deploy/preview-lifecycle";
 import { withKeyedLock } from "./keyed-mutex";
 import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue } from "../apps/logo-shared";
@@ -1666,6 +1669,7 @@ export async function updateAppSource(
   const [current] = await getDb()
     .select({
       serverId: appsTable.serverId,
+      previewServerId: appsTable.previewServerId,
       environmentId: appsTable.environmentId,
       compose: appsTable.compose,
       slug: appsTable.slug,
@@ -1673,6 +1677,18 @@ export async function updateAppSource(
     .from(appsTable)
     .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
     .limit(1);
+  // Pull request previews follow the app's server unless pinned elsewhere, and
+  // their teardown resolves the host from the app row: once it names the new
+  // machine, the stacks on the old one could never be reached again. Before the
+  // transaction, like every call that runs on its own connection.
+  if (
+    current &&
+    input.serverId &&
+    input.serverId !== current.serverId &&
+    !current.previewServerId
+  ) {
+    await stopPreviewsForServerChange(id);
+  }
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;
   // The repo this app deployed from BEFORE this save, so its push webhook can be

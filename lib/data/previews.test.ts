@@ -18,12 +18,16 @@ import {
 } from "../deploy/deploy-queue";
 import {
   closePreview,
+  deployPreviewRow,
   openOrSyncPreview,
   previewsDueForReaping,
   previewSettings,
+  pruneClosedPreviews,
+  retryPreviewTeardown,
 } from "../deploy/preview-lifecycle";
 import {
   seedApp,
+  seedPreview,
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
@@ -34,7 +38,15 @@ import {
   TRUNCATE_IDENTITY,
   USER_1,
 } from "./identity-test-helpers";
-import { approvePreview, destroyPreview, redeployPreview } from "./previews";
+import {
+  approvePreview,
+  destroyPreview,
+  listAppPreviews,
+  redeployPreview,
+  setAppPreviewSettings,
+} from "./previews";
+import { updateAppSource } from "./apps";
+import { loadAppGraph } from "./app-graph-load";
 import { addDomain } from "./domains";
 import { LETSENCRYPT_DOMAINS_PER_TEAM_CAP } from "../deploy/domains";
 
@@ -658,4 +670,338 @@ test("a fork approved at one commit is blocked again by the next push", async ()
     PR.headSha,
     "the approval still names the commit it was given for",
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* A facts-only sync (manual-only apps, title edits)                    */
+/* ------------------------------------------------------------------ */
+
+/** The preview's row, by id. */
+async function rowOf(id: string) {
+  return (
+    await db.select().from(appPreviewsTable).where(eq(appPreviewsTable.id, id))
+  )[0]!;
+}
+
+async function deploymentsOf(previewId: string) {
+  return db
+    .select()
+    .from(deploymentsTable)
+    .where(eq(deploymentsTable.previewId, previewId));
+}
+
+test("a facts-only sync records the head and builds nothing", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const first = await openOrSyncPreview("prj_1", PR, { actor: "o" });
+  const builds = (await deploymentsOf(first.previewId!)).length;
+
+  const synced = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, headSha: "feedface", title: "Renamed" },
+    { actor: "o", build: false },
+  );
+  assert.equal(synced.previewId, first.previewId);
+  assert.equal(synced.deploymentId, null);
+  assert.equal(synced.refusal, undefined);
+  const row = await rowOf(first.previewId!);
+  assert.equal(row.headSha, "feedface");
+  assert.equal(row.prTitle, "Renamed");
+  assert.equal((await deploymentsOf(first.previewId!)).length, builds);
+});
+
+test("a facts-only sync never creates a row and never reopens a closed one", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const none = await openOrSyncPreview("prj_1", PR, {
+    actor: "o",
+    build: false,
+  });
+  assert.equal(none.previewId, null);
+  assert.equal((await db.select().from(appPreviewsTable)).length, 0);
+
+  const opened = await openOrSyncPreview("prj_1", PR, { actor: "o" });
+  await closePreview(opened.previewId!, "closed");
+  await openOrSyncPreview(
+    "prj_1",
+    { ...PR, title: "Edited after close" },
+    { actor: "o", build: false },
+  );
+  const row = await rowOf(opened.previewId!);
+  assert.equal(row.state, "closed", "a title edit does not reopen anything");
+  assert.equal(row.prTitle, "Edited after close");
+});
+
+/**
+ * The hole a manual-only app opened: a fork approved at commit A, then a push of
+ * commit B that the webhook used to IGNORE, so the row still said "approved at A"
+ * while Redeploy built the branch tip - B, which nobody had read.
+ */
+test("a manual-only fork push withdraws the approval for the new commit", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const fork = { ...PR, isFork: true, headRepo: "mallory/blog" };
+  const approved = await openOrSyncPreview("prj_1", fork, {
+    actor: "maintainer",
+    approve: true,
+    manual: true,
+  });
+  assert.equal(approved.refusal, undefined);
+
+  const pushed = await openOrSyncPreview(
+    "prj_1",
+    { ...fork, headSha: "deadbeef" },
+    { actor: "mallory", build: false },
+  );
+  assert.deepEqual(pushed.refusal, { kind: "awaiting-approval" });
+  const row = await rowOf(approved.previewId!);
+  assert.equal(row.status, "blocked");
+  assert.equal(row.headSha, "deadbeef");
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    assert.rejects(
+      () => redeployPreview(approved.previewId!),
+      /approve this fork/i,
+      "Redeploy must not build the commit nobody reviewed",
+    ),
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* A stack that must come down while the pull request stays open        */
+/* ------------------------------------------------------------------ */
+
+test("an unreviewed commit takes the fork's running stack down", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const fork = { ...PR, isFork: true, headRepo: "mallory/blog" };
+  const approved = await openOrSyncPreview("prj_1", fork, {
+    actor: "maintainer",
+    approve: true,
+    manual: true,
+  });
+  // Pretend the build landed and a second one is waiting in the queue.
+  await db.insert(deploymentsTable).values({
+    id: "dpl_queued_fork",
+    appId: "prj_1",
+    status: "queued",
+    environment: "preview",
+    deployKey: "blog__pr-42",
+    previewId: approved.previewId!,
+    prNumber: 42,
+    commitSha: "",
+    commitMessage: "x",
+    commitAuthor: "x",
+    branch: "feat/dark-mode",
+    url: "",
+    createdAt: new Date().toISOString(),
+    creator: "x",
+  } as never);
+
+  const pushed = await openOrSyncPreview(
+    "prj_1",
+    { ...fork, headSha: "deadbeef" },
+    { actor: "mallory" },
+  );
+  assert.deepEqual(pushed.refusal, { kind: "awaiting-approval" });
+  const row = await rowOf(approved.previewId!);
+  assert.equal(row.status, "blocked");
+  const queued = (await deploymentsOf(approved.previewId!)).find(
+    (d) => d.id === "dpl_queued_fork",
+  )!;
+  assert.equal(queued.status, "canceled", "the old commit must not build");
+  // No agent here, so the teardown could not be confirmed: the reaper owns it.
+  assert.equal(row.tornDownAt, null);
+  const due = await previewsDueForReaping(new Date(), 20);
+  assert.ok(
+    due.retry.some((r) => r.id === approved.previewId),
+    "a stack left behind by a withdrawn approval is retried",
+  );
+});
+
+test("the reaper retries an evicted stack the host never confirmed gone", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
+  const a = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1 },
+    { actor: "o" },
+  );
+  await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
+  assert.equal((await rowOf(a.previewId!)).status, "evicted");
+  assert.equal((await rowOf(a.previewId!)).tornDownAt, null);
+
+  let due = await previewsDueForReaping(new Date(), 20);
+  assert.deepEqual(
+    due.retry.map((r) => r.id),
+    [a.previewId],
+  );
+
+  // A push onto the evicted preview must not erase what the reaper reads.
+  await db
+    .update(appPreviewsTable)
+    .set({ tornDownAt: "2026-01-01T00:00:00.000Z" })
+    .where(eq(appPreviewsTable.id, a.previewId!));
+  await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1, headSha: "newsha" },
+    { actor: "o" },
+  );
+  assert.ok((await rowOf(a.previewId!)).tornDownAt, "still confirmed gone");
+  due = await previewsDueForReaping(new Date(), 20);
+  assert.equal(due.retry.length, 0);
+});
+
+test("a fork that never built is not a teardown to retry", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const fork = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, isFork: true, headRepo: "mallory/blog" },
+    { actor: "mallory" },
+  );
+  assert.equal((await rowOf(fork.previewId!)).status, "blocked");
+  const due = await previewsDueForReaping(new Date(), 20);
+  assert.equal(due.retry.length, 0);
+});
+
+test("a retry picked up by the reaper is skipped once the preview was revived", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
+  const a = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1 },
+    { actor: "o" },
+  );
+  await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
+  // Redeploy between the reaper's read and its teardown.
+  await deployPreviewRow(a.previewId!, { actor: "someone" });
+  assert.equal((await rowOf(a.previewId!)).status, "queued");
+  assert.equal(
+    await retryPreviewTeardown(a.previewId!),
+    false,
+    "must not tear down the stack being built",
+  );
+});
+
+test("a deploy refused before it was queued leaves the row in error, not queued", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const a = await openOrSyncPreview("prj_1", PR, { actor: "o" });
+  // Mid-migration apps refuse every deploy (assertNotMigrating).
+  await db
+    .update(appsTable)
+    .set({ migrationRunId: "mig_1" })
+    .where(eq(appsTable.id, "prj_1"));
+  await assert.rejects(
+    () => deployPreviewRow(a.previewId!, { actor: "o" }),
+    /migration/,
+  );
+  assert.equal((await rowOf(a.previewId!)).status, "error");
+});
+
+/* ------------------------------------------------------------------ */
+/* Rows are pruned, and the list is ordered                             */
+/* ------------------------------------------------------------------ */
+
+test("a closed pull request keeps its row for a week, then only if its stack is unconfirmed", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const now = new Date("2026-09-05T12:00:00.000Z");
+  const old = new Date(now.getTime() - 8 * 24 * 3600 * 1000).toISOString();
+  const recent = new Date(now.getTime() - 2 * 24 * 3600 * 1000).toISOString();
+  const seed = (
+    id: string,
+    prNumber: number,
+    closedAt: string,
+    torn: boolean,
+  ) =>
+    seedPreview(db, {
+      id,
+      appId: "prj_1",
+      prNumber,
+      state: "closed",
+      closedAt,
+      tornDownAt: torn ? closedAt : null,
+    });
+  await seed("prv_old_gone", 1, old, true);
+  await seed("prv_old_stuck", 2, old, false);
+  await seed("prv_recent", 3, recent, true);
+  await seedPreview(db, { id: "prv_open", appId: "prj_1", prNumber: 4 });
+
+  assert.equal(await pruneClosedPreviews(now, 50), 1);
+  const left = (await db.select().from(appPreviewsTable)).map((r) => r.id);
+  assert.deepEqual(left.sort(), ["prv_old_stuck", "prv_open", "prv_recent"]);
+});
+
+test("the list puts open pull requests first, most recently touched on top", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  await seedPreview(db, {
+    id: "prv_closed",
+    appId: "prj_1",
+    prNumber: 1,
+    state: "closed",
+    lastActivityAt: "2026-09-05T12:00:00.000Z",
+  });
+  await seedPreview(db, {
+    id: "prv_stale",
+    appId: "prj_1",
+    prNumber: 2,
+    lastActivityAt: "2026-09-01T12:00:00.000Z",
+  });
+  await seedPreview(db, {
+    id: "prv_fresh",
+    appId: "prj_1",
+    prNumber: 3,
+    lastActivityAt: "2026-09-03T12:00:00.000Z",
+  });
+  const view = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    listAppPreviews("prj_1"),
+  );
+  assert.deepEqual(
+    view.previews.map((p) => p.id),
+    ["prv_fresh", "prv_stale", "prv_closed"],
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Moving previews to another machine                                   */
+/* ------------------------------------------------------------------ */
+
+test("repointing previews at another server stops the ones running on the old one", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 5 });
+  await seedServer(db, "srv_other");
+  const up = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1 },
+    { actor: "o" },
+  );
+  const blocked = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 2, isFork: true, headRepo: "x/blog" },
+    { actor: "x" },
+  );
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    setAppPreviewSettings("prj_1", { serverId: "srv_other" }),
+  );
+  assert.equal((await rowOf(up.previewId!)).status, "evicted");
+  assert.equal(
+    (await rowOf(blocked.previewId!)).status,
+    "blocked",
+    "nothing was running for the fork, so nothing changes",
+  );
+  assert.equal((await previewSettings("prj_1"))!.serverId, "srv_other");
+
+  // Saving the same server again is not a change, and stops nothing.
+  await deployPreviewRow(up.previewId!, { actor: "o" });
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    setAppPreviewSettings("prj_1", { serverId: "srv_other", maxActive: 4 }),
+  );
+  assert.equal((await rowOf(up.previewId!)).status, "queued");
+});
+
+test("moving the app itself stops its previews, unless they are pinned elsewhere", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  await seedServer(db, "srv_other");
+  const up = await openOrSyncPreview("prj_1", PR, { actor: "o" });
+  const app = (await loadAppGraph("prj_1"))!;
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    updateAppSource("prj_1", {
+      source: "github",
+      repo: app.repo,
+      dockerImage: null,
+      serverId: "srv_other",
+    }),
+  );
+  assert.equal((await rowOf(up.previewId!)).status, "evicted");
 });

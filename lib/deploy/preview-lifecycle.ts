@@ -2,7 +2,18 @@ import "server-only";
 
 // https://deplo.build/docs/guides/networking/pull-request-previews
 
-import { and, asc, eq, isNull, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { recordActivity } from "../data/activity";
 import { loadAppGraph } from "../data/app-graph-load";
@@ -21,6 +32,7 @@ import { publishAppChanged } from "../graphql/pubsub";
 import type { CertProvider } from "../types";
 import { startDeployment } from "./build";
 import { previewDeployKey } from "./deploy-key";
+import { syncPreviewComment } from "./preview-comment";
 import { previewHost, resolveServerIp } from "./domains";
 import { mapLimit } from "../utils";
 
@@ -110,8 +122,14 @@ export async function openOrSyncPreview(
      * (that is what the Redeploy button is for), a webhook never does.
      */
     manual?: boolean;
+    /**
+     * `false` ⇒ record the pull request's new facts and build nothing: a push on
+     * a manual-only app, a title edit. Never creates a row and never reopens one.
+     */
+    build?: boolean;
   } = { actor: "github" },
 ): Promise<OpenOrSyncResult> {
+  const syncOnly = opts.build === false;
   return withKeyedLock(`preview:${appId}:${pr.number}`, async () => {
     const app = await loadAppGraph(appId);
     if (!app) return { previewId: null, deploymentId: null };
@@ -133,6 +151,7 @@ export async function openOrSyncPreview(
     }
 
     const existing = await loadPreviewRow(appId, pr.number);
+    if (syncOnly && !existing) return { previewId: null, deploymentId: null };
     const policy = forkPolicyOf(settings.forkPolicy);
     // A fork's code is attacker-authored and would run on the operator's host.
     // `deny` never records it at all; `approve` records it so the pull request is
@@ -156,6 +175,7 @@ export async function openOrSyncPreview(
     // An evicted preview keeps taking pull request updates - its title, head SHA and
     // state stay honest in the list, but a push does NOT rebuild it.
     const evictedAndUnasked = existing?.status === "evicted" && !opts.manual;
+    const willBuild = approved && !evictedAndUnasked && !syncOnly;
     if (existing) {
       await getDb()
         .update(appPreviewsTable)
@@ -170,10 +190,13 @@ export async function openOrSyncPreview(
           baseBranch: pr.baseBranch,
           isFork: pr.isFork,
           // Reopening a closed pull request revives the same preview, key and
-          // host included, so the old link starts working again.
-          state: "open",
-          closedAt: null,
-          tornDownAt: null,
+          // host included, so the old link starts working again. A facts-only
+          // sync reopens nothing: a title edit can arrive for a closed one.
+          ...(syncOnly ? {} : { state: "open", closedAt: null }),
+          // `torn_down_at` is the proof a stack is gone; only a build about to
+          // start may erase it. Erasing it on an evicted preview's push made the
+          // reaper retry a teardown of nothing, every hour, forever.
+          ...(willBuild ? { tornDownAt: null } : {}),
           // Re-stamped whenever a NEW head is approved, not only the first time:
           // with a per-commit rule a stale `approved_sha` would refuse the very
           // build the caller just approved, and then refuse every one after it.
@@ -186,13 +209,15 @@ export async function openOrSyncPreview(
           updatedAt: now,
         })
         .where(eq(appPreviewsTable.id, existing.id));
-    } else {
-      // At the cap, the NEW preview wins and the least recently active one is torn down.
-      // An existing preview's own next push never evicts anything - it already holds its
-      // slot. ONLY when this preview is actually going to build.
-      if (approved && (await countOpenPreviews(appId)) >= settings.maxActive) {
-        await evictToFit(appId, settings.maxActive);
+      // An unreviewed commit on a fork whose reviewed commit is still RUNNING: the
+      // stack serves code the pull request no longer contains, and a `blocked` row
+      // holds no slot, so leaving it up would also put the app over its own limit.
+      if (!approved && hasStack(existing)) {
+        await stopPreview(existing, "blocked");
       }
+    } else {
+      // At the cap, the NEW preview wins and the least recently active one is torn
+      // down - settled below, under the per-app lock, once the row exists.
       const server =
         (await getServerById(settings.serverId ?? app.serverId)) ?? undefined;
       const { host, certProvider } = previewHost({
@@ -239,11 +264,11 @@ export async function openOrSyncPreview(
     // The cap has to be settled PER APP, not per pull request: the lock this function
     // runs under is keyed `appId:prNumber`, so two PRs opened together took DIFFERENT
     // locks, both read the same under-cap count above, neither evicted, and both took a
-    if (approved)
+    if (willBuild)
       await withKeyedLock(`preview-cap:${appId}`, () =>
         // `+ 1` because evictToFit makes room FOR a preview about to be inserted (it evicts
         // `count - keep + 1`).
-        evictToFit(appId, settings.maxActive + 1),
+        evictToFit(appId, settings.maxActive + 1, settings.maxActive),
       );
 
     publishAppChanged(appId);
@@ -261,6 +286,7 @@ export async function openOrSyncPreview(
         refusal: { kind: "evicted", max: settings.maxActive },
       };
     }
+    if (syncOnly) return { previewId, deploymentId: null };
     const deploymentId = await deployPreviewRow(previewId!, {
       actor: opts.actor,
       actorProvider: opts.actorProvider,
@@ -300,30 +326,46 @@ export async function deployPreviewRow(
     // under-cap count and both take a slot.
     await withKeyedLock(`preview-cap:${p.appId}`, async () => {
       if ((await countOpenPreviews(p.appId)) >= max)
-        await evictToFit(p.appId, max);
+        await evictToFit(p.appId, max, max);
       await getDb()
         .update(appPreviewsTable)
         .set({ status: "queued", tornDownAt: null, updatedAt: nowIso() })
         .where(eq(appPreviewsTable.id, previewId));
     });
   }
-  return startDeployment(p.appId, {
-    environment: "preview",
-    creator: opts.actor,
-    creatorProvider: opts.actorProvider,
-    commitMessage:
-      opts.commitMessage || p.prTitle || `Pull request #${p.prNumber}`,
-    branch: p.headBranch,
-    preview: {
-      id: p.id,
-      deployKey: p.deployKey,
-      host: p.host,
-      certProvider: p.certProvider as CertProvider,
-      prNumber: p.prNumber,
-      headSha: p.headSha,
-      serverId: (await previewSettings(p.appId))?.serverId ?? null,
-    },
-  });
+  try {
+    return await startDeployment(p.appId, {
+      environment: "preview",
+      creator: opts.actor,
+      creatorProvider: opts.actorProvider,
+      commitMessage:
+        opts.commitMessage || p.prTitle || `Pull request #${p.prNumber}`,
+      branch: p.headBranch,
+      preview: {
+        id: p.id,
+        deployKey: p.deployKey,
+        host: p.host,
+        certProvider: p.certProvider as CertProvider,
+        prNumber: p.prNumber,
+        headSha: p.headSha,
+        serverId: (await previewSettings(p.appId))?.serverId ?? null,
+      },
+    });
+  } catch (e) {
+    // A refusal before the row was even queued (a revoked host grant, a migration
+    // still running) must not leave the list saying "queued" with nothing behind it.
+    await getDb()
+      .update(appPreviewsTable)
+      .set({ status: "error", updatedAt: nowIso() })
+      .where(
+        and(
+          eq(appPreviewsTable.id, previewId),
+          eq(appPreviewsTable.status, "queued"),
+        ),
+      );
+    publishAppChanged(p.appId);
+    throw e;
+  }
 }
 
 /**
@@ -351,18 +393,12 @@ export async function closePreview(
       updatedAt: now,
     })
     .where(eq(appPreviewsTable.id, previewId));
-  // Nothing queued for a closed pull request should ever start building.
-  await getDb()
-    .update(deploymentsTable)
-    .set({ status: "canceled" })
-    .where(
-      and(
-        eq(deploymentsTable.previewId, previewId),
-        eq(deploymentsTable.status, "queued"),
-      ),
-    );
+  await cancelQueuedPreviewDeploys(previewId);
   const gone = await teardownPreviewStack(p);
   publishAppChanged(p.appId);
+  // Every way a preview closes tells the pull request, not only the webhook's:
+  // the reaper's idle timeout and the Destroy button left a "Ready" link that 404s.
+  void syncPreviewComment(previewId, { kind: "destroyed" });
   const app = await loadAppGraph(p.appId);
   await recordActivity(
     "deployment",
@@ -395,6 +431,89 @@ export async function teardownPreviewStack(p: {
       .where(eq(appPreviewsTable.id, p.id));
   }
   return ok;
+}
+
+/** Nothing queued for a preview that is going down should ever start building. */
+async function cancelQueuedPreviewDeploys(previewId: string): Promise<void> {
+  await getDb()
+    .update(deploymentsTable)
+    .set({ status: "canceled" })
+    .where(
+      and(
+        eq(deploymentsTable.previewId, previewId),
+        eq(deploymentsTable.status, "queued"),
+      ),
+    );
+}
+
+/** A preview whose containers may still be on a host: built at least once, and
+ *  never confirmed gone. */
+function hasStack(p: {
+  status: string;
+  tornDownAt: string | null;
+  latestDeploymentId: string | null;
+}): boolean {
+  return (
+    !p.tornDownAt &&
+    Boolean(p.latestDeploymentId) &&
+    !(SLOTLESS as readonly string[]).includes(p.status)
+  );
+}
+
+/**
+ * Take a preview's stack down while its pull request stays open: the row keeps
+ * its key and host at `status`, so Redeploy (or an approval) brings the same URL
+ * back. Stamped FIRST, then torn down: if the host is unreachable the row already
+ * holds no slot and `torn_down_at` stays NULL, which is what the reaper retries on.
+ */
+async function stopPreview(
+  p: { id: string; deployKey: string; tornDownAt: string | null },
+  status: "evicted" | "blocked",
+): Promise<boolean> {
+  await getDb()
+    .update(appPreviewsTable)
+    .set({ status, updatedAt: nowIso() })
+    .where(eq(appPreviewsTable.id, p.id));
+  await cancelQueuedPreviewDeploys(p.id);
+  return teardownPreviewStack(p);
+}
+
+/**
+ * Stop every running preview of an app because the machine they run on is about
+ * to change (the app moves, or its preview server is repointed). Their stacks
+ * live on the OLD host, and every lifecycle verb resolves the host from the app
+ * row - so once that row changes, nothing could ever name them again. Runs
+ * BEFORE the row is written, for exactly that reason.
+ */
+export async function stopPreviewsForServerChange(
+  appId: string,
+): Promise<number> {
+  const rows = await getDb()
+    .select({
+      id: appPreviewsTable.id,
+      deployKey: appPreviewsTable.deployKey,
+      tornDownAt: appPreviewsTable.tornDownAt,
+      status: appPreviewsTable.status,
+      latestDeploymentId: appPreviewsTable.latestDeploymentId,
+    })
+    .from(appPreviewsTable)
+    .where(
+      and(
+        eq(appPreviewsTable.appId, appId),
+        eq(appPreviewsTable.state, "open"),
+      ),
+    );
+  const victims = rows.filter(hasStack);
+  const settings = await previewSettings(appId);
+  for (const v of victims) {
+    await stopPreview(v, "evicted");
+    void syncPreviewComment(v.id, {
+      kind: "evicted",
+      max: settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT,
+    });
+  }
+  if (victims.length > 0) publishAppChanged(appId);
+  return victims.length;
 }
 
 /**
@@ -538,9 +657,13 @@ async function countOpenPreviews(appId: string): Promise<number> {
 
 /**
  * Make room for one more preview by tearing down the least recently active ones
- * until the app is back under `keep`.
+ * until the app is back under `keep`. `max` is the limit the pull request is told.
  */
-async function evictToFit(appId: string, keep: number): Promise<number> {
+async function evictToFit(
+  appId: string,
+  keep: number,
+  max: number,
+): Promise<number> {
   const victims = await getDb()
     .select({
       id: appPreviewsTable.id,
@@ -559,14 +682,9 @@ async function evictToFit(appId: string, keep: number): Promise<number> {
     .limit(Math.max(0, (await countOpenPreviews(appId)) - keep + 1));
 
   for (const v of victims) {
-    // Stamp FIRST, then tear down: if the host is unreachable the row still reads
-    // `evicted` (it is not serving anything the cap should count) and
-    // `torn_down_at` stays NULL, which is exactly the reaper's retry predicate.
-    await getDb()
-      .update(appPreviewsTable)
-      .set({ status: "evicted", updatedAt: nowIso() })
-      .where(eq(appPreviewsTable.id, v.id));
-    await teardownPreviewStack(v);
+    await stopPreview(v, "evicted");
+    // The link on the pull request just went dead; say so where it was posted.
+    void syncPreviewComment(v.id, { kind: "evicted", max });
   }
   if (victims.length > 0) publishAppChanged(appId);
   return victims.length;
@@ -591,8 +709,9 @@ async function loadPreviewRow(
 }
 
 /**
- * Previews the reaper should act on, in two disjoint sets: - `retry` - closed but
- * never verifiably torn down (the agent was down).
+ * Previews the reaper should act on, in two disjoint sets: `retry` - stopped
+ * (closed, evicted, or a fork sent back to `blocked`) but never verifiably torn
+ * down, because the agent was down; `expired` - open, and idle past the app's TTL.
  */
 export async function previewsDueForReaping(
   now: Date,
@@ -610,8 +729,15 @@ export async function previewsDueForReaping(
     .from(appPreviewsTable)
     .where(
       and(
-        eq(appPreviewsTable.state, "closed"),
         isNull(appPreviewsTable.tornDownAt),
+        or(
+          eq(appPreviewsTable.state, "closed"),
+          // A row that never built has nothing on any host, so it is not a retry.
+          and(
+            inArray(appPreviewsTable.status, [...SLOTLESS]),
+            isNotNull(appPreviewsTable.latestDeploymentId),
+          ),
+        ),
       ),
     )
     .limit(limit);
@@ -632,6 +758,72 @@ export async function previewsDueForReaping(
     .limit(limit);
 
   return { retry, expired };
+}
+
+/**
+ * Finish a teardown the reaper picked up, unless the row moved on since it was
+ * picked: a Redeploy or an approval in between made it `queued`, and its stack is
+ * now the one being built, not the one that was left behind.
+ */
+export async function retryPreviewTeardown(
+  previewId: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({
+      id: appPreviewsTable.id,
+      deployKey: appPreviewsTable.deployKey,
+      tornDownAt: appPreviewsTable.tornDownAt,
+      state: appPreviewsTable.state,
+      status: appPreviewsTable.status,
+    })
+    .from(appPreviewsTable)
+    .where(eq(appPreviewsTable.id, previewId))
+    .limit(1);
+  const p = rows[0];
+  if (!p) return true;
+  const stopped =
+    p.state === "closed" || (SLOTLESS as readonly string[]).includes(p.status);
+  if (!stopped) return false;
+  return teardownPreviewStack(p);
+}
+
+/** How long a closed pull request keeps its row in the list. */
+export const PREVIEW_CLOSED_RETENTION_DAYS = 7;
+
+/**
+ * Drop the rows of pull requests closed long enough ago, once their stack is
+ * confirmed gone. A row is the only proof a stack exists, so one whose teardown
+ * never succeeded is kept whatever its age; a deployment keeps its own copy of
+ * the pull request URL, so history loses nothing.
+ */
+export async function pruneClosedPreviews(
+  now: Date,
+  limit: number,
+): Promise<number> {
+  const cutoff = new Date(
+    now.getTime() - PREVIEW_CLOSED_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const stale = await getDb()
+    .select({ id: appPreviewsTable.id })
+    .from(appPreviewsTable)
+    .where(
+      and(
+        eq(appPreviewsTable.state, "closed"),
+        isNotNull(appPreviewsTable.tornDownAt),
+        sql`${appPreviewsTable.closedAt} < ${cutoff}::timestamptz`,
+      ),
+    )
+    .limit(limit);
+  if (stale.length === 0) return 0;
+  await getDb()
+    .delete(appPreviewsTable)
+    .where(
+      inArray(
+        appPreviewsTable.id,
+        stale.map((r) => r.id),
+      ),
+    );
+  return stale.length;
 }
 
 /**

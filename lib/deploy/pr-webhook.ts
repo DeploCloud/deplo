@@ -73,13 +73,17 @@ export type PreviewSkipReason =
   | "no-head-repo"
   | "action"
   /** The app filters on labels and this pull request carries none of them. */
-  | "label"
-  /** A new commit landed, but this app only builds previews on request. */
-  | "manual-only";
+  | "label";
 
 export type PreviewIntent =
   | { kind: "deploy" }
   | { kind: "destroy" }
+  /**
+   * Refresh what the list says about the pull request (head, title, approval)
+   * without building. A head that arrives this way and is never recorded is how
+   * a fork's unreviewed commit would inherit a stale approval.
+   */
+  | { kind: "sync" }
   | { kind: "ignore"; reason: PreviewSkipReason };
 
 /**
@@ -132,7 +136,11 @@ export function previewIntent(
   if (ev.action === "closed") return { kind: "destroy" };
   if (!cfg.previewsEnabled) return { kind: "ignore", reason: "previews-off" };
   if (ev.baseBranch !== cfg.branch) {
-    return { kind: "ignore", reason: "base-branch" };
+    // `edited` is also how GitHub reports a retarget: a preview that no longer
+    // targets the tracked branch is a build of something this app never ships.
+    return ev.action === "edited"
+      ? { kind: "destroy" }
+      : { kind: "ignore", reason: "base-branch" };
   }
 
   // The label gate spans every action, which is why it sits above the action
@@ -147,6 +155,9 @@ export function previewIntent(
       : { kind: "ignore", reason: "label" };
   }
 
+  // A title edit changes nothing on the host, but the list must not lie.
+  if (ev.action === "edited") return { kind: "sync" };
+
   if (
     ev.action === "opened" ||
     ev.action === "reopened" ||
@@ -160,9 +171,10 @@ export function previewIntent(
     if (!ev.headRepo) return { kind: "ignore", reason: "no-head-repo" };
     if (ev.draft && !cfg.buildDrafts)
       return { kind: "ignore", reason: "draft" };
-    if (ev.action === "synchronize" && !cfg.autoDeploy) {
-      return { kind: "ignore", reason: "manual-only" };
-    }
+    // Manual-only apps still RECORD the new head: Redeploy builds the branch tip,
+    // and the row has to say which commit that is (and, for a fork, that nobody
+    // has approved it yet).
+    if (ev.action === "synchronize" && !cfg.autoDeploy) return { kind: "sync" };
     return { kind: "deploy" };
   }
   return { kind: "ignore", reason: "action" };
