@@ -1,7 +1,7 @@
 import Link from "@/components/ui/link";
 import { Lock, CloudOff, X } from "lucide-react";
 
-import { hasCapability, isInstanceAdmin } from "@/lib/membership";
+import { hasCapabilityAnywhere, isInstanceAdmin } from "@/lib/membership";
 import { DeploLogo } from "@/components/logo";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -71,7 +71,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
 
   // The Overview hides its "New app" button without this permission, but the URL
   // is still typeable (and a template's Deploy button lands here).
-  if (!(await hasCapability("create_apps")))
+  if (!(await hasCapabilityAnywhere("create_apps")))
     return (
       <FocusFrame exitHref={placementHref(placement)}>
         <EmptyState

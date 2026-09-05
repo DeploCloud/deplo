@@ -86,7 +86,9 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     reachesWholeTeam(),
     isInstanceAdmin(),
     hasCapability("manage_team"),
-    hasCapability("create_apps"),
+    // Creating is decided where the app lands, and a project or folder grant can
+    // hold it where the role does not - so this asks the "anywhere" question too.
+    hasCapabilityAnywhere("create_apps"),
     // The "Add New ▸ Database" entry links to the Storage page's create dialog,
     // so it is offered only to someone who may actually create one.
     hasCapability("create_databases"),
