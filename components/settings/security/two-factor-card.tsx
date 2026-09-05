@@ -125,7 +125,7 @@ export function TwoFactorCard({
                   <Badge variant="secondary">Authenticator app</Badge>
                 )}
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-sm text-balance text-muted-foreground">
                 {enabled
                   ? "Sign-in asks for a code from your authenticator app."
                   : passkeyStanding === "carrying"
