@@ -33,7 +33,7 @@ import type { CertProvider } from "../types";
 import { startDeployment } from "./build";
 import { previewDeployKey } from "./deploy-key";
 import { syncPreviewComment } from "./preview-comment";
-import { previewHost, resolveServerIp } from "./domains";
+import { previewHost, rehostNip, resolveServerIp } from "./domains";
 import { mapLimit } from "../utils";
 
 /**
@@ -316,23 +316,49 @@ export async function deployPreviewRow(
     .limit(1);
   const p = row[0];
   if (!p) return null;
-  // A preview that holds no slot is about to start holding one, so it claims its
-  // place exactly like a new preview would, otherwise reviving an evicted one, or
-  // approving a fork that has been sitting blocked, would silently put the app over
-  if ((SLOTLESS as readonly string[]).includes(p.status)) {
-    const settings = await previewSettings(p.appId);
-    const max = settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT;
-    // Per-app section, like the create path: two revives racing would each read an
-    // under-cap count and both take a slot.
-    await withKeyedLock(`preview-cap:${p.appId}`, async () => {
+  const settings = await previewSettings(p.appId);
+  const max = settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT;
+  // The whole claim-and-queue under the per-app lock, the same one eviction takes:
+  // fifteen pull requests opened together each inserted a row, a sibling's
+  // eviction hit it in between, and `startDeployment` then wrote `queued` over
+  // `evicted` - twelve stacks under a cap of five.
+  return withKeyedLock(`preview-cap:${p.appId}`, async () => {
+    const fresh = (
+      await getDb()
+        .select({
+          status: appPreviewsTable.status,
+          state: appPreviewsTable.state,
+        })
+        .from(appPreviewsTable)
+        .where(eq(appPreviewsTable.id, previewId))
+        .limit(1)
+    )[0];
+    // Closed while it waited for the lock: nothing to build.
+    if (!fresh || fresh.state !== "open") return null;
+    // A preview that holds no slot is about to start holding one, so it claims its
+    // place exactly like a new preview would, otherwise reviving an evicted one, or
+    // approving a fork that has been sitting blocked, would silently put the app over
+    if ((SLOTLESS as readonly string[]).includes(fresh.status)) {
       if ((await countOpenPreviews(p.appId)) >= max)
         await evictToFit(p.appId, max, max);
       await getDb()
         .update(appPreviewsTable)
         .set({ status: "queued", tornDownAt: null, updatedAt: nowIso() })
         .where(eq(appPreviewsTable.id, previewId));
-    });
-  }
+    }
+    return startPreviewDeployment(p, opts);
+  });
+}
+
+async function startPreviewDeployment(
+  p: typeof appPreviewsTable.$inferSelect,
+  opts: {
+    actor: string;
+    actorProvider?: string | null;
+    commitMessage?: string;
+  },
+): Promise<string> {
+  const previewId = p.id;
   try {
     return await startDeployment(p.appId, {
       environment: "preview",
@@ -423,7 +449,21 @@ export async function teardownPreviewStack(p: {
   tornDownAt: string | null;
 }): Promise<boolean> {
   if (p.tornDownAt) return true;
-  const ok = await teardownApp(p.deployKey, { removeVolumes: true });
+  // Never built ⇒ nothing on any host. Asking the agent to `down -v` a stack with
+  // no file reports a failure, and the reaper would repeat it every hour.
+  const built = await getDb()
+    .select({ id: deploymentsTable.id })
+    .from(deploymentsTable)
+    .where(
+      and(
+        eq(deploymentsTable.previewId, p.id),
+        notInArray(deploymentsTable.status, ["queued", "canceled"]),
+      ),
+    )
+    .limit(1);
+  const ok =
+    built.length === 0 ||
+    (await teardownApp(p.deployKey, { removeVolumes: true }));
   if (ok) {
     await getDb()
       .update(appPreviewsTable)
@@ -487,6 +527,8 @@ async function stopPreview(
  */
 export async function stopPreviewsForServerChange(
   appId: string,
+  /** The server previews will run on from now on. */
+  newServerId: string,
 ): Promise<number> {
   const rows = await getDb()
     .select({
@@ -495,6 +537,8 @@ export async function stopPreviewsForServerChange(
       tornDownAt: appPreviewsTable.tornDownAt,
       status: appPreviewsTable.status,
       latestDeploymentId: appPreviewsTable.latestDeploymentId,
+      host: appPreviewsTable.host,
+      url: appPreviewsTable.url,
     })
     .from(appPreviewsTable)
     .where(
@@ -511,6 +555,25 @@ export async function stopPreviewsForServerChange(
       kind: "evicted",
       max: settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT,
     });
+  }
+  // A nip.io host carries the server's IP in its last label, so a preview minted
+  // on the old machine would keep resolving THERE after Redeploy built it here.
+  // Same re-host an app's own auto domains get on a move; a base-domain host is
+  // the operator's DNS and stays.
+  const newIp = resolveServerIp(
+    (await getServerById(newServerId)) ?? undefined,
+  );
+  for (const r of rows) {
+    const host = rehostNip(r.host, newIp);
+    if (host === r.host) continue;
+    await getDb()
+      .update(appPreviewsTable)
+      .set({
+        host,
+        url: r.url ? r.url.replace(r.host, host) : r.url,
+        updatedAt: nowIso(),
+      })
+      .where(eq(appPreviewsTable.id, r.id));
   }
   if (victims.length > 0) publishAppChanged(appId);
   return victims.length;

@@ -6,7 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "../yaml";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { getServerById } from "../data/servers";
 import { copyImageBetween } from "../data/volume-migration";
 import { resolveBuildPlan, buildPlanLines } from "./build-server";
@@ -252,7 +252,8 @@ type DeployTarget = {
   name: string;
   slug: string;
 } & (
-  { kind: "app" } | { kind: "preview"; previewId: string; prNumber: number }
+  | { kind: "app" }
+  | { kind: "preview"; previewId: string; prNumber: number; deployKey: string }
 );
 
 /**
@@ -289,7 +290,7 @@ async function loadPreviewForDeploy(previewId: string): Promise<{
 
 /** The target a deployment row belongs to. `preview_id` is the whole test. */
 function targetFor(
-  dep: Pick<Deployment, "appId" | "previewId" | "prNumber">,
+  dep: Pick<Deployment, "appId" | "previewId" | "prNumber" | "deployKey">,
   app: { teamId: string; name: string; slug: string },
 ): DeployTarget {
   const common = {
@@ -304,8 +305,50 @@ function targetFor(
         kind: "preview",
         previewId: dep.previewId,
         prNumber: dep.prNumber ?? 0,
+        deployKey: dep.deployKey || app.slug,
       }
     : { ...common, kind: "app" };
+}
+
+/**
+ * Write a preview's deploy state, but only while the preview still WANTS a stack.
+ * Evicted or closed while its build ran, the row stays that way and the stack the
+ * build just brought up comes straight back down - or a cap of five ends the day
+ * at twelve. Exported for its test.
+ */
+export async function settlePreviewDeployState(
+  previewId: string,
+  deployKey: string,
+  status: string | undefined,
+): Promise<boolean> {
+  const rows = await getDb()
+    .update(appPreviewsTable)
+    .set({
+      ...(status === undefined ? {} : { status }),
+      lastActivityAt: nowIso(),
+      updatedAt: nowIso(),
+    })
+    .where(
+      and(
+        eq(appPreviewsTable.id, previewId),
+        eq(appPreviewsTable.state, "open"),
+        notInArray(appPreviewsTable.status, ["evicted", "blocked"]),
+      ),
+    )
+    .returning({ id: appPreviewsTable.id });
+  if (rows.length > 0) return true;
+  if (status === "active" || status === "error") {
+    const gone = await destroyStack(deployKey, { removeVolumes: true })
+      .then(() => true)
+      .catch(() => false);
+    if (gone) {
+      await getDb()
+        .update(appPreviewsTable)
+        .set({ tornDownAt: nowIso(), updatedAt: nowIso() })
+        .where(eq(appPreviewsTable.id, previewId));
+    }
+  }
+  return false;
 }
 
 /**
@@ -318,14 +361,11 @@ async function setDeployState(
   patch: Partial<typeof appsTable.$inferInsert>,
 ): Promise<void> {
   if (target.kind === "preview") {
-    await getDb()
-      .update(appPreviewsTable)
-      .set({
-        ...(patch.status === undefined ? {} : { status: patch.status }),
-        lastActivityAt: nowIso(),
-        updatedAt: nowIso(),
-      })
-      .where(eq(appPreviewsTable.id, target.previewId));
+    await settlePreviewDeployState(
+      target.previewId,
+      target.deployKey,
+      patch.status ?? undefined,
+    );
   } else {
     await getDb()
       .update(appsTable)

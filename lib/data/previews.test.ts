@@ -11,8 +11,10 @@ import {
   apps as appsTable,
   appPreviews as appPreviewsTable,
   deployments as deploymentsTable,
+  servers as serversTable,
 } from "../db/schema/control-plane";
 import {
+  __laneSnapshotForTest,
   __resetQueueForTest,
   __setRunnerForTest,
 } from "../deploy/deploy-queue";
@@ -29,6 +31,7 @@ import {
   seedApp,
   seedPreview,
   seedServer,
+  SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import {
@@ -46,6 +49,8 @@ import {
   setAppPreviewSettings,
 } from "./previews";
 import { updateAppSource } from "./apps";
+import { settlePreviewDeployState } from "../deploy/build";
+import { __disablePreviewCommentsForTest } from "../deploy/preview-comment";
 import { loadAppGraph } from "./app-graph-load";
 import { addDomain } from "./domains";
 import { LETSENCRYPT_DOMAINS_PER_TEAM_CAP } from "../deploy/domains";
@@ -60,14 +65,10 @@ let pg: PGlite;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+  __disablePreviewCommentsForTest();
   // The queue is durable in the DB; the in-process dispatcher would try to dial an
   // agent that doesn't exist here.
-  __setRunnerForTest(async (depId: string) => {
-    await db
-      .update(deploymentsTable)
-      .set({ status: "ready" })
-      .where(eq(deploymentsTable.id, depId));
-  });
+  __setRunnerForTest(readyRunner);
 });
 
 after(async () => {
@@ -123,7 +124,32 @@ async function seedPreviewApp(
 
 const USER_B = "user_b";
 
+/** The runner that stands in for the agent: every deploy lands `ready` at once. */
+const readyRunner = async (depId: string) => {
+  await db
+    .update(deploymentsTable)
+    .set({ status: "ready" })
+    .where(eq(deploymentsTable.id, depId));
+};
+
+/**
+ * Let the previous test's deploy queue go quiet before the tables are truncated:
+ * a stray drain landing inside the next test's transaction wedges pglite for good
+ * (a synchronous WASM call that never returns), which no test timeout can catch.
+ */
+async function settleQueue(): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    const lane = __laneSnapshotForTest(SERVER_1);
+    if (lane.running.length === 0 && lane.busyApps.length === 0) break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  await new Promise((r) => setTimeout(r, 30));
+  __resetQueueForTest();
+  __setRunnerForTest(readyRunner);
+}
+
 beforeEach(async () => {
+  await settleQueue();
   await pg.exec(TRUNCATE_IDENTITY + TRUNCATE_PROJECT_GRAPH);
   // A real owner in the OTHER team, so the cross-team cases exercise the data
   // layer's own team filter rather than bouncing off the membership gate first.
@@ -961,11 +987,16 @@ test("the list puts open pull requests first, most recently touched on top", asy
 test("repointing previews at another server stops the ones running on the old one", async () => {
   await seedPreviewApp("prj_1", { slug: "blog", maxActive: 5 });
   await seedServer(db, "srv_other");
+  await db
+    .update(serversTable)
+    .set({ ip: "10.0.0.2" })
+    .where(eq(serversTable.id, "srv_other"));
   const up = await openOrSyncPreview(
     "prj_1",
     { ...PR, number: 1 },
     { actor: "o" },
   );
+  assert.ok((await rowOf(up.previewId!)).host.endsWith("-0a000001.nip.io"));
   const blocked = await openOrSyncPreview(
     "prj_1",
     { ...PR, number: 2, isFork: true, headRepo: "x/blog" },
@@ -981,6 +1012,11 @@ test("repointing previews at another server stops the ones running on the old on
     "nothing was running for the fork, so nothing changes",
   );
   assert.equal((await previewSettings("prj_1"))!.serverId, "srv_other");
+  // A nip.io host names the machine in its last label: minted on the old one,
+  // it would keep resolving there after Redeploy built the preview here.
+  const moved = await rowOf(up.previewId!);
+  assert.ok(moved.host.endsWith("-0a000002.nip.io"), moved.host);
+  assert.ok(moved.url.includes(moved.host), moved.url);
 
   // Saving the same server again is not a change, and stops nothing.
   await deployPreviewRow(up.previewId!, { actor: "o" });
@@ -1004,4 +1040,76 @@ test("moving the app itself stops its previews, unless they are pinned elsewhere
     }),
   );
   assert.equal((await rowOf(up.previewId!)).status, "evicted");
+});
+
+/* ------------------------------------------------------------------ */
+/* The cap under load                                                   */
+/* ------------------------------------------------------------------ */
+
+test("fifteen pull requests at once end with exactly the cap's worth of stacks", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 2 });
+  await Promise.all(
+    Array.from({ length: 8 }, (_, i) =>
+      openOrSyncPreview("prj_1", { ...PR, number: i + 1 }, { actor: "o" }),
+    ),
+  );
+  const rows = await db
+    .select({ status: appPreviewsTable.status })
+    .from(appPreviewsTable)
+    .where(eq(appPreviewsTable.appId, "prj_1"));
+  const holders = rows.filter(
+    (r) => !["evicted", "blocked"].includes(r.status),
+  );
+  assert.equal(rows.length, 8);
+  assert.equal(holders.length, 2, `slot holders: ${rows.map((r) => r.status)}`);
+});
+
+test("a build that finishes after its preview was evicted does not bring it back", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
+  const a = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1 },
+    { actor: "o" },
+  );
+  await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
+  assert.equal((await rowOf(a.previewId!)).status, "evicted");
+  // The runner settling #1's build, late.
+  const kept = await settlePreviewDeployState(
+    a.previewId!,
+    "blog__pr-1",
+    "active",
+  );
+  assert.equal(kept, false);
+  assert.equal((await rowOf(a.previewId!)).status, "evicted");
+  // And a live one settles normally.
+  const b = await rowOf((await previewOf(2)).id);
+  assert.equal(
+    await settlePreviewDeployState(b.id, b.deployKey, "active"),
+    true,
+  );
+  assert.equal((await rowOf(b.id)).status, "active");
+});
+
+test("evicting a preview that never built needs no host, and is not a retry", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
+  // A runner that never runs: the deployment stays queued, nothing reaches a host.
+  __setRunnerForTest(async () => {});
+  try {
+    const a = await openOrSyncPreview(
+      "prj_1",
+      { ...PR, number: 1 },
+      { actor: "o" },
+    );
+    await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
+    const row = await rowOf(a.previewId!);
+    assert.equal(row.status, "evicted");
+    assert.ok(
+      row.tornDownAt,
+      "nothing was ever on a host, so it is confirmed gone",
+    );
+    const due = await previewsDueForReaping(new Date(), 20);
+    assert.equal(due.retry.length, 0);
+  } finally {
+    __setRunnerForTest(readyRunner);
+  }
 });

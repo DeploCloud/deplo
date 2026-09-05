@@ -1697,7 +1697,7 @@ export async function updateAppSource(
     input.serverId !== current.serverId &&
     !current.previewServerId
   ) {
-    await stopPreviewsForServerChange(id);
+    await stopPreviewsForServerChange(id, input.serverId);
   }
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;

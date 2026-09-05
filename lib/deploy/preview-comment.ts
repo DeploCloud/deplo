@@ -85,6 +85,14 @@ export function previewCommentBody(input: {
   return parts.join("\n") + "\n";
 }
 
+let disabledForTest = false;
+
+/** Test-only: the callers fire this and forget it, and a stray query landing in
+ *  the next test's pglite transaction is a hang, not a failure. */
+export function __disablePreviewCommentsForTest(): void {
+  disabledForTest = true;
+}
+
 /**
  * Push the current state of a preview onto its pull request.
  */
@@ -92,6 +100,7 @@ export async function syncPreviewComment(
   previewId: string,
   state: PreviewCommentState,
 ): Promise<void> {
+  if (disabledForTest) return;
   try {
     const rows = await getDb()
       .select()

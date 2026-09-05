@@ -481,9 +481,8 @@ export async function setAppPreviewSettings(
     // finds a preview's host through this very column - so they are stopped now,
     // while the column still names where they are. Redeploy rebuilds them there.
     const current = (await previewSettings(appId))?.serverId ?? app.serverId;
-    if ((patch.previewServerId ?? app.serverId) !== current) {
-      await stopPreviewsForServerChange(appId);
-    }
+    const next = patch.previewServerId ?? app.serverId;
+    if (next !== current) await stopPreviewsForServerChange(appId, next);
   }
   if (input.https !== undefined) patch.previewHttps = Boolean(input.https);
   if (input.autoDeploy !== undefined) {
