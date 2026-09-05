@@ -108,11 +108,12 @@ test("a token short of a permission says which kind is missing", async (t) => {
   });
 });
 
-test("an unauthenticated call is passed through in Coolify's own words", async (t) => {
+test("an unauthenticated call carries Coolify's own words, and says a token can expire", async (t) => {
   reset(t);
   refuses(401, "Unauthenticated.");
   await assert.rejects(listProjects(cred), (e: Error) => {
-    assert.equal(e.message, "Unauthenticated.");
+    assert.match(e.message, /Coolify said: Unauthenticated\./);
+    assert.match(e.message, /expired.*Keys & Tokens/);
     return true;
   });
 });

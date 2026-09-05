@@ -343,8 +343,11 @@ function refusalMessage(status: number, body: string): string {
     return `Coolify only accepts API calls from an allowed IP, and this panel's address is not on that list. Add it in Coolify's settings.${quoted}`;
   if (status === 403 && /Missing required permissions/i.test(said))
     return `That token does not carry the permissions this needs. Mint one with read and read:sensitive.${quoted}`;
-  if (status === 401 || status === 400)
-    return said || `Coolify refused the token (${status}).`;
+  // A token carries an expiry Coolify set when it was minted (7 days to never),
+  // and an expired one answers exactly like a revoked or mistyped one.
+  if (status === 401)
+    return `Coolify refused the token${quoted}. It may have expired - every token is minted with an expiry - or been revoked: mint a new one under Keys & Tokens.`;
+  if (status === 400) return said || `Coolify refused the token (${status}).`;
   if (status === 429)
     return `Coolify is rate limiting Deplo (200 requests a minute). Wait a moment and try again.${quoted}`;
   return `Coolify request failed (${status})${quoted}`;
