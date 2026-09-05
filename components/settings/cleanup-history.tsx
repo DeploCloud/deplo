@@ -45,7 +45,7 @@ export function CleanupHistory({
           <History className="size-4" />
           Recent cleanups
           <InfoTip
-            content="The last three runs per server - scheduled and manual alike, including the ones that failed before they reached the host. About three days at the daily cadence; older runs are pruned automatically."
+            content="The last three runs per server, scheduled and manual alike. Older runs are pruned automatically."
             docs="servers.cleanup"
           />
         </CardTitle>

@@ -562,7 +562,7 @@ export function UserAccountSettings({
               <Section icon={ShieldOff} title="Second factors">
                 <ActionRow
                   title="Remove passkeys"
-                  info="For someone whose device is gone. Until it is removed, a dead passkey still satisfies their team's two-factor policy, so nobody can tell them to enrol anything. Nothing else changes: not their password, not their sessions."
+                  info="For someone whose device is gone. Until it is removed, a dead passkey still satisfies their team's two-factor policy."
                   docs="team.passkeys"
                   action={
                     <Button
@@ -590,7 +590,7 @@ export function UserAccountSettings({
                 {twoFactorEnabled && (
                   <ActionRow
                     title="Reset two-factor"
-                    info="For someone who lost their phone and their recovery codes. Their account goes back to password only and they can set it up again. Nothing else changes: not their password, not their sessions."
+                    info="For someone who lost their phone and their recovery codes. Their account goes back to password only."
                     docs="team.twoFactor"
                     action={
                       <Button

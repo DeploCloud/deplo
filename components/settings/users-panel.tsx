@@ -216,7 +216,7 @@ export function UsersPanel({
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Pending registration links
               <InfoTip
-                content="Single-use links that haven't been used yet. Each one works for 24 hours from the moment it was minted - copy it as often as you need until then, and revoke it if it goes astray."
+                content="Single-use links that haven't been used yet. Each works for 24 hours from the moment it was minted."
                 docs="team.registrationLink"
               />
             </CardTitle>

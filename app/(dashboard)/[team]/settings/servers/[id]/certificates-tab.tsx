@@ -117,7 +117,7 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
               <ShieldCheck className="size-4" />
               Custom certificates
               <InfoTip
-                content="Deplo issues free certificates automatically. Add one here only when you already have your own: a wildcard, a company CA, or a domain that cannot be verified over HTTP."
+                content="Deplo issues free certificates automatically. Add one here only when you already have your own."
                 docs="certificates.custom"
               />
             </CardTitle>

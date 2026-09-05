@@ -63,7 +63,7 @@ export function GravatarCard({ enabled }: { enabled: boolean }) {
         <div className="flex items-center justify-between gap-4">
           <FieldLabel
             htmlFor="gravatar-enabled"
-            info="Turn it on and each person's browser fetches their picture from gravatar.com using a hash of their address. Off, nothing about anyone leaves this instance and everyone without an uploaded picture wears their initials."
+            info="On, each browser fetches the picture from gravatar.com using a hash of the address. Off, nothing leaves this instance."
           >
             Use Gravatar
           </FieldLabel>

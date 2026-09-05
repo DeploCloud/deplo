@@ -460,7 +460,7 @@ export function DomainConfigFields({
         <div className="space-y-2">
           <FieldLabel
             htmlFor={`${idPrefix}-cert`}
-            info="The source of this domain's TLS certificate. A domain proxied through Cloudflare is set to Cloudflare automatically, since Cloudflare already serves it over HTTPS. Pick Installed on the server when you added the certificate yourself under Settings, Servers. Choosing None serves the domain over plain HTTP with no TLS."
+            info="Where this domain's HTTPS certificate comes from. A Cloudflare-proxied domain is set automatically; None serves plain HTTP."
             docs="domains.certificates"
           >
             Certificate
@@ -572,7 +572,7 @@ export function DomainConfigFields({
                 <FieldLabel
                   htmlFor={`${idPrefix}-proxied`}
                   className="cursor-pointer font-normal"
-                  info="Turn this on when a CDN or another proxy answers for this domain. Its DNS points at the proxy instead of this server, so Deplo routes the domain without waiting for a DNS check and links it as https."
+                  info="Turn this on when a CDN or another proxy answers for this domain. Deplo then routes it without waiting for a DNS check."
                   docs="domains.dnsStates"
                 >
                   Behind a proxy

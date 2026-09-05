@@ -545,7 +545,7 @@ function MountRow({
               <div className="space-y-1.5 sm:col-span-2">
                 <FieldLabel
                   className="text-xs"
-                  info="Another app, or the server itself, can mount a network disk or a shared folder inside this one. By default this app keeps seeing what was there the moment it started, and never notices the rest."
+                  info="When something else mounts a disk or a folder inside this one, this app never notices it by default."
                   docs="storage.bindOptions"
                 >
                   What if something is mounted inside this folder?
@@ -624,7 +624,7 @@ function MountRow({
                       <span>(name taken from the path)</span>
                     )}
                     <InfoTip
-                      content="The name Deplo gives this storage on the server. It belongs to this app alone, so nothing else can read it or overwrite it. It is included in this app's backups."
+                      content="The name Deplo gives this storage on the server. It belongs to this app alone, and rides its backups."
                       docs="storage.source"
                     />
                   </p>

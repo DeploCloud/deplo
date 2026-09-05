@@ -183,7 +183,7 @@ export function PreviewOverrides({
             </h3>
           </button>
           <InfoTip
-            content="A pull request preview inherits every variable above. An override replaces one of them in previews only - the usual reason is pointing previews at a scratch database instead of the production one. It outranks the app's own value and any shared variable."
+            content="Replaces a variable in previews only, usually to point them at a scratch database. It outranks the app's own value and any shared one."
             docs="env.previewOverrides"
           />
         </div>

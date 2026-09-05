@@ -392,7 +392,10 @@ export function CreateDatabase({
             )}
             {environments.length > 0 && (
               <div className="space-y-2">
-                <FieldLabel info="Apps reach this database by name only from the same environment AND the same server - a network does not span machines. Leave it at the top level to keep it reachable from apps that aren't in a project.">
+                <FieldLabel
+                  info="Apps reach this database by name only from the same environment and the same server: a network does not span machines."
+                  docs="network.isolation"
+                >
                   Environment
                 </FieldLabel>
                 <Select value={environmentId} onValueChange={setEnvironmentId}>

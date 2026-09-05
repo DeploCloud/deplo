@@ -406,7 +406,7 @@ export function ServerCleanupTab({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor="cleanup-min-age"
-                  info="Caches only: reclaim build cache, dangling images and leaked build volumes older than this. 0 turns the age filter off. App images don't age out, they follow the keep-count next to this."
+                  info="Caches only: build cache, dangling images and leaked build volumes older than this. 0 turns the age filter off."
                   docs="servers.cleanupScopes"
                 >
                   Minimum age (hours)
@@ -425,7 +425,7 @@ export function ServerCleanupTab({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor="cleanup-keep-images"
-                  info="For apps that can't be rolled back: a compose stack, a prebuilt image, a pull request preview. An app Deplo builds keeps what its own Rollbacks setting says instead. A removed image comes back only by rebuilding."
+                  info="For apps that can't be rolled back: a compose stack, a prebuilt image, a preview. A removed image comes back only by rebuilding."
                   docs="servers.cleanupScopes"
                 >
                   Images kept per app
@@ -472,7 +472,7 @@ export function ServerCleanupTab({
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 The schedule and what it reclaims are shared by every server
                 <InfoTip
-                  content="Deplo keeps one cleanup schedule for the whole instance, so a server you add later is swept without anyone remembering to enable it. Saving here changes it everywhere."
+                  content="One cleanup schedule for the whole instance, so a server you add later is swept too. Saving here changes it everywhere."
                   docs="servers.cleanupSettings"
                 />
               </span>

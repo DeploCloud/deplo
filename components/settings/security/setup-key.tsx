@@ -47,7 +47,7 @@ export function SetupKey({ secret }: { secret: string }) {
           TOTP setup key
         </span>
         <InfoTip
-          content="Your authenticator app may call this the secret, the key or the setup code. It is the same 2FA secret the QR code carries: a time-based (TOTP) six-digit code, new every 30 seconds."
+          content="Your authenticator app may call this the secret, the key or the setup code. It is what the QR code carries."
           docs="team.twoFactor"
         />
       </div>

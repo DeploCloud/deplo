@@ -473,7 +473,7 @@ export function CreateDestination({
                     {kind === "server" ? (
                       <div className="space-y-2">
                         <FieldLabel
-                          info="An absolute path that ALREADY EXISTS on that server, for example a mounted storage volume, and is empty the first time it is used. Leave blank to let Deplo create and manage the folder."
+                          info="An absolute path that already exists on that server and is empty the first time. Leave blank to let Deplo manage it."
                           docs="backups.destinations"
                         >
                           Folder

@@ -281,7 +281,7 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
           <Globe className="size-4" />
           Panel address
           <InfoTip
-            content="Install commands, deploy hooks and invite links are built from this address. Deplo can hand it out, it cannot move your DNS: point the record below at this server first."
+            content="Install commands, deploy hooks and invite links are built from this address. Point its DNS at this server first."
             docs="panel.address"
           />
         </CardTitle>
@@ -601,7 +601,7 @@ function PanelHttpCard() {
         <div className="flex items-center justify-between gap-4">
           <FieldLabel
             htmlFor="panel-http"
-            info="Every password and every session cookie then crosses the network in clear, and passkeys stop working entirely. Leave it on HTTPS unless the address genuinely cannot be issued a certificate."
+            info="Every password and session cookie then crosses the network in clear, and passkeys stop working entirely."
             docs="panel.https"
           >
             Turn HTTPS off
@@ -773,7 +773,7 @@ function CertificatesCard() {
             <ShieldCheck className="size-4" />
             Certificates
             <InfoTip
-              content="Deplo issues HTTPS certificates for your apps through Let's Encrypt. Expiry and revocation notices go to this address, on every server, so use one somebody reads."
+              content="Let's Encrypt sends expiry and revocation notices here, on every server, so use an address somebody reads."
               docs="panel.certEmail"
             />
           </CardTitle>

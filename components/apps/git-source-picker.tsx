@@ -176,7 +176,7 @@ export function GitSourcePicker({
       <div className="space-y-1.5">
         <FieldLabel
           className="text-sm font-medium"
-          info="Which credentials Deplo clones with. Pick a connected provider to browse its repositories and get auto-deploy on push; Repository URL clones a public repo with no credentials."
+          info="Which credentials Deplo clones with. A connected provider also gets you auto-deploy on push; Repository URL clones a public repo."
           docs="git.unlocks"
         >
           Provider

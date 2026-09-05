@@ -62,7 +62,7 @@ export function RebuildContainerCard({
           <Hammer className="size-4 text-muted-foreground" />
           Rebuild container
           <InfoTip
-            content="A full deployment from the current source, for a container that looks stuck or out of sync with its settings. Cached layers are reused - clear the build cache above to build from scratch."
+            content="A full deployment from the current source, for a container that looks stuck. Cached layers are reused."
             docs="deploy.trace"
           />
         </CardTitle>

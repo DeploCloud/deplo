@@ -222,7 +222,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
               <div className="grid gap-1.5">
                 <FieldLabel
                   htmlFor="pv-domain"
-                  info="Leave empty and each preview gets a working nip.io address with no DNS setup at all. Set a domain like preview.example.com and point a wildcard DNS record at this server, and every preview becomes a real address on your own domain."
+                  info="Empty gives every preview a working nip.io address, no DNS needed. Set your own domain and point a wildcard record at this server."
                   docs="previews.settings"
                 >
                   Preview domain
@@ -239,7 +239,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
               <SettingRow
                 label="HTTPS"
                 htmlFor="pv-https"
-                info="Give every preview its own certificate. Needs a preview domain: a nip.io address can never hold one, because nip.io is a single registered domain whose certificate budget is shared with the entire internet."
+                info="Give every preview its own certificate. Needs a preview domain - a nip.io address can never hold one."
                 docs="previews.settings"
               >
                 <div className="flex items-center gap-3">
@@ -260,7 +260,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
               <SettingRow
                 label="Rebuild on every commit"
                 htmlFor="pv-auto"
-                info="Off, a preview is built once and only Redeploy refreshes it - what a team on a heavy image or a metered builder wants. Opening the pull request still builds it either way."
+                info="Off, a preview is built once and only Redeploy refreshes it - what a heavy image or a metered builder wants."
                 docs="previews.settings"
               >
                 <Switch
@@ -274,7 +274,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                 <div className="grid gap-1.5">
                   <FieldLabel
                     htmlFor="pv-max"
-                    info="How many previews of this app run at once. At the limit, a new pull request takes the place of the one nobody has touched in the longest. The stopped preview stays in the list and keeps its URL, and Redeploy brings it back."
+                    info="How many previews run at once. At the limit, a new pull request replaces the one nobody has touched in the longest, and Redeploy brings it back."
                     docs="previews.limit"
                   >
                     Live previews
@@ -322,7 +322,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <div className="grid gap-1.5">
                     <FieldLabel
                       htmlFor="pv-labels"
-                      info="One label per line. With any label here, only pull requests carrying one of them get a preview - and removing the last one destroys the preview it had. Leave empty and every pull request qualifies."
+                      info="One label per line. With any label here, only pull requests carrying one get a preview. Empty means every pull request qualifies."
                       docs="previews.settings"
                     >
                       Only pull requests labelled
@@ -341,7 +341,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <SettingRow
                     label="Build drafts"
                     htmlFor="pv-drafts"
-                    info="Off, a draft pull request waits until it is marked ready for review - a work in progress rarely earns a container. Deploy a pull request by hand covers the exception."
+                    info="Off, a draft pull request waits until it is marked ready for review. Deploy a pull request by hand covers the exception."
                     docs="previews.settings"
                   >
                     <Switch
@@ -354,7 +354,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <SettingRow
                     label="Comment on the pull request"
                     htmlFor="pv-comment"
-                    info="Post the preview URL as one comment, kept up to date. Needs the Pull requests: write permission on your GitHub App - turn this off if you would rather not grant it."
+                    info="Posts the preview URL as one comment, kept up to date. Needs the Pull requests: write permission on your GitHub App."
                     docs="previews.settings"
                   >
                     <Switch
@@ -385,7 +385,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <div className="grid gap-1.5">
                     <FieldLabel
                       htmlFor="pv-fork"
-                      info="A pull request from a fork is code you do not control, running on your server. By default it appears in the list and waits for someone to approve it. A fork preview never receives this app's secret variables, whichever option you pick."
+                      info="A fork's code is not yours, and it runs on your server. A fork preview never receives this app's secret variables."
                       docs="previews.forksAndSecrets"
                     >
                       Fork pull requests
@@ -412,7 +412,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <div className="grid gap-1.5">
                     <FieldLabel
                       htmlFor="pv-server"
-                      info="Which server runs the previews. The app's own is the honest default - a preview is only worth trusting if it runs where production runs. Point them at a spare machine to keep pull request builds off the box serving your users."
+                      info="Which server runs the previews. The app's own is the honest default; a spare machine keeps pull request builds off the box serving your users."
                       docs="previews.settings"
                     >
                       Server

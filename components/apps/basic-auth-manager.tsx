@@ -135,7 +135,7 @@ export function BasicAuthManager({
         <div>
           <h3 className="flex w-fit items-center gap-2 text-sm font-medium">
             HTTP Basic Auth
-            <InfoTip content="A browser login in front of every domain of this app - the quickest way to keep a staging or internal app private. Changes take effect within seconds, with no redeploy." />
+            <InfoTip content="A browser login in front of every domain of this app. Changes take effect within seconds, with no redeploy." />
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Anyone who reaches this app has to sign in with one of these

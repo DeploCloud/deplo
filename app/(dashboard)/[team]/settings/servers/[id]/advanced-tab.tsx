@@ -388,7 +388,7 @@ function ServerClock({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor="server-timezone"
-                info="The zone this machine reports its own time in. Nothing restarts, and nothing in Deplo moves with it: backups and cleanup run on UTC, and each container keeps the zone from its image."
+                info="The zone this machine reports its own time in. Nothing in Deplo moves with it: backups and cleanup run on UTC."
                 docs="servers.advanced"
               >
                 Timezone
