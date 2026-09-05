@@ -487,8 +487,8 @@ const AppEnvInput = builder.inputType("AppEnvInput", {
     type: t.string({
       required: false,
       description:
-        '"plain" or "secret". Omitted lets the name decide; a secret is ' +
-        "write-only from the moment it lands.",
+        '"plain" or "secret". Omitted is plain - nothing is typed secret on ' +
+        "your behalf; a secret is write-only from the moment it lands.",
     }),
   }),
 });

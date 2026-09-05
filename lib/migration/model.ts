@@ -96,6 +96,8 @@ export interface SourceApplication {
    * here rather than a copy; anything else is resolved to a value.
    */
   sharedRefs?: SharedRef[] | null;
+  /** Keys the PANEL marked write-only (Coolify "shown once"). Deplo never guesses one. */
+  secretEnvKeys?: string[] | null;
   /**
    * What the ADAPTER found that no shared mapper can see: a platform-specific
    * field with no home in Deplo. Written with `{panel}` where the product's name
@@ -234,6 +236,8 @@ export interface SourceCompose {
    * here rather than a copy; anything else is resolved to a value.
    */
   sharedRefs?: SharedRef[] | null;
+  /** Keys the PANEL marked write-only (Coolify "shown once"). Deplo never guesses one. */
+  secretEnvKeys?: string[] | null;
   /**
    * What the ADAPTER found that no shared mapper can see: a platform-specific
    * field with no home in Deplo. Written with `{panel}` where the product's name
@@ -350,11 +354,20 @@ export const SOURCE_DB_KINDS = [
 ] as const;
 export type SourceDbKind = (typeof SOURCE_DB_KINDS)[number];
 
+/** A shared-variable level as the panel hands it over: the blob, and which of
+ *  its keys the panel itself marked write-only. */
+export interface SourceSharedEnv {
+  env: string;
+  secretEnvKeys?: string[] | null;
+}
+
 export interface SourceEnvironment {
   environmentId: string;
   name: string;
   description?: string | null;
   env?: string | null;
+  /** Keys the panel marked write-only at this level - see `SourceApplication.secretEnvKeys`. */
+  secretEnvKeys?: string[] | null;
   /** What the panel would not answer for at THIS level. Written with `{panel}`. */
   platformNotes?: string[] | null;
   isDefault?: boolean | null;
@@ -377,6 +390,8 @@ export interface SourceProject {
   name: string;
   description?: string | null;
   env?: string | null;
+  /** Keys the panel marked write-only at this level - see `SourceApplication.secretEnvKeys`. */
+  secretEnvKeys?: string[] | null;
   /** What the panel would not answer for at THIS level. Written with `{panel}`. */
   platformNotes?: string[] | null;
   createdAt?: string | null;

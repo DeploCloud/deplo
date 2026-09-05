@@ -316,8 +316,8 @@ test("the server level is read for the machine a resource runs on", async (t) =>
   const seen = serve(t, {
     "/api/v1/servers/srv-remote/envs": [{ key: "SERVER_WIDE", value: "s" }],
   });
-  const blob = await coolifyClient(cred).serverSharedEnv("srv-remote");
-  assert.equal(blob, "SERVER_WIDE=s");
+  const level = await coolifyClient(cred).serverSharedEnv("srv-remote");
+  assert.deepEqual(level, { env: "SERVER_WIDE=s", secretEnvKeys: [] });
   assert.ok(seen.includes("/api/v1/servers/srv-remote/envs"));
   // The panel's OWN host is keyed "" everywhere else in the importer.
   assert.equal(await coolifyClient(cred).serverSharedEnv("nope"), null);

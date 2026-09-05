@@ -483,6 +483,8 @@ export interface CoolifyEnvRead {
    * the text. Deplo hands every value over exactly as written.
    */
   interpolatedKeys: string[];
+  /** Keys the panel marked "shown once" AND answered a value for: its secrets. */
+  secretKeys: string[];
 }
 
 /** A value that spans lines, wrapped so the shared line parser reads it whole.
@@ -521,6 +523,7 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
   const buildOnlyKeys: string[] = [];
   const unreadableKeys: string[] = [];
   const interpolatedKeys: string[] = [];
+  const secretKeys: string[] = [];
   const sharedRefs: SharedRef[] = [];
   let sawValue = false;
 
@@ -547,6 +550,9 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
     // without this the empties are silent.
     if (typeof raw !== "string" || (r.is_shown_once && !value))
       unreadableKeys.push(key);
+    // Only with a value: an empty secret could never be filled in, a secret
+    // being immutable, where an empty plain variable can.
+    if (r.is_shown_once && value) secretKeys.push(key);
     if (r.is_buildtime && !r.is_runtime) buildOnlyKeys.push(key);
     // A shared reference is Coolify's own syntax, resolved above; any other `$`
     // in a non-literal value went through compose's interpolation there.
@@ -570,6 +576,7 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
     buildOnlyKeys,
     unreadableKeys,
     interpolatedKeys,
+    secretKeys,
     sharedRefs,
     masked: rows.length > 0 && !sawValue,
   };
@@ -670,6 +677,8 @@ export interface CoolifyExtras {
   envNotes?: string[];
   /** What the resource's own values referenced - see `CoolifyEnvRead.sharedRefs`. */
   sharedRefs?: SharedRef[];
+  /** {@link SourceApplication.secretEnvKeys} - see `CoolifyEnvRead.secretKeys`. */
+  secretEnvKeys?: string[];
   mounts?: SourceMount[];
   serverId?: string;
   environmentId?: string;
@@ -708,6 +717,7 @@ export function coolifyApplication(
   return {
     applicationId: row.uuid,
     sharedRefs: extras.sharedRefs ?? null,
+    secretEnvKeys: extras.secretEnvKeys ?? null,
     platformNotes: [
       ...coolifyNotes(row),
       ...domains.notes,
@@ -897,6 +907,7 @@ export function coolifyCompose(
     value: {
       composeId: row.uuid,
       sharedRefs: extras.sharedRefs ?? null,
+      secretEnvKeys: extras.secretEnvKeys ?? null,
       platformNotes: [
         ...notes,
         ...coolifyNotes(app),

@@ -401,6 +401,24 @@ test("coolifyEnvBlob names the variables the panel would not answer for", () => 
   assert.equal(r.blob, "PLAIN=yes\nDB_PASSWORD=\nEMPTY_ON_PURPOSE=");
 });
 
+// The panel's own verdict is the only thing that types a variable secret: a
+// shown-once row WITH a value lands write-only, one without stays plain so it
+// can be filled in, and a credential-looking name means nothing.
+test("coolifyEnvBlob carries the panel's shown-once flag, and only that", () => {
+  const r = coolifyEnvBlob([
+    { key: "API_TOKEN", value: "t0k3n", is_shown_once: true },
+    { key: "DB_PASSWORD", is_shown_once: true },
+    { key: "STRIPE_SECRET", value: "sk_live", is_shown_once: false },
+  ]);
+  assert.deepEqual(r.secretKeys, ["API_TOKEN"]);
+  assert.deepEqual(r.unreadableKeys, ["DB_PASSWORD"]);
+  const app = coolifyApplication(
+    { uuid: "a1", name: "web", build_pack: "nixpacks" } as never,
+    { env: r.blob, secretEnvKeys: r.secretKeys },
+  );
+  assert.deepEqual(app.secretEnvKeys, ["API_TOKEN"]);
+});
+
 test("a dollar the panel would have interpolated is named; a literal one is not", () => {
   const r = coolifyEnvBlob([
     { key: "LITERAL", value: "pa$$w0rd$1", is_literal: true },

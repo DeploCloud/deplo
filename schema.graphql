@@ -257,7 +257,7 @@ input AppEnvInput {
   key: String!
 
   """
-  "plain" or "secret". Omitted lets the name decide; a secret is write-only from the moment it lands.
+  "plain" or "secret". Omitted is plain - nothing is typed secret on your behalf; a secret is write-only from the moment it lands.
   """
   type: String
   value: String!
@@ -3061,11 +3061,6 @@ type Mutation {
 
   """Clear the session + active-team cookies."""
   logout: Boolean
-
-  """
-  Turn a secret variable back into a plain one, with the value given here. The old value is never handed back - that is what write-only means - so this REPLACES it; without this a variable typed as a secret by mistake could only be deleted and remade.
-  """
-  makeEnvPlain(id: String!, key: String!, value: String!): EnvVar
 
   """
   Mint a single-use registration link. Returns the absolute /register URL.

@@ -1150,14 +1150,15 @@ test("a project lands complete: project, environment, apps, variables", async ()
     "OLD_ADDRESS_URL",
     "QUEUE_DSN",
   ]);
-  // A name that says it holds a credential is masked; everything else stays
-  // readable, `..._URL` and `..._DSN` included.
-  for (const e of byKey.values())
-    assert.equal(e.type, e.key === "LEGACY_TOKEN" ? "secret" : "plain", e.key);
-  assert.ok(
+  // Dokploy has no secret variables, so nothing is typed one on its behalf - a
+  // secret is immutable, and a guess from the name would lock a value nobody
+  // can check against the panel it came from.
+  for (const e of byKey.values()) assert.equal(e.type, "plain", e.key);
+  assert.equal(
     (await asOwner(() => getMigrationRun(runId)))!.items.some((i) =>
-      (i.message ?? "").includes("LEGACY_TOKEN came across masked"),
+      (i.message ?? "").includes("came across masked"),
     ),
+    false,
   );
 
   // The database could not be created against a host with no agent, and that is
@@ -1468,8 +1469,10 @@ test("preview-only variables land as the app's own preview variables", async () 
   const vars = await asOwner(() => listPreviewEnvVars(app.id));
   assert.deepEqual(
     vars.map((v) => [v.key, v.type]),
+    // Plain, both of them: Dokploy has no secret variables, and a name is no
+    // reason to lock a value away.
     [
-      ["PREVIEW_API_TOKEN", "secret"],
+      ["PREVIEW_API_TOKEN", "plain"],
       ["PREVIEW_ONLY", "plain"],
     ],
   );
@@ -1726,8 +1729,9 @@ test("a project's and an environment's own variables become shared variables", a
     "ENV_LEVEL",
     "SHARED_TOKEN",
   ]);
-  // A shared variable is read the same way an app's own one is.
-  assert.equal(shared.find((s) => s.key === "SHARED_TOKEN")!.type, "secret");
+  // A shared variable is read the same way an app's own one is: plain unless the
+  // panel itself marked it secret, which Dokploy never does.
+  assert.equal(shared.find((s) => s.key === "SHARED_TOKEN")!.type, "plain");
   assert.equal(shared.find((s) => s.key === "ENV_LEVEL")!.type, "plain");
 });
 

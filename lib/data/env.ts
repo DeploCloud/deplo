@@ -415,40 +415,6 @@ export async function setAppEnv(
   return wanted.size;
 }
 
-/**
- * Turn a secret back into a plain variable, with a value the caller types.
- *
- * The old value is never handed back - that is the whole promise of write-only -
- * so this REPLACES it. Without a way out, a variable the import typed as a secret
- * by mistake could only be deleted and remade.
- */
-export async function makeEnvPlain(id: string, value: string): Promise<string> {
-  const user = (await getCurrentUser())!;
-  const existing = await loadEnvVar(id);
-  if (!existing) throw new Error("Env var not found");
-  const { userId } = await requireAppCapability(existing.appId, "manage_env");
-  if (existing.type !== "secret")
-    throw new Error(`${existing.key} is already a plain variable`);
-  await getDb()
-    .update(envVarsTable)
-    .set({
-      type: "plain",
-      valueEnc: encryptSecret(value),
-      updatedByUserId: userId,
-      updatedAt: nowIso(),
-    })
-    .where(
-      and(eq(envVarsTable.id, id), eq(envVarsTable.appId, existing.appId)),
-    );
-  await recordActivity(
-    "env",
-    `Made env var ${existing.key} plain`,
-    user.name,
-    existing.appId,
-  );
-  return existing.appId;
-}
-
 export async function deleteEnv(id: string): Promise<void> {
   const user = (await getCurrentUser())!;
   const e = await loadEnvVar(id);

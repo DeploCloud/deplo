@@ -131,7 +131,6 @@ import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
 import {
   createApp,
-  importedEnvType,
   setAppPorts,
   setAppVolumes,
   updateAppHealthCheck,
@@ -2336,9 +2335,11 @@ async function runImportMigrationProject(
   const shared: SharedIndex = new Map();
   await noteLevel(report, source.platformNotes);
   try {
+    const team = await sourceClient(c).teamSharedEnv();
     await importSharedVars(
-      await sourceClient(c).teamSharedEnv(),
+      team?.env ?? null,
       {
+        secretKeys: team?.secretEnvKeys,
         teamId,
         label: "Team",
         environmentIds: [],
@@ -2355,6 +2356,7 @@ async function runImportMigrationProject(
   await importSharedVars(
     source.env,
     {
+      secretKeys: source.secretEnvKeys,
       teamId,
       label: source.name,
       environmentIds: [],
@@ -2372,9 +2374,11 @@ async function runImportMigrationProject(
     ),
   )) {
     try {
+      const machine = await sourceClient(c).serverSharedEnv(sourceServerId);
       await importSharedVars(
-        await sourceClient(c).serverSharedEnv(sourceServerId),
+        machine?.env ?? null,
         {
+          secretKeys: machine?.secretEnvKeys,
           teamId,
           label: `${source.name} (server)`,
           environmentIds: [],
@@ -2410,13 +2414,14 @@ async function runImportMigrationProject(
 
     // BEFORE the services: `project.all` is a projection, so an environment's
     // variable blob is ALWAYS null there however much it holds.
-    const envBlob =
-      env.env ??
-      (await sourceClient(c).getEnvironment(env.environmentId))?.env ??
-      null;
+    const envLevel =
+      env.env != null
+        ? env
+        : await sourceClient(c).getEnvironment(env.environmentId);
     await importSharedVars(
-      envBlob,
+      envLevel?.env ?? null,
       {
+        secretKeys: envLevel?.secretEnvKeys,
         teamId,
         label: `${source.name} / ${env.name}`,
         environmentIds: [environmentId],
@@ -3072,14 +3077,17 @@ async function importAppService(
     rows,
     new Map([...home.shared].map(([k, v]) => [k, v.value] as const)),
   );
-  // A credential the panel held encrypted must not land readable at the `view`
-  // floor. Narrow on purpose (`importedEnvType`): a secret cannot be edited and a
-  // fork's preview drops it, so a wrong guess breaks a working app.
-  const env = rows.map((e) => ({ ...e, type: importedEnvType(e.key) }));
+  // Typed secret ONLY where the panel itself said so: a secret is immutable and
+  // a fork's preview drops it, so a guess from the name breaks a working app.
+  const secretKeys = new Set(detail.secretEnvKeys ?? []);
+  const env = rows.map((e) => ({
+    ...e,
+    type: secretKeys.has(e.key) ? ("secret" as const) : ("plain" as const),
+  }));
   const masked = env.filter((e) => e.type === "secret").map((e) => e.key);
   if (masked.length > 0)
     notes.push(
-      `${masked.join(", ")} came across masked, because the name says it holds a credential. Open one and press Make it plain if it does not.`,
+      `${masked.join(", ")} came across as secrets, as {panel} marked them: write-only here too, and never shown again.`,
     );
   const aliased = refs.filter(
     (r) => r.whole && r.key !== r.sharedKey && home.shared.has(r.sharedKey),
@@ -3839,7 +3847,7 @@ async function importAppService(
             created.id,
             v.key,
             v.value,
-            importedEnvType(v.key),
+            secretKeys.has(v.key) ? "secret" : "plain",
           );
           landed.push(v.key);
         } catch (e) {
@@ -4405,6 +4413,8 @@ async function importSharedVars(
     projectIds: string[];
     /** The scope the variable SUGGESTS. Only a REFERENCE creates a link. */
     teamWide?: boolean;
+    /** Keys the panel marked write-only. Everything else lands plain. */
+    secretKeys?: string[] | null;
     /** Said in the created line when the level has no twin here. */
     scopeNote?: string;
     report: Report;
@@ -4440,7 +4450,7 @@ async function importSharedVars(
       const varId = await saveSharedVar({
         key,
         value,
-        type: importedEnvType(key),
+        type: opts.secretKeys?.includes(key) ? "secret" : "plain",
         teamIds: opts.teamWide ? [opts.teamId] : [],
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,

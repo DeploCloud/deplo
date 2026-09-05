@@ -23,21 +23,14 @@ import {
   TRUNCATE_IDENTITY,
   USER_1,
 } from "./identity-test-helpers";
-import {
-  importEnv,
-  listEnv,
-  makeEnvPlain,
-  renameEnv,
-  setAppEnv,
-  upsertEnv,
-} from "./env";
+import { importEnv, listEnv, renameEnv, setAppEnv, upsertEnv } from "./env";
 import { listSharedVars, saveSharedVar } from "./shared-vars";
 import { listPreviewEnvVars, setPreviewEnvVar } from "./previews";
 
 /**
  * A SECRET variable is write-only AND immutable, on every env layer. So: create
- * it, delete it, never edit it. `plain` -> `secret` stays open, because hardening
- * is never the thing you gate.
+ * it, delete it, never edit it - and never make it plain again. `plain` ->
+ * `secret` stays open, because hardening is never the thing you gate.
  */
 
 let db: TestDb;
@@ -154,28 +147,6 @@ test("importEnv skips a key that is already a secret, and counts it", async () =
     await storedValue("API_KEY"),
     "s3cr3t",
     "not overwritten either",
-  );
-});
-
-// The one way back. Nothing else could give a secret a new value, so a variable
-// the import typed as one by mistake could only be deleted and remade.
-test("a secret can be made plain, with a value typed again", async () => {
-  await seedSecret();
-  const [row] = await as1(() => listEnv(APP));
-  await as1(() => makeEnvPlain(row!.id, "https://acme.test/callback"));
-
-  const after = (await as1(() => listEnv(APP))).find(
-    (v) => v.key === "API_KEY",
-  )!;
-  assert.equal(after.type, "plain");
-  assert.equal(await storedValue("API_KEY"), "https://acme.test/callback");
-  // The old value is never handed back on the way through: it is replaced.
-  assert.notEqual(await storedValue("API_KEY"), "s3cr3t");
-
-  // And a plain one is not "made plain" again.
-  await assert.rejects(
-    () => as1(() => makeEnvPlain(after.id, "x")),
-    /already a plain variable/,
   );
 });
 

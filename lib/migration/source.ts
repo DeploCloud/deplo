@@ -18,6 +18,7 @@ import type {
   SourceS3Destination,
   SourceSchedule,
   SourceServer,
+  SourceSharedEnv,
 } from "./model";
 import { coolifyClient } from "./coolify/adapter";
 import { dokployClient } from "./dokploy/adapter";
@@ -119,12 +120,12 @@ export interface MigrationSourceClient {
    * the level exists and the panel would not answer: an empty answer and a refused
    * one are not the same fact, and the caller has to say which it was.
    */
-  teamSharedEnv(): Promise<string | null>;
+  teamSharedEnv(): Promise<SourceSharedEnv | null>;
   /**
    * The panel's SERVER-level shared variables for one source machine, same shape
    * and the same contract. `null` when the platform has no such level.
    */
-  serverSharedEnv(sourceServerId: string): Promise<string | null>;
+  serverSharedEnv(sourceServerId: string): Promise<SourceSharedEnv | null>;
   /** The S3 stores the panel backs up to, with their credentials. Empty when the
    *  platform keeps none, or when this credential may not read them. */
   listBackupDestinations(): Promise<SourceS3Destination[]>;

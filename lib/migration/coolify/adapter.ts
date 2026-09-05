@@ -27,6 +27,7 @@ import type {
   SourceProject,
   SourceSchedule,
   SourceServer,
+  SourceSharedEnv,
 } from "../model";
 import {
   COOLIFY_PANEL,
@@ -54,6 +55,7 @@ import {
   resourceStatus,
   startResource,
   stopResource,
+  type CoolifyEnv,
   type CoolifyEnvironment,
   type CoolifyResourceGroup,
 } from "./client";
@@ -196,8 +198,8 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
     ]);
 
   const envsByProject = new Map<string, CoolifyEnvironment[]>();
-  const sharedByProject = new Map<string, string>();
-  const sharedByEnv = new Map<string, string>();
+  const sharedByProject = new Map<string, SourceSharedEnv | null>();
+  const sharedByEnv = new Map<string, SourceSharedEnv | null>();
   // A level the panel will not answer for is a REPORT LINE, never a silence: an
   // older build has no such endpoint, and swallowing the 404 is how a whole set
   // of shared variables vanished with nothing said.
@@ -209,10 +211,8 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
     try {
       sharedByProject.set(
         p.uuid,
-        withoutPanelInternals(
-          coolifyEnvBlob(
-            await listSharedEnvs(c, { level: "project", projectUuid: p.uuid }),
-          ).blob,
+        sharedRead(
+          await listSharedEnvs(c, { level: "project", projectUuid: p.uuid }),
         ),
       );
     } catch (e) {
@@ -223,14 +223,12 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
       try {
         sharedByEnv.set(
           `${p.uuid}/${e.id}`,
-          withoutPanelInternals(
-            coolifyEnvBlob(
-              await listSharedEnvs(c, {
-                level: "environment",
-                projectUuid: p.uuid,
-                environment: name,
-              }),
-            ).blob,
+          sharedRead(
+            await listSharedEnvs(c, {
+              level: "environment",
+              projectUuid: p.uuid,
+              environment: name,
+            }),
           ),
         );
       } catch (err) {
@@ -248,7 +246,9 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
       const env: SourceEnvironment = {
         environmentId: String(e.uuid ?? e.id),
         name: e.name?.trim() || "production",
-        env: sharedByEnv.get(`${p.uuid}/${e.id}`) || null,
+        env: sharedByEnv.get(`${p.uuid}/${e.id}`)?.env ?? null,
+        secretEnvKeys:
+          sharedByEnv.get(`${p.uuid}/${e.id}`)?.secretEnvKeys ?? null,
         platformNotes: notesByEnv.get(`${p.uuid}/${e.id}`) ?? null,
         applications: [],
         compose: [],
@@ -285,7 +285,8 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
       projectId: p.uuid,
       name: p.name?.trim() || p.uuid,
       description: p.description ?? null,
-      env: sharedByProject.get(p.uuid) || null,
+      env: sharedByProject.get(p.uuid)?.env ?? null,
+      secretEnvKeys: sharedByProject.get(p.uuid)?.secretEnvKeys ?? null,
       platformNotes: notesByProject.get(p.uuid) ?? null,
       environments,
     };
@@ -306,6 +307,14 @@ function sharedLevelNote(
 /* ------------------------------------------------------------------ */
 /* One resource, in full                                               */
 /* ------------------------------------------------------------------ */
+
+/** A shared level as the model carries it: the blob minus Coolify's own
+ *  bookkeeping, plus the keys the panel marked shown once. Null when empty. */
+function sharedRead(rows: CoolifyEnv[]): SourceSharedEnv | null {
+  const read = coolifyEnvBlob(rows);
+  const env = withoutPanelInternals(read.blob);
+  return env ? { env, secretEnvKeys: read.secretKeys } : null;
+}
 
 async function detail(
   c: SourceCredential,
@@ -342,6 +351,7 @@ async function detail(
     env: env.blob,
     envNotes,
     sharedRefs: env.sharedRefs,
+    secretEnvKeys: env.secretKeys,
     mounts,
     serverId: index.serverOf.get(id) ?? "",
     // Where Coolify puts a resource's own files - and therefore what every `./x`
@@ -690,9 +700,7 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
     // names the machine and the panel being left, and a team variable nobody can
     // act on survives the revert.
     teamSharedEnv: async () =>
-      withoutPanelInternals(
-        coolifyEnvBlob(await listSharedEnvs(c, { level: "team" })).blob,
-      ) || null,
+      sharedRead(await listSharedEnvs(c, { level: "team" })),
 
     // Coolify's fourth level: a variable scoped to a MACHINE, referenced as
     // `{{server.KEY}}`. Deplo has no server scope, so the importer offers it to
@@ -703,12 +711,8 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
         (s) => (coolifyIsPanelHost(s) ? "" : s.uuid) === sourceServerId,
       )?.uuid;
       if (!uuid) return null;
-      return (
-        withoutPanelInternals(
-          coolifyEnvBlob(
-            await listSharedEnvs(c, { level: "server", serverUuid: uuid }),
-          ).blob,
-        ) || null
+      return sharedRead(
+        await listSharedEnvs(c, { level: "server", serverUuid: uuid }),
       );
     },
 

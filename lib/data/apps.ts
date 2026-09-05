@@ -204,46 +204,6 @@ import {
 import { assertDataCopyIntact } from "./data-copy";
 
 /**
- * Heuristic: treat secret-looking keys as masked secrets.
- *
- * For a variable somebody TYPES. Wrong-way-safe by design: a plain value marked
- * secret is only hidden, a secret marked plain is readable at the `view` floor.
- * An import uses `importedEnvType` instead, which is narrower.
- */
-/**
- * The same question for a BULK import, answered more narrowly.
- *
- * A credential the other platform held encrypted must not land readable at the
- * `view` floor, and 27 of them did. `isSecretKey` is too wide for this: it also
- * catches every `..._URL` and `..._API_...`, and a secret is immutable and is
- * dropped from a fork's preview, so over-masking breaks working apps.
- */
-export function importedEnvType(key: string): "plain" | "secret" {
-  if (!isSecretKey(key)) return "plain";
-  return /(pass(word|wd|phrase)?|secret|token|credentials?|salt|(^|[^a-z])(api|private|access|signing|encryption|licen[cs]e|secret)[^a-z]?key)([^a-z]|$)/i.test(
-    key,
-  )
-    ? "secret"
-    : "plain";
-}
-
-export function isSecretKey(key: string): boolean {
-  // A name that announces itself as public is not a secret, whatever else it
-  // says. These prefixes are the framework conventions for "this value is
-  // compiled into the bundle the browser downloads" - so calling one a secret is
-  // wrong twice over: it hides a value anybody can already read, and a preview of
-  // a FORK drops every secret-typed value, which took the build's own public
-  // config with it.
-  if (
-    /^(NEXT_PUBLIC_|NUXT_PUBLIC_|PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_|GATSBY_)/i.test(
-      key.trim(),
-    )
-  )
-    return false;
-  return /pass|secret|token|key|api|private|credential|dsn|url/i.test(key);
-}
-
-/**
  * True if `err` is a Postgres unique-violation (SQLSTATE 23505) on the named
  * constraint. Drizzle wraps the driver error; the original is on `.cause`, and
  * both node-postgres and pglite expose `.code` + `.constraint` (or the
@@ -609,12 +569,8 @@ export interface CreateAppInput {
   /** Display logo (URL/path), defaulted from a template's logo on deploy. */
   logo?: string | null;
   compose?: string | null;
-  /**
-   * Initial variables. `type` is optional and the heuristic (`isSecretKey`)
-   * fills it in - pass it to overrule that, which the Dokploy import does: it
-   * marks everything `plain`, because a value that arrives masked is one nobody
-   * can check against the platform it came from.
-   */
+  /** Initial variables. `type` omitted is `plain`: nothing is typed secret on
+   *  the caller's behalf, because a secret can never be edited afterwards. */
   env?: { key: string; value: string; type?: EnvEntryType }[];
   serverId?: string;
   /**
@@ -1157,9 +1113,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
         key,
         valueEnc: encryptSecret(e.value),
         targets: ["production", "preview"] as EnvTarget[],
-        type:
-          e.type ??
-          (isSecretKey(e.key) ? ("secret" as const) : ("plain" as const)),
+        type: e.type ?? ("plain" as const),
         // A template's defaults are still an authored write by whoever created the app.
         createdByUserId: userId,
         updatedByUserId: userId,
