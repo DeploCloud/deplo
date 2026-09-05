@@ -20,6 +20,7 @@ import yaml from "../yaml";
 import { getDb } from "../db/client";
 import {
   apps as appsTable,
+  backups as backupsTable,
   databases as databasesTable,
   migrationRunItems as itemsTable,
   migrationRunDbHosts as dbHostsTable,
@@ -89,6 +90,7 @@ import type { SourceCredential } from "../migration/source";
 import { SOURCE_DB_KINDS, type SourceDbKind } from "../migration/model";
 import type {
   SourceApplication,
+  SourceBackupSchedule,
   SourceCompose,
   SourceDatabase,
   SourceEnvironment,
@@ -2852,6 +2854,102 @@ async function landingServerId(given: string | undefined): Promise<string> {
   return usable[0]?.id ?? "";
 }
 
+/** The source's backup schedules as backups on `target`, one per schedule and
+ *  destination, skipping any the target already holds - so a second pass adds
+ *  what the first could not (a destination that was not here yet) and no more. */
+async function landSourceBackups(
+  backups: SourceBackupSchedule[] | null | undefined,
+  destinations: Map<string, string> | undefined,
+  target: { kind: "app" | "database"; id: string; name: string },
+  notes: string[],
+): Promise<void> {
+  const schedules = (backups ?? []).filter(
+    (b) => b?.enabled !== false && b.schedule?.trim(),
+  );
+  if (schedules.length === 0) return;
+  const { createBackup } = await import("./backups");
+  const held = new Set(
+    (
+      await getDb()
+        .select({
+          schedule: backupsTable.schedule,
+          destinationId: backupsTable.destinationId,
+        })
+        .from(backupsTable)
+        .where(
+          target.kind === "app"
+            ? eq(backupsTable.appId, target.id)
+            : eq(backupsTable.databaseId, target.id),
+        )
+    ).map((b) => `${b.schedule}|${b.destinationId}`),
+  );
+  // An app backup covers every volume of the app, so two volumes on one
+  // schedule fold into one backup and the note names both.
+  const seen = new Map<string, string[]>();
+  for (const b of schedules) {
+    const schedule = b.schedule!.trim();
+    const destName = b.destination?.name?.trim() ?? "";
+    const what =
+      target.kind === "database"
+        ? ""
+        : b.volumeName?.trim()
+          ? `volume ${b.volumeName.trim()}`
+          : b.serviceName?.trim()
+            ? `a dump of ${b.serviceName.trim()}`
+            : "a dump";
+    const key = `${schedule}|${destName.toLowerCase()}`;
+    const folded = seen.get(key);
+    if (folded) {
+      folded.push(what);
+      continue;
+    }
+    seen.set(key, [what]);
+    const destinationId = destName
+      ? destinations?.get(destName.toLowerCase())
+      : undefined;
+    const where = `${schedule}${destName ? ` to ${destName}` : ""}`;
+    const subject = what ? `${what} was backed up` : "Backed up";
+    if (!destinationId) {
+      notes.push(
+        `${subject} on {panel} (${where}), but that destination is not here, so no schedule was set - set one under Backups.`,
+      );
+      continue;
+    }
+    if (held.has(`${schedule}|${destinationId}`)) continue;
+    try {
+      await createBackup({
+        name: `${target.name} to ${destName}`,
+        targetKind: target.kind,
+        appId: target.kind === "app" ? target.id : null,
+        databaseId: target.kind === "database" ? target.id : null,
+        destinationId,
+        schedule,
+        retentionCount:
+          typeof b.keepLatestCount === "number" && b.keepLatestCount > 0
+            ? b.keepLatestCount
+            : 7,
+      });
+      notes.push(
+        what
+          ? `Its backup schedule came across: ${where}. Here it backs up every volume of the app, not only ${what}.`
+          : `Its backup schedule came across: ${where}.`,
+      );
+    } catch (e) {
+      notes.push(
+        `${subject} on {panel} (${where}); the schedule was not set here: ${
+          e instanceof Error ? e.message : "refused"
+        }. Set one under Backups.`,
+      );
+    }
+  }
+  if (target.kind === "app")
+    for (const [key, whats] of seen)
+      if (whats.length > 1)
+        notes.push(
+          `${whats.join(", ")} shared the schedule ${key.split("|")[0]} on {panel}; one app backup here covers them all.`,
+        );
+}
+
 async function importAppService(
   c: SourceCredential,
   svc: SourceService,
@@ -2889,6 +2987,15 @@ async function importAppService(
     (a) => a.name.trim().toLowerCase() === name.trim().toLowerCase(),
   );
   if (match) {
+    // The one thing still worth adding: a schedule whose destination was not
+    // here on the first pass.
+    const extra: string[] = [];
+    await landSourceBackups(
+      detail.backups,
+      home.destinations,
+      { kind: "app", id: match.id, name },
+      extra,
+    );
     await report.add({
       sourceKind: svc.kind,
       sourceId: svc.id,
@@ -2896,7 +3003,10 @@ async function importAppService(
       outcome: "skipped",
       targetKind: "app",
       targetId: match.id,
-      message: "An app with this name is already in this environment.",
+      message: [
+        "An app with this name is already in this environment.",
+        ...extra,
+      ].join(" "),
     });
     return match.id;
   }
@@ -3332,69 +3442,12 @@ async function importAppService(
   // One name in two environments is the commonest shape there is, and it is not an
   // accident to be corrected - only the internal name, which is one per team, has
   // to give way.
-  // The panel's volume backups and in-stack dumps, as app backups here: one per
-  // schedule and destination, and an app backup covers EVERY volume of the app,
-  // so two schedules on two volumes fold into one and the note says so.
-  const schedules = (detail.backups ?? []).filter(
-    (b) => b?.enabled !== false && b.schedule?.trim(),
+  await landSourceBackups(
+    detail.backups,
+    home.destinations,
+    { kind: "app", id: created.id, name },
+    notes,
   );
-  if (schedules.length > 0) {
-    const { createBackup } = await import("./backups");
-    const seen = new Map<string, string[]>();
-    for (const b of schedules) {
-      const destName = b.destination?.name?.trim() ?? "";
-      const what = b.volumeName?.trim()
-        ? `volume ${b.volumeName.trim()}`
-        : b.serviceName?.trim()
-          ? `a dump of ${b.serviceName.trim()}`
-          : "a dump";
-      const key = `${b.schedule!.trim()}|${destName.toLowerCase()}`;
-      const folded = seen.get(key);
-      if (folded) {
-        folded.push(what);
-        continue;
-      }
-      seen.set(key, [what]);
-      const destinationId = destName
-        ? home.destinations?.get(destName.toLowerCase())
-        : undefined;
-      const where = `${b.schedule!.trim()}${destName ? ` to ${destName}` : ""}`;
-      if (!destinationId) {
-        notes.push(
-          `${what} was backed up on {panel} (${where}), but that destination is not here, so no schedule was set - set one under Backups.`,
-        );
-        continue;
-      }
-      try {
-        await createBackup({
-          name: `${name} to ${destName}`,
-          targetKind: "app",
-          appId: created.id,
-          databaseId: null,
-          destinationId,
-          schedule: b.schedule!.trim(),
-          retentionCount:
-            typeof b.keepLatestCount === "number" && b.keepLatestCount > 0
-              ? b.keepLatestCount
-              : 7,
-        });
-        notes.push(
-          `Its backup schedule came across: ${where}. Here it backs up every volume of the app, not only ${what}.`,
-        );
-      } catch (e) {
-        notes.push(
-          `${what} was backed up on {panel} (${where}); the schedule was not set here: ${
-            e instanceof Error ? e.message : "refused"
-          }. Set one under Backups.`,
-        );
-      }
-    }
-    for (const [key, whats] of seen)
-      if (whats.length > 1)
-        notes.push(
-          `${whats.join(", ")} shared the schedule ${key.split("|")[0]} on {panel}; one app backup here covers them all.`,
-        );
-  }
 
   if (namesake)
     notes.push(
@@ -3986,6 +4039,13 @@ async function importDatabaseService(
     )[0];
   const clash = await taken(spec.name);
   if (clash && clash.environmentId === opts.environmentId) {
+    const extra: string[] = [];
+    await landSourceBackups(
+      row.backups,
+      opts.destinations,
+      { kind: "database", id: clash.id, name: spec.name },
+      extra,
+    );
     await report.add({
       sourceKind: svc.kind,
       sourceId: svc.id,
@@ -3993,8 +4053,10 @@ async function importDatabaseService(
       outcome: "skipped",
       targetKind: "database",
       targetId: clash.id,
-      message:
+      message: [
         "A database with this name is already in this environment, so it is the one that is kept - its data is copied again in this same import.",
+        ...extra,
+      ].join(" "),
     });
     return;
   }
@@ -4162,47 +4224,12 @@ async function importDatabaseService(
     }
   }
 
-  // Its backup schedules, onto the destination that came across with them. One
-  // that saves somewhere Deplo has no store for stays a note - a bucket with no
-  // schedule reads as a choice unless this says otherwise.
-  const schedules = (row.backups ?? []).filter(
-    (b) => b?.enabled !== false && b.schedule?.trim(),
+  await landSourceBackups(
+    row.backups,
+    opts.destinations,
+    { kind: "database", id: created.id, name: spec.name },
+    notes,
   );
-  if (schedules.length > 0) {
-    const { createBackup } = await import("./backups");
-    for (const b of schedules) {
-      const destName = b.destination?.name?.trim() ?? "";
-      const destinationId = destName
-        ? opts.destinations?.get(destName.toLowerCase())
-        : undefined;
-      const where = `${b.schedule!.trim()}${destName ? ` to ${destName}` : ""}`;
-      if (!destinationId) {
-        notes.push(
-          `Backed up on {panel} (${where}), but that destination is not here, so no schedule was set - set one under Backups.`,
-        );
-        continue;
-      }
-      try {
-        await createBackup({
-          name: `${spec.name} to ${destName}`,
-          databaseId: created.id,
-          destinationId,
-          schedule: b.schedule!.trim(),
-          retentionCount:
-            typeof b.keepLatestCount === "number" && b.keepLatestCount > 0
-              ? b.keepLatestCount
-              : 7,
-        });
-        notes.push(`Its backup schedule came across: ${where}.`);
-      } catch (e) {
-        notes.push(
-          `Backed up on {panel} (${where}); the schedule was not set here: ${
-            e instanceof Error ? e.message : "refused"
-          }. Set one under Backups.`,
-        );
-      }
-    }
-  }
 
   // Said out loud, because every connection string the import just brought over
   // still spells out the old one.

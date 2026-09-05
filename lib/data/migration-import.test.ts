@@ -576,6 +576,62 @@ test("a database's backup schedule comes across onto the destination that came w
   );
 });
 
+test("a second pass lands the schedule the first pass had no destination for", async () => {
+  (fixtures["postgres.one"] as { backups?: unknown[] }).backups = [
+    {
+      schedule: "0 3 * * *",
+      enabled: true,
+      keepLatestCount: 5,
+      destination: { name: "nightly" },
+    },
+  ];
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  await db
+    .update(serversTable)
+    .set({ agentPort: 9443, agentCertFingerprint: "ab".repeat(32) })
+    .where(eq(serversTable.id, SERVER_1));
+  const count = async () =>
+    (await db.execute("select count(*)::int as n from backups")).rows[0]!.n;
+  // First pass: the panel lists no store, so the schedule stays a note.
+  fixtures["destination.all"] = [];
+  const first = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(first, "dok-prj-blink");
+  assert.equal(await count(), 0);
+  // Second pass: the store is there now; the database is kept and gets it.
+  fixtures["destination.all"] = [
+    {
+      destinationId: "dst-1",
+      name: "nightly",
+      endpoint: "https://s3.acme.test",
+      bucket: "backups",
+      region: "eu-west-1",
+      accessKey: "AK",
+      secretAccessKey: "SK",
+    },
+  ];
+  const second = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(second, "dok-prj-blink");
+  const rows = await db.execute(
+    "select b.schedule, b.retention_count, d.name as dest from backups b join backup_destination d on d.id = b.destination_id",
+  );
+  assert.deepEqual(rows.rows, [
+    { schedule: "0 3 * * *", retention_count: 5, dest: "nightly" },
+  ]);
+  const skipped = (await db.select().from(itemsTable)).find(
+    (i) => i.runId === second && i.sourceKind === "postgres",
+  );
+  assert.equal(skipped?.outcome, "skipped");
+  assert.match(
+    skipped?.message ?? "",
+    /already in this environment.*schedule came across: 0 3 \* \* \* to nightly/,
+  );
+  // Third pass: nothing to add.
+  const third = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(third, "dok-prj-blink");
+  assert.equal(await count(), 1);
+});
+
 /* ------------------------------------------------------------------ */
 /* Scan                                                                */
 /* ------------------------------------------------------------------ */
