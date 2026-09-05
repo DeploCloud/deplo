@@ -361,6 +361,9 @@ async function failRun(row: RunRow, why: string): Promise<void> {
       status: "failed",
       error: why,
       finishedAt: nowIso(),
+      // Nothing to acknowledge: a failed run has no report screen, and left
+      // unseen it reopened the wizard, with the same toast, on every visit.
+      reportSeenAt: nowIso(),
       apiKeyEnc: null,
       runnerOwner: null,
       phase: "done",
@@ -497,7 +500,9 @@ async function stopRun(runId: string): Promise<void> {
   if (row && row.phase === "data") {
     await getDb()
       .update(runsTable)
-      .set({ status: "stopped", finishedAt: nowIso() })
+      // Seen: the person stopped it themselves, and an unseen stop reopened the
+      // wizard on it - toast included - every time they came back.
+      .set({ status: "stopped", finishedAt: nowIso(), reportSeenAt: nowIso() })
       .where(and(eq(runsTable.id, runId), eq(runsTable.status, "running")));
     await releaseMigrating(runId);
     await markRunTargetsUncopied(runId, "the migration was stopped").catch(

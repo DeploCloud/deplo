@@ -1187,9 +1187,7 @@ export function MigrationWizard({
       // what happened and hand back an empty wizard.
       if (res.data.error) toast.error(res.data.error);
       else
-        toast.success(
-          "The migration was stopped, and everything it created was removed",
-        );
+        toast.success("The migration was stopped. Its report is under History");
       resetToStart();
     },
     [resetToStart],
