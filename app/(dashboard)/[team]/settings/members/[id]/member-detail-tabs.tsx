@@ -382,7 +382,7 @@ export function MemberDetailTabs({
                   teamPickable={false}
                   info={
                     reachEditable
-                      ? "Everywhere their role reaches is ticked. Untick what this one person shouldn't touch, or tick something extra to let them in. Everything under a ticked node follows it."
+                      ? "Everywhere their role reaches is ticked. Untick what this one person shouldn't touch. Everything under a ticked node follows it."
                       : `Set by their role: ${role?.name} is limited to specific environments, which can only be changed on the role.`
                   }
                   docs="team.limitedAccess"

@@ -291,7 +291,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                 <div className="grid gap-1.5">
                   <FieldLabel
                     htmlFor="pv-port"
-                    info={`The port a preview answers on. Empty means the app's own (${props.appPort}), which is what keeps a preview faithful to production - set one only if the branch genuinely listens somewhere else.`}
+                    info={`The port a preview answers on. Empty means the app's own (${props.appPort}), which keeps a preview faithful to production.`}
                     docs="previews.settings"
                   >
                     Port

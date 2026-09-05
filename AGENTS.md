@@ -523,6 +523,21 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   what the thing does or what to do next; don't restate the control's own label, don't narrate
   implementation, don't explain Docker. If it needs a paragraph to make sense, the UI is wrong, not
   the copy. Errors and server messages are the exception: surface those verbatim.
+- **The copy caps are a TEST, not a taste.** `copy-length.test.ts` fails the build over
+  **120** characters in a modal description, **160** in an `info=` / `content=` tooltip and
+  **200** in a muted paragraph - counted per BRANCH, so a ternary cannot hide a paragraph
+  behind a condition. Over the cap means the sentence is carrying something the manual
+  should: cut it and end the line with a `<DocsLink>`, never reword it to fit.
+- **In a modal, the words that matter are WHITE.** `DialogDescription`, `SheetDescription`
+  and a wizard's `lead` style their own `<strong>` as `text-foreground`, so the emphasis is
+  a `<strong>` and nothing else - no `className="text-foreground"` at the call site, no
+  second component. One phrase per description, the one the reader must not miss. This is
+  a MODAL affordance: on a page the emphasis is the sentence being short.
+- **A destructive confirm never puts the cost behind a link.** What the action destroys goes
+  in the red box - `consequence=` on `ConfirmAction` / `DeleteWithArtifacts`, or
+  `<ConsequenceNote>` in a hand-rolled dialog - in one concrete sentence. The description
+  above it says what the action IS; the box says what it costs. Not both, and never the cost
+  only in the manual.
 - **The label names the thing; the tooltip carries the WHY.** Not "the tooltip carries everything":
   a tooltip does not exist on touch and screen readers lose it, and every major design system says
   so out loud - Vercel's own guidelines are "inline help first; tooltips last resort", Geist forbids

@@ -182,7 +182,7 @@ export function PreviewsTable({
                       // build, so the badge alone cannot finish the sentence: say which limit, and that
                       // getting it back costs one click and keeps the address.
                       <SimpleTooltip
-                        content={`This app runs ${maxActive} previews at once, and this was the one nobody had touched in the longest. Redeploy brings it back on the same address, or raise the limit in Settings.`}
+                        content={`At the limit of ${maxActive} previews, this was the least recently touched. Redeploy brings it back on the same address.`}
                       >
                         <span className="inline-flex">
                           <StatusBadge status={p.status} />

@@ -72,9 +72,9 @@ export function FullComposeDialog({ appId }: { appId: string }) {
         <DialogHeader>
           <DialogTitle>Full compose</DialogTitle>
           <DialogDescription>
-            The stack Deplo generates and runs, with routing, network and mount
-            paths folded in. <strong>Read-only</strong>, regenerated on every
-            deploy. <DocsLink topic="compose.differences" />
+            Your compose with routing, network and mount paths folded in.{" "}
+            <strong>Read-only</strong>, regenerated on every deploy.{" "}
+            <DocsLink topic="compose.differences" />
           </DialogDescription>
         </DialogHeader>
 

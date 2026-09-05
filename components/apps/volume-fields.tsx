@@ -467,11 +467,11 @@ function MountRow({
               info={
                 containerWorkdir
                   ? kind === "app"
-                    ? `Where the file appears inside the app. Leave it empty and Deplo puts it in ${containerWorkdir}, the folder your code runs in, so a file your code opens as ./config.toml needs nothing here. Fill it in when the app wants it elsewhere, like /etc/nginx/nginx.conf.`
-                    : `Where the app finds this storage. Leave it empty and Deplo puts it in ${containerWorkdir}, the folder your code runs in, so a folder your code writes to as ./uploads needs nothing here. Fill it in when the app keeps its data elsewhere, like /var/lib/postgresql/data.`
+                    ? `Where the file appears inside the app. Empty puts it in ${containerWorkdir}, the folder your code runs in.`
+                    : `Where the app finds this storage. Empty puts it in ${containerWorkdir}, the folder your code runs in.`
                   : kind === "app"
-                    ? "Where the file appears inside the app, file name included, like /etc/nginx/nginx.conf. Deplo can't fill this in for a prebuilt image, the image chose its own working directory, so use the path the app's documentation asks for."
-                    : "Where the app finds this storage, as an absolute path like /data. Deplo can't fill this in for a prebuilt image, the image chose its own working directory, so use the path its documentation gives for the data you want to keep."
+                    ? "Where the file appears inside the app, file name included, like /etc/nginx/nginx.conf."
+                    : "Where the app finds this storage, as an absolute path like /data."
               }
               docs="storage.mountPath"
               value={mount.mountPath}
