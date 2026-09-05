@@ -139,7 +139,7 @@ export function OtpInput({
               else refs.current[i]?.select();
             }}
             className={cn(
-              "h-13 w-11 rounded-lg border bg-transparent text-center font-mono text-xl tabular-nums transition-colors",
+              "h-13 w-11 rounded-lg border bg-background text-center font-mono text-xl tabular-nums transition-colors",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               "disabled:cursor-not-allowed disabled:opacity-50",
               invalid

@@ -109,7 +109,7 @@ export function TimelineMenu({
       disabled={disabled}
       aria-label="Time range"
       className={cn(
-        "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors",
+        "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors",
         "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "text-muted-foreground hover:text-foreground",

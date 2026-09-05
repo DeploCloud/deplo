@@ -189,7 +189,10 @@ export function FolderCard({
   // slightly stronger edge, so it reads as that colour at a glance while keeping the
   // text legible.
   const cardStyle = shownColor
-    ? { backgroundColor: `${shownColor}1a`, borderColor: `${shownColor}40` }
+    ? {
+        backgroundColor: `color-mix(in srgb, ${shownColor} 10%, var(--background))`,
+        borderColor: `color-mix(in srgb, ${shownColor} 25%, var(--background))`,
+      }
     : undefined;
 
   function onColorSubmit(e: React.FormEvent) {

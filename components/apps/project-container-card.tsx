@@ -135,7 +135,10 @@ export function ProjectContainerCard({
     ? { backgroundColor: shownColor, color: readableTextColor(shownColor) }
     : undefined;
   const cardStyle = shownColor
-    ? { backgroundColor: `${shownColor}1a`, borderColor: `${shownColor}40` }
+    ? {
+        backgroundColor: `color-mix(in srgb, ${shownColor} 10%, var(--background))`,
+        borderColor: `color-mix(in srgb, ${shownColor} 25%, var(--background))`,
+      }
     : undefined;
 
   function onRenameSubmit(e: React.FormEvent) {

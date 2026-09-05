@@ -765,7 +765,7 @@ export function FacetMenu<T>({
           aria-label={`Filter by ${facet.label.toLowerCase()}`}
           title={facetTitle(facet, values)}
           className={cn(
-            "flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors",
+            "flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors",
             "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-50",
             on
