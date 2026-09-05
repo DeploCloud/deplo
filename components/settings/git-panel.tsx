@@ -207,9 +207,21 @@ export function GitPanel({
         onOpenChange={(v) => !v && setDeleting(null)}
         title="Remove this connection?"
         description={
+          deleting && deleting.appCount > 0 ? (
+            <>
+              <strong>
+                {deleting.appCount} app{deleting.appCount === 1 ? "" : "s"}
+              </strong>{" "}
+              deploy through it.
+            </>
+          ) : (
+            "Private clones through it will fail until you reconnect."
+          )
+        }
+        consequence={
           deleting && deleting.appCount > 0
-            ? `${deleting.appCount} app${deleting.appCount === 1 ? "" : "s"} deploy through it. They stop auto-deploying and private clones fail until you reconnect.`
-            : "Private clones through it will fail until you reconnect."
+            ? "They stop auto-deploying, and private clones fail until you reconnect."
+            : undefined
         }
         confirmLabel="Remove"
         successMessage="Connection removed"

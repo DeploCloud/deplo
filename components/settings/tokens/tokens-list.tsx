@@ -214,10 +214,15 @@ export function TokensList({
         onOpenChange={(v) => !v && setRevoke(null)}
         title="Revoke token?"
         description={
-          revoke
-            ? `${revoke.name} is deleted. ${revokeDescription(copyFor(revoke))}`
-            : "Every client using it loses access immediately, including any deploy hook that sends it. This can't be undone; create a new token if you still need one."
+          revoke ? (
+            <>
+              <strong>{revoke.name}</strong> is deleted.
+            </>
+          ) : (
+            "The token is deleted."
+          )
         }
+        consequence={revoke ? revokeDescription(copyFor(revoke)) : undefined}
         confirmLabel="Revoke token"
         successMessage="Token revoked"
         optimistic

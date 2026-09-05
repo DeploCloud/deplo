@@ -26,6 +26,8 @@ import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { HostUnavailable } from "@/components/servers/host-unavailable";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "./server-detail-tabs";
+import { DocsLink } from "@/components/ui/docs-link";
+import { ConsequenceNote } from "@/components/shared/confirm-action";
 
 /**
  * The Certificates tab: certificates the operator bought or generated elsewhere,
@@ -322,10 +324,9 @@ function AddCertificateDialog({
         <DialogHeader>
           <DialogTitle>Add a certificate to {server.name}</DialogTitle>
           <DialogDescription>
-            Paste the certificate and its private key. Then set a domain&rsquo;s
-            certificate to &ldquo;Installed on the server&rdquo; to serve it
-            with this one. The proxy restarts, so sites here blink for a few
-            seconds.
+            Paste the certificate and its private key.{" "}
+            <strong>The proxy restarts</strong>, so sites here blink for a few
+            seconds. <DocsLink topic="certificates.customInstall" />
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
@@ -447,13 +448,16 @@ function RemoveCertificateDialog({
         <DialogHeader>
           <DialogTitle>Remove certificate?</DialogTitle>
           <DialogDescription>
-            The certificate for {certificate?.subject} is removed, and{" "}
-            {certificate?.domains.join(", ")} fall back to a free Let&rsquo;s
-            Encrypt certificate, which this server requests again once the proxy
-            comes back. If those domains cannot be verified over HTTP, they will
-            have no certificate until you install another one.
+            The certificate for <strong>{certificate?.subject}</strong> is
+            removed, and {certificate?.domains.join(", ")} fall back to a free
+            Let&rsquo;s Encrypt certificate.{" "}
+            <DocsLink topic="certificates.custom" />
           </DialogDescription>
         </DialogHeader>
+        <ConsequenceNote>
+          If those domains cannot be verified over HTTP, they are left with no
+          certificate at all.
+        </ConsequenceNote>
         <DialogFooter>
           <Button
             variant="outline"

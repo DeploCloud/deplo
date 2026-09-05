@@ -45,6 +45,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ActionResult } from "@/lib/result";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { cn } from "@/lib/utils";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /** How each entered line is executed. "auto" is a raw exec - the first word is
  *  the binary. "sh"/"bash" wrap the line so pipes, redirects and builtins work. */
@@ -473,9 +474,9 @@ function ConsoleWarningGate({ href }: { href: string }) {
             Open the container console?
           </DialogTitle>
           <DialogDescription>
-            This is a live terminal inside the running container - commands and
-            keystrokes take effect for real, and a wrong one can break the app
-            or lose data.
+            A live terminal inside the running container.{" "}
+            <strong>Commands take effect for real.</strong>{" "}
+            <DocsLink topic="console.overview" />
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

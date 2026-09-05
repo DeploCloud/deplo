@@ -54,6 +54,7 @@ import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { ToolsDialog, type McpToolSummary } from "./tools-dialog";
 import { veilProps } from "@/components/templates/veil";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * Connecting an AI agent, as one path that never leaves the page. Getting
@@ -716,8 +717,8 @@ function WizardRun({
               What {agent?.label ?? "this agent"} can reach
             </DialogTitle>
             <DialogDescription className="mt-1">
-              Nothing ticked means every team you can connect agents to, now and
-              later. Tick a team, project, folder or single apps to limit it.
+              <strong>Nothing ticked means every team</strong> you can connect
+              agents to. Tick one to limit it. <DocsLink topic="tokens.scope" />
             </DialogDescription>
           </DialogHeader>
           <form

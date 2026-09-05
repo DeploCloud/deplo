@@ -19,6 +19,7 @@ export function DeleteWithArtifacts({
   targetName,
   title,
   description,
+  consequence,
   confirmLabel,
   successMessage,
   forceRetry,
@@ -36,6 +37,8 @@ export function DeleteWithArtifacts({
   targetName: string;
   title: string;
   description: React.ReactNode;
+  /** What this delete costs, in one line. Rendered in the red box. */
+  consequence?: React.ReactNode;
   confirmLabel: string;
   successMessage?: string;
   /**
@@ -77,6 +80,7 @@ export function DeleteWithArtifacts({
       onOpenChange={handleOpenChange}
       title={title}
       description={description}
+      consequence={consequence}
       confirmLabel={
         force && forceRetry ? forceRetry.confirmLabel : confirmLabel
       }

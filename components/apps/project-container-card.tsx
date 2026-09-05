@@ -351,9 +351,21 @@ export function ProjectContainerCard({
         }}
         title="Delete project?"
         description={
+          deleteApps ? (
+            <>
+              <strong>{project.name}</strong> and every app in it are deleted.
+            </>
+          ) : (
+            <>
+              <strong>{project.name}</strong> is removed, but its apps are kept
+              - they move back to the Overview top level.
+            </>
+          )
+        }
+        consequence={
           deleteApps
-            ? `${project.name} and every app in it are deleted, containers and volumes included. This cannot be undone.`
-            : `${project.name} is removed, but its apps are kept - they move back to the Overview top level. This cannot be undone.`
+            ? "Their containers and volumes go with them. This cannot be undone."
+            : undefined
         }
         confirmLabel="Delete project"
         successMessage="Project deleted"

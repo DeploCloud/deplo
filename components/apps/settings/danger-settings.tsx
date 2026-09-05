@@ -98,7 +98,12 @@ export function DangerSettings({
               targetId={appId}
               targetName={name}
               title="Delete app?"
-              description={`Deleting ${name} permanently removes its data, deployments, domains, environment variables and every backup it has stored. This cannot be undone.`}
+              description={
+                <>
+                  Deleting <strong>{name}</strong> removes it for good.
+                </>
+              }
+              consequence="Its data, deployments, domains, variables and every backup it has stored go with it."
               confirmLabel="Delete app"
               successMessage="App deleted"
               deleteMutation={() =>

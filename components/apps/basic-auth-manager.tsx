@@ -200,9 +200,23 @@ export function BasicAuthManager({
         onOpenChange={(v) => !v && setDeleting(null)}
         title="Delete login?"
         description={
+          rows.length === 1 ? (
+            <>
+              <strong>{deleting?.username ?? "This login"}</strong> is the last
+              credential.
+            </>
+          ) : (
+            <>
+              <strong>{deleting?.username ?? "This login"}</strong> stops
+              working within seconds. The app&apos;s other credentials keep
+              working.
+            </>
+          )
+        }
+        consequence={
           rows.length === 1
-            ? `${deleting?.username ?? "This login"} is the last credential - deleting it drops the login prompt entirely, and every domain of this app becomes reachable by anyone within seconds.`
-            : `${deleting?.username ?? "This login"} stops working within seconds; the app's other credentials keep working.`
+            ? "The login prompt goes entirely, and every domain of this app becomes reachable by anyone within seconds."
+            : undefined
         }
         confirmLabel="Delete"
         successMessage="Credential deleted - that login no longer works"

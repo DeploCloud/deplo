@@ -136,7 +136,8 @@ export function DeployHookPanel({
         <CopyResolved resolve={resolve} />
         <ConfirmAction
           title="Rotate the deploy hook URL?"
-          description="The current URL stops working immediately. Anything already using it (a webhook in your git provider, a CI job) has to be updated with the new one."
+          description="The current URL stops working immediately."
+          consequence="Anything already using it - a git webhook, a CI job - has to be updated with the new one."
           confirmLabel="Rotate URL"
           successMessage="Deploy hook rotated"
           onConfirm={rotate}

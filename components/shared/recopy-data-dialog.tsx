@@ -214,9 +214,14 @@ export function RecopyDataDialog({
         <DialogHeader>
           <DialogTitle>Copy the data again</DialogTitle>
           <DialogDescription>
-            {source
-              ? `${source.sourceName} on ${source.sourceUrl} still holds this data. It is stopped there while the copy runs, and ${name} is stopped here.`
-              : "Where this was imported from."}
+            {source ? (
+              <>
+                <strong>{source.sourceName}</strong> still holds this data.{" "}
+                <strong>Both sides are stopped</strong> while the copy runs.
+              </>
+            ) : (
+              "Where this was imported from."
+            )}
           </DialogDescription>
         </DialogHeader>
 

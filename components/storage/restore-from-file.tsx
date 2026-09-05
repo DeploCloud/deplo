@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { AlertTriangle } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -106,15 +105,12 @@ export function RestoreFromFile({
       successMessage="Restore finished"
       confirmText={target.name}
       confirmDisabled={!file || (encrypted && !recoveryKey.trim())}
+      consequence={`The ${noun} is stopped and its current data is wiped. The current state is not recoverable.`}
       description={
         <span className="flex flex-col gap-2">
-          <span className="flex items-start gap-2 text-destructive">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <span>
-              This overwrites <strong>{target.name}</strong> in place with the
-              file you upload. The {noun} is stopped, its current data is wiped,
-              and the current state is <strong>not recoverable</strong>.
-            </span>
+          <span>
+            This overwrites <strong>{target.name}</strong> in place with the
+            file you upload.
           </span>
           {target.kind === "app" && (
             <span>

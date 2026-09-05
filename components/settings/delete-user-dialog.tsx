@@ -139,9 +139,18 @@ export function DeleteUserDialog({
       onOpenChange={handleOpenChange}
       title="Delete account?"
       description={
+        blocked ? (
+          blocked
+        ) : (
+          <>
+            This removes <strong>@{username}</strong>&apos;s account for good.
+          </>
+        )
+      }
+      consequence={
         blocked
-          ? blocked
-          : `This removes @${username}'s account for good. It can't be undone, and the person can't be restored - a suspension is the reversible option.`
+          ? undefined
+          : "It can't be undone, and the person can't be restored - a suspension is the reversible option."
       }
       confirmLabel="Delete account"
       // The typed username is the last gate: everything below is a checkbox, and

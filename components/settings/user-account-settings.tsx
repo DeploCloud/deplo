@@ -704,7 +704,8 @@ export function UserAccountSettings({
         open={confirmSuspend}
         onOpenChange={setConfirmSuspend}
         title={`Suspend @${user.username}?`}
-        description="They are signed out immediately and can't sign back in until you reactivate them. Team memberships, apps and everything they own are kept, nothing is deleted."
+        description="They are signed out immediately and can't sign back in until you reactivate them."
+        consequence="Their teams, apps and everything they own are kept - nothing is deleted."
         confirmLabel="Suspend account"
         successMessage="Account suspended"
         onConfirm={async () => {
@@ -720,7 +721,8 @@ export function UserAccountSettings({
         open={confirmResetTwoFactor}
         onOpenChange={setConfirmResetTwoFactor}
         title={`Reset two-factor for @${user.username}?`}
-        description="Their authenticator and recovery codes stop working, and the next sign-in is password only. Check it is really them asking."
+        description="Their authenticator and recovery codes stop working, and the next sign-in is password only."
+        consequence="Check it is really them asking."
         confirmLabel="Reset two-factor"
         successMessage="Two-factor reset"
         optimistic
@@ -734,7 +736,8 @@ export function UserAccountSettings({
             ? `Remove @${user.username}'s passkey?`
             : `Remove @${user.username}'s ${passkeyCount} passkeys?`
         }
-        description="They stop signing in with any device they registered, and their account goes back to password only. Do this when the device is gone - check it is really them asking."
+        description="They stop signing in with any device they registered, and their account goes back to password only."
+        consequence="Do this when the device is gone - check it is really them asking."
         confirmLabel="Remove passkeys"
         variant="default"
         successMessage="Passkeys removed"

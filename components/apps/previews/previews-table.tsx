@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DocsLink } from "@/components/ui/docs-link";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { useLiveApp } from "@/components/apps/app-live-status";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
@@ -236,7 +237,15 @@ export function PreviewsTable({
                             </Button>
                           }
                           title="Deploy this fork's code?"
-                          description={`Pull request #${p.prNumber} comes from ${p.headRepo || "a fork"}, a repository you don't control. Building it runs that code on your server. Deplo never gives a fork preview your secret variables, but everything else about it is the pull request author's code. Only approve pull requests from people you trust. New commits on this pull request will deploy automatically once you approve.`}
+                          description={
+                            <>
+                              Pull request #{p.prNumber} comes from{" "}
+                              <strong>{p.headRepo || "a fork"}</strong>, a
+                              repository you don&apos;t control.{" "}
+                              <DocsLink topic="previews.forksAndSecrets" />
+                            </>
+                          }
+                          consequence="Approving runs that code on your server, and new commits deploy automatically. Secret variables are never given to a fork preview."
                           confirmLabel="Approve and deploy"
                           successMessage="Building the preview"
                           optimistic

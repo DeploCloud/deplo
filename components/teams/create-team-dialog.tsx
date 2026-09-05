@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { gqlAction } from "@/lib/graphql-client";
 import type { Team } from "@/lib/types";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * Create a new team - the viewer becomes its owner and it is made active.
@@ -92,8 +93,9 @@ export function CreateTeamDialog({
         <DialogHeader>
           <DialogTitle>Create a new team</DialogTitle>
           <DialogDescription>
-            A team is an isolated workspace for apps, domains, databases and
-            members. You&apos;ll be its owner and it becomes your active team.
+            An isolated workspace for apps, domains, databases and members.{" "}
+            <strong>You&apos;ll be its owner.</strong>{" "}
+            <DocsLink topic="team.overview" />
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>

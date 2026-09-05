@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { CapabilityTip } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * The master switch for one app's container console. Turning it ON is a real
@@ -94,7 +95,14 @@ export function ConsoleSettingsForm({
         open={confirmOn}
         onOpenChange={setConfirmOn}
         title="Turn on the console?"
-        description="Anyone holding the console Capability gets a shell inside this app's container, with the container's own privileges. You can turn it back off at any time."
+        description={
+          <>
+            Anyone holding the console Capability gets a{" "}
+            <strong>shell inside this app&apos;s container</strong>, with the
+            container&apos;s own privileges.{" "}
+            <DocsLink topic="console.overview" />
+          </>
+        }
         confirmLabel="Turn it on"
         variant="default"
         onConfirm={async () => {

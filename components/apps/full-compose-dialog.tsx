@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * CodeMirror is ~40KB and this dialog is rarely opened, so it stays out of the
@@ -71,10 +72,9 @@ export function FullComposeDialog({ appId }: { appId: string }) {
         <DialogHeader>
           <DialogTitle>Full compose</DialogTitle>
           <DialogDescription>
-            The stack Deplo generates and runs - your compose augmented with
-            Traefik routing labels, the <code className="font-mono">Deplo</code>{" "}
-            network and absolute mount paths. Read-only; regenerated on every
-            deploy.
+            The stack Deplo generates and runs, with routing, network and mount
+            paths folded in. <strong>Read-only</strong>, regenerated on every
+            deploy. <DocsLink topic="compose.differences" />
           </DialogDescription>
         </DialogHeader>
 

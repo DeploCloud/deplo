@@ -5,6 +5,7 @@ import { useRouter } from "@/lib/nav";
 import { Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DocsLink } from "@/components/ui/docs-link";
 import { CapabilityTip } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -61,24 +62,19 @@ export function RollbackDialog({
       onOpenChange={onOpenChange}
       title="Roll back to this deployment?"
       description={
-        <span className="flex flex-col gap-2">
-          <span>
-            The app goes back to the image this deployment built
-            {commitSha ? (
-              <>
-                {" ("}
-                <span className="font-mono">{commitSha.slice(0, 7)}</span>
-                {commitMessage ? ` ${commitMessage}` : ""}
-                {")"}
-              </>
-            ) : null}
-            . It restarts in seconds - nothing is rebuilt.
-          </span>
-          <span className="text-muted-foreground">
-            Only the code goes back. Variables, domains, storage and resource
-            limits stay as they are now.
-          </span>
-        </span>
+        <>
+          The app goes back to the image this deployment built
+          {commitSha ? (
+            <>
+              {" ("}
+              <span className="font-mono">{commitSha.slice(0, 7)}</span>
+              {commitMessage ? ` ${commitMessage}` : ""}
+              {")"}
+            </>
+          ) : null}
+          . <strong>Only the code goes back</strong>, and nothing is rebuilt.{" "}
+          <DocsLink topic="releases.rollbacks" />
+        </>
       }
       confirmLabel="Rollback"
       successMessage="Rollback started"

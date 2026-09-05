@@ -51,6 +51,7 @@ import { ServerMaintenanceTab } from "./maintenance-tab";
 import { ServerCleanupTab } from "./cleanup-tab";
 import { ServerAdvancedTab } from "./advanced-tab";
 import { ServerCertificatesTab } from "./certificates-tab";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * The six tabs of a server's management page.
@@ -324,9 +325,8 @@ function OverviewTab({ server }: { server: ServerSummary }) {
             <DialogDescription>
               Updates the agent to{" "}
               <strong>v{server.expectedAgentVersion}</strong> over its existing
-              secure connection. Its certificates are not reissued, so the
-              server stays online with the same identity. Takes a few seconds
-              while the agent swaps its binary and reconnects.
+              secure connection. <strong>The server stays online</strong>, and
+              it takes a few seconds. <DocsLink topic="upgrade.overview" />
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

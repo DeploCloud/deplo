@@ -4,7 +4,6 @@ import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import {
-  AlertTriangle,
   Archive,
   CalendarClock,
   ChevronDown,
@@ -52,6 +51,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DocsLink } from "@/components/ui/docs-link";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
@@ -1464,19 +1464,13 @@ function RunRow({
           successMessage="Restore started"
           confirmText={target.name}
           description={
-            <span className="flex flex-col gap-2">
-              <span className="flex items-start gap-2 text-destructive">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                <span>
-                  This overwrites <strong>{target.name}</strong> in place with
-                  the backup from {timeAgo(run.startedAt)}. The {noun(target)}{" "}
-                  is stopped, its current data is wiped, and the snapshot is
-                  restored - there is downtime and the current state is{" "}
-                  <strong>not recoverable</strong>.
-                </span>
-              </span>
-            </span>
+            <>
+              This overwrites <strong>{target.name}</strong> in place with the
+              backup from {timeAgo(run.startedAt)}.{" "}
+              <DocsLink topic="backups.restore" />
+            </>
           }
+          consequence={`The ${noun(target)} is stopped and its current data is wiped. The current state is not recoverable.`}
           onConfirm={async () => {
             const res = await gqlAction(
               `mutation($runId: String!) { restoreBackup(runId: $runId) }`,
@@ -1498,9 +1492,20 @@ function RunRow({
           confirmLabel="Delete backup"
           successMessage="Backup deleted"
           description={
+            ok ? (
+              <>
+                The {formatBytes(run.sizeBytes)} file from{" "}
+                {timeAgo(run.startedAt)} is deleted from{" "}
+                <strong>{destinationName}</strong>.
+              </>
+            ) : (
+              "This run failed and left no file, so only its record is removed."
+            )
+          }
+          consequence={
             ok
-              ? `The ${formatBytes(run.sizeBytes)} file from ${timeAgo(run.startedAt)} is deleted from ${destinationName}. You can't restore ${target.name} from it afterwards.`
-              : `This run failed and left no file, so only its record is removed.`
+              ? `You can't restore ${target.name} from it afterwards.`
+              : undefined
           }
           optimistic
           onConfirm={async () => {

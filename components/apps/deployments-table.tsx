@@ -1209,7 +1209,8 @@ export function DeploymentsTable({
         open={deleteSelectedOpen}
         onOpenChange={setDeleteSelectedOpen}
         title={`Delete ${selectedCount} deployment${selectedCount === 1 ? "" : "s"}?`}
-        description="The selected deployments and their build logs are permanently removed. Running apps are unaffected, but this can't be undone."
+        description="The selected deployments and their build logs are removed."
+        consequence="Running apps are unaffected, but this can't be undone."
         confirmLabel="Delete"
         optimistic
         onConfirm={deleteSelected}
@@ -1218,7 +1219,13 @@ export function DeploymentsTable({
         open={deleteAllOpen}
         onOpenChange={setDeleteAllOpen}
         title={`Delete ${selectableIds.length} finished deployment${selectableIds.length === 1 ? "" : "s"}?`}
-        description={`Every finished deployment for ${scopeText} (and its build logs) is permanently removed. In-progress builds are left. Running apps are unaffected, but this can't be undone.`}
+        description={
+          <>
+            Every finished deployment for <strong>{scopeText}</strong> is
+            removed, with its build logs. In-progress builds are left.
+          </>
+        }
+        consequence="Running apps are unaffected, but this can't be undone."
         confirmLabel="Delete all"
         optimistic
         onConfirm={deleteAll}
@@ -1228,7 +1235,13 @@ export function DeploymentsTable({
         onOpenChange={setCancelAllOpen}
         variant="default"
         title={`Stop ${inProgressCount} running build${inProgressCount === 1 ? "" : "s"}?`}
-        description={`Every queued or building deployment for ${scopeText} is canceled. A build already running on its host may finish in the background, but its result won't be deployed.`}
+        description={
+          <>
+            Every queued or building deployment for <strong>{scopeText}</strong>{" "}
+            is canceled.
+          </>
+        }
+        consequence="A build already running on its host may finish in the background, but its result won't be deployed."
         confirmLabel="Stop all builds"
         onConfirm={cancelAll}
       />

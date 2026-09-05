@@ -9,6 +9,7 @@ import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DocsLink } from "@/components/ui/docs-link";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -222,22 +223,16 @@ function TakeoverConfirm({
                 : `Take the machine from ${platformLabel}?`
             }
             description={
-              clean ? (
-                <>
-                  {platformLabel} comes off this machine with everything on it:
-                  its apps, its teams, its networks, its images and its
-                  directory. Nothing comes across. The volumes its apps held
-                  stay on the disk until you remove them yourself.
-                </>
-              ) : (
-                <>
-                  Deplo takes the ports, then {platformLabel} comes off this
-                  machine: its containers, the workloads it ran, their networks,
-                  its images and its directory. The volumes those workloads held
-                  stay on the disk, so a copy that went wrong can still be
-                  recovered.
-                </>
-              )
+              <>
+                Deplo takes ports 80 and 443, then{" "}
+                <strong>{platformLabel} comes off this machine</strong>.{" "}
+                <DocsLink topic="migration.takeover" />
+              </>
+            }
+            consequence={
+              clean
+                ? `Its apps, teams, networks, images and directory are deleted, and nothing comes across. Their volumes stay on the disk until you remove them yourself.`
+                : `Its containers, networks, images and directory are deleted. The volumes those workloads held stay on the disk.`
             }
             extra={
               <div className="grid gap-2">
@@ -463,7 +458,12 @@ export function TakeoverCancel({
           </Button>
         }
         title={`Remove Deplo and go back to ${platformLabel}?`}
-        description={`Everything Deplo created here is removed, your services are started again on ${platformLabel}, and Deplo comes off this machine. ${platformLabel} keeps all of its data.`}
+        description={
+          <>
+            Deplo comes off this machine and your services start again.{" "}
+            <strong>{platformLabel} keeps all of its data.</strong>
+          </>
+        }
         extra={
           <div className="grid gap-1.5">
             <Label htmlFor="cancel-key">

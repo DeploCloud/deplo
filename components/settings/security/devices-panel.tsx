@@ -118,10 +118,9 @@ export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
             description={
               <>
                 {others.length === 1
-                  ? "One other device is signed in. It"
-                  : `${others.length} other devices are signed in. They`}{" "}
-                will have to sign in again, with a code if you use two-factor
-                authentication. This device stays signed in.
+                  ? "One other device is signed in and has"
+                  : `${others.length} other devices are signed in and have`}{" "}
+                to sign in again. <strong>This device stays signed in.</strong>
               </>
             }
             confirmLabel="Sign them out"

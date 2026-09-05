@@ -281,7 +281,8 @@ export function DestinationsView({
         open={bulkRemoveOpen}
         onOpenChange={setBulkRemoveOpen}
         title={`Remove ${selectionNoun}?`}
-        description={`Every backup schedule and restore point using ${selectionCount === 1 ? "it" : "them"} is deleted. The backup files themselves are kept, and only a recovery key can read them afterwards.`}
+        description={`Every backup schedule and restore point using ${selectionCount === 1 ? "it" : "them"} is deleted.`}
+        consequence="The backup files themselves are kept, and only a recovery key can read them afterwards."
         confirmLabel={`Remove ${selectionCount === 1 ? "destination" : "destinations"}`}
         onConfirm={() =>
           bulkRun(

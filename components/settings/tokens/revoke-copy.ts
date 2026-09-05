@@ -29,5 +29,5 @@ export function revokeDescription(input: RevokeCopyInput): string {
     others.length > 0
       ? `Every client using it loses access immediately, in ${joinNames(others)} too.`
       : "Every client using it loses access immediately, including any deploy hook that sends it.";
-  return `${first} This can't be undone; create a new token if you still need one.`;
+  return `${first} This can't be undone.`;
 }

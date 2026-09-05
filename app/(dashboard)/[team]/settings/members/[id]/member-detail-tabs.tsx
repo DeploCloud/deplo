@@ -513,7 +513,13 @@ export function MemberDetailTabs({
             }
           }}
           title={`Make @${member.username} the primary owner?`}
-          description={`@${member.username} gets the Owner role and full access to this team, and becomes the one person nobody here can remove, demote or edit. You stay an owner - they can take that away, and only they can hand the team back.`}
+          description={
+            <>
+              <strong>@{member.username}</strong> gets the Owner role and full
+              access to this team.
+            </>
+          }
+          consequence="Nobody here can remove, demote or edit them. You stay an owner, but only they can hand the team back."
           confirmLabel="Transfer ownership"
           confirmText={member.username}
           successMessage="Team ownership transferred"
@@ -568,7 +574,12 @@ export function MemberDetailTabs({
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
         title="Remove member?"
-        description={`@${member.username} loses access to this team's apps and resources right away. Their account, and every other team they are in, is untouched - add them back at any time.`}
+        description={
+          <>
+            <strong>@{member.username}</strong> loses access to this team&apos;s
+            apps and resources right away. Their account is untouched.
+          </>
+        }
         confirmLabel="Remove member"
         successMessage="Member removed"
         onConfirm={async () => {

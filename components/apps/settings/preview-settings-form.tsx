@@ -44,6 +44,7 @@ import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { SettingRow } from "@/components/shared/setting-row";
 import { gqlAction } from "@/lib/graphql-client";
+import { ConsequenceNote } from "@/components/shared/confirm-action";
 
 /**
  * Settings → Pull requests. Everything below it is a form with a Save: those
@@ -468,12 +469,14 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
           <DialogHeader>
             <DialogTitle>Turn off pull request previews?</DialogTitle>
             <DialogDescription className="mt-1">
-              {props.activeCount === 1
-                ? "The 1 preview running now will be destroyed, along with its data."
-                : `The ${props.activeCount} previews running now will be destroyed, along with their data.`}{" "}
-              Open pull requests stop getting one.
+              Open pull requests stop getting a preview.
             </DialogDescription>
           </DialogHeader>
+          <ConsequenceNote>
+            {props.activeCount === 1
+              ? "The 1 preview running now is destroyed, along with its data."
+              : `The ${props.activeCount} previews running now are destroyed, along with their data.`}
+          </ConsequenceNote>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOff(false)}>
               Cancel

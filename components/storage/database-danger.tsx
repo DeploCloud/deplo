@@ -43,10 +43,9 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
           <div className="min-w-56 flex-1 space-y-1">
             <p className="text-sm font-medium">Rebuild database</p>
             <p className="text-sm text-muted-foreground">
-              Wipe the data volume and provision a fresh, empty database from
-              the current settings - same engine, version and credentials, so
-              the connection string keeps working. All data is erased; restore a
-              backup afterwards to bring data back.
+              Wipe the data volume and provision a fresh, empty database.
+              Engine, version and credentials stay, so the connection string
+              keeps working.
             </p>
           </div>
           <ConfirmAction
@@ -57,7 +56,14 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
               </Button>
             }
             title={`Rebuild ${db.name}?`}
-            description="This destroys the database container AND its data volume, then provisions a fresh, empty database with the same settings and credentials. All data is permanently erased."
+            description={
+              <>
+                The container and its data volume are destroyed, then a{" "}
+                <strong>fresh, empty database</strong> is provisioned with the
+                same settings.
+              </>
+            }
+            consequence="All data is erased. Restore a backup afterwards to bring it back."
             confirmLabel="Rebuild database"
             confirmText={db.name}
             successMessage="Database rebuilt from scratch"

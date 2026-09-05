@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { Loader2, RotateCcw, AlertTriangle } from "lucide-react";
+import { Loader2, RotateCcw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,7 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import { gql, gqlAction } from "@/lib/graphql-client";
+import { DocsLink } from "@/components/ui/docs-link";
 
 type BackupRunLite = {
   id: string;
@@ -97,9 +98,9 @@ export function RestoreRunsDialog({
         <DialogHeader>
           <DialogTitle>Restore {targetName}</DialogTitle>
           <DialogDescription>
-            Pick a backup to restore in place. This overwrites the live{" "}
-            {targetKind} - there is downtime and the current state is not
-            recoverable.
+            Pick a backup to restore in place. It{" "}
+            <strong>overwrites the live {targetKind}</strong>.{" "}
+            <DocsLink topic="backups.restore" />
           </DialogDescription>
         </DialogHeader>
 
@@ -202,16 +203,12 @@ function RestoreRunRow({
           successMessage="Restore started"
           confirmText={targetName}
           description={
-            <span className="flex items-start gap-2 text-destructive">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              <span>
-                This overwrites <strong>{targetName}</strong> in place with the
-                backup from {timeAgo(run.startedAt)}. The {targetKind} is taken
-                offline while it restores and its current state is{" "}
-                <strong>not recoverable</strong>.
-              </span>
-            </span>
+            <>
+              This overwrites <strong>{targetName}</strong> in place with the
+              backup from {timeAgo(run.startedAt)}.
+            </>
           }
+          consequence={`The ${targetKind} is taken offline while it restores, and its current state is not recoverable.`}
           onConfirm={async () => {
             const res = await gqlAction(
               `mutation($runId: String!) { restoreBackup(runId: $runId) }`,

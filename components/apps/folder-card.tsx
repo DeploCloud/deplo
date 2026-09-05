@@ -486,9 +486,22 @@ export function FolderCard({
               }}
               title="Delete folder?"
               description={
+                deleteApps ? (
+                  <>
+                    <strong>{folder.name}</strong> and every app in it are
+                    deleted.
+                  </>
+                ) : (
+                  <>
+                    <strong>{folder.name}</strong> is removed, but its apps are
+                    kept - they move back to the top level.
+                  </>
+                )
+              }
+              consequence={
                 deleteApps
-                  ? `${folder.name} and every app in it are deleted, containers and volumes included. This cannot be undone.`
-                  : `${folder.name} is removed, but its apps are kept - they move back to the top level. This cannot be undone.`
+                  ? "Their containers and volumes go with them. This cannot be undone."
+                  : undefined
               }
               confirmLabel="Delete folder"
               successMessage="Folder deleted"

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DocsLink } from "@/components/ui/docs-link";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   DestinationTestLogDialog,
@@ -289,23 +290,25 @@ export function useDestinationActions({
         onOpenChange={onConfirmOpenChange}
         title="Remove destination?"
         description={
-          <span className="flex flex-col gap-2">
-            <span>
-              {impact && (impact.schedules > 0 || impact.runs > 0)
-                ? `Removing ${dest.name} deletes ${plural(impact.schedules, "backup schedule")} and ${plural(impact.runs, "restore point")}. `
-                : `Removing ${dest.name} deletes the backup schedules and restore points that use it. `}
-              {alsoDeleteFiles
-                ? "The backup files are deleted too."
-                : isServer
-                  ? "The backup files stay on the server."
-                  : "Your bucket contents are not affected."}
-              {/* The keypair goes with the row, so from here on those files can
-                  only be opened by a recovery key someone already holds. */}
-              {!alsoDeleteFiles &&
-                encrypted &&
-                " They are encrypted, and only the recovery key can read them once this destination is gone."}
-            </span>
-          </span>
+          <>
+            Removing <strong>{dest.name}</strong> deletes{" "}
+            {impact && (impact.schedules > 0 || impact.runs > 0)
+              ? `${plural(impact.schedules, "backup schedule")} and ${plural(impact.runs, "restore point")}`
+              : "the backup schedules and restore points that use it"}
+            .{" "}
+            {!alsoDeleteFiles &&
+              (isServer
+                ? "The backup files stay on the server."
+                : "Your bucket contents are not affected.")}{" "}
+            {!alsoDeleteFiles && encrypted && (
+              <DocsLink topic="backups.recoveryKey" />
+            )}
+          </>
+        }
+        consequence={
+          alsoDeleteFiles
+            ? "The backup files are deleted too, and nothing can be restored from them afterwards."
+            : undefined
         }
         extra={
           impact && impact.artifacts > 0 ? (

@@ -63,7 +63,7 @@ export function TeamDangerZone({
   // The one thing on this screen that reaches OUTSIDE the team being deleted.
   const sharedVarsCaveat =
     sharedVarsOtherTeamsUse > 0
-      ? ` It also deletes ${sharedVars} shared variable${sharedVars === 1 ? "" : "s"} this team owns, ${sharedVarsOtherTeamsUse} of which ${sharedVarsOtherTeamsUse === 1 ? "is" : "are"} landing in another team's apps right now - ${sharedVarsOtherTeamsUse === 1 ? "it disappears" : "they disappear"} there on their next deploy.`
+      ? ` Its ${sharedVars} shared variable${sharedVars === 1 ? "" : "s"} go too, ${sharedVarsOtherTeamsUse} of which ${sharedVarsOtherTeamsUse === 1 ? "is" : "are"} in another team's apps right now.`
       : "";
 
   return (
@@ -112,7 +112,13 @@ export function TeamDangerZone({
                 </Button>
               }
               title="Delete team?"
-              description={`This tears down every app and database of ${teamName} (data volumes included) and permanently removes its folders, projects, domains, environment variables, members and every backup it has stored, wherever it stored it.${sharedVarsCaveat} Cleanup continues in the background. This cannot be undone.`}
+              description={
+                <>
+                  Everything in <strong>{teamName}</strong> is torn down.
+                  Cleanup continues in the background.
+                </>
+              }
+              consequence={`Its apps and databases go with their data volumes, along with every folder, project, domain, variable, member and backup. This cannot be undone.${sharedVarsCaveat}`}
               confirmLabel="Delete team"
               successMessage="Team deleted"
               confirmText={teamName}
@@ -183,10 +189,16 @@ function TransferOwnership({
         }}
         title="Transfer ownership?"
         description={
-          target
-            ? `@${target.username} gets the Owner role and full access to this team, and becomes the one person nobody here can remove, demote or edit. You stay an owner - they can take that away, and only they can hand the team back.`
-            : "The member you pick gets the Owner role and full access to this team, and becomes the one person nobody here can remove, demote or edit. You stay an owner - only they can hand the team back."
+          target ? (
+            <>
+              <strong>@{target.username}</strong> gets the Owner role and full
+              access to this team.
+            </>
+          ) : (
+            "The member you pick gets the Owner role and full access to this team."
+          )
         }
+        consequence="Nobody here can remove, demote or edit them. You stay an owner, but only they can hand the team back."
         confirmLabel="Transfer ownership"
         confirmText={target?.username}
         confirmDisabled={

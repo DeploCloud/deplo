@@ -84,9 +84,21 @@ export function DataCopyNotice({
             }
             title={`${verb} ${name} without its data?`}
             description={
+              kind === "app" ? (
+                <>
+                  <strong>{name}</strong> will start on empty storage.
+                </>
+              ) : (
+                <>
+                  <strong>{name}</strong> will initialise a brand new, empty
+                  database on that volume.
+                </>
+              )
+            }
+            consequence={
               kind === "app"
-                ? `${name} will start on empty storage. Anything it kept in those volumes is not coming back, and an app that writes to them will carry on as if it were new.`
-                : `${name} will initialise a brand new, EMPTY database on that volume. The data that was meant to be there is not coming back.`
+                ? "Anything it kept in those volumes is not coming back."
+                : "The data that was meant to be there is not coming back."
             }
             confirmLabel={`${verb} anyway`}
             successMessage={`${name} can be ${kind === "app" ? "deployed" : "started"} again`}

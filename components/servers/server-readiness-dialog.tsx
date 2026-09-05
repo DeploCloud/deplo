@@ -27,6 +27,7 @@ import { AnimatedHeight } from "@/components/shared/animated-height";
 import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * The readiness REPORT for one server. Nothing is persisted, which is why this
@@ -271,9 +272,9 @@ export function ServerReadinessDialog({
             Deploy readiness for {serverName}
           </DialogTitle>
           <DialogDescription>
-            A live look at what this server can actually do: Deplo dials the
-            agent, asks the host what it can see, and lists what it found.
-            Nothing is stored - re-run it whenever you like.
+            What this server can actually do, asked live.{" "}
+            <strong>Nothing is stored</strong> - re-run it whenever you like.{" "}
+            <DocsLink topic="servers.readiness" />
           </DialogDescription>
         </DialogHeader>
 

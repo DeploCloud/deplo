@@ -140,7 +140,13 @@ export function InstanceOwnerCard({
             if (!v) setPassword("");
           }}
           title={`Make @${picked.username} the instance owner?`}
-          description="They become the only person who can edit their own account, transfer ownership, or be locked out of nothing. You stay an instance admin - but they can demote you, and only they can give the crown back."
+          description={
+            <>
+              <strong>@{picked.username}</strong> becomes the only person who
+              can edit their own account or transfer ownership.
+            </>
+          }
+          consequence="You stay an instance admin, but they can demote you, and only they can give the crown back."
           confirmLabel="Transfer ownership"
           confirmText={picked.username}
           successMessage="Instance ownership transferred"

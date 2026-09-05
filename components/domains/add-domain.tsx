@@ -27,6 +27,7 @@ import {
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { regenerateNipDomain } from "@/lib/nip-suggestion";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /** A project as the dialog needs it: the compose YAML populates the service
  * selector, and the default port pre-fills a new domain's port field. */
@@ -199,10 +200,8 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
         <DialogHeader>
           <DialogTitle>Add a domain</DialogTitle>
           <DialogDescription>
-            Point a custom domain at{" "}
-            <span className="font-medium">{project.name}</span>. Deplo checks
-            its DNS as you add it - a domain already proxied through Cloudflare
-            is set up for HTTPS on its own.
+            Point a custom domain at <strong>{project.name}</strong>. Deplo
+            checks its DNS as you add it. <DocsLink topic="domains.overview" />
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>

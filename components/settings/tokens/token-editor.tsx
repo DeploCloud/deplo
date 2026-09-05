@@ -510,7 +510,12 @@ export function TokenEditor({
           open={revokeOpen}
           onOpenChange={setRevokeOpen}
           title="Revoke token?"
-          description={`${token!.name} is deleted. ${revokeDescription(revokeCopy)}`}
+          description={
+            <>
+              <strong>{token!.name}</strong> is deleted.
+            </>
+          }
+          consequence={revokeDescription(revokeCopy)}
           confirmLabel="Revoke token"
           successMessage="Token revoked"
           onConfirm={async () => {

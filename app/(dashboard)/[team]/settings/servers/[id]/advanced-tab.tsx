@@ -44,6 +44,8 @@ import { HostUnavailable } from "@/components/servers/host-unavailable";
 import { gqlAction } from "@/lib/graphql-client";
 import { formatBytes } from "@/lib/utils";
 import type { ServerSummary } from "./server-detail-tabs";
+import { DocsLink } from "@/components/ui/docs-link";
+import { ConsequenceNote } from "@/components/shared/confirm-action";
 
 /**
  * The Advanced tab: what this box actually IS, what time it thinks it is, and
@@ -545,8 +547,8 @@ function InstallCommand({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Install command for {server.name}</DialogTitle>
             <DialogDescription>
-              Run this once on the server. It installs Docker (if needed) and
-              the Deplo agent, which then calls home to finish provisioning.
+              Run this once on the server. It installs Docker and the Deplo
+              agent, which <strong>calls home to finish provisioning</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -818,15 +820,15 @@ function DangerZone({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Remove {server.name}?</DialogTitle>
             <DialogDescription>
-              This revokes the agent&rsquo;s trust and forgets the server.{" "}
-              <strong>It does not uninstall anything on the host</strong> - the
-              Deplo agent, Traefik on :80/:443 and the <code>Deplo</code>{" "}
-              network all keep running there. We&rsquo;ll give you the command
-              to remove them as soon as it&rsquo;s gone. You can&rsquo;t remove
-              a server while apps or databases still live on it - move or delete
-              those first.
+              This revokes the agent&rsquo;s trust and{" "}
+              <strong>forgets the server</strong>. Move or delete its apps and
+              databases first. <DocsLink topic="servers.remove" />
             </DialogDescription>
           </DialogHeader>
+          <ConsequenceNote>
+            Nothing on the host is uninstalled: the agent, Traefik and the Deplo
+            network keep running. The command to remove them comes next.
+          </ConsequenceNote>
           <DialogFooter>
             <Button
               variant="outline"
@@ -861,9 +863,9 @@ function DangerZone({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Finish the cleanup on {server.name}</DialogTitle>
             <DialogDescription>
-              Deplo no longer trusts this server, but its agent is still
-              installed and running there. Run this on the host, as root, to
-              remove it.
+              Deplo no longer trusts this server, but{" "}
+              <strong>its agent is still running there</strong>. Run this on the
+              host, as root.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

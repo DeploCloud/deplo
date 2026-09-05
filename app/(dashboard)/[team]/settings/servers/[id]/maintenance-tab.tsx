@@ -190,10 +190,10 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Restart everything on {server.name}?</DialogTitle>
             <DialogDescription>
-              Every app and database Deplo runs on this server is stopped and
-              started again, one at a time. Each is briefly unreachable.
-              Anything already stopped stays stopped, and anything mid-deploy is
-              left to finish.
+              Every app and database on this server is stopped and started
+              again, one at a time.{" "}
+              <strong>Each is briefly unreachable.</strong>{" "}
+              <DocsLink topic="servers.maintenance" />
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -219,9 +219,9 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Restart Traefik on {server.name}?</DialogTitle>
             <DialogDescription>
-              Traefik routes traffic to every site on this server, so all of
-              them are unreachable for the few seconds it takes to come back.
-              The containers themselves keep running.
+              <strong>Every site on this server is unreachable</strong> for the
+              few seconds Traefik takes to come back. The containers keep
+              running.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -248,8 +248,8 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
             <DialogTitle>Restart Deplo?</DialogTitle>
             <DialogDescription>
               This dashboard goes away for a few seconds and comes back on its
-              own. Your deployed apps and databases are not affected - they keep
-              serving traffic throughout.
+              own.{" "}
+              <strong>Your apps and databases keep serving traffic.</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

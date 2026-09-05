@@ -185,9 +185,13 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
               </Button>
             }
             title={one ? "Remove server?" : "Remove servers?"}
-            description={`Deplo uninstalls itself from ${names} and stops tracking ${
-              one ? "that machine" : "those machines"
-            }. Where it cannot reach the host it stops tracking it anyway and leaves you the command below. Any data still there can no longer be copied, so finish importing first.`}
+            description={
+              <>
+                Deplo uninstalls itself from <strong>{names}</strong> and stops
+                tracking {one ? "that machine" : "those machines"}.
+              </>
+            }
+            consequence="Data still there can no longer be copied, so finish importing first. Where a host cannot be reached, the command below is left for you."
             confirmLabel="Remove from Deplo"
             onConfirm={finish}
           />

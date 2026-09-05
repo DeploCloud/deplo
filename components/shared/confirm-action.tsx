@@ -137,12 +137,7 @@ export function ConfirmAction({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          {consequence && (
-            <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>{consequence}</span>
-            </p>
-          )}
+          {consequence && <ConsequenceNote>{consequence}</ConsequenceNote>}
           {extra}
           {confirmText && (
             <div className="space-y-2">
@@ -213,5 +208,18 @@ export function ConfirmAction({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * What a destructive action costs, in one concrete sentence. Never behind a
+ * link, and never the place for background: the box is read, not studied.
+ */
+export function ConsequenceNote({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <span>{children}</span>
+    </p>
   );
 }

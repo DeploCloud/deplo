@@ -1549,7 +1549,7 @@ export function MigrationWizard({
       <UnsavedChangesGuard
         when={guarded}
         title="Leave the migration?"
-        description="Deplo takes its agent back off the machines it installed one on, and forgets them. Coming back means connecting and setting those machines up again."
+        description="Deplo takes its agent back off the machines it installed one on. Coming back means setting those machines up again."
         confirmLabel="Leave anyway"
         cancelLabel="Stay on this page"
       />
@@ -2283,17 +2283,12 @@ function MovingPanel({
             confirmLabel="Stop and undo"
             description={
               <>
-                Deplo removes every app, database and project this migration
-                created here, with their data, and takes its agent back off the
-                machines it was reading. There is no half-migrated state to
-                keep: a copy interrupted part-way through leaves data nobody can
-                trust.
-                <br />
-                <br />
-                It does not start {panelName} back up - the services this
-                migration stopped over there stay stopped.
+                Deplo undoes this migration and takes its agent back off the
+                machines it was reading.{" "}
+                <strong>There is no half-migrated state to keep.</strong>
               </>
             }
+            consequence={`Every app, database and project it created here is removed with its data, and ${panelName} is not started back up.`}
             onConfirm={async () => {
               onStop();
               return { ok: true as const, data: null };

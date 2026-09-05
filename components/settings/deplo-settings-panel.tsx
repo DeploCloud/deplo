@@ -870,9 +870,8 @@ function CertificatesCard() {
             <DialogTitle>Register certificates to {email.trim()}?</DialogTitle>
             <DialogDescription>
               Deplo restarts the proxy on {manageable.length} server
-              {manageable.length === 1 ? "" : "s"}, so sites there are
-              unreachable for a few seconds. Certificates already issued keep
-              working.
+              {manageable.length === 1 ? "" : "s"}.{" "}
+              <strong>Sites there blink for a few seconds.</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -148,9 +148,19 @@ export function UninstallAgentMenu({
         onOpenChange={setOpen}
         title="Remove server?"
         description={
+          provisioned ? (
+            <>
+              Deplo uninstalls its agent from <strong>{serverName}</strong> and
+              stops tracking the machine.
+            </>
+          ) : (
+            `Nothing was installed on ${serverName} yet - this only removes it from Deplo.`
+          )
+        }
+        consequence={
           provisioned
-            ? `Deplo uninstalls its agent from ${serverName} and stops tracking the machine. If it cannot reach the host, it stops tracking it anyway and gives you the command to run there yourself. Any data still there can no longer be copied, so finish the import first.`
-            : `Nothing was installed on ${serverName} yet - this only removes it from Deplo.`
+            ? "Data still on that host can no longer be copied, so finish the import first."
+            : undefined
         }
         confirmLabel="Remove from Deplo"
         onConfirm={remove}

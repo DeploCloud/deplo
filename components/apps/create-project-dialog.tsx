@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { gqlAction } from "@/lib/graphql-client";
+import { DocsLink } from "@/components/ui/docs-link";
 
 /**
  * Create a Project CONTAINER (ADR-0008) in the active team.
@@ -71,9 +72,8 @@ export function CreateProjectDialog({
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
           <DialogDescription>
-            A project is an advanced folder: each of its environments holds its
-            own apps and its own shared variables. You can move apps into it
-            afterward.
+            An advanced folder: <strong>each environment</strong> holds its own
+            apps and shared variables. <DocsLink topic="projects.overview" />
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>

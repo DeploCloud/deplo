@@ -15,6 +15,7 @@ export const DOCS = {
 
   "install.overview": "getting-started/install",
 
+  "projects.overview": "concepts/apps-projects-and-environments",
   "deploy.sources": "guides/deploy#the-five-sources",
   "deploy.trace": "concepts/what-happens-on-a-deploy",
   "deploy.queue": "concepts/what-happens-on-a-deploy#it-waits-for-a-slot",
@@ -156,6 +157,7 @@ export const DOCS = {
   "servers.cleanup": "guides/server/cleanup",
   "servers.cleanupScopes": "guides/server/cleanup#what-gets-cleaned",
   "servers.cleanupSettings": "guides/server/cleanup#settings",
+  "servers.remove": "operations/remove-a-server-or-uninstall",
   "servers.maintenance": "guides/server/maintenance-and-advanced",
   "servers.advanced": "guides/server/maintenance-and-advanced#advanced",
   "registries.overview": "guides/server/container-registries",
