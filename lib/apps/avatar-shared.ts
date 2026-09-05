@@ -97,6 +97,14 @@ export const AVATAR_PACKS = [
  *  a team's - so the dialog opens on the pack whose first tile is that. */
 export const DEFAULT_PACK = AVATAR_PACKS.find((p) => p.style === "initials")!;
 
+/** The packs a picker offers. A TEAM wears its own letters and nothing else: a
+ *  character pack is a person's face, not a company's mark. */
+export function packsFor(
+  team?: boolean,
+): readonly (typeof AVATAR_PACKS)[number][] {
+  return team ? [DEFAULT_PACK] : AVATAR_PACKS;
+}
+
 /**
  * The initials looks: ONE seed - the letters are the person or the team, they do
  * not vary - in four variants. `default` is the palette DiceBear picks from the
@@ -240,11 +248,11 @@ export function isValidUserAvatarValue(value: string): boolean {
   return isValidAvatarValue(value);
 }
 
-/** Whether a TEAM may store this: an uploaded picture or a generated one. Never
- *  `gravatar` - a team has no address - and never the bare `initials`, which is
- *  what storing nothing already means. */
+/** Whether a TEAM may store this: an uploaded picture or one of the initials
+ *  looks. Never a character pack, never `gravatar` - a team has no address - and
+ *  never the bare `initials`, which is what storing nothing already means. */
 export function isValidTeamAvatarValue(value: string): boolean {
-  return Boolean(faceParts(value)) || isValidAvatarValue(value);
+  return faceParts(value)?.style === "initials" || isValidAvatarValue(value);
 }
 
 /**

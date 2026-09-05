@@ -16,6 +16,7 @@ import {
   AVATAR_VARIANTS,
   INITIALS_PRESETS,
   packRow,
+  packsFor,
 } from "../apps/avatar-shared";
 import {
   seedIdentity,
@@ -393,8 +394,13 @@ test("a team may wear a generated picture, not a person's sources", async () => 
     (await as(OWNER, () => getTeam())).avatarUrl,
     "/api/avatar/initials/electric/Acme-Corp.svg",
   );
-  // A team has no address and no monogram of its own to fall back to.
-  for (const bad of ["gravatar", "initials"])
+  // A team has no address, no monogram of its own to fall back to, and no
+  // character pack: a face is a person's, and the picker offers it none.
+  assert.deepEqual(
+    packsFor(true).map((p) => p.style),
+    ["initials"],
+  );
+  for (const bad of ["gravatar", "initials", "glyphs:default:nova"])
     await assert.rejects(
       as(OWNER, () => updateTeamAvatar(bad)),
       /Unsupported/i,

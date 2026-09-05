@@ -18,7 +18,6 @@ import {
   AVATAR_ACCEPT_ATTR,
   AVATAR_ATTRIBUTION,
   AVATAR_IMAGE_TYPES,
-  AVATAR_PACKS,
   AVATAR_VARIANTS,
   type AvatarChoice,
   DEFAULT_PACK,
@@ -26,6 +25,7 @@ import {
   GRAVATAR_VALUE,
   MAX_AVATAR_STRING_LEN,
   packRow,
+  packsFor,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 
@@ -95,16 +95,17 @@ export function AvatarPicker({
   const choosing = controlled ? controlled.open : ownChoosing;
   const setChoosing = controlled ? controlled.onOpenChange : setOwnChoosing;
   const letters = sources?.letters;
+  const team = sources?.team;
   React.useEffect(() => {
     if (!preload || !letters) return;
     // Fetched now, not on the click: the dialog would otherwise open onto empty
     // circles and fill them in one by one.
-    for (const pack of AVATAR_PACKS)
+    for (const pack of packsFor(team))
       for (const tile of packRow(pack, letters)) {
         const img = new window.Image();
         img.src = facePath(tile.style, tile.preset, tile.seed);
       }
-  }, [preload, letters]);
+  }, [preload, letters, team]);
   const busy = pending || disabled;
 
   function commit(image: string | null) {
@@ -378,10 +379,9 @@ function AvatarSourceDialog({
 }) {
   const { choice, letters, gravatar } = sources;
   const worn = choice.kind === "generated" ? choice : null;
-  const [pack, setPack] = React.useState(() =>
-    worn && worn.style !== "initials"
-      ? (AVATAR_PACKS.find((p) => p.style === worn.style) ?? DEFAULT_PACK)
-      : DEFAULT_PACK,
+  const packs = packsFor(sources.team);
+  const [pack, setPack] = React.useState(
+    () => packs.find((p) => p.style === worn?.style) ?? DEFAULT_PACK,
   );
 
   return (
@@ -428,23 +428,25 @@ function AvatarSourceDialog({
             />
           ))}
         </div>
-        <div className="flex justify-center gap-2">
-          {AVATAR_PACKS.map((p) => (
-            <FaceTile
-              key={p.style}
-              small
-              src={facePath(
-                p.style,
-                p.preset,
-                p.style === "initials" ? letters : AVATAR_VARIANTS[0],
-              )}
-              label={p.label}
-              disabled={busy}
-              selected={p.style === pack.style}
-              onClick={() => setPack(p)}
-            />
-          ))}
-        </div>
+        {packs.length > 1 ? (
+          <div className="flex justify-center gap-2">
+            {packs.map((p) => (
+              <FaceTile
+                key={p.style}
+                small
+                src={facePath(
+                  p.style,
+                  p.preset,
+                  p.style === "initials" ? letters : AVATAR_VARIANTS[0],
+                )}
+                label={p.label}
+                disabled={busy}
+                selected={p.style === pack.style}
+                onClick={() => setPack(p)}
+              />
+            ))}
+          </div>
+        ) : null}
         <div className="grid gap-2">
           {gravatar ? (
             <SourceCard
@@ -491,25 +493,31 @@ function AvatarSourceDialog({
           />
         </div>
         <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-          Pictures by DiceBear. {AVATAR_ATTRIBUTION.style} is a remix of{" "}
-          <a
-            href={AVATAR_ATTRIBUTION.sourceUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            {AVATAR_ATTRIBUTION.source}
-          </a>{" "}
-          by {AVATAR_ATTRIBUTION.creator},{" "}
-          <a
-            href={AVATAR_ATTRIBUTION.licenseUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            {AVATAR_ATTRIBUTION.license}
-          </a>
-          .
+          Pictures by DiceBear.{" "}
+          {/* CC BY asks for the credit where the art it covers is shown. */}
+          {packs.some((p) => p.style === "glyphs") ? (
+            <>
+              {AVATAR_ATTRIBUTION.style} is a remix of{" "}
+              <a
+                href={AVATAR_ATTRIBUTION.sourceUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                {AVATAR_ATTRIBUTION.source}
+              </a>{" "}
+              by {AVATAR_ATTRIBUTION.creator},{" "}
+              <a
+                href={AVATAR_ATTRIBUTION.licenseUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                {AVATAR_ATTRIBUTION.license}
+              </a>
+              .
+            </>
+          ) : null}
         </p>
       </DialogContent>
     </Dialog>
