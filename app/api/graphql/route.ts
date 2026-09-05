@@ -1,4 +1,5 @@
 import { yoga } from "@/lib/graphql/yoga";
+import { withRequestCache } from "@/lib/request-cache";
 
 /**
  * The single GraphQL endpoint. Yoga handles GET (GraphiQL + queries) and POST
@@ -10,7 +11,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function handler(request: Request): Response | Promise<Response> {
-  return yoga.handleRequest(request, {});
+  // One memo per request for the identity reads every resolver repeats; see
+  // lib/request-cache.ts. yoga.ts turns it off again for mutations.
+  return withRequestCache(() => yoga.handleRequest(request, {}));
 }
 
 export { handler as GET, handler as POST, handler as OPTIONS };

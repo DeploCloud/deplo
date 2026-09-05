@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 
 import { getCurrentUser } from "../auth";

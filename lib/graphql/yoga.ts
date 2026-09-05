@@ -7,10 +7,9 @@ import { costLimitPlugin } from "@escape.tech/graphql-armor-cost-limit";
 import { schema } from "./schema";
 import { buildContext, type GraphQLContext } from "./context";
 import { maskError } from "./mask-error";
-import {
-  runWithIdentity,
-  type RequestIdentity,
-} from "@/lib/auth/request-context";
+import { getOperationAST } from "graphql";
+import { runWithIdentity } from "@/lib/auth/request-context";
+import { withoutRequestCache } from "@/lib/request-cache";
 
 /**
  * Wrap the operation's execution in the bearer-token identity (when present) so
@@ -33,7 +32,28 @@ const identityPlugin: Plugin<GraphQLContext> = {
         subscribeFn(subArgs),
       );
       return isAsyncIterable(result)
-        ? withIdentityPerTick(result, identity)
+        ? perTick(result, (fn) => runWithIdentity(identity, fn))
+        : result;
+    });
+  },
+};
+
+/**
+ * The request memo (app/api/graphql/route.ts) serves a query. A mutation must read
+ * what it just wrote, and a subscription outlives every gate it passed, so both
+ * run with it off - the subscription on every tick.
+ */
+const uncachedWrites: Plugin<GraphQLContext> = {
+  onExecute({ args, setExecuteFn, executeFn }) {
+    const op = getOperationAST(args.document, args.operationName)?.operation;
+    if (op !== "mutation") return;
+    setExecuteFn((execArgs) => withoutRequestCache(() => executeFn(execArgs)));
+  },
+  onSubscribe({ setSubscribeFn, subscribeFn }) {
+    setSubscribeFn(async (subArgs) => {
+      const result = await withoutRequestCache(() => subscribeFn(subArgs));
+      return isAsyncIterable(result)
+        ? perTick(result, withoutRequestCache)
         : result;
     });
   },
@@ -46,25 +66,21 @@ function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
 }
 
 /**
- * Re-apply the identity around every TICK of a subscription, not just around the
+ * Re-apply `wrap` around every TICK of a subscription, not just around the
  * iterator's creation.
  */
-function withIdentityPerTick<T>(
+function perTick<T>(
   source: AsyncIterable<T>,
-  identity: RequestIdentity,
+  wrap: <R>(fn: () => R) => R,
 ): AsyncIterableIterator<T> {
   const it = source[Symbol.asyncIterator]() as AsyncIterator<T>;
   return {
     [Symbol.asyncIterator]() {
       return this;
     },
-    next: (...a) => runWithIdentity(identity, () => it.next(...a)),
-    return: it.return
-      ? (v?: unknown) => runWithIdentity(identity, () => it.return!(v))
-      : undefined,
-    throw: it.throw
-      ? (e?: unknown) => runWithIdentity(identity, () => it.throw!(e))
-      : undefined,
+    next: (...a) => wrap(() => it.next(...a)),
+    return: it.return ? (v?: unknown) => wrap(() => it.return!(v)) : undefined,
+    throw: it.throw ? (e?: unknown) => wrap(() => it.throw!(e)) : undefined,
   } as AsyncIterableIterator<T>;
 }
 
@@ -104,6 +120,7 @@ export const yoga = createYoga({
   plugins: [
     requireJsonPost,
     identityPlugin,
+    uncachedWrites,
     // Public-API hardening: bound query complexity so an external client can't
     // craft a pathological query (deep nesting, alias amplification, huge cost).
     maxDepthPlugin({ n: 12 }),

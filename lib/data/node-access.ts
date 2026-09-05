@@ -2,7 +2,7 @@ import "server-only";
 
 // https://deplo.build/docs/guides/roles-and-permissions
 
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";

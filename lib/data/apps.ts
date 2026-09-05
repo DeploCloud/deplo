@@ -2,7 +2,7 @@ import "server-only";
 
 import { healthCheckProblem } from "../apps/health-check-model";
 
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import {

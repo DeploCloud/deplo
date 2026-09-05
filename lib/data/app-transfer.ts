@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 import { and, asc, count, eq, inArray, ne, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";

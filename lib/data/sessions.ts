@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 
 import { assertUser, currentSessionId } from "../auth";
 import { requireAuth } from "../auth/better-auth";

@@ -2,7 +2,7 @@ import "server-only";
 
 // https://deplo.build/docs/guides/take-over-your-vps
 
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";

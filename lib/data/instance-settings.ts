@@ -4,7 +4,7 @@ import "server-only";
 
 import { get as httpGet } from "node:http";
 import { get as httpsGet } from "node:https";
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 import {
   and,
   count,

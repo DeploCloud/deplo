@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";

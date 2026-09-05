@@ -2,7 +2,7 @@ import "server-only";
 
 // https://deplo.build/docs/guides/networking/pull-request-previews
 
-import { cache } from "react";
+import { cache } from "@/lib/request-cache";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 
 import { getCurrentUser } from "../auth";

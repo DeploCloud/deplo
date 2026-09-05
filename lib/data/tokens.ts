@@ -1015,6 +1015,10 @@ async function oauthTokenRow(raw: string): Promise<TokenRow | null> {
   return rows[0] ?? null;
 }
 
+const STAMP_EVERY_MS = 60_000;
+/** ponytail: process-local; a second control plane stamps on its own clock, which is fine. */
+const stampedAt = new Map<string, number>();
+
 /**
  * THE identity builder.
  */
@@ -1048,14 +1052,19 @@ async function identityForTokenRow(
     .from(apiTokenCapabilities)
     .where(eq(apiTokenCapabilities.tokenId, match.id));
 
-  // Fire-and-forget usage stamp; a failed write must not block the request.
-  void getDb()
-    .update(apiTokens)
-    .set({ lastUsedAt: nowIso() })
-    .where(eq(apiTokens.id, match.id))
-    .catch(() => {
-      /* usage tracking is best-effort */
-    });
+  // Fire-and-forget usage stamp, once a minute per token: a failed write must
+  // not block the request, and a burst must not queue one row lock per call.
+  const now = Date.now();
+  if ((stampedAt.get(match.id) ?? 0) < now - STAMP_EVERY_MS) {
+    stampedAt.set(match.id, now);
+    void getDb()
+      .update(apiTokens)
+      .set({ lastUsedAt: nowIso() })
+      .where(eq(apiTokens.id, match.id))
+      .catch(() => {
+        /* usage tracking is best-effort */
+      });
+  }
 
   return {
     userId: match.userId,
