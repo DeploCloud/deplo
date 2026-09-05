@@ -17,7 +17,8 @@ import { newId, nowIso } from "../ids";
 import { requireActiveTeamId } from "../membership";
 import { recordActivity } from "./activity";
 import { dispatchAlert } from "../notify/dispatch";
-import { assertLetsencryptQuota } from "../deploy/domains";
+import { assertLetsencryptQuota, panelFallbackHost } from "../deploy/domains";
+import { publicBaseUrl } from "../public-url";
 import yaml from "../yaml";
 import {
   resolveServerIp,
@@ -139,6 +140,25 @@ async function assertHostnameNotAnotherTeams(
   if (rows.some((r) => r.id !== exceptDomainId && r.teamId !== teamId))
     throw new Error(
       `${name} is already routed by another team on this Deplo. A hostname belongs to one team.`,
+    );
+}
+
+/** The panel's own addresses. An app routed there would answer for the dashboard. */
+export function isPanelHost(name: string): boolean {
+  let own: string | null = null;
+  try {
+    const url = publicBaseUrl();
+    own = url ? new URL(url).hostname.toLowerCase() : null;
+  } catch {
+    /* an unparseable public URL names nothing */
+  }
+  return name === own || name === panelFallbackHost();
+}
+
+function assertNotPanelHost(name: string): void {
+  if (isPanelHost(name))
+    throw new Error(
+      `${name} is this Deplo's own address, so an app can't be served there.`,
     );
 }
 
@@ -375,7 +395,9 @@ export async function ensureExtraDomain(
   // address. Taken by another team, or by another app, regenerates a unique one
   // (labelled by slug + service so it stays recognizable) rather than skip.
   const name =
-    wanted && !(await domainNameExists(wanted, pathPrefix))
+    wanted &&
+    !isPanelHost(wanted) &&
+    !(await domainNameExists(wanted, pathPrefix))
       ? wanted
       : await uniqueAutoDomainName(
           route.service ? `${route.slug}-${route.service}` : route.slug,
@@ -649,6 +671,7 @@ export async function addDomain(
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
   if (!DOMAIN_RE.test(clean)) throw new Error("Enter a valid domain name");
+  assertNotPanelHost(clean);
   const project = await loadAppGraph(appId);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
@@ -944,6 +967,7 @@ export async function updateDomain(
     if (!DOMAIN_RE.test(nextName)) throw new Error("Enter a valid domain name");
   }
   const renamed = nextName !== current.name;
+  if (renamed) assertNotPanelHost(nextName);
   // Resolve + validate the new path (when the edit touches it) and the service
   // BEFORE mutating, so a bad value rejects without a partial write.
   const nextPath =

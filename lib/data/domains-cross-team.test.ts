@@ -225,3 +225,37 @@ test("a suffix that is not a label boundary is not a claim", async () => {
   // `notvictim.com` merely ENDS WITH the victim's host; it is a different name.
   await assertPreviewBaseNotAnotherTeams(`not${HOST}`, TEAM_B);
 });
+
+test("the panel's own addresses can't be claimed by an app", async () => {
+  const prev = {
+    url: process.env.DEPLO_PUBLIC_URL,
+    ip: process.env.DEPLO_SERVER_IP,
+  };
+  process.env.DEPLO_PUBLIC_URL = "https://panel.example.com";
+  process.env.DEPLO_SERVER_IP = "10.0.0.1";
+  try {
+    await runWithIdentity(
+      { userId: "u_attacker", teamId: TEAM_B },
+      async () => {
+        for (const host of ["panel.example.com", "deplo-0a000001.nip.io"]) {
+          await assert.rejects(
+            addDomain("prj_attacker", host),
+            /this Deplo's own address/,
+          );
+          await assert.rejects(
+            addDomain("prj_attacker", host, { pathPrefix: "/api" }),
+            /this Deplo's own address/,
+          );
+        }
+        const mine = await addDomain("prj_attacker", "mine.example.com");
+        await assert.rejects(
+          updateDomain(mine.id, { name: "panel.example.com" }),
+          /this Deplo's own address/,
+        );
+      },
+    );
+  } finally {
+    process.env.DEPLO_PUBLIC_URL = prev.url;
+    process.env.DEPLO_SERVER_IP = prev.ip;
+  }
+});
