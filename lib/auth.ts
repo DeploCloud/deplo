@@ -35,6 +35,7 @@ import {
 import {
   isValidTeamAvatarValue,
   isValidUserAvatarValue,
+  randomFaceValue,
 } from "./apps/avatar-shared";
 import { newId } from "./ids";
 import { randomBytes } from "node:crypto";
@@ -191,7 +192,9 @@ async function insertUserCore(
     isInstanceAdmin: user.isInstanceAdmin ?? false,
     suspended: false,
     avatarColor: user.avatarColor,
-    image: input.image ?? null,
+    // Nobody picked one, so the account still gets a face rather than falling
+    // back to its own letters: a name is not a picture.
+    image: input.image ?? randomFaceValue(),
     createdAt: user.createdAt,
     updatedAt: now,
   });

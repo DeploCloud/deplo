@@ -144,6 +144,16 @@ export function isValidPreset(style: AvatarStyle, preset: string): boolean {
  *  every team. Nothing is generated from an id or a name. */
 export const AVATAR_VARIANTS = ["nova", "orbit", "quasar", "rune"] as const;
 
+/** What an `initials` preview is drawn from before there is a name to read it
+ *  out of: the product's own, so the row is never four broken pictures. */
+export const FALLBACK_SEED = "deplo";
+
+/** What a picker draws its `initials` row from. A nameless TEAM gets nothing -
+ *  the letters are its only pack, so there is no picture to offer yet. */
+export function previewSeed(letters: string, team?: boolean): string {
+  return letters || (team ? "" : FALLBACK_SEED);
+}
+
 /**
  * A name, as a seed: DiceBear's initials style reads the letters out of it
  * ("Acme Corp" and "Acme-Corp" both draw AC) and the palette out of the whole
@@ -160,7 +170,7 @@ export function avatarSeedFromName(
       .slice(0, 64);
     if (seed) return seed;
   }
-  return "deplo";
+  return FALLBACK_SEED;
 }
 
 /** The picture a name falls back to when there is nothing stored: never a
@@ -169,6 +179,16 @@ export function initialsFallbackUrl(
   ...parts: (string | null | undefined)[]
 ): string {
   return facePath("initials", "default", avatarSeedFromName(...parts));
+}
+
+/** The picture a brand-new account wears: one of the character packs, at random.
+ *  Never the letters - those follow the name, and they are a deliberate pick. */
+export function randomFaceValue(): string {
+  const packs = AVATAR_PACKS.filter((p) => p.style !== "initials");
+  const pack = packs[Math.floor(Math.random() * packs.length)]!;
+  const seed =
+    AVATAR_VARIANTS[Math.floor(Math.random() * AVATAR_VARIANTS.length)]!;
+  return `${pack.style}:${pack.preset}:${seed}`;
 }
 
 /** One tile of a pack's row. */
@@ -208,7 +228,7 @@ export function packRow(
 
 /** What a seed may look like: it lands in a URL path and in a render. For the
  *  initials style the seed IS the letters, which is why it may be two of them. */
-const AVATAR_SEED_RE = /^[A-Za-z0-9_?-]{1,64}$/;
+const AVATAR_SEED_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function isValidAvatarSeed(seed: string): boolean {
   return AVATAR_SEED_RE.test(seed);

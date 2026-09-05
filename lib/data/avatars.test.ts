@@ -14,9 +14,16 @@ import {
   avatarPreviewUrl,
   AVATAR_PACKS,
   AVATAR_VARIANTS,
+  DEFAULT_PACK,
+  facePath,
+  faceParts,
+  FALLBACK_SEED,
   INITIALS_PRESETS,
+  isValidUserAvatarValue,
   packRow,
   packsFor,
+  previewSeed,
+  randomFaceValue,
 } from "../apps/avatar-shared";
 import {
   seedIdentity,
@@ -227,6 +234,8 @@ test("a seed that is not a plain word is refused, in and out of the URL", async 
     "pixelbot:evil.com/x",
     // A preset of the OTHER style: each style owns its own list.
     "initials:terminal:AL",
+    // "?" ends a URL path, so the picture would never arrive.
+    "initials:default:?",
     "nosuchstyle:electric:AL",
     "glyphs:electric:zoe",
     "pixelbot:default:zoe",
@@ -327,6 +336,41 @@ test("the initials pack varies the palette, every other one is four fixed varian
     [...AVATAR_VARIANTS],
   );
   assert.equal(faces.filter((t) => t.derived).length, 0);
+});
+
+test("a face nobody picked is random, and never the letters", () => {
+  const seen = new Set<string>();
+  for (let i = 0; i < 40; i++) {
+    const value = randomFaceValue();
+    assert.ok(isValidUserAvatarValue(value), value);
+    assert.notEqual(
+      faceParts(value)?.style,
+      "initials",
+      "the letters are a pick",
+    );
+    seen.add(value);
+  }
+  assert.ok(seen.size > 1, "one fixed face is not a random one");
+});
+
+test("no name yet: a person's row is still drawn, a team's is not", () => {
+  // The bug this pins: an empty seed (or the "?" that stood in for one) drew
+  // four missing pictures in the wizard's picker.
+  assert.equal(previewSeed(""), FALLBACK_SEED);
+  assert.equal(previewSeed("AL"), "AL");
+  assert.equal(
+    previewSeed("", true),
+    "",
+    "a team has no other pack to fall to",
+  );
+  assert.equal(
+    facePath("initials", "default", previewSeed("")),
+    "/api/avatar/initials/default/deplo.svg",
+  );
+  assert.deepEqual(
+    packRow(DEFAULT_PACK, previewSeed("")).map((t) => t.seed),
+    Array(4).fill(FALLBACK_SEED),
+  );
 });
 
 test("nothing in a pack's row is generated from who is looking", () => {

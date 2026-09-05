@@ -36,6 +36,7 @@ import {
 } from "./data/identity-test-helpers";
 import { capabilitiesForRole } from "./membership-shared";
 import { monogramColor } from "./avatar-colors";
+import { faceParts } from "./apps/avatar-shared";
 
 /**
  * Auth cut-set (b) tests against pglite (relational-store PLAN Step 3):
@@ -102,6 +103,16 @@ test("createAccountWithTeam writes user + team + owner membership with caps", as
     new Set(caps.map((r) => r.c)),
     new Set(capabilitiesForRole("owner")),
   );
+});
+
+test("an account created with no picture gets a face, not the letters", async () => {
+  const { user } = await createAccountWithTeam(ACCOUNT);
+  const urow = (
+    await db.select().from(usersTable).where(eq(usersTable.id, user.id))
+  )[0]!;
+  const parts = faceParts(urow.image);
+  assert.ok(parts, `expected a generated face, got ${urow.image}`);
+  assert.notEqual(parts.style, "initials");
 });
 
 test("createAccountWithTeam rejects a duplicate username / email / team name", async () => {

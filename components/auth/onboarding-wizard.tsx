@@ -11,8 +11,8 @@ import {
 } from "@/components/auth/auth-chrome";
 import {
   AccountStep,
-  EMPTY_ACCOUNT,
   EMPTY_TEAM,
+  newAccountDraft,
   StepDots,
   TeamStep,
 } from "@/components/auth/wizard-steps";
@@ -63,7 +63,7 @@ export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
-  const [account, setAccount] = React.useState(EMPTY_ACCOUNT);
+  const [account, setAccount] = React.useState(newAccountDraft);
   const [team, setTeam] = React.useState(EMPTY_TEAM);
 
   function submit() {

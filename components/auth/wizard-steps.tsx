@@ -8,10 +8,12 @@ import {
   avatarChoiceFromValue,
   avatarPreviewUrl,
   avatarSeedFromName,
+  randomFaceValue,
 } from "@/lib/apps/avatar-shared";
 import {
   avatarInitials,
   TeamAvatar,
+  TeamPlaceholder,
   UserAvatar,
 } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -43,7 +45,7 @@ export type AccountDraft = {
 
 export type TeamDraft = { name: string; image: string | null };
 
-export const EMPTY_ACCOUNT: AccountDraft = {
+const EMPTY_ACCOUNT: AccountDraft = {
   image: null,
   name: "",
   handle: "",
@@ -54,6 +56,24 @@ export const EMPTY_ACCOUNT: AccountDraft = {
 };
 
 export const EMPTY_TEAM: TeamDraft = { name: "", image: null };
+
+/** A fresh account, wearing a face nobody had to pick. It does not follow the
+ *  name as it is typed - only the initials pack does, and only once chosen. */
+export function newAccountDraft(): AccountDraft {
+  return { ...EMPTY_ACCOUNT, image: randomFaceValue() };
+}
+
+/** The team's mark follows the NAME, not the keystroke: it settles once typing
+ *  stops, so the letters do not flicker through a word being written. */
+function useSettledSeed(name: string, ms = 600): string {
+  const seed = name.trim() ? avatarSeedFromName(name) : "";
+  const [settled, setSettled] = React.useState(seed);
+  React.useEffect(() => {
+    const t = setTimeout(() => setSettled(seed), ms);
+    return () => clearTimeout(t);
+  }, [seed, ms]);
+  return settled;
+}
 
 /** The handle the account gets: derived from the name until it is edited. */
 export function draftHandle(d: AccountDraft): string {
@@ -344,6 +364,8 @@ export function TeamStep({
   onSubmit: () => void;
 }) {
   const ready = draft.name.trim() !== "";
+  const seed = useSettledSeed(draft.name);
+  const picture = avatarPreviewUrl(draft.image);
   return (
     <form
       className="deplo-stagger space-y-5"
@@ -360,18 +382,18 @@ export function TeamStep({
           sources={{
             team: true,
             choice: avatarChoiceFromValue(draft.image),
-            letters: avatarSeedFromName(draft.name),
+            letters: seed,
           }}
           onSave={async (image) => {
             onChange({ ...draft, image });
             return { ok: true };
           }}
           preview={
-            <TeamAvatar
-              name={draft.name || "Team"}
-              avatarUrl={draft.image}
-              size="4xl"
-            />
+            picture || seed ? (
+              <TeamAvatar name={seed} avatarUrl={picture} size="4xl" />
+            ) : (
+              <TeamPlaceholder className="size-20" />
+            )
           }
         />
       </div>

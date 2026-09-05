@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { Users } from "lucide-react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { initialsFallbackUrl } from "@/lib/apps/avatar-shared";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,7 @@ export type AvatarSize = keyof typeof SIZE;
 
 /**
  * Two letters for the monogram, from the first thing that reads like a name.
+ * Empty while there is no name at all - a picker previews its own seed instead.
  *
  * Takes the local part of an email, because the one place that passes one is the
  * migration picker, where a person being imported may have nothing else yet.
@@ -40,7 +43,7 @@ export function avatarInitials(
     const letters = base.replace(/^@/, "").trim();
     if (letters) return letters.slice(0, 2).toUpperCase();
   }
-  return "?";
+  return "";
 }
 
 function Mark({
@@ -113,5 +116,20 @@ export function TeamAvatar({
       size={size}
       className={className}
     />
+  );
+}
+
+/** A team with no name yet: there are no letters to draw, so it wears the
+ *  generic mark until there are. Sized by the caller. */
+export function TeamPlaceholder({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "grid aspect-square place-items-center rounded-full bg-muted text-muted-foreground",
+        className,
+      )}
+    >
+      <Users className="size-1/2" />
+    </span>
   );
 }

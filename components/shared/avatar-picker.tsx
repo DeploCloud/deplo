@@ -26,8 +26,10 @@ import {
   MAX_AVATAR_STRING_LEN,
   packRow,
   packsFor,
+  previewSeed,
 } from "@/lib/apps/avatar-shared";
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
+import { TeamPlaceholder } from "@/components/shared/user-avatar";
 
 /**
  * Change a profile picture by clicking the picture. Every source commits on the
@@ -42,7 +44,9 @@ export type AvatarSources = {
    *  `avatarChoiceFromValue` where a form still holds the raw value. */
   choice: AvatarChoice;
   /** Their initials, which ARE the seed of an `initials` picture: DiceBear reads
-   *  the letters out of it ("Ada Lovelace" and "AL" both draw AL). */
+   *  the letters out of it ("Ada Lovelace" and "AL" both draw AL). Empty until
+   *  there is a name: a person's row then previews `FALLBACK_SEED`, a team's -
+   *  which has no other pack to fall back on - shows the generic mark. */
   letters: string;
   /** Their Gravatar address when the instance allows it, so the card previews
    *  the real thing. Absent = the source is not offered. */
@@ -97,11 +101,12 @@ export function AvatarPicker({
   const letters = sources?.letters;
   const team = sources?.team;
   React.useEffect(() => {
-    if (!preload || !letters) return;
+    const seed = letters === undefined ? "" : previewSeed(letters, team);
+    if (!preload || !seed) return;
     // Fetched now, not on the click: the dialog would otherwise open onto empty
     // circles and fill them in one by one.
     for (const pack of packsFor(team))
-      for (const tile of packRow(pack, letters)) {
+      for (const tile of packRow(pack, seed)) {
         const img = new window.Image();
         img.src = facePath(tile.style, tile.preset, tile.seed);
       }
@@ -262,7 +267,8 @@ function FaceTile({
   onClick,
   small = false,
 }: {
-  src: string;
+  /** Null while there is no seed to draw from - the generic mark stands in. */
+  src: string | null;
   label: string;
   selected: boolean;
   disabled?: boolean;
@@ -293,14 +299,18 @@ function FaceTile({
         disabled && "cursor-not-allowed opacity-60",
       )}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        // The picture is opaque, so this only shows while it is still coming.
-        className="block w-full rounded-full bg-muted"
-      />
+      {src ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          // The picture is opaque, so this only shows while it is still coming.
+          className="block w-full rounded-full bg-muted"
+        />
+      ) : (
+        <TeamPlaceholder className="w-full" />
+      )}
     </button>
   );
 }
@@ -378,6 +388,7 @@ function AvatarSourceDialog({
   onDrop: (e: React.DragEvent) => void;
 }) {
   const { choice, letters, gravatar } = sources;
+  const seed = previewSeed(letters, sources.team);
   const worn = choice.kind === "generated" ? choice : null;
   const packs = packsFor(sources.team);
   const [pack, setPack] = React.useState(
@@ -403,12 +414,14 @@ function AvatarSourceDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-4 gap-2">
-          {packRow(pack, letters).map((tile) => (
+          {packRow(pack, seed).map((tile) => (
             <FaceTile
               key={`${tile.preset}:${tile.seed}`}
-              src={facePath(tile.style, tile.preset, tile.seed)}
+              src={
+                tile.seed ? facePath(tile.style, tile.preset, tile.seed) : null
+              }
               label={tile.label}
-              disabled={busy}
+              disabled={busy || !tile.seed}
               // The derived tile is what storing NOTHING already draws, for a
               // person and a team alike.
               selected={
@@ -437,7 +450,7 @@ function AvatarSourceDialog({
                 src={facePath(
                   p.style,
                   p.preset,
-                  p.style === "initials" ? letters : AVATAR_VARIANTS[0],
+                  p.style === "initials" ? seed : AVATAR_VARIANTS[0],
                 )}
                 label={p.label}
                 disabled={busy}
