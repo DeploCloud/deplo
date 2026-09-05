@@ -80,7 +80,7 @@ function withAssetUrls(t: ApiTemplate): CatalogTemplate {
     logo: t.logo ? templateAssetUrl(t.logo) : null,
     variants: t.variants.map((variant) => ({
       ...variant,
-      logo: templateAssetUrl(variant.logo),
+      logo: variant.logo ? templateAssetUrl(variant.logo) : null,
       images: variant.images.map(templateAssetUrl),
     })),
   };

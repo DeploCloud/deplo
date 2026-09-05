@@ -97,7 +97,7 @@ export default async function TemplatePage(
   const manyVariants = template.variants.length > 1;
 
   // `getTemplate` hands back raw asset paths, unlike `listCatalog`.
-  const logo = templateAssetUrl(variant.logo);
+  const logo = variant.logo ? templateAssetUrl(variant.logo) : null;
   const images = variant.images.map(templateAssetUrl);
   const accent = await templateAccent(template.slug, logo);
   const veil = veilProps(accent, "on");

@@ -34,7 +34,7 @@ export type CatalogTemplateVariant = Omit<
   ApiTemplateVariant,
   "logo" | "images"
 > & {
-  logo: string;
+  logo: string | null;
   images: string[];
 };
 

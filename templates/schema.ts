@@ -82,7 +82,8 @@ export const apiTemplateVariantSchema = z
       .string()
       .regex(
         /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/,
-      ),
+      )
+      .nullable(),
     images: z.array(
       z
         .string()
