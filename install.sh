@@ -2304,8 +2304,9 @@ takeover_uninstall() {
   ours="$(deplo_workloads)"
   if [ -n "$ours" ]; then
     step "Removing $(printf '%s\n' "$ours" | wc -l | tr -d ' ') container(s) Deplo deployed here"
+    # -v: the anonymous volumes an image declares (mongo's configdb) go with them.
     # shellcheck disable=SC2086
-    docker rm -f $ours >&9 2>&9 || true
+    docker rm -fv $ours >&9 2>&9 || true
   fi
   docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" down -v >&9 2>&9 || true
   docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" down >&9 2>&9 || true
