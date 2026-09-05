@@ -74,7 +74,22 @@ export interface SourceSecurity {
   password: string;
 }
 
+/** A backup schedule the panel kept for a service: a database dump, or a volume. */
+export interface SourceBackupSchedule {
+  schedule?: string | null;
+  enabled?: boolean | null;
+  /** How many artifacts the panel kept at that destination. */
+  keepLatestCount?: number | null;
+  destination?: { name?: string | null } | null;
+  /** The one volume a VOLUME backup covered; a dump names none. */
+  volumeName?: string | null;
+  /** For a dump taken inside a stack: the compose service it ran against. */
+  serviceName?: string | null;
+}
+
 export interface SourceApplication {
+  /** Volume backups the panel scheduled for it (Dokploy: `volumeBackups`). */
+  backups?: SourceBackupSchedule[] | null;
   /**
    * Shared variables this service's own values reference (`{{team.KEY}}` /
    * `${{project.KEY}}`). A WHOLE-value reference of the same name becomes a LINK
@@ -211,6 +226,8 @@ export interface SourceApplication {
 }
 
 export interface SourceCompose {
+  /** Volume backups and in-stack database dumps the panel scheduled for it. */
+  backups?: SourceBackupSchedule[] | null;
   /**
    * Shared variables this service's own values reference (`{{team.KEY}}` /
    * `${{project.KEY}}`). A WHOLE-value reference of the same name becomes a LINK
@@ -294,15 +311,7 @@ export interface SourceDatabase {
   description?: string | null;
   dockerImage?: string | null;
   /** The panel's own backup schedules for it, where the detail row carries them. */
-  backups?:
-    | {
-        schedule?: string | null;
-        enabled?: boolean | null;
-        /** How many artifacts the panel kept at that destination. */
-        keepLatestCount?: number | null;
-        destination?: { name?: string | null } | null;
-      }[]
-    | null;
+  backups?: SourceBackupSchedule[] | null;
   databaseName?: string | null;
   databaseUser?: string | null;
   databasePassword?: string | null;

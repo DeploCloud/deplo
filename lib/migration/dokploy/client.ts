@@ -312,6 +312,43 @@ export interface DokployDestination {
   secretAccessKey?: string | null;
 }
 
+/** One `volumeBackups.list` row (Dokploy 0.30+): a named volume to an S3 destination. */
+export interface DokployVolumeBackup {
+  volumeBackupId?: string | null;
+  name?: string | null;
+  volumeName?: string | null;
+  cronExpression?: string | null;
+  destinationId?: string | null;
+  destination?: { name?: string | null } | null;
+  keepLatestCount?: number | null;
+  enabled?: boolean | null;
+  serviceName?: string | null;
+}
+
+/**
+ * The volume backups scheduled for one application or stack. Best-effort the
+ * same way a destination is: an older panel has no such route.
+ */
+export async function listVolumeBackups(
+  c: SourceCredential,
+  id: string,
+  type: "application" | "compose",
+): Promise<DokployVolumeBackup[]> {
+  try {
+    const rows = await get<DokployVolumeBackup[] | null>(
+      c,
+      "volumeBackups.list",
+      {
+        id,
+        volumeBackupType: type,
+      },
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
 /** The S3 stores the organization backs up to. Best-effort: a key that may not
  *  read them, or a Dokploy without the procedure, is a report line short. */
 export async function listDestinations(

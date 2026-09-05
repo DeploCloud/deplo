@@ -415,7 +415,12 @@ async function get<T>(
   return (await res.json()) as T;
 }
 
-/** A read that a missing object must not fail the whole import over. */
+/**
+ * A read that a missing ROUTE must not fail the whole import over: an older
+ * build answers 404 for a list it does not keep. Anything else the panel says
+ * (a 429 from its rate limit, a 5xx) is thrown: swallowed, it read as "no
+ * backup destination" and "not running" - a copy over a live volume.
+ */
 async function getOr<T>(
   c: SourceCredential,
   path: string,
@@ -423,8 +428,10 @@ async function getOr<T>(
 ): Promise<T> {
   try {
     return await get<T>(c, path);
-  } catch {
-    return fallback;
+  } catch (e) {
+    if (e instanceof CoolifyHttpError && (e.status === 404 || e.status === 405))
+      return fallback;
+    throw e;
   }
 }
 

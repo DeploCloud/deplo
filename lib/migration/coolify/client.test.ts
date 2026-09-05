@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   __resetCoolifyRateLimitForTest,
+  listDatabaseBackups,
   listProjects,
+  listS3Storages,
   panelFromHealth,
   stopResource,
 } from "./client";
@@ -237,4 +239,21 @@ test("the one write is a stop, and it posts", async (t) => {
       method: "POST",
     },
   ]);
+});
+
+test("a list the panel does not keep answers empty; a list it refuses to answer throws", async (t) => {
+  reset(t);
+  // An older build without the route: 404 is "no such list".
+  refuses(404, "Not found.");
+  assert.deepEqual(await listS3Storages(cred), []);
+  assert.deepEqual(await listDatabaseBackups(cred, "db-1"), []);
+  // The rate limit is NOT "no such list": swallowed, it read as no destination.
+  __setMigrationFetchForTest(
+    async () =>
+      new Response(JSON.stringify({ message: "Too Many Attempts." }), {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "0" },
+      }),
+  );
+  await assert.rejects(() => listS3Storages(cred), /429|Too Many/);
 });

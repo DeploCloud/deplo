@@ -354,11 +354,25 @@ async function detail(
     const row = await getDatabase(c, id);
     const engine = coolifyDbKindOf(row) ?? (kind as SourceDbKind);
     // Only the schedules that save to a store: a local-only one has nowhere to
-    // land here, and the report says so through the same note.
+    // land here, and the report says so through the same note. A list the panel
+    // would not answer for is a LINE, never a silence: a 429 used to read as
+    // "no schedule" and "no store".
+    const unread: string[] = [];
     const [schedules, stores] = await Promise.all([
-      listDatabaseBackups(c, id),
-      listS3Storages(c).catch(() => []),
+      listDatabaseBackups(c, id).catch((e) => {
+        unread.push(
+          `{panel} would not answer for its backup schedules (${e instanceof Error ? e.message : "refused"}), so none came across - set them under Backups.`,
+        );
+        return [];
+      }),
+      listS3Storages(c).catch((e) => {
+        unread.push(
+          `{panel} would not answer for its S3 storages (${e instanceof Error ? e.message : "refused"}), so its backup destination could not be named.`,
+        );
+        return [];
+      }),
     ]);
+    envNotes.push(...unread);
     // The store a schedule saves to: by id when the list carries one, else the
     // only store there is - the API lists stores without their id (4.3.16).
     const storeFor = (b: { s3_storage_id?: number | null }) =>

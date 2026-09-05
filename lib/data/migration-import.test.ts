@@ -439,6 +439,84 @@ function importProject(runId: string, projectId: string) {
 
 // Dokploy's `destination.all` hands the store over with its credentials, so the
 // schedule has somewhere to land; one saving elsewhere stays a note.
+test("an application's volume backup comes across as an app backup on that destination", async () => {
+  fixtures["destination.all"] = [
+    {
+      destinationId: "dst-1",
+      name: "nightly",
+      endpoint: "https://s3.acme.test",
+      bucket: "backups",
+      region: "eu-west-1",
+      accessKey: "AK",
+      secretAccessKey: "SK",
+    },
+  ];
+  // The panel keeps these off the application row: one route, asked per app.
+  fixtures["volumeBackups.list"] = [
+    {
+      volumeName: "uploads",
+      cronExpression: "0 4 * * *",
+      enabled: true,
+      keepLatestCount: 3,
+      destinationId: "dst-1",
+    },
+    {
+      volumeName: "cache",
+      cronExpression: "0 4 * * *",
+      enabled: true,
+      destinationId: "dst-1",
+    },
+    {
+      volumeName: "old",
+      cronExpression: "0 6 * * *",
+      enabled: false,
+      destinationId: "dst-1",
+    },
+  ];
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  await db
+    .update(serversTable)
+    .set({ agentPort: 9443, agentCertFingerprint: "ab".repeat(32) })
+    .where(eq(serversTable.id, SERVER_1));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const rows = await db.execute(
+    "select b.schedule, b.retention_count, b.target_kind, d.name as dest from backups b join backup_destination d on d.id = b.destination_id where b.app_id is not null",
+  );
+  const notes = (await db.select().from(itemsTable))
+    .filter((i) => i.runId === runId && i.sourceKind === "application")
+    .map((i) => i.message ?? "");
+  // One schedule per app: the two volumes on the same schedule fold into it.
+  assert.ok(rows.rows.length >= 1, notes.join("\n"));
+  for (const r of rows.rows)
+    assert.deepEqual(
+      {
+        schedule: r.schedule,
+        retention_count: r.retention_count,
+        target_kind: r.target_kind,
+        dest: r.dest,
+      },
+      {
+        schedule: "0 4 * * *",
+        retention_count: 3,
+        target_kind: "app",
+        dest: "nightly",
+      },
+    );
+  assert.ok(
+    notes.some((m) => /schedule came across: 0 4 \* \* \* to nightly/.test(m)),
+    notes.join("\n"),
+  );
+  assert.ok(
+    notes.some((m) =>
+      /volume uploads, volume cache shared the schedule/.test(m),
+    ),
+    notes.join("\n"),
+  );
+  delete fixtures["volumeBackups.list"];
+});
+
 test("a database's backup schedule comes across onto the destination that came with it", async () => {
   fixtures["destination.all"] = [
     {
@@ -2803,6 +2881,38 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
 /* ------------------------------------------------------------------ */
 /* Where the machine is, and where we dial it                          */
 /* ------------------------------------------------------------------ */
+
+test("a scan in another team adopts the source an earlier run registered there", async () => {
+  const panelHost = new URL(URL_BASE).hostname;
+  const credential = {
+    kind: "dokploy" as const,
+    baseUrl: URL_BASE,
+    apiKey: CONNECT.apiKey,
+  };
+  // Team A brought its team over; the machine is Team A's migration source.
+  const added = await asOwner(() =>
+    addServer({ name: "dokploy-host", host: panelHost, importOnly: true }),
+  );
+  // The same person is an owner of team B too (a capability set copied whole).
+  await db.execute(
+    `insert into memberships (id, user_id, team_id, role, created_at) values ('mem_u1_b', '${USER_1}', '${TEAM_B}', 'owner', now())`,
+  );
+  await db.execute(
+    `insert into membership_capabilities (membership_id, capability) select 'mem_u1_b', capability from membership_capabilities where membership_id = 'mem_${USER_1}'`,
+  );
+  // Team B's turn on the same panel: the Install step used to offer to register
+  // a machine Deplo already stands on, and refuse itself.
+  const plan = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    scanMigrationSource(CONNECT),
+  );
+  assert.equal(plan.servers[0]?.deploServerId, added.server.id);
+  const inB = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    migrationMachines(credential, TEAM_B),
+  );
+  assert.equal(inB[0]?.deploServerId, added.server.id, "granted to B now");
+  const inA = await asOwner(() => migrationMachines(credential, TEAM_A));
+  assert.equal(inA[0]?.deploServerId, null, "and no longer A's");
+});
 
 test("a corrected dial address keeps the machine recognisable by the one it came from", async () => {
   // A Dokploy panel behind Cloudflare (or any reverse proxy) answers on the proxy's

@@ -17,6 +17,7 @@ import {
   inspectContainer,
   listAppContainers,
   listDestinations,
+  listVolumeBackups,
   listMembers,
   listNetworks,
   listOrganizations,
@@ -36,7 +37,7 @@ import {
   sourceBindMountsFrom,
   sourceVolumesFrom,
 } from "../map";
-import type { HostMount, NamedVolume } from "../model";
+import type { HostMount, NamedVolume, SourceBackupSchedule } from "../model";
 
 /**
  * The networks the PANEL attached, which the compose file never names: a stack's
@@ -178,6 +179,33 @@ async function serviceRuntime(
   return { volumes, hostMounts, running, notes };
 }
 
+/** Every schedule the panel kept for an app or stack, its destination by name. */
+async function volumeBackupsOf(
+  c: SourceCredential,
+  id: string,
+  kind: "application" | "compose",
+  row: { backups?: SourceBackupSchedule[] | null },
+): Promise<SourceBackupSchedule[]> {
+  const volumes = await listVolumeBackups(c, id, kind);
+  if (volumes.length === 0) return row.backups ?? [];
+  const names = new Map(
+    (await listDestinations(c)).map((d) => [d.destinationId ?? "", d.name]),
+  );
+  return [
+    ...(row.backups ?? []),
+    ...volumes.map((v) => ({
+      schedule: v.cronExpression ?? null,
+      enabled: v.enabled,
+      keepLatestCount: v.keepLatestCount,
+      destination: {
+        name: v.destination?.name ?? names.get(v.destinationId ?? "") ?? null,
+      },
+      volumeName: v.volumeName ?? null,
+      serviceName: v.serviceName ?? null,
+    })),
+  ];
+}
+
 export function dokployClient(c: SourceCredential): MigrationSourceClient {
   return {
     platform: "dokploy",
@@ -195,8 +223,16 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
       const blob = (row as { env?: string | null }).env;
       const traefik =
         kind === "application" ? await readTraefikConfig(c, id) : null;
+      // The panel keeps its volume backups OFF the service row; a stack's own
+      // `backups` are the dumps it takes inside the stack. Both land here as one
+      // list, so an app arrives with every schedule it had.
+      const backups =
+        kind === "application" || kind === "compose"
+          ? await volumeBackupsOf(c, id, kind, row)
+          : undefined;
       return {
         ...row,
+        ...(backups ? { backups } : {}),
         sharedRefs: sharedRefsIn(parseEnvBlob(blob)),
         platformNotes: [
           ...(await panelNetworkNotes(c, row)),

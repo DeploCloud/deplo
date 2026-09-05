@@ -493,3 +493,42 @@ test("a Dokploy that will not list its organizations says so", async (t) => {
   });
   assert.equal(await src.otherTeams(), null);
 });
+
+test("an application's volume backups arrive as its schedules, destination by name", async (t) => {
+  t.after(__resetMigrationFetchForTest);
+  routes({
+    "application.one": { applicationId: "a1", appName: "mxweb", env: "" },
+    "volumeBackups.list": [
+      {
+        volumeBackupId: "vb-1",
+        name: "mxweb-data",
+        volumeName: "mxweb-data",
+        cronExpression: "0 4 * * *",
+        destinationId: "dst-1",
+        keepLatestCount: 3,
+        enabled: true,
+      },
+    ],
+    "destination.all": [
+      {
+        destinationId: "dst-1",
+        name: "nightly",
+        endpoint: "https://s3.acme.test",
+        bucket: "b",
+        accessKey: "AK",
+        secretAccessKey: "SK",
+      },
+    ],
+  });
+  const row = await dokployClient(cred).getService("application", "a1");
+  assert.deepEqual(row.backups, [
+    {
+      schedule: "0 4 * * *",
+      enabled: true,
+      keepLatestCount: 3,
+      destination: { name: "nightly" },
+      volumeName: "mxweb-data",
+      serviceName: null,
+    },
+  ]);
+});

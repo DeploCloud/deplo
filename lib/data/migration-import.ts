@@ -430,6 +430,56 @@ export async function listMigrationTargetTeams(): Promise<
  * every lookup that reads it - the plan's machines, the data copy, the uninstall -
  * is team-scoped, so a source left behind blocks the run and strands its agent.
  */
+async function adoptMigrationSources(
+  teamId: string,
+  addresses: Set<string>,
+): Promise<void> {
+  if (addresses.size === 0) return;
+  const rows = await getDb()
+    .select({
+      id: serversTable.id,
+      ip: serversTable.ip,
+      host: serversTable.host,
+      teamId: serverTeamsTable.teamId,
+    })
+    .from(serversTable)
+    .innerJoin(serverTeamsTable, eq(serverTeamsTable.serverId, serversTable.id))
+    .where(
+      and(
+        eq(serversTable.importOnly, true),
+        isNull(serversTable.uninstallNextAt),
+        ne(serverTeamsTable.teamId, teamId),
+      ),
+    );
+  const admin = await isInstanceAdmin();
+  let moved = 0;
+  for (const r of rows) {
+    const at = [r.ip, r.host].map((a) => a?.trim().toLowerCase() ?? "");
+    if (!at.some((a) => a && addresses.has(a))) continue;
+    if (!admin && !(await holdsTeamWideCapability(r.teamId, "create_projects")))
+      continue;
+    if (await activeMigrationForTeam(r.teamId)) continue;
+    await getDb()
+      .update(serverTeamsTable)
+      .set({ teamId })
+      .where(
+        and(
+          eq(serverTeamsTable.serverId, r.id),
+          eq(serverTeamsTable.teamId, r.teamId),
+        ),
+      );
+    moved++;
+  }
+  if (moved > 0)
+    await recordActivity(
+      "server",
+      `Moved ${moved} migration source ${moved === 1 ? "machine" : "machines"} to this team`,
+      (await getCurrentUser())?.name ?? "a migration",
+      null,
+      teamId,
+    );
+}
+
 export async function handOverMigrationSources(
   fromTeamId: string,
 ): Promise<number> {
@@ -710,6 +760,21 @@ export async function scanMigrationSource(
       .catch(() => []),
     sourceClient(c).listProjects(),
   ]);
+
+  // A source an earlier run registered belongs to THAT run's team, and a scan in
+  // another team could not see it: the Install step then offered to register a
+  // machine Deplo already stands on, and refused itself. A source is the
+  // migration's, not a team's, so this scan claims the ones at this panel's
+  // addresses - the same rule (and the same right) as handing them over.
+  if (!opts.newTeam)
+    await adoptMigrationSources(
+      teamId,
+      new Set(
+        [new URL(c.baseUrl).hostname, ...servers.map((s) => s.ipAddress)]
+          .map((a) => a?.trim().toLowerCase() ?? "")
+          .filter(Boolean),
+      ),
+    );
 
   const existing = opts.newTeam ? nothingHere() : await existingNames(teamId);
   const mayMountHost = await canMountHostVolumes();
@@ -2437,6 +2502,7 @@ async function runImportMigrationProject(
               sourceHost: await hostOfMachine(sourceServerId),
               dbHosts,
               shared,
+              destinations,
             },
             svcReport,
           );
@@ -2803,6 +2869,8 @@ async function importAppService(
     dbHosts: Map<string, string>;
     /** The shared variables this import has already written, by key. */
     shared: SharedIndex;
+    /** Backup destination name (lower-case) -> Deplo destination id. */
+    destinations?: Map<string, string>;
   },
   report: Report,
 ): Promise<string | null> {
@@ -3264,6 +3332,70 @@ async function importAppService(
   // One name in two environments is the commonest shape there is, and it is not an
   // accident to be corrected - only the internal name, which is one per team, has
   // to give way.
+  // The panel's volume backups and in-stack dumps, as app backups here: one per
+  // schedule and destination, and an app backup covers EVERY volume of the app,
+  // so two schedules on two volumes fold into one and the note says so.
+  const schedules = (detail.backups ?? []).filter(
+    (b) => b?.enabled !== false && b.schedule?.trim(),
+  );
+  if (schedules.length > 0) {
+    const { createBackup } = await import("./backups");
+    const seen = new Map<string, string[]>();
+    for (const b of schedules) {
+      const destName = b.destination?.name?.trim() ?? "";
+      const what = b.volumeName?.trim()
+        ? `volume ${b.volumeName.trim()}`
+        : b.serviceName?.trim()
+          ? `a dump of ${b.serviceName.trim()}`
+          : "a dump";
+      const key = `${b.schedule!.trim()}|${destName.toLowerCase()}`;
+      const folded = seen.get(key);
+      if (folded) {
+        folded.push(what);
+        continue;
+      }
+      seen.set(key, [what]);
+      const destinationId = destName
+        ? home.destinations?.get(destName.toLowerCase())
+        : undefined;
+      const where = `${b.schedule!.trim()}${destName ? ` to ${destName}` : ""}`;
+      if (!destinationId) {
+        notes.push(
+          `${what} was backed up on {panel} (${where}), but that destination is not here, so no schedule was set - set one under Backups.`,
+        );
+        continue;
+      }
+      try {
+        await createBackup({
+          name: `${name} to ${destName}`,
+          targetKind: "app",
+          appId: created.id,
+          databaseId: null,
+          destinationId,
+          schedule: b.schedule!.trim(),
+          retentionCount:
+            typeof b.keepLatestCount === "number" && b.keepLatestCount > 0
+              ? b.keepLatestCount
+              : 7,
+        });
+        notes.push(
+          `Its backup schedule came across: ${where}. Here it backs up every volume of the app, not only ${what}.`,
+        );
+      } catch (e) {
+        notes.push(
+          `${what} was backed up on {panel} (${where}); the schedule was not set here: ${
+            e instanceof Error ? e.message : "refused"
+          }. Set one under Backups.`,
+        );
+      }
+    }
+    for (const [key, whats] of seen)
+      if (whats.length > 1)
+        notes.push(
+          `${whats.join(", ")} shared the schedule ${key.split("|")[0]} on {panel}; one app backup here covers them all.`,
+        );
+  }
+
   if (namesake)
     notes.push(
       `This team already has an app called ${name}${
@@ -4146,7 +4278,16 @@ async function importBackupDestinations(
   >;
   try {
     stores = await sourceClient(c).listBackupDestinations();
-  } catch {
+  } catch (e) {
+    // Said, not swallowed: every schedule below then reads "that destination is
+    // not here" with no line saying why.
+    await report.add({
+      sourceKind: "destination",
+      sourceName: "backup destinations",
+      outcome: "manual",
+      targetKind: "destination",
+      message: `{panel} would not answer for its backup stores (${e instanceof Error ? e.message : "refused"}), so no backup destination came across. Add it under Backups, then the schedules.`,
+    });
     return byName;
   }
   if (stores.length === 0) return byName;
