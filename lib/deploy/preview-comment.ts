@@ -9,7 +9,7 @@ import {
   apps as appsTable,
   appPreviews as appPreviewsTable,
 } from "../db/schema/control-plane";
-import { upsertPullRequestComment } from "../github/app";
+import { TransientGithubError, upsertPullRequestComment } from "../github/app";
 import { githubFullName } from "../github/repo-id";
 import { PUBLIC_URL_PLACEHOLDER, resolveManifestBaseUrl } from "../public-url";
 import { withTeam } from "../team-path";
@@ -85,6 +85,32 @@ export function previewCommentBody(input: {
   return parts.join("\n") + "\n";
 }
 
+/** The pauses between attempts at GitHub: a 502 is usually over in seconds. */
+export const COMMENT_RETRY_DELAYS_MS = [2_000, 6_000, 15_000];
+
+/**
+ * Run `fn`, asking again after each delay while it fails with a transient error.
+ * Anything else propagates at once. The caller is fire-and-forget, so the wait
+ * costs nobody anything; without it a GitHub hiccup left "Building" on a pull
+ * request whose preview had been ready for hours.
+ */
+export async function retryTransient<T>(
+  fn: () => Promise<T>,
+  delays: readonly number[],
+  sleep: (ms: number) => Promise<void> = (ms) =>
+    new Promise((r) => setTimeout(r, ms)),
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!(e instanceof TransientGithubError) || attempt >= delays.length)
+        throw e;
+      await sleep(delays[attempt]!);
+    }
+  }
+}
+
 let disabledForTest = false;
 
 /** Test-only: the callers fire this and forget it, and a stray query landing in
@@ -138,13 +164,17 @@ export async function syncPreviewComment(
       host: p.host,
       buildLogUrl,
     });
-    const commentId = await upsertPullRequestComment({
-      installationId,
-      fullName,
-      prNumber: p.prNumber,
-      commentId: p.commentId,
-      body,
-    });
+    const commentId = await retryTransient(
+      () =>
+        upsertPullRequestComment({
+          installationId,
+          fullName,
+          prNumber: p.prNumber,
+          commentId: p.commentId,
+          body,
+        }),
+      COMMENT_RETRY_DELAYS_MS,
+    );
     // Compare-and-set: two rapid `synchronize` deliveries must not both post.
     // A loser simply keeps the winner's id and PATCHes it next time.
     if (commentId && commentId !== p.commentId) {

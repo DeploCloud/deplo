@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { previewCommentBody } from "./preview-comment";
+import { previewCommentBody, retryTransient } from "./preview-comment";
+import { TransientGithubError } from "../github/app";
 
 /**
  * The sticky pull request comment, state by state. What matters is that a state
@@ -50,4 +51,50 @@ test("the build log link is optional and never a placeholder host", () => {
   assert.ok(!none.includes("Build logs"));
   const some = previewCommentBody({ state: { kind: "ready" }, ...at });
   assert.ok(some.includes(`[Build logs](${at.buildLogUrl})`));
+});
+
+test("a transient GitHub failure is asked again, a definitive one is not", async () => {
+  const waits: number[] = [];
+  const sleep = async (ms: number) => {
+    waits.push(ms);
+  };
+  let calls = 0;
+  const flaky = async () => {
+    calls++;
+    if (calls < 3) throw new TransientGithubError("502");
+    return 42;
+  };
+  assert.equal(await retryTransient(flaky, [1, 2, 3], sleep), 42);
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [1, 2]);
+
+  let permanent = 0;
+  await assert.rejects(
+    () =>
+      retryTransient(
+        async () => {
+          permanent++;
+          throw new Error("403");
+        },
+        [1, 2],
+        sleep,
+      ),
+    /403/,
+  );
+  assert.equal(permanent, 1, "a refusal is not asked twice");
+
+  let exhausted = 0;
+  await assert.rejects(
+    () =>
+      retryTransient(
+        async () => {
+          exhausted++;
+          throw new TransientGithubError("still down");
+        },
+        [1],
+        sleep,
+      ),
+    /still down/,
+  );
+  assert.equal(exhausted, 2, "one retry per delay, then give up");
 });

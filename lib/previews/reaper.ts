@@ -31,10 +31,11 @@ const TICK_MS = 60_000;
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Teardowns per tick. Bounds how long one tick can hold the lease. */
-const REAP_BATCH = 20;
+const REAP_BATCH = 50;
 
-/** Pull requests re-checked against GitHub per sweep (the slowest step). */
-const STATE_CHECK_BATCH = 20;
+/** Pull requests re-checked against GitHub per sweep: one API call each, so a
+ *  lost close is found within the hour up to fifty open previews. */
+const STATE_CHECK_BATCH = 50;
 
 function makeOwner(): string {
   return `${hostname()}:${process.pid}:${randomBytes(4).toString("hex")}`;

@@ -610,9 +610,13 @@ export async function getPullRequestState(
   }
 }
 
+/** A GitHub answer worth asking again in a moment: the network, a 5xx, a 429. */
+export class TransientGithubError extends Error {}
+
 /**
- * Create or update Deplo's ONE sticky comment on a pull request. NEVER throws and
- * never rejects: a GitHub failure must not fail a deploy.
+ * Create or update Deplo's ONE sticky comment on a pull request. A definitive
+ * refusal (a 403 for a missing permission, a deleted pull request) answers null;
+ * a transient failure throws {@link TransientGithubError} so the caller may retry.
  */
 export async function upsertPullRequestComment(opts: {
   installationId: string;
@@ -637,8 +641,10 @@ export async function upsertPullRequestComment(opts: {
         },
       );
       if (res.ok) return opts.commentId;
-      // Anything other than "it's gone" is transient - keep the id and retry on
-      // the next transition rather than posting a duplicate.
+      // Anything other than "it's gone" keeps the id rather than posting a
+      // duplicate; a server-side failure is asked again.
+      if (res.status === 429 || res.status >= 500)
+        throw new TransientGithubError(`GitHub answered ${res.status}`);
       if (res.status !== 404 && res.status !== 410) return opts.commentId;
     }
     const created = await githubFetch(
@@ -651,6 +657,8 @@ export async function upsertPullRequestComment(opts: {
       },
     );
     if (!created.ok) {
+      if (created.status === 429 || created.status >= 500)
+        throw new TransientGithubError(`GitHub answered ${created.status}`);
       // A 403 here is the App missing `pull_requests: write`. The Pull requests
       // page already surfaces that, so a log line is honest rather than lossy.
       console.warn(
@@ -661,6 +669,9 @@ export async function upsertPullRequestComment(opts: {
     const json = (await created.json()) as { id?: number };
     return json.id ?? null;
   } catch (e) {
+    if (e instanceof TransientGithubError) throw e;
+    // A failed fetch is the network, which is the transient case by definition.
+    if (e instanceof TypeError) throw new TransientGithubError(e.message);
     console.warn(
       `[deplo-pr-comment] ${fullName}#${prNumber}: ${e instanceof Error ? e.message : String(e)}`,
     );
