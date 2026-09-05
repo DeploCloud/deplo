@@ -369,7 +369,11 @@ function TakeoverWaiting({
           if (live) window.location.replace(target);
           return;
         } catch {
-          if (live && Date.now() - since > CERT_GRACE_MS)
+          // A certificate still being issued fails this probe exactly like
+          // nothing listening does, so only a cutover KNOWN to have succeeded
+          // goes anyway: a silent origin may be a rollback under way, and its
+          // Try again is on this page, not on a dead https address.
+          if (live && removedAt != null && Date.now() - since > CERT_GRACE_MS)
             window.location.replace(target);
           return;
         }
