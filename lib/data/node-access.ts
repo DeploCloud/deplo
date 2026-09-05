@@ -141,7 +141,7 @@ function groupCaps<T extends { key: string; capability: string }>(
  * Build the index. `null` when the user can't act in this team at all, not a
  * member and not an instance admin, which is the first and last word on access.
  */
-async function buildIndex(
+const buildIndex = cache(async function buildIndex(
   userId: string,
   teamId: string,
   admin: boolean,
@@ -277,7 +277,7 @@ async function buildIndex(
     projectGrants: groupCaps(pGrants),
     appGrants: groupCaps(aGrants),
   };
-}
+});
 
 /**
  * Whether the PERSON holds `manage_team` in this team, straight off the junction -

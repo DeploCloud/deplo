@@ -156,6 +156,23 @@ export function instanceHost(): string {
  * Deplo is an agent too"). , never "may this caller do X".
  */
 export function deploHostSelfAddresses(): Set<string> {
+  // A NIC scan plus a /proc read on every call, and a page asks per server row.
+  const now = Date.now();
+  const key = `${process.env.DEPLO_SERVER_IP}|${process.env.DEPLO_PUBLIC_URL}|${publicBaseUrl()}`;
+  if (
+    !selfAddresses ||
+    selfAddresses.key !== key ||
+    now - selfAddresses.at > SELF_ADDRESSES_TTL_MS
+  )
+    selfAddresses = { at: now, key, value: computeSelfAddresses() };
+  return selfAddresses.value;
+}
+
+const SELF_ADDRESSES_TTL_MS = 30_000;
+let selfAddresses: { at: number; key: string; value: Set<string> } | null =
+  null;
+
+function computeSelfAddresses(): Set<string> {
   const addrs = new Set<string>();
   const add = (v?: string | null) => {
     const s = v?.trim().toLowerCase();
