@@ -3,7 +3,7 @@
  * as the *storage* format, not the *input* format.
  */
 
-import { parseCron } from "./backups/cron";
+import { expandCronMacro, parseCron } from "./backups/cron";
 
 export { nextCronRun, parseCron } from "./backups/cron";
 
@@ -128,7 +128,8 @@ const clamp = (n: number, lo: number, hi: number) =>
   Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.trunc(n))) : lo;
 
 /** Collapse runs of whitespace so a hand-typed expression compares by value. */
-const normalize = (cron: string) => cron.trim().replace(/\s+/g, " ");
+const normalize = (cron: string) =>
+  expandCronMacro(cron).trim().replace(/\s+/g, " ");
 
 /** A field that is a bare integer inside `[min, max]`, else null. */
 function intField(field: string, min: number, max: number): number | null {

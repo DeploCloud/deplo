@@ -569,3 +569,35 @@ test("cancelling settles the row even when the agent cannot be reached", async (
   assert.equal(after.status, "failed");
   assert.match(after.error ?? "", /Stopped by Ada/);
 });
+
+test("a retry gets the job's whole timeout, not what the first attempt left", async () => {
+  // 120s timeout, two attempts. The first attempt fails at 100s; the second
+  // starts a minute later and must be allowed its own 120s. Judging it against
+  // the RUN's start would kill it after 20s.
+  await seedCronJob(db, { id: "cron_1", timeoutSeconds: 120, maxAttempts: 2 });
+  await fireDueJobs([MINUTE]);
+  const at = (s: number) => new Date(MINUTE.getTime() + s * 1000);
+
+  agent.settleAll({ exitCode: 1, stderr: "first" });
+  await reapInFlightRuns(at(105));
+  let run = await oneRun("cron_1");
+  assert.equal(run.attempt, 1);
+
+  agent.nextState = { found: true, running: true };
+  await reapInFlightRuns(at(170));
+  assert.equal(agent.started.length, 2, "the second attempt is out");
+
+  // 80s into a 120s attempt: healthy, whatever the run's own age says.
+  await reapInFlightRuns(at(250));
+  run = await oneRun("cron_1");
+  assert.equal(run.status, "running");
+  assert.deepEqual(agent.killed, [], "nothing was killed early");
+
+  // Past attempt 2's own timeout plus grace (its budget is counted from the
+  // run's start: two attempts' worth plus one backoff), with the agent still
+  // saying "running": that is the dead-timer case the deadline exists for.
+  await reapInFlightRuns(at(2 * (120 + 120) + 60 + 5));
+  run = await oneRun("cron_1");
+  assert.equal(run.status, "timedout");
+  assert.equal(agent.killed.length, 1);
+});

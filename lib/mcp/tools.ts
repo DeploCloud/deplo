@@ -1606,7 +1606,7 @@ const CRON: McpToolDef[] = [
         .string()
         .optional()
         .describe(
-          "Multi-container app: the compose service to run the command in. Omitted, the job lands in whichever container of the stack is up.",
+          "Multi-container app: the compose service to run the command in. Omitted, the job runs in the app's own container - the service its domain routes to.",
         ),
     }),
     query: /* GraphQL */ `

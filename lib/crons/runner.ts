@@ -11,8 +11,10 @@ import {
   cronJobs as cronJobsTable,
   cronRuns as cronRunsTable,
   databases as databasesTable,
+  domains as domainsTable,
 } from "../db/schema/control-plane";
 import { decryptSecretOrThrow } from "../crypto";
+import { composeServiceNames } from "../deploy/compose-stack";
 import { newId } from "../ids";
 import {
   AgentCronUnsupportedError,
@@ -20,6 +22,7 @@ import {
   connectCronAgent,
   type AgentConnection,
 } from "../infra/agent-client";
+import { shouldFire } from "../notify/cooldown";
 import { dispatchAlert } from "../notify/dispatch";
 import type { CronRunStatus } from "../types";
 import { cronMatchesInZone, dedupeKeyFor } from "./cron-tz";
@@ -128,10 +131,28 @@ export interface SchedulableJob {
   target: CronTarget;
 }
 
+/**
+ * The container a job runs in when it names none: the service a domain routes
+ * to, else the first one the compose file declares, else the slug (a single-image
+ * app's only container). Never "whichever the host listed first".
+ */
+export function primaryServiceOf(app: {
+  slug: string;
+  compose: string | null;
+  routedService: string | null;
+}): string {
+  return app.routedService ?? composeServiceNames(app.compose)[0] ?? app.slug;
+}
+
 /** Assemble a target from the joined columns, or null when the target is gone. */
 function targetOf(
   job: JobRow,
-  app: { slug: string; serverId: string } | null,
+  app: {
+    slug: string;
+    serverId: string;
+    compose: string | null;
+    routedService: string | null;
+  } | null,
   db: { host: string; serverId: string } | null,
 ): CronTarget | null {
   if (job.appId && app) {
@@ -139,7 +160,7 @@ function targetOf(
       serverId: app.serverId,
       projectId: job.appId,
       slug: app.slug,
-      primaryService: app.slug,
+      primaryService: primaryServiceOf(app),
       path: `/apps/${app.slug}/cron-jobs`,
     };
   }
@@ -156,10 +177,19 @@ function targetOf(
   return null;
 }
 
+/** The service an app's domain routes to, the primary domain first - as a
+ *  subquery, so the page and the scheduler read the same rule. */
+export const routedServiceSql = (appId: typeof appsTable.id) =>
+  sql<string | null>`(select ${domainsTable.service} from ${domainsTable}
+    where ${domainsTable.appId} = ${appId} and ${domainsTable.service} is not null
+    order by ${domainsTable.isPrimary} desc, ${domainsTable.createdAt} asc limit 1)`;
+
 const targetColumns = {
   job: cronJobsTable,
   appSlug: appsTable.slug,
   appServerId: appsTable.serverId,
+  appCompose: appsTable.compose,
+  appRoutedService: routedServiceSql(appsTable.id),
   dbHost: databasesTable.host,
   dbServerId: databasesTable.serverId,
 };
@@ -168,13 +198,20 @@ function assembleTarget(r: {
   job: JobRow;
   appSlug: string | null;
   appServerId: string | null;
+  appCompose: string | null;
+  appRoutedService: string | null;
   dbHost: string | null;
   dbServerId: string | null;
 }): CronTarget | null {
   return targetOf(
     r.job,
     r.appSlug && r.appServerId
-      ? { slug: r.appSlug, serverId: r.appServerId }
+      ? {
+          slug: r.appSlug,
+          serverId: r.appServerId,
+          compose: r.appCompose,
+          routedService: r.appRoutedService,
+        }
       : null,
     r.dbHost && r.dbServerId
       ? { host: r.dbHost, serverId: r.dbServerId }
@@ -247,9 +284,19 @@ export async function listInFlightRuns(): Promise<InFlightRun[]> {
   return out;
 }
 
-/** When the control plane stops believing a run is still going. */
+/**
+ * When the control plane stops believing a run is still going. Bounded per
+ * ATTEMPT: each earlier attempt may have used its whole timeout plus grace, then
+ * a backoff, and the current one is owed the same - judged from the run's start
+ * alone, a retry was killed with most of its timeout unused.
+ */
 export function deadlineOf(run: RunRow): number {
-  return Date.parse(run.startedAt) + run.timeoutSeconds * 1000 + REAP_GRACE_MS;
+  const attemptMs = run.timeoutSeconds * 1000 + REAP_GRACE_MS;
+  return (
+    Date.parse(run.startedAt) +
+    (run.attempt + 1) * attemptMs +
+    run.attempt * RETRY_BACKOFF_MS
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -323,15 +370,21 @@ function raiseAlert(
   // anyone at 03:00. It is visible in the history and on the job's row instead.
   if (status === "skipped") return;
 
+  // One repeated condition per job: an every-minute job that keeps failing says
+  // so once per cooldown, not 1440 times a day, and a success arms the next
+  // failure as a fresh edge.
+  const dedupeId = `cron:${r.job.id}`;
   const attempts = r.run.attempt + 1;
   const tried = attempts > 1 ? ` after ${attempts} attempts` : "";
   if (status === "succeeded") {
+    shouldFire("cron_job_failed", dedupeId, "ok");
     dispatchAlert({
       teamId: r.run.teamId,
       key: "cron_job_succeeded",
       title: `Cron job "${r.job.name}" finished`,
       body: `The command completed successfully${tried}.`,
       path: r.target.path,
+      dedupe: { id: dedupeId, state: "ok" },
     });
     return;
   }
@@ -350,6 +403,7 @@ function raiseAlert(
         : `Cron job "${r.job.name}" failed`,
     body,
     path: r.target.path,
+    dedupe: { id: dedupeId, state: status },
   });
 }
 

@@ -13,6 +13,7 @@ import {
   cronRuns as cronRunsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
+import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedDatabase, TRUNCATE_BACKUPS } from "./backup-test-helpers";
@@ -452,4 +453,100 @@ test("a job whose parent the caller cannot see is not listed", async () => {
     [],
     `job ${id} outlived the app it belongs to`,
   );
+});
+
+/* ---- The edges the live matrix found ------------------------------ */
+
+test("a variable left without a value keeps the one it had", async () => {
+  const job = await asOwner(() =>
+    crons.createCronJob("app", "prj_1", {
+      ...validJob,
+      env: [
+        { key: "A", value: "1" },
+        { key: "B", value: "2" },
+      ],
+    }),
+  );
+  // The editor cannot read A back, so it sends A with no value and a new C.
+  const updated = await asOwner(() =>
+    crons.updateCronJob(job.id, {
+      env: [
+        { key: "A", value: null },
+        { key: "C", value: "3" },
+      ],
+    }),
+  );
+  assert.deepEqual(updated.envKeys, ["A", "C"]);
+  const rows = await db
+    .select()
+    .from(cronJobEnv)
+    .where(eq(cronJobEnv.jobId, job.id));
+  assert.equal(decryptSecret(rows.find((r) => r.key === "A")!.valueEnc), "1");
+  // A key that was never stored has nothing to keep.
+  await assert.rejects(
+    asOwner(() =>
+      crons.updateCronJob(job.id, { env: [{ key: "Z", value: null }] }),
+    ),
+    /Give "Z" a value/,
+  );
+});
+
+test("a schedule that never comes up is refused", async () => {
+  await assert.rejects(
+    asOwner(() =>
+      crons.createCronJob("app", "prj_1", {
+        ...validJob,
+        schedule: "0 0 31 2 *",
+      }),
+    ),
+    /never comes up/,
+  );
+  // Leap day is rare, not impossible.
+  const job = await asOwner(() =>
+    crons.createCronJob("app", "prj_1", {
+      ...validJob,
+      schedule: "0 0 29 2 *",
+    }),
+  );
+  assert.equal(job.schedule, "0 0 29 2 *");
+  // Names and macros are schedules too.
+  const named = await asOwner(() =>
+    crons.updateCronJob(job.id, { schedule: "0 9 * * MON-FRI" }),
+  );
+  assert.equal(named.schedule, "0 9 * * MON-FRI");
+  assert.ok(named.nextRunAt);
+});
+
+test("editing a job onto a container the stack does not have is refused", async () => {
+  await seedApp(db, {
+    id: "prj_stack",
+    slug: "stack",
+    source: "compose",
+    compose:
+      "services:\n  web:\n    image: nginx\n  worker:\n    image: alpine\n",
+  });
+  await enableCrons(db, "app", "prj_stack");
+  const job = await asOwner(() =>
+    crons.createCronJob("app", "prj_stack", { ...validJob, service: "worker" }),
+  );
+  await assert.rejects(
+    asOwner(() => crons.updateCronJob(job.id, { service: "ghost" })),
+    /No container named "ghost"/,
+  );
+  // With no routed domain, "the app's own" is the first service declared -
+  // never whichever container the host happened to list first.
+  const view = await asOwner(() => crons.listAppCronJobs("prj_stack"));
+  assert.equal(view.primaryService, "web");
+  assert.deepEqual(view.services, ["web", "worker"]);
+});
+
+test("a database job cannot name a container", async () => {
+  await assert.rejects(
+    asOwner(() =>
+      crons.createCronJob("database", "db_1", { ...validJob, service: "web" }),
+    ),
+    /one container/,
+  );
+  const view = await asOwner(() => crons.listDatabaseCronJobs("db_1"));
+  assert.equal(view.primaryService, null);
 });

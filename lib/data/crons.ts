@@ -30,6 +30,8 @@ import {
   cancelRun,
   loadInFlightRun,
   loadSchedulableJob,
+  primaryServiceOf,
+  routedServiceSql,
   runJobNow,
 } from "../crons/runner";
 import type {
@@ -59,6 +61,9 @@ const MIN_KEEP_RUNS = 10;
 const MAX_KEEP_RUNS = 500;
 const MAX_ATTEMPTS = 4;
 const MAX_ENV_VARS = 50;
+/** A schedule with no fire this far ahead is a typo (Feb 31), not a plan. Four
+ *  years, so a leap-day job passes. */
+const NEVER_FIRES_DAYS = 4 * 366;
 
 export interface CronJobDTO {
   id: string;
@@ -127,6 +132,9 @@ export interface CronJobsView {
   /** Compose services that can be picked as a job's container. Empty for a
    *  database (one container) and when the host cannot be reached. */
   services: string[];
+  /** Where a job that names no container runs: the service the app's domain
+   *  routes to, else the first declared. Null for a database. */
+  primaryService: string | null;
 }
 
 type JobRow = typeof cronJobsTable.$inferSelect;
@@ -229,9 +237,12 @@ async function gateDatabase(databaseId: string) {
 /**
  * The gate for an existing job, resolved through whichever target it hangs off.
  */
-async function gateJob(
-  jobId: string,
-): Promise<{ job: JobRow; teamId: string; targetEnabled: boolean }> {
+async function gateJob(jobId: string): Promise<{
+  job: JobRow;
+  teamId: string;
+  targetEnabled: boolean;
+  app: Awaited<ReturnType<typeof gateApp>>["app"] | null;
+}> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
     .select()
@@ -242,11 +253,11 @@ async function gateJob(
   if (!job) throw new Error("Cron job not found");
   if (job.appId) {
     const { app } = await gateApp(job.appId);
-    return { job, teamId, targetEnabled: app.cronEnabled };
+    return { job, teamId, targetEnabled: app.cronEnabled, app };
   }
   if (job.databaseId) {
     const { database } = await gateDatabase(job.databaseId);
-    return { job, teamId, targetEnabled: database.cronEnabled };
+    return { job, teamId, targetEnabled: database.cronEnabled, app: null };
   }
   throw new Error("Cron job not found");
 }
@@ -270,8 +281,9 @@ export interface CronJobInput {
   keepRuns?: number;
   workdir?: string | null;
   user?: string | null;
-  /** Replaces the job's extra environment wholesale when present. */
-  env?: { key: string; value: string }[];
+  /** Replaces the job's extra environment wholesale when present. A null
+   *  value keeps the stored one - the editor cannot read a secret back. */
+  env?: { key: string; value: string | null }[];
 }
 
 /** The validated patch, or a thrown error carrying the sentence the UI shows. */
@@ -377,6 +389,19 @@ function buildPatch(
     patch.maxAttempts = Math.trunc(input.maxAttempts);
   }
 
+  if (patch.schedule !== undefined || patch.timezone !== undefined) {
+    const schedule = patch.schedule ?? current?.schedule;
+    const tz = patch.timezone ?? current?.timezone ?? "UTC";
+    if (
+      schedule &&
+      !nextCronRunInZone(schedule, new Date(), tz, NEVER_FIRES_DAYS)
+    ) {
+      throw new Error(
+        "This schedule never comes up - check the day and the month",
+      );
+    }
+  }
+
   // The clamp that keeps a retrying run from holding the job's `running` slot for
   // days: the timeout is PER ATTEMPT, so the honest worst case is their product.
   const timeout = patch.timeoutSeconds ?? current?.timeoutSeconds ?? 3600;
@@ -390,15 +415,31 @@ function buildPatch(
   return patch;
 }
 
-function validateEnv(env: { key: string; value: string }[]): {
-  key: string;
-  value: string;
-}[] {
+/**
+ * A named container must be one the target has. Refused HERE: unchecked, the
+ * job is stored and only says so at 3am, as "not running".
+ */
+function assertServiceInTarget(
+  service: string | null | undefined,
+  app: { compose: string | null; slug: string } | null,
+): void {
+  if (!service) return;
+  if (!app) {
+    throw new Error("A database has one container - leave the container empty");
+  }
+  if (!appServices(app.compose, app.slug).includes(service)) {
+    throw new Error(`No container named "${service}" in this app`);
+  }
+}
+
+type EnvEntry = { key: string; value: string | null };
+
+function validateEnv(env: EnvEntry[]): EnvEntry[] {
   if (env.length > MAX_ENV_VARS) {
     throw new Error(`Keep the job to ${MAX_ENV_VARS} variables or fewer`);
   }
   const seen = new Set<string>();
-  const out: { key: string; value: string }[] = [];
+  const out: EnvEntry[] = [];
   for (const e of env) {
     const key = e.key.trim();
     if (!key) continue;
@@ -414,24 +455,36 @@ function validateEnv(env: { key: string; value: string }[]): {
   return out;
 }
 
-/** Replace a job's extra environment. Values are encrypted and never read back. */
-async function writeEnv(
-  jobId: string,
-  env: { key: string; value: string }[],
-): Promise<void> {
-  await getDb().delete(cronJobEnvTable).where(eq(cronJobEnvTable.jobId, jobId));
-  if (env.length === 0) return;
-  await getDb()
-    .insert(cronJobEnvTable)
-    .values(
-      env.map((e) => ({
+/** Replace a job's extra environment. Values are encrypted and never read back;
+ *  a null value carries the stored ciphertext over, since nothing can re-send it. */
+async function writeEnv(jobId: string, env: EnvEntry[]): Promise<void> {
+  await getDb().transaction(async (tx) => {
+    const stored = new Map(
+      (
+        await tx
+          .select({
+            key: cronJobEnvTable.key,
+            valueEnc: cronJobEnvTable.valueEnc,
+          })
+          .from(cronJobEnvTable)
+          .where(eq(cronJobEnvTable.jobId, jobId))
+      ).map((r) => [r.key, r.valueEnc]),
+    );
+    const rows = env.map((e) => {
+      const valueEnc =
+        e.value === null ? stored.get(e.key) : encryptSecret(e.value);
+      if (valueEnc === undefined) throw new Error(`Give "${e.key}" a value`);
+      return {
         id: newId("cronenv"),
         jobId,
         key: e.key,
-        valueEnc: encryptSecret(e.value),
+        valueEnc,
         createdAt: nowIso(),
-      })),
-    );
+      };
+    });
+    await tx.delete(cronJobEnvTable).where(eq(cronJobEnvTable.jobId, jobId));
+    if (rows.length > 0) await tx.insert(cronJobEnvTable).values(rows);
+  });
 }
 
 /** The NAMES of each job's extra variables. Never `value_enc` - a secret has no
@@ -495,9 +548,24 @@ export const listAppCronJobs = cache(
       enabled: app.cronEnabled,
       jobs: await jobsFor(eq(cronJobsTable.appId, appId)),
       services: appServices(app.compose, app.slug),
+      primaryService: primaryServiceOf({
+        slug: app.slug,
+        compose: app.compose,
+        routedService: await routedServiceOf(appId),
+      }),
     };
   },
 );
+
+/** The service the app's domain routes to, by the scheduler's own rule. */
+async function routedServiceOf(appId: string): Promise<string | null> {
+  const rows = await getDb()
+    .select({ service: routedServiceSql(appsTable.id) })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  return rows[0]?.service ?? null;
+}
 
 /**
  * The compose services a job may pick, read from the app's own stack DOCUMENT
@@ -520,6 +588,7 @@ export const listDatabaseCronJobs = cache(
       enabled: database.cronEnabled,
       jobs: await jobsFor(eq(cronJobsTable.databaseId, databaseId)),
       services: [],
+      primaryService: null,
     };
   },
 );
@@ -692,14 +761,7 @@ export async function createCronJob(
       ? await gateApp(targetId)
       : { app: null, teamId: (await gateDatabase(targetId)).teamId };
   const teamId = gated.teamId;
-  // A container that is not in the stack is refused HERE: unchecked, the job is
-  // stored and only says so at 3am, as "not running".
-  const service = input.service?.trim();
-  if (service && gated.app) {
-    const names = appServices(gated.app.compose, gated.app.slug);
-    if (!names.includes(service))
-      throw new Error(`No container named "${service}" in this app`);
-  }
+  assertServiceInTarget(input.service?.trim(), gated.app);
 
   // Required on create, optional on edit - so the patch builder is shared and the
   // requiredness lives in exactly one place.
@@ -791,8 +853,9 @@ export async function updateCronJob(
   jobId: string,
   input: CronJobInput,
 ): Promise<CronJobDTO> {
-  const { job, teamId } = await gateJob(jobId);
+  const { job, teamId, app } = await gateJob(jobId);
   const user = await getCurrentUser();
+  assertServiceInTarget(input.service?.trim(), app);
   const patch = buildPatch(input, job);
   if (Object.keys(patch).length > 0 || input.env !== undefined) {
     patch.updatedAt = nowIso();

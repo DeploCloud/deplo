@@ -210,3 +210,18 @@ test("isValidSchedule rejects what the scheduler would silently never run", () =
   }
   assert.ok(isValidSchedule("0 3 * * *"));
 });
+
+test("a macro reads back as the schedule it stands for", () => {
+  assert.equal(describeCron("@daily"), "Every day at 00:00 UTC");
+  assert.equal(
+    describeCron("@weekly", { compact: true }),
+    "Weekly, Sun 00:00 UTC",
+  );
+  assert.equal(describeCron("@hourly"), "Every hour");
+  assert.equal(partsFromCron("@monthly")?.mode, "monthly");
+  assert.ok(isValidSchedule("@daily"));
+  assert.ok(!isValidSchedule("@reboot"));
+  // Names have no control: they stay custom, and valid.
+  assert.equal(describeCron("0 9 * * MON-FRI"), null);
+  assert.ok(isValidSchedule("0 9 * * MON-FRI"));
+});

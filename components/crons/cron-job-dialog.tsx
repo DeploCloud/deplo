@@ -90,6 +90,8 @@ export function CronJobDialog({
   targetId: string;
   /** Compose services a job can run in. Empty for a database (one container). */
   services: string[];
+  /** Where a job that picks no container runs - named in the picker. */
+  primaryService?: string | null;
   /** Absent ⇒ create. */
   job?: CronJobDTO;
 }) {
@@ -129,6 +131,8 @@ export function CronJobDialog({
   /** Editing keeps the stored variables unless the author touches them: their
    *  values are unreadable, so sending the list back would blank every secret. */
   const [envTouched, setEnvTouched] = React.useState(false);
+  /** A stored key sent back blank means "keep it" - the server carries the value over. */
+  const storedKeys = React.useMemo(() => new Set(job?.envKeys ?? []), [job]);
 
   const timeout = Number(timeoutMinutes) || 0;
   const attempts = Number(maxAttempts) || 1;
@@ -155,7 +159,19 @@ export function CronJobDialog({
       keepRuns: Number(keepRuns) || 50,
       workdir: workdir.trim(),
       user: user.trim(),
-      ...(envTouched ? { env: env.filter((r) => r.key.trim() !== "") } : {}),
+      ...(envTouched
+        ? {
+            env: env
+              .filter((r) => r.key.trim() !== "")
+              .map((r) => ({
+                key: r.key.trim(),
+                value:
+                  r.value === "" && storedKeys.has(r.key.trim())
+                    ? null
+                    : r.value,
+              })),
+          }
+        : {}),
     };
     startTransition(async () => {
       const res = job
@@ -217,6 +233,7 @@ export function CronJobDialog({
                     <SelectContent>
                       <SelectItem value={SERVICE_INHERIT}>
                         The app&apos;s own
+                        {primaryService ? ` (${primaryService})` : ""}
                       </SelectItem>
                       {services.map((s) => (
                         <SelectItem key={s} value={s}>
@@ -488,7 +505,9 @@ export function CronJobDialog({
                               ),
                             );
                           }}
-                          placeholder={job ? "Set a new value" : "value"}
+                          placeholder={
+                            storedKeys.has(row.key) ? "Unchanged" : "value"
+                          }
                           type="password"
                           className="font-mono text-sm"
                         />
@@ -520,8 +539,8 @@ export function CronJobDialog({
                     </Button>
                     {job && envTouched && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Saving replaces every variable on this job. A row left
-                        empty is saved as an empty value.
+                        A stored variable left blank keeps its value. Remove a
+                        row to drop it.
                       </p>
                     )}
                   </div>

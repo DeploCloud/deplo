@@ -1118,7 +1118,11 @@ One extra variable for a job. The value is encrypted at rest and reaches the hos
 """
 input CronJobEnvInput {
   key: String!
-  value: String!
+
+  """
+  Omit (or null) when editing to keep the stored value of an existing variable.
+  """
+  value: String
 }
 
 """
@@ -1167,6 +1171,11 @@ type CronJobsView {
   """
   enabled: Boolean
   jobs: [CronJob!]
+
+  """
+  Where a job that names no service runs: the service the app's domain routes to, else the first declared. Null for a database.
+  """
+  primaryService: String
 
   """Compose services a job can target. Empty for a database."""
   services: [String!]
@@ -3377,7 +3386,7 @@ type Mutation {
   runBackup(id: String!): Boolean
 
   """
-  Run a job now, outside its schedule. Ignores the overlap setting - somebody just asked for it explicitly.
+  Run a job now, outside its schedule. Honours the overlap setting: while a run is in flight, a job set to skip answers with a `skipped` run.
   """
   runCronJobNow(id: ID!): CronRun
 

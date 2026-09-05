@@ -4,7 +4,12 @@
  * schedule in OPPOSITE directions, so one dedupe key cannot serve both.
  */
 
-import { cronMatches, nextCronRun, parseCron } from "../backups/cron";
+import {
+  cronMatches,
+  expandCronMacro,
+  nextCronRun,
+  parseCron,
+} from "../backups/cron";
 
 /** Wall-clock fields of an instant, as read in some zone. */
 interface ZoneParts {
@@ -166,7 +171,7 @@ export function nextCronRunInZone(
  *   where `24 % n !== 0` as pinned.
  */
 export function pinsHour(expr: string): boolean {
-  const hour = expr.trim().split(/\s+/)[1] ?? "*";
+  const hour = expandCronMacro(expr).trim().split(/\s+/)[1] ?? "*";
   return !hour.includes("*") && !hour.includes("/");
 }
 
@@ -191,12 +196,19 @@ export function dedupeKeyFor(expr: string, at: Date, tz: string): string {
 export function canonicalTimeZone(tz: string): string | null {
   const raw = tz.trim();
   if (!raw) return null;
+  let resolved: string;
   try {
-    return new Intl.DateTimeFormat("en-US", { timeZone: raw }).resolvedOptions()
-      .timeZone;
+    resolved = new Intl.DateTimeFormat("en-US", {
+      timeZone: raw,
+    }).resolvedOptions().timeZone;
   } catch {
     return null;
   }
+  // Keep the spelling the picker offered: ICU resolves `Asia/Kolkata` to its
+  // older alias `Asia/Calcutta`, which is not in the browser's list, so the
+  // stored value would read back as a zone nobody chose. Case still normalises.
+  if (resolved.toLowerCase() === raw.toLowerCase()) return resolved;
+  return raw.includes("/") ? raw : resolved;
 }
 
 /**

@@ -180,3 +180,41 @@ test("nextCronRun is null when the expression can never fire", () => {
   // The 30th of February parses fine and simply never comes around.
   assert.equal(nextCronRun("0 0 30 2 *", at("2026-06-23T10:00:00Z")), null);
 });
+
+test("weekday and month names are read, in any case", () => {
+  assert.ok(cronMatches("0 9 * * MON-FRI", at("2026-09-07T09:00:00Z"))); // Mon
+  assert.ok(!cronMatches("0 9 * * MON-FRI", at("2026-09-06T09:00:00Z"))); // Sun
+  assert.ok(cronMatches("0 9 * * mon,wed", at("2026-09-09T09:00:00Z")));
+  assert.ok(cronMatches("0 0 1 JAN *", at("2026-01-01T00:00:00Z")));
+  assert.ok(cronMatches("0 0 1 jan-mar *", at("2026-02-01T00:00:00Z")));
+  assert.ok(!cronMatches("0 0 1 jan-mar *", at("2026-04-01T00:00:00Z")));
+  assert.equal(parseCron("0 9 * * MON-FRX"), null);
+  assert.equal(parseCron("0 9 * * JAN"), null, "a month name is not a weekday");
+});
+
+test("the Vixie macros expand; @reboot is not a schedule", () => {
+  assert.ok(cronMatches("@daily", at("2026-09-06T00:00:00Z")));
+  assert.ok(!cronMatches("@daily", at("2026-09-06T00:01:00Z")));
+  assert.ok(cronMatches("@hourly", at("2026-09-06T13:00:00Z")));
+  assert.ok(cronMatches("@weekly", at("2026-09-06T00:00:00Z"))); // a Sunday
+  assert.ok(cronMatches("@MONTHLY", at("2026-10-01T00:00:00Z")));
+  assert.ok(cronMatches("@yearly", at("2027-01-01T00:00:00Z")));
+  assert.equal(
+    nextCronRun("@monthly", at("2026-09-06T00:00:00Z"))?.toISOString(),
+    "2026-10-01T00:00:00.000Z",
+  );
+  assert.equal(parseCron("@reboot"), null);
+  assert.equal(parseCron("@every 5m"), null);
+});
+
+test("`5/15` steps from 5 to the end of the field", () => {
+  assert.ok(cronMatches("5/15 * * * *", at("2026-09-06T13:05:00Z")));
+  assert.ok(cronMatches("5/15 * * * *", at("2026-09-06T13:20:00Z")));
+  assert.ok(cronMatches("5/15 * * * *", at("2026-09-06T13:50:00Z")));
+  assert.ok(!cronMatches("5/15 * * * *", at("2026-09-06T13:15:00Z")));
+  assert.ok(cronMatches("5 * * * *", at("2026-09-06T13:05:00Z")));
+  assert.ok(
+    !cronMatches("5 * * * *", at("2026-09-06T13:20:00Z")),
+    "a bare number stays itself",
+  );
+});

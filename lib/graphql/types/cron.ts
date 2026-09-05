@@ -147,6 +147,12 @@ export const CronJobsViewRef = builder
       services: t.exposeStringList("services", {
         description: "Compose services a job can target. Empty for a database.",
       }),
+      primaryService: t.exposeString("primaryService", {
+        nullable: true,
+        description:
+          "Where a job that names no service runs: the service the app's " +
+          "domain routes to, else the first declared. Null for a database.",
+      }),
       jobs: t.field({ type: [CronJobRef], resolve: (v) => v.jobs }),
     }),
   });
@@ -161,7 +167,11 @@ const CronEnvInput = builder.inputType("CronJobEnvInput", {
     "the host inside the mTLS RPC - it is never readable back.",
   fields: (t) => ({
     key: t.string({ required: true }),
-    value: t.string({ required: true }),
+    value: t.string({
+      required: false,
+      description:
+        "Omit (or null) when editing to keep the stored value of an existing variable.",
+    }),
   }),
 });
 
@@ -293,7 +303,9 @@ builder.mutationFields((t) => ({
         keepRuns: input.keepRuns ?? undefined,
         workdir: input.workdir ?? undefined,
         user: input.user ?? undefined,
-        env: input.env ?? undefined,
+        env:
+          input.env?.map((e) => ({ key: e.key, value: e.value ?? null })) ??
+          undefined,
       }),
   }),
   updateCronJob: t.field({
@@ -319,7 +331,9 @@ builder.mutationFields((t) => ({
         keepRuns: input.keepRuns ?? undefined,
         workdir: input.workdir ?? undefined,
         user: input.user ?? undefined,
-        env: input.env ?? undefined,
+        env:
+          input.env?.map((e) => ({ key: e.key, value: e.value ?? null })) ??
+          undefined,
       }),
   }),
   deleteCronJob: t.field({
@@ -336,8 +350,8 @@ builder.mutationFields((t) => ({
     type: CronRunRef,
     authScopes: cronScope,
     description:
-      "Run a job now, outside its schedule. Ignores the overlap setting - " +
-      "somebody just asked for it explicitly.",
+      "Run a job now, outside its schedule. Honours the overlap setting: while " +
+      "a run is in flight, a job set to skip answers with a `skipped` run.",
     args: { id: t.arg.id({ required: true }) },
     resolve: (_r, { id }) => runCronJobNow(String(id)),
   }),

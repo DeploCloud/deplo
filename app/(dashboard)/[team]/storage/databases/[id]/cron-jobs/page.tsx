@@ -50,6 +50,7 @@ export default async function DatabaseCronJobsPage(
         enabled={view.enabled}
         jobs={view.jobs}
         services={view.services}
+        primaryService={view.primaryService}
         canManage
         settingsHref={`/storage/databases/${db.id}/settings/advanced#cron-jobs`}
       />

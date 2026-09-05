@@ -13,6 +13,48 @@ const BOUNDS: ReadonlyArray<readonly [number, number]> = [
   [0, 7], // day of week (0 and 7 both = Sunday)
 ];
 
+/** The Vixie shorthands. `@reboot` is deliberately absent: nothing here reboots. */
+const MACROS: Record<string, string> = {
+  "@yearly": "0 0 1 1 *",
+  "@annually": "0 0 1 1 *",
+  "@monthly": "0 0 1 * *",
+  "@weekly": "0 0 * * 0",
+  "@daily": "0 0 * * *",
+  "@midnight": "0 0 * * *",
+  "@hourly": "0 * * * *",
+};
+
+const MONTH_NAMES = [
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "may",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "oct",
+  "nov",
+  "dec",
+];
+const DAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** A `@macro` expanded to its five fields; anything else unchanged. */
+export function expandCronMacro(expr: string): string {
+  return MACROS[expr.trim().toLowerCase()] ?? expr;
+}
+
+/** `JAN`/`mon` -> its number in the month or weekday field, else the token as-is. */
+function nameToNumber(
+  token: string,
+  names: readonly string[],
+  base: number,
+): string {
+  const i = names.indexOf(token.toLowerCase());
+  return i === -1 ? token : String(i + base);
+}
+
 /**
  * Parse one cron field into the explicit set of integers it allows within
  * `[min, max]`. Returns null when the field is malformed (the caller treats a
@@ -22,8 +64,10 @@ function parseField(
   field: string,
   min: number,
   max: number,
+  names?: readonly string[],
 ): Set<number> | null {
   const out = new Set<number>();
+  const num = (t: string) => (names ? nameToNumber(t, names, min) : t);
   for (const part of field.split(",")) {
     if (part.length === 0) return null;
     // Split an optional `/step` suffix off the range/wildcard base.
@@ -43,14 +87,16 @@ function parseField(
     } else if (rangePart.includes("-")) {
       const [a, b, ...more] = rangePart.split("-");
       if (more.length > 0) return null;
-      lo = Number(a);
-      hi = Number(b);
+      lo = Number(num(a));
+      hi = Number(num(b));
       if (!Number.isInteger(lo) || !Number.isInteger(hi)) return null;
     } else {
-      const n = Number(rangePart);
+      const n = Number(num(rangePart));
       if (!Number.isInteger(n)) return null;
       lo = n;
-      hi = n;
+      // `5/15` is "from 5 to the end, every 15" in every cron people paste
+      // from; a bare number keeps meaning itself.
+      hi = stepPart !== undefined ? max : n;
     }
     if (lo < min || hi > max || lo > hi) return null;
     for (let v = lo; v <= hi; v += step) out.add(v);
@@ -72,13 +118,20 @@ interface ParsedCron {
 }
 
 /**
- * Parse a 5-field cron string. Returns null if it does not have exactly five
- * fields or any field is malformed - the scheduler treats null as "never".
+ * Parse a 5-field cron string (or a `@daily`-style macro). Names are accepted in
+ * the month and weekday fields. Null when malformed - the scheduler treats null as "never".
  */
 export function parseCron(expr: string): ParsedCron | null {
-  const fields = expr.trim().split(/\s+/);
+  const fields = expandCronMacro(expr).trim().split(/\s+/);
   if (fields.length !== 5) return null;
-  const sets = fields.map((f, i) => parseField(f, BOUNDS[i][0], BOUNDS[i][1]));
+  const sets = fields.map((f, i) =>
+    parseField(
+      f,
+      BOUNDS[i][0],
+      BOUNDS[i][1],
+      i === 3 ? MONTH_NAMES : i === 4 ? DAY_NAMES : undefined,
+    ),
+  );
   if (sets.some((s) => s === null)) return null;
   const [minute, hour, dom, month, dow] = sets as Set<number>[];
   // Normalise day-of-week 7 → 0 so a `Date.getUTCDay()` (0..6) lookup is direct.

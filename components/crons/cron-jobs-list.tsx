@@ -126,6 +126,7 @@ function CronJobRow({
   targetKind: "app" | "database";
   targetId: string;
   services: string[];
+  primaryService: string | null;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -288,6 +289,7 @@ function CronJobRow({
           targetKind={targetKind}
           targetId={targetId}
           services={services}
+          primaryService={primaryService}
           job={job}
         />
       )}
@@ -321,6 +323,7 @@ export function CronJobsList({
   enabled,
   jobs,
   services,
+  primaryService,
   canManage,
   settingsHref,
 }: {
@@ -329,6 +332,8 @@ export function CronJobsList({
   enabled: boolean;
   jobs: CronJobDTO[];
   services: string[];
+  /** Where a job with no container picked runs. Null for a database. */
+  primaryService: string | null;
   canManage: boolean;
   /** Where the master switch lives (Settings → Advanced), for the "it is off"
    *  empty state. */
@@ -434,6 +439,7 @@ export function CronJobsList({
                   targetKind={targetKind}
                   targetId={targetId}
                   services={services}
+                  primaryService={primaryService}
                   canManage={canManage}
                 />
               ))}
@@ -454,6 +460,7 @@ export function CronJobsList({
           targetKind={targetKind}
           targetId={targetId}
           services={services}
+          primaryService={primaryService}
         />
       )}
     </div>

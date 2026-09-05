@@ -270,3 +270,25 @@ test("the DST warning fires only on the hour that really disappears", () => {
     null,
   );
 });
+
+test("a macro pins its hour like the expression it expands to", () => {
+  assert.ok(pinsHour("@daily"));
+  assert.ok(pinsHour("@weekly"));
+  assert.ok(!pinsHour("@hourly"));
+  assert.ok(pinsHour("0 9 * * MON-FRI"));
+  // Fall back in Rome, 2026-10-25: 02:30 CEST and 02:30 CET are one wall clock.
+  const first = new Date("2026-10-25T00:30:00Z");
+  const second = new Date("2026-10-25T01:30:00Z");
+  assert.equal(
+    dedupeKeyFor("@daily", first, "Europe/Rome"),
+    dedupeKeyFor("@daily", second, "Europe/Rome"),
+  );
+});
+
+test("the picked spelling of a zone survives ICU's aliasing", () => {
+  // ICU resolves Kolkata to its older alias; the browser's list offers Kolkata.
+  assert.equal(canonicalTimeZone("Asia/Kolkata"), "Asia/Kolkata");
+  assert.equal(canonicalTimeZone("europe/rome"), "Europe/Rome");
+  assert.equal(canonicalTimeZone("utc"), "UTC");
+  assert.equal(canonicalTimeZone("Mars/Olympus"), null);
+});
