@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "prod": "next build && next start",
-    "start": "next start",
+    "start": "NODE_OPTIONS=--max-semi-space-size=64 next start",
     "lint": "eslint",
     "recover": "node --require ./lib/test/server-only-shim.cjs --import tsx scripts/recover.ts",
     "gen:schema": "NODE_TEST_CONTEXT=1 node --require ./lib/test/server-only-shim.cjs --import tsx scripts/gen-schema.ts",
