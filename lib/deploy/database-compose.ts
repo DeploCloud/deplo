@@ -160,6 +160,7 @@ export function generateDatabaseCompose(input: {
     customImage: input.customImage ?? null,
   });
 
+  const customCommand = input.customCommand?.trim();
   const envByType: Record<DatabaseType, string[]> = {
     // PGDATA is REQUIRED, not cosmetic.
     postgres: [
@@ -174,7 +175,9 @@ export function generateDatabaseCompose(input: {
       `MONGO_INITDB_ROOT_USERNAME=${username}`,
       `MONGO_INITDB_ROOT_PASSWORD=${password}`,
     ],
-    redis: [],
+    // redis-cli reads it on its own, so a cron job or a console `redis-cli ping`
+    // inside the container authenticates without pasting the password.
+    redis: customCommand ? [] : [`REDISCLI_AUTH=${password}`],
     // CLICKHOUSE_DB creates the logical database at provision time, like POSTGRES_DB /
     // MYSQL_DATABASE above.
     clickhouse: [
@@ -183,7 +186,6 @@ export function generateDatabaseCompose(input: {
       `CLICKHOUSE_DB=${dbName}`,
     ],
   };
-  const customCommand = input.customCommand?.trim();
   const defaultCommand =
     type === "redis"
       ? `redis-server --requirepass ${escapeComposeDollars(password)}`

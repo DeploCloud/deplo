@@ -539,3 +539,23 @@ test("generateDatabaseCompose: no config files renders exactly what it always di
     generateDatabaseCompose(base),
   );
 });
+
+test("generateDatabaseCompose: redis carries REDISCLI_AUTH so redis-cli inside authenticates", () => {
+  const input = {
+    network: "deplo-team-team_test",
+    name: "cache",
+    databaseId: "db_test",
+    type: "redis" as const,
+    version: "7",
+    password: "s3cret",
+    username: "default",
+    dbName: "cache",
+  };
+  assert.ok(generateDatabaseCompose(input).includes("REDISCLI_AUTH=s3cret"));
+  // A custom command may have dropped requirepass; an AUTH would then fail.
+  const custom = generateDatabaseCompose({
+    ...input,
+    customCommand: "redis-server --appendonly yes",
+  });
+  assert.ok(!custom.includes("REDISCLI_AUTH"), custom);
+});
