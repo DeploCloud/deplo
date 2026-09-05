@@ -325,6 +325,8 @@ export async function settlePreviewDeployState(
     .update(appPreviewsTable)
     .set({
       ...(status === undefined ? {} : { status }),
+      // The stack is about to exist again: from here on a teardown is owed.
+      ...(status === "building" ? { tornDownAt: null } : {}),
       lastActivityAt: nowIso(),
       updatedAt: nowIso(),
     })
@@ -359,13 +361,15 @@ export async function settlePreviewDeployState(
 async function setDeployState(
   target: DeployTarget,
   patch: Partial<typeof appsTable.$inferInsert>,
-): Promise<void> {
+): Promise<boolean> {
   if (target.kind === "preview") {
-    await settlePreviewDeployState(
+    const kept = await settlePreviewDeployState(
       target.previewId,
       target.deployKey,
       patch.status ?? undefined,
     );
+    publishAppChanged(target.appId);
+    return kept;
   } else {
     await getDb()
       .update(appsTable)
@@ -375,6 +379,7 @@ async function setDeployState(
   // Both owners hang off the app's live stream: the App header reads its own
   // status, the pull requests list re-reads its previews.
   publishAppChanged(target.appId);
+  return true;
 }
 
 /**
@@ -1739,7 +1744,14 @@ async function runDeployment(depId: string): Promise<void> {
     return;
   }
   publishAppChanged(project.id);
-  await setDeployState(target, { status: "building" });
+  if (!(await setDeployState(target, { status: "building" }))) {
+    // Evicted, blocked or closed while it waited in the queue: building it now
+    // would only bring up a stack the row already says is gone.
+    log(depId, "warn", "This preview was stopped before its build started.");
+    await setDep(depId, { status: "canceled" });
+    await finalizeDeploymentLogs(depId);
+    return;
+  }
 
   try {
     // Nothing host-local happens here any more, and that is the point: this was the

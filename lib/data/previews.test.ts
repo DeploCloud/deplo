@@ -525,6 +525,11 @@ test("reopening a closed pull request revives the SAME preview and host", async 
       .where(eq(appPreviewsTable.id, res.previewId!))
   )[0]!.host;
   await closePreview(res.previewId!, "closed");
+  // No agent here, so stamp what a reachable host would have.
+  await db
+    .update(appPreviewsTable)
+    .set({ tornDownAt: "2026-01-01T00:00:00.000Z" })
+    .where(eq(appPreviewsTable.id, res.previewId!));
 
   const again = await openOrSyncPreview("prj_1", PR, { actor: "o" });
   assert.equal(again.previewId, res.previewId);
@@ -536,7 +541,37 @@ test("reopening a closed pull request revives the SAME preview and host", async 
   )[0]!;
   assert.equal(row.state, "open");
   assert.equal(row.host, host);
-  assert.equal(row.tornDownAt, null);
+  // Still confirmed gone: nothing is back on a host until the build STARTS, and
+  // only the runner's `building` write erases the proof.
+  assert.ok(row.tornDownAt);
+  assert.equal(
+    await settlePreviewDeployState(row.id, row.deployKey, "building"),
+    true,
+  );
+  assert.equal((await rowOf(row.id)).tornDownAt, null);
+});
+
+test("a reopened preview evicted before its build starts needs no host", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
+  const a = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1 },
+    { actor: "o" },
+  );
+  // Built once (the runner marked it ready), closed, and confirmed gone.
+  await db
+    .update(appPreviewsTable)
+    .set({ tornDownAt: "2026-01-01T00:00:00.000Z", state: "closed" })
+    .where(eq(appPreviewsTable.id, a.previewId!));
+  await openOrSyncPreview("prj_1", { ...PR, number: 1 }, { actor: "o" });
+  assert.equal((await rowOf(a.previewId!)).state, "open");
+  // Evicted by a sibling before the runner ever claimed its build.
+  await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
+  const row = await rowOf(a.previewId!);
+  assert.equal(row.status, "evicted");
+  assert.ok(row.tornDownAt, "nothing came back up, so nothing is owed");
+  const due = await previewsDueForReaping(new Date(), 20);
+  assert.ok(!due.retry.some((r) => r.id === a.previewId));
 });
 
 test("an idle preview is reaped, a fresh one is not", async () => {

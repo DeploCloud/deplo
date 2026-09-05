@@ -193,10 +193,10 @@ export async function openOrSyncPreview(
           // host included, so the old link starts working again. A facts-only
           // sync reopens nothing: a title edit can arrive for a closed one.
           ...(syncOnly ? {} : { state: "open", closedAt: null }),
-          // `torn_down_at` is the proof a stack is gone; only a build about to
-          // start may erase it. Erasing it on an evicted preview's push made the
-          // reaper retry a teardown of nothing, every hour, forever.
-          ...(willBuild ? { tornDownAt: null } : {}),
+          // `torn_down_at` is the proof a stack is gone, and it stays until the
+          // build actually STARTS (`settlePreviewDeployState`): a reopen evicted
+          // before its build has nothing on any host, and asking the agent to
+          // tear down a stack that has no file fails every hour, forever.
           // Re-stamped whenever a NEW head is approved, not only the first time:
           // with a per-commit rule a stale `approved_sha` would refuse the very
           // build the caller just approved, and then refuse every one after it.
@@ -343,7 +343,7 @@ export async function deployPreviewRow(
         await evictToFit(p.appId, max, max);
       await getDb()
         .update(appPreviewsTable)
-        .set({ status: "queued", tornDownAt: null, updatedAt: nowIso() })
+        .set({ status: "queued", updatedAt: nowIso() })
         .where(eq(appPreviewsTable.id, previewId));
     }
     return startPreviewDeployment(p, opts);
