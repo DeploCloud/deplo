@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/accordion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -43,12 +42,19 @@ import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
 import { sameCapabilities } from "@/lib/membership-shared";
-import type { TokenPreset } from "@/lib/token-presets";
+import {
+  TOKEN_PRESETS,
+  presetIdFor,
+  type TokenPreset,
+} from "@/lib/token-presets";
 import type {
   ApiTokenDTO,
   ScopeTreeFolder,
   ScopeTreeTeam,
 } from "@/lib/data/tokens";
+
+/** The Select needs a value for "matches no template"; it is never selectable. */
+const CUSTOM = "custom";
 
 /**
  * The API-token editor: a full-width page, reached from the token LIST. A page and
@@ -314,7 +320,39 @@ export function TokenEditor({
         </Card>
 
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="space-y-4 pt-6">
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="token-preset"
+                info="A ready-made set you can then adjust. Picking one replaces every tick below. Custom appears once the ticks stop matching a template."
+                docs="tokens.capabilities"
+              >
+                Template
+              </FieldLabel>
+              <Select
+                value={presetIdFor(caps) ?? CUSTOM}
+                onValueChange={(id) => {
+                  const next = TOKEN_PRESETS.find((p) => p.id === id);
+                  if (next) setCaps(next.capabilities);
+                }}
+              >
+                <SelectTrigger id="token-preset" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TOKEN_PRESETS.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                  {presetIdFor(caps) ? null : (
+                    <SelectItem value={CUSTOM} disabled>
+                      Custom
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
             <PermissionPicker
               capabilities={caps}
               onChange={setCaps}
@@ -345,16 +383,13 @@ export function TokenEditor({
                   {name.trim() || "—"}
                 </dd>
               </div>
-              {mode === "create" && (
-                <div className="flex items-center gap-3">
-                  <dt className="shrink-0 text-muted-foreground">
-                    Started from
-                  </dt>
-                  <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                    {preset ? preset.name : "Nothing (blank)"}
-                  </dd>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                <dt className="shrink-0 text-muted-foreground">Template</dt>
+                <dd className="min-w-0 flex-1 truncate text-right font-medium">
+                  {TOKEN_PRESETS.find((p) => p.id === presetIdFor(caps))
+                    ?.name ?? "Custom"}
+                </dd>
+              </div>
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Permissions</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
