@@ -16,7 +16,7 @@ export function StepShell({
   children,
 }: {
   title: string;
-  lead: string;
+  lead: React.ReactNode;
   docs?: DocsTopic;
   /** Arrive out of a blur, one beat after another - the same class the setup
    *  wizard's first step uses. For a step somebody lands on, not one they walk into. */
@@ -32,7 +32,7 @@ export function StepShell({
     >
       <div>
         <h2 className="text-base font-semibold lg:text-lg">{title}</h2>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+        <p className="mt-1 max-w-prose text-sm text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">
           {lead}
           {docs && <DocsLink topic={docs} className="ml-1.5" />}
         </p>

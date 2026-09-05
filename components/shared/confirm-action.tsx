@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -27,6 +27,7 @@ export function ConfirmAction({
   description,
   confirmLabel = "Confirm",
   variant = "destructive",
+  consequence,
   successMessage,
   confirmText,
   confirmDisabled = false,
@@ -43,6 +44,11 @@ export function ConfirmAction({
   description: React.ReactNode;
   confirmLabel?: string;
   variant?: "destructive" | "default";
+  /**
+   * What this action costs, in one concrete sentence. Never behind a link: the
+   * consequence of a destructive act stays on screen.
+   */
+  consequence?: React.ReactNode;
   successMessage?: string;
   /**
    * Typed confirmation: when set, the confirm button stays disabled until the user
@@ -131,6 +137,12 @@ export function ConfirmAction({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
+          {consequence && (
+            <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>{consequence}</span>
+            </p>
+          )}
           {extra}
           {confirmText && (
             <div className="space-y-2">
