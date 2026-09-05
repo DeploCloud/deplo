@@ -14,7 +14,7 @@ import { uninstallCommand } from "./bootstrap";
 test("the uninstall command is a copy-and-run one-liner that only asks for --yes", () => {
   assert.equal(
     uninstallCommand({ baseUrl: "https://deplo.example" }),
-    "curl -fsSL 'https://deplo.example/uninstall.sh' -o /tmp/deplo-uninstall.sh && sudo bash /tmp/deplo-uninstall.sh --yes --agent-only",
+    "curl -fsSL 'https://deplo.example/uninstall.sh' --output /tmp/deplo-uninstall.sh && sudo bash /tmp/deplo-uninstall.sh --yes --agent-only",
   );
   // --purge-data destroys volumes and images: the operator must reach for it, it
   // is never in the command we hand them.

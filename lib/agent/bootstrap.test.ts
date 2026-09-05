@@ -84,7 +84,7 @@ test("the one-liners download first and run second, so a failed download fails",
   assert.doesNotMatch(cmd, /\| *sudo/);
   assert.match(
     cmd,
-    /-o \/tmp\/deplo-agent-install\.sh && sudo bash \/tmp\/deplo-agent-install\.sh 't' 'https:\/\/deplo\.example\.com' 'f'$/,
+    /--output \/tmp\/deplo-agent-install\.sh && sudo bash \/tmp\/deplo-agent-install\.sh 't' 'https:\/\/deplo\.example\.com' 'f'$/,
   );
   assert.match(
     installCommand({
@@ -99,7 +99,32 @@ test("the one-liners download first and run second, so a failed download fails",
   assert.doesNotMatch(un, /\| *sudo/);
   assert.match(
     un,
-    /-o \/tmp\/deplo-uninstall\.sh && sudo bash \/tmp\/deplo-uninstall\.sh --yes --agent-only$/,
+    /--output \/tmp\/deplo-uninstall\.sh && sudo bash \/tmp\/deplo-uninstall\.sh --yes --agent-only$/,
+  );
+});
+
+// The curl alternatives of uBlock Origin's ClickFix filter (uAssets,
+// `prevent-clipboard-write` on every site, 2026-09-05). A match is a silent
+// no-op copy with a "Copied" toast on top: the operator pastes nothing.
+const UBO_CLICKFIX =
+  /^curl -s\b.+?\| (bash|sh|zsh)\b|^curl\b .+?chmod \+x.+?&&|^curl\b.+?-o\b.+?\/tmp\/.+?&&|^(bash <<<|curl -kfsSL) \$\(echo .+? base64 -d\b/ims;
+
+test("the one-liners do not trip uBlock Origin's ClickFix filter", () => {
+  const base = {
+    baseUrl: "http://10.0.0.5:3000",
+    rawToken: "t",
+    fingerprint: "",
+  };
+  assert.doesNotMatch(installCommand(base), UBO_CLICKFIX);
+  assert.doesNotMatch(
+    installCommand({ ...base, insecure: true, importOnly: true }),
+    UBO_CLICKFIX,
+  );
+  assert.doesNotMatch(uninstallCommand(base), UBO_CLICKFIX);
+  // The shape it exists for, so the regex above is known to bite.
+  assert.match(
+    "curl -fsSL 'http://x/a.sh' -o /tmp/a.sh && sudo bash /tmp/a.sh",
+    UBO_CLICKFIX,
   );
 });
 
