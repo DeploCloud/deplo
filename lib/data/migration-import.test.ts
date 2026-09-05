@@ -2938,6 +2938,28 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
   await gen.return(undefined as never);
 });
 
+test("a finished run stays on the feed until its report is closed", async () => {
+  const gen = activeMigrationStream(TEAM_A);
+  await gen.next();
+  const pending = gen.next();
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  assert.equal((await pending).value?.status, "running");
+
+  // The end is not a disappearance: the chip has to be able to say "finished"
+  // to somebody who was on another page the whole time.
+  const finishing = gen.next();
+  await asOwner(() => finishMigration(runId));
+  const finished = (await finishing).value;
+  assert.equal(finished?.id, runId);
+  assert.equal(finished?.status, "done");
+
+  const closing = gen.next();
+  await asOwner(() => dismissMigrationReport(runId));
+  assert.equal((await closing).value, null, "closing the report clears it");
+
+  await gen.return(undefined as never);
+});
+
 /* ------------------------------------------------------------------ */
 /* Where the machine is, and where we dial it                          */
 /* ------------------------------------------------------------------ */

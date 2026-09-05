@@ -4909,6 +4909,8 @@ export async function dismissMigrationReport(runId: string): Promise<void> {
     .update(runsTable)
     .set({ reportSeenAt: nowIso() })
     .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
+  // The header chip holds a finished run until its report is closed.
+  publishMigrationChanged();
 }
 
 /**
@@ -4935,6 +4937,31 @@ export async function activeMigrationForTeam(
     .limit(1);
   const [dto] = await toRunDTOs([rows[0]]);
   return { ...dto, lastPath: last?.path ?? null };
+}
+
+/**
+ * What the header chip shows: the run in flight or, with nothing moving, the run
+ * that finished and whose report nobody has closed yet - it keeps saying so
+ * until somebody does. Not {@link activeMigrationForTeam}: that one gates writes.
+ */
+export async function headerMigrationForTeam(
+  teamId: string,
+): Promise<ImportRunDTO | null> {
+  const running = await activeMigrationForTeam(teamId);
+  if (running) return running;
+  const [finished] = await getDb()
+    .select()
+    .from(runsTable)
+    .where(
+      and(
+        eq(runsTable.teamId, teamId),
+        eq(runsTable.status, "done"),
+        isNull(runsTable.reportSeenAt),
+      ),
+    )
+    .orderBy(desc(runsTable.seq))
+    .limit(1);
+  return finished ? (await toRunDTOs([finished]))[0] : null;
 }
 
 export async function listMigrationRuns(): Promise<ImportRunDTO[]> {

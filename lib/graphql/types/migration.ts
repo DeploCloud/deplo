@@ -12,7 +12,7 @@ import {
 } from "@/lib/data/migration-data";
 import {
   abandonMigration,
-  activeMigrationForTeam,
+  headerMigrationForTeam,
   dismissMigrationReport,
   beginMigration,
   type MigrationInvite,
@@ -593,7 +593,7 @@ builder.subscriptionFields((t) => ({
     type: ImportRunRef,
     nullable: true,
     description:
-      'Emits the migration this team currently has in flight, or null when there is none. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard\'s panel read. Deliberately NOT gated on `create_projects`: "somebody is moving a platform into this team right now" is a warning every member needs.',
+      'Emits the migration this team currently has in flight - or, once it is done, the finished run until somebody closes its report - or null. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard\'s panel read. Deliberately NOT gated on `create_projects`: "somebody is moving a platform into this team right now" is a warning every member needs.',
     authScopes: { loggedIn: true },
     subscribe: (_root, _args, ctx) => activeMigrationStream(ctx.teamId),
     resolve: (run) => run,
@@ -609,7 +609,7 @@ export async function* activeMigrationStream(
   teamId: string | null,
 ): AsyncGenerator<ImportRunDTO | null> {
   if (!teamId) throw new Error("Not signed in");
-  let last = await activeMigrationForTeam(teamId);
+  let last = await headerMigrationForTeam(teamId);
   yield last;
   for await (const ping of pubSub.subscribe(
     "migrationActivity",
@@ -618,7 +618,7 @@ export async function* activeMigrationStream(
     // The channel is instance-wide (a team-wide feed has no per-resource key),
     // so the payload says nothing this team cares about - re-read instead.
     void ping;
-    const next = await activeMigrationForTeam(teamId);
+    const next = await headerMigrationForTeam(teamId);
     if (sameRun(last, next)) continue;
     last = next;
     yield next;
@@ -630,6 +630,7 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
   if (a === null || b === null) return a === b;
   return (
     a.id === b.id &&
+    a.status === b.status &&
     a.lastPath === b.lastPath &&
     a.phase === b.phase &&
     a.doneSteps === b.doneSteps &&

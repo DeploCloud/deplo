@@ -17,6 +17,8 @@ import {
  */
 export type ActiveMigration = {
   id: string;
+  /** `running`, or `done` for a finished run whose report nobody has closed. */
+  status: string;
   sourceUrl: string;
   orgName: string | null;
   actor: string;
@@ -59,6 +61,7 @@ const ACTIVE_MIGRATION_SUBSCRIPTION = /* GraphQL */ `
   subscription ActiveMigration {
     activeMigration {
       id
+      status
       sourceUrl
       orgName
       actor
@@ -84,8 +87,13 @@ const MigrationActivityContext = React.createContext<ActiveMigration | null>(
 /**
  * One team's run in flight, live. The page's team unless one is named - the
  * migration wizard watches the team a run LANDS in, which its page need not be.
+ * A finished run stays on the feed until its report is closed; only the header
+ * asks for it - the wizard reads "left the feed" as "over".
  */
-export function useMigrationFeed(teamId?: string): ActiveMigration | null {
+export function useMigrationFeed(
+  teamId?: string,
+  opts: { includeFinished?: boolean } = {},
+): ActiveMigration | null {
   // Stamped with the team it came from, so a change of team never shows the
   // old team's run while the new stream is still connecting.
   const [feed, setFeed] = React.useState<{
@@ -107,7 +115,8 @@ export function useMigrationFeed(teamId?: string): ActiveMigration | null {
     [teamId],
   );
 
-  return feed.teamId === teamId ? feed.run : null;
+  const run = feed.teamId === teamId ? feed.run : null;
+  return run && (opts.includeFinished || run.status === "running") ? run : null;
 }
 
 export function MigrationActivityProvider({
@@ -115,7 +124,7 @@ export function MigrationActivityProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const run = useMigrationFeed();
+  const run = useMigrationFeed(undefined, { includeFinished: true });
 
   return (
     <MigrationActivityContext.Provider value={run}>
@@ -136,6 +145,8 @@ export function useActiveMigration(): ActiveMigration | null {
 export function MigrationChip({ canOpen }: { canOpen: boolean }) {
   const run = useActiveMigration();
   if (!run) return null;
+  if (run.status !== "running")
+    return <FinishedChip run={run} canOpen={canOpen} />;
 
   // The chip IS the progress bar. It is the only thing on screen while somebody
   // is on another page, and "in progress" said for twenty minutes is the same
@@ -201,6 +212,50 @@ export function MigrationChip({ canOpen }: { canOpen: boolean }) {
           : run.stepLabel
             ? `${run.phase === "data" ? "Copying data" : "Importing"}: ${run.stepLabel}`
             : `${run.actor} is bringing a platform into this team.`}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * The run is over, and the chip says so until somebody closes its report - a
+ * finish that scrolled past while you were on another page is otherwise the one
+ * thing the chip never told you.
+ */
+function FinishedChip({
+  run,
+  canOpen,
+}: {
+  run: ActiveMigration;
+  canOpen: boolean;
+}) {
+  const label = "Migration finished";
+  const body = (
+    <span className="flex items-center gap-1.5">
+      <StatusDot status="success" />
+      <span className="hidden sm:inline">{label}</span>
+    </span>
+  );
+  const counts = `${run.created} created, ${run.failed} failed, ${run.manual} to finish by hand.`;
+  return (
+    <Tooltip delayDuration={200}>
+      <TooltipTrigger asChild>
+        {canOpen ? (
+          <Badge variant="success" asChild className="h-7 gap-1.5">
+            <Link href="/settings/migrations" aria-label={label}>
+              {body}
+            </Link>
+          </Badge>
+        ) : (
+          <Badge variant="success" className="h-7 gap-1.5" aria-label={label}>
+            {body}
+          </Badge>
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {canOpen
+          ? `${counts} Open the report; closing it clears this.`
+          : counts}
       </TooltipContent>
     </Tooltip>
   );

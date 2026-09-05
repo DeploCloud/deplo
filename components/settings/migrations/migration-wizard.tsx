@@ -372,6 +372,7 @@ const NO_PROGRESS: MigrationProgress = { done: 0, total: 0, current: "" };
 function asActive(run: ImportRun): ActiveMigration {
   return {
     id: run.id,
+    status: run.status,
     sourceUrl: run.sourceUrl,
     orgName: run.orgName,
     actor: run.actor,
