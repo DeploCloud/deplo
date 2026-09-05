@@ -118,6 +118,7 @@ function CronJobRow({
   targetKind,
   targetId,
   services,
+  primaryService,
   canManage,
 }: {
   job: CronJobDTO;

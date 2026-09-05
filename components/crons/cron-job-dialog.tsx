@@ -82,6 +82,7 @@ export function CronJobDialog({
   targetKind,
   targetId,
   services,
+  primaryService,
   job,
 }: {
   open: boolean;
