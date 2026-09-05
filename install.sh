@@ -2265,8 +2265,9 @@ foreign_remove() {
   # just deployed from, and `docker rmi` on an image in use is a refusal anyway.
   # Their uninstall reaches for `system prune -a --volumes` here; that would take
   # everything the migration just brought across with it.
-  docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
-    | grep -E "^(ghcr\.io/)?(coollabsio|dokploy)/" | xargs -r docker rmi -f >&9 2>&9 || true
+  # By id: a swarm pulls its image as `repo:tag@sha256:…`, a reference `rmi repo:tag` does not know.
+  docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null \
+    | awk '/^(ghcr\.io\/)?(coollabsio|dokploy)\//{print $2}' | sort -u | xargs -r docker rmi -f >&9 2>&9 || true
   # Coolify writes every database backup it takes under its own directory, S3 or
   # not, and keeps them there: deleting the directory whole took the one thing a
   # copy gone wrong is recovered from.
