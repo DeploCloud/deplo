@@ -3253,6 +3253,7 @@ async function importAppService(
       compose,
       new Set([...takenNames].filter((n) => mine.has(n))),
       name,
+      takenNames,
     );
     if (renamed.renames.size > 0) {
       compose = renamed.compose;

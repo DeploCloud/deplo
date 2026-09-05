@@ -641,8 +641,11 @@ export function renameClashingServices(
   source: string,
   /** Lowercase names a neighbour answers to on the destination network. */
   taken: Set<string>,
-  /** What to qualify a renamed service with - the app's own name. */
-  prefix: string,
+  /** Qualify a renamed service with the app's own name, or `null` for `<name>-2`. */
+  prefix: string | null,
+  /** Every name on the network, when `taken` was narrowed to what clashes: the
+   *  free name is picked against this, so a third `db` skips the `db-2` too. */
+  avoid: Set<string> = taken,
 ): { compose: string; renames: Map<string, string>; changes: string[] } {
   const renames = new Map<string, string>();
   const unchanged = { compose: source, renames, changes: [] as string[] };
@@ -654,23 +657,28 @@ export function renameClashingServices(
   if (!isMap(services)) return unchanged;
 
   const base =
-    prefix
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "app";
+    prefix === null
+      ? null
+      : prefix
+          .toLowerCase()
+          .replace(/[^a-z0-9-]+/g, "-")
+          .replace(/^-+|-+$/g, "") || "app";
   const used = new Set(
     services.items.map((i) => String((i.key as Scalar).value).toLowerCase()),
   );
   const changes: string[] = [];
-  /** A free name for `name`, qualified by this app and unique on the network. */
+  /** A free name for `name`: qualified by this app, or numbered like a slug. */
   const freeName = (name: string): string => {
-    let next = `${base}-${name}`;
+    const stem = base === null ? name : `${base}-${name}`;
+    let next = base === null ? `${stem}-2` : stem;
     for (
-      let i = 2;
-      taken.has(next.toLowerCase()) || used.has(next.toLowerCase());
+      let i = base === null ? 3 : 2;
+      taken.has(next.toLowerCase()) ||
+      avoid.has(next.toLowerCase()) ||
+      used.has(next.toLowerCase());
       i++
     )
-      next = `${base}-${name}-${i}`;
+      next = `${stem}-${i}`;
     used.add(next.toLowerCase());
     return next;
   };

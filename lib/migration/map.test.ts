@@ -2519,6 +2519,29 @@ test("renameClashingServices moves a taken service name and its references", () 
   assert.equal(changes.length, 2);
 });
 
+test("renameClashingServices numbers a taken name like a slug when given no prefix", () => {
+  const source = [
+    "services:",
+    "  web:",
+    "    image: nginx",
+    "    depends_on:",
+    "      - db",
+    "  db:",
+    "    image: postgres:16",
+  ].join("\n");
+  const { compose, renames } = renameClashingServices(
+    source,
+    new Set(["db", "db-2"]),
+    null,
+  );
+  const doc = yaml.load(compose) as {
+    services: Record<string, { depends_on?: string[] }>;
+  };
+  assert.deepEqual(Object.keys(doc.services), ["web", "db-3"]);
+  assert.deepEqual(doc.services.web.depends_on, ["db-3"]);
+  assert.equal(renames.get("db"), "db-3");
+});
+
 test("renameClashingServices leaves a stack nothing contests alone", () => {
   const source = ["services:", "  db:", "    image: postgres:16"].join("\n");
   const { compose, renames } = renameClashingServices(

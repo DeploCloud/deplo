@@ -53,6 +53,7 @@ import { hostPortClaimed } from "./host-ports";
 import { appOwnVolumeNames } from "./project-backup-descriptor";
 import {
   assertNoNameClash,
+  namesOnNetwork,
   namesTakenOnNetwork,
   withNetworkLock,
 } from "./name-clash";
@@ -812,6 +813,61 @@ function cleanAppName(name: string): string {
   return trimmed;
 }
 
+/** One service name a stack would share with a neighbour, and its way out. */
+export interface ComposeNameClash {
+  name: string;
+  /** The app or database already answering to it. */
+  owner: string;
+  /** What `createApp({ renameClashes: true })` would call it instead. */
+  renamedTo: string;
+}
+
+/**
+ * What `createApp` would refuse this stack over, said BEFORE it is asked - so the
+ * wizard can offer the rename instead of surfacing the refusal.
+ */
+export async function composeNameClashes(
+  input: Pick<
+    CreateAppInput,
+    "compose" | "serverId" | "folderId" | "projectId" | "environmentId"
+  >,
+): Promise<ComposeNameClash[]> {
+  const { teamId } = await requireCapability("create_apps");
+  const compose = input.compose?.trim();
+  if (!compose) return [];
+  const placement = await resolvePlacement(
+    { ...input, name: "", source: "compose", repo: null },
+    teamId,
+  );
+  const deployable = (await listServersForTeam(teamId)).filter(
+    canHostWorkloads,
+  );
+  const server =
+    (input.serverId && deployable.find((s) => s.id === input.serverId)) ||
+    deployable[0];
+  // No server: createApp has its own sentence for that, and nothing to clash with.
+  if (!server) return [];
+  const taken = await namesOnNetwork(
+    { teamId, environmentId: placement.environmentId, serverId: server.id },
+    "",
+  );
+  const mine = [
+    ...new Set(composeNamesOnNetwork(compose).map((n) => n.toLowerCase())),
+  ].filter((n) => taken.has(n));
+  if (mine.length === 0) return [];
+  const { renames } = renameClashingServices(
+    compose,
+    new Set(mine),
+    null,
+    new Set(taken.keys()),
+  );
+  return mine.map((name) => ({
+    name,
+    owner: taken.get(name)!,
+    renamedTo: renames.get(name) ?? name,
+  }));
+}
+
 export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // `create_apps` is asked of the DESTINATION (resolvePlacement): a node grant can
   // hold it where the role does not, and withhold it where the role has it.
@@ -999,7 +1055,8 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     const renamed = renameClashingServices(
       input.compose,
       new Set([...taken].filter((n) => mine.has(n))),
-      input.name,
+      null,
+      taken,
     );
     if (renamed.renames.size > 0) {
       const moved = (svc: string): string =>

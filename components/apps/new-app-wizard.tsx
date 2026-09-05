@@ -72,6 +72,10 @@ import {
 } from "@/components/apps/wizard/advanced-section";
 import { CommandField } from "@/components/apps/wizard/command-field";
 import { ComposeDomainPicker } from "@/components/apps/wizard/compose-domain-picker";
+import {
+  NameClashDialog,
+  type NameClash,
+} from "@/components/apps/wizard/name-clash-dialog";
 
 import {
   hasBlockingErrors,
@@ -111,6 +115,14 @@ export interface WizardBuildServer {
   buildOnly: boolean;
   isDeploHost: boolean;
 }
+
+/** The `createApp` input the wizard sends, held when a clash dialog interrupts it. */
+type CreateAppVariables = Record<string, unknown> & {
+  folderId: string | null;
+  projectId: string | null;
+  environmentId: string | null;
+  renameClashes?: boolean;
+};
 
 export interface WizardTemplate {
   id: string;
@@ -284,6 +296,12 @@ export function NewAppWizard({
   const [sharedIds, setSharedIds] = React.useState<string[]>([]);
   const [composeOpen, setComposeOpen] = React.useState(false);
   const [envOpen, setEnvOpen] = React.useState(false);
+  // A deploy held at the door: the stack shares a service name with a neighbour,
+  // and the dialog asks whether to rename it or go edit the compose.
+  const [clash, setClash] = React.useState<{
+    input: CreateAppVariables;
+    clashes: NameClash[];
+  } | null>(null);
 
   // What the user has actually chosen. `build` below is this with what the
   // repository told us layered on.
@@ -517,148 +535,191 @@ export function NewAppWizard({
       : buildConfigFor({ buildMethod: "dockerfile" });
     const filledEnv = envRows.filter((e) => e.key.trim());
 
+    const input: CreateAppVariables = {
+      name: name.trim(),
+      // A template deploying its own stack is stored as the `compose`
+      // source so settings opens on the Compose tab and the deploy engine
+      // is unambiguous.
+      source: deploySourceEnumName(useCompose ? "compose" : source!),
+      serverId,
+      buildServerId,
+      composeUpArgs: useCompose ? composeUpArgs.trim() || null : null,
+      dockerImage: image,
+      // Seed the app's display logo from the template so a deployed
+      // template carries its icon; editable later from app settings.
+      logo: isTemplate ? template!.logo : null,
+      compose: useCompose ? compose : null,
+      env: filledEnv.length
+        ? filledEnv.map((e) => ({
+            key: e.key.trim(),
+            value: e.value,
+            // Undefined lets the key's own name decide, which is what a
+            // template's generated passwords want.
+            type: e.secret ? "secret" : undefined,
+          }))
+        : undefined,
+      sharedVarIds: sharedIds.length ? sharedIds : null,
+      repo,
+      build: {
+        buildMethod: payloadBuild.buildMethod,
+        settings: payloadBuild.methodSettings,
+        installCommand: payloadBuild.installCommand,
+        buildCommand: payloadBuild.buildCommand,
+        outputDir: payloadBuild.outputDirectory,
+        startCommand: payloadBuild.startCommand,
+        rootDir: payloadBuild.rootDirectory,
+        runtimeVersion: payloadBuild.runtimeVersion,
+        port: payloadBuild.port,
+      },
+      autoDeploy: usesGit ? autoDeploy : false,
+      // Where the first domain points: what a template declares, else what
+      // the wizard showed the user for their own stack.
+      composeService: templateCompose
+        ? (template!.expose?.service ?? null)
+        : (primaryService?.name ?? null),
+      composePort: templateCompose
+        ? (template!.expose?.port ?? null)
+        : (primaryService?.port ?? null),
+      extraDomains: templateCompose
+        ? template!.exposes.slice(1).map((e) => ({
+            service: e.service,
+            port: e.port,
+            host: e.host ?? null,
+            path: e.path ?? null,
+          }))
+        : useCompose
+          ? routeCandidates
+              .filter((c) => extraRouted.includes(c.name))
+              .map((c) => ({
+                service: c.name,
+                port: c.port,
+                host: null,
+                path: null,
+              }))
+          : null,
+      autoDomain: templateCompose ? template!.autoDomain : null,
+      autoDomainPath: templateCompose ? (template!.expose?.path ?? null) : null,
+      mounts: templateCompose ? template!.mounts : null,
+      folderId: placement?.folderId ?? null,
+      projectId: placement?.projectId ?? null,
+      environmentId: placement?.environmentId ?? null,
+    };
+
     startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($input: CreateAppInput!) {
-          createApp(input: $input) { id slug latestDeployment { id } }
-        }`,
-        {
-          input: {
-            name: name.trim(),
-            // A template deploying its own stack is stored as the `compose`
-            // source so settings opens on the Compose tab and the deploy engine
-            // is unambiguous.
-            source: deploySourceEnumName(useCompose ? "compose" : source!),
-            serverId,
-            buildServerId,
-            composeUpArgs: useCompose ? composeUpArgs.trim() || null : null,
-            dockerImage: image,
-            // Seed the app's display logo from the template so a deployed
-            // template carries its icon; editable later from app settings.
-            logo: isTemplate ? template!.logo : null,
-            compose: useCompose ? compose : null,
-            env: filledEnv.length
-              ? filledEnv.map((e) => ({
-                  key: e.key.trim(),
-                  value: e.value,
-                  // Undefined lets the key's own name decide, which is what a
-                  // template's generated passwords want.
-                  type: e.secret ? "secret" : undefined,
-                }))
-              : undefined,
-            sharedVarIds: sharedIds.length ? sharedIds : null,
-            repo,
-            build: {
-              buildMethod: payloadBuild.buildMethod,
-              settings: payloadBuild.methodSettings,
-              installCommand: payloadBuild.installCommand,
-              buildCommand: payloadBuild.buildCommand,
-              outputDir: payloadBuild.outputDirectory,
-              startCommand: payloadBuild.startCommand,
-              rootDir: payloadBuild.rootDirectory,
-              runtimeVersion: payloadBuild.runtimeVersion,
-              port: payloadBuild.port,
+      // Ask before creating: a taken service name is a choice to make, not a
+      // refusal to read.
+      if (useCompose) {
+        const pre = await gqlAction(
+          /* GraphQL */ `
+            query ($input: ComposeNameClashesInput!) {
+              composeNameClashes(input: $input) {
+                name
+                owner
+                renamedTo
+              }
+            }
+          `,
+          {
+            input: {
+              compose,
+              serverId,
+              folderId: input.folderId,
+              projectId: input.projectId,
+              environmentId: input.environmentId,
             },
-            autoDeploy: usesGit ? autoDeploy : false,
-            // Where the first domain points: what a template declares, else what
-            // the wizard showed the user for their own stack.
-            composeService: templateCompose
-              ? (template!.expose?.service ?? null)
-              : (primaryService?.name ?? null),
-            composePort: templateCompose
-              ? (template!.expose?.port ?? null)
-              : (primaryService?.port ?? null),
-            extraDomains: templateCompose
-              ? template!.exposes.slice(1).map((e) => ({
-                  service: e.service,
-                  port: e.port,
-                  host: e.host ?? null,
-                  path: e.path ?? null,
-                }))
-              : useCompose
-                ? routeCandidates
-                    .filter((c) => extraRouted.includes(c.name))
-                    .map((c) => ({
-                      service: c.name,
-                      port: c.port,
-                      host: null,
-                      path: null,
-                    }))
-                : null,
-            autoDomain: templateCompose ? template!.autoDomain : null,
-            autoDomainPath: templateCompose
-              ? (template!.expose?.path ?? null)
-              : null,
-            mounts: templateCompose ? template!.mounts : null,
-            folderId: placement?.folderId ?? null,
-            projectId: placement?.projectId ?? null,
-            environmentId: placement?.environmentId ?? null,
           },
-        },
-        (d: {
-          createApp: {
-            id: string;
-            slug: string;
-            latestDeployment: { id: string } | null;
-          };
-        }) => d.createApp,
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      const app = res.data;
-      if (!app) return;
-
-      // Invalidate the router cache so the shared dashboard layout re-runs on
-      // the destination, otherwise the topbar breadcrumb's team snapshot is
-      // stale and the brand-new app is missing from it until a hard reload.
-      router.refresh();
-
-      if (source === "upload" && uploadFile) {
-        try {
-          await uploadArchive(app.id, uploadFile);
-        } catch (e) {
-          // The app exists but the archive didn't land - send the user to its
-          // settings to retry rather than deploying nothing.
-          toast.error(
-            `App created, but the upload failed (${
-              e instanceof Error ? e.message : "unknown error"
-            }). Upload the archive from Settings.`,
-          );
-          router.push(`/apps/${app.slug}/settings`);
+          (d: { composeNameClashes: NameClash[] }) => d.composeNameClashes,
+        );
+        if (!pre.ok) {
+          toast.error(pre.error);
           return;
         }
-        const dep = await gqlAction(
-          `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
-          { appId: app.id },
-          (d: { redeploy: { id: string } }) => d.redeploy,
-        );
-        if (dep.ok && dep.data) {
-          toast.success("Deployment started");
-          router.push(`/apps/${app.slug}/deployments/${dep.data.id}`);
-        } else {
-          // The archive is stored; only the deploy kick-off failed.
-          if (!dep.ok) toast.error(dep.error);
-          router.push(`/apps/${app.slug}/settings`);
+        if (pre.data && pre.data.length > 0) {
+          setClash({ input, clashes: pre.data });
+          return;
         }
+      }
+      await submit(input);
+    });
+  }
+
+  async function submit(input: CreateAppVariables) {
+    const res = await gqlAction(
+      /* GraphQL */ `
+        mutation ($input: CreateAppInput!) {
+          createApp(input: $input) {
+            id
+            slug
+            latestDeployment {
+              id
+            }
+          }
+        }
+      `,
+      { input },
+      (d: {
+        createApp: {
+          id: string;
+          slug: string;
+          latestDeployment: { id: string } | null;
+        };
+      }) => d.createApp,
+    );
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    const app = res.data;
+    if (!app) return;
+
+    // Invalidate the router cache so the shared dashboard layout re-runs on
+    // the destination, otherwise the topbar breadcrumb's team snapshot is
+    // stale and the brand-new app is missing from it until a hard reload.
+    router.refresh();
+
+    if (source === "upload" && uploadFile) {
+      try {
+        await uploadArchive(app.id, uploadFile);
+      } catch (e) {
+        // The app exists but the archive didn't land - send the user to its
+        // settings to retry rather than deploying nothing.
+        toast.error(
+          `App created, but the upload failed (${
+            e instanceof Error ? e.message : "unknown error"
+          }). Upload the archive from Settings.`,
+        );
+        router.push(`/apps/${app.slug}/settings`);
         return;
       }
+      const dep = await gqlAction(
+        `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
+        { appId: app.id },
+        (d: { redeploy: { id: string } }) => d.redeploy,
+      );
+      if (dep.ok && dep.data) {
+        toast.success("Deployment started");
+        router.push(`/apps/${app.slug}/deployments/${dep.data.id}`);
+      } else {
+        // The archive is stored; only the deploy kick-off failed.
+        if (!dep.ok) toast.error(dep.error);
+        router.push(`/apps/${app.slug}/settings`);
+      }
+      return;
+    }
 
-      const firstDeploymentId = app.latestDeployment?.id;
-      toast.success(
-        firstDeploymentId
-          ? "Deployment started"
-          : source === "upload"
-            ? "App created - upload an archive from Settings to deploy"
-            : "App created - it needs someone with permission to deploy",
-      );
-      router.push(
-        firstDeploymentId
-          ? `/apps/${app.slug}/deployments/${firstDeploymentId}`
-          : `/apps/${app.slug}`,
-      );
-    });
+    const firstDeploymentId = app.latestDeployment?.id;
+    toast.success(
+      firstDeploymentId
+        ? "Deployment started"
+        : source === "upload"
+          ? "App created - upload an archive from Settings to deploy"
+          : "App created - it needs someone with permission to deploy",
+    );
+    router.push(
+      firstDeploymentId
+        ? `/apps/${app.slug}/deployments/${firstDeploymentId}`
+        : `/apps/${app.slug}`,
+    );
   }
 
   // ── Cards ────────────────────────────────────────────────────────────────
@@ -754,6 +815,18 @@ export function NewAppWizard({
       {usesGit && (
         <AdvancedGroup title="Git">
           <GitDeployOptions value={gitOptions} onChange={setGitOptions} />
+        </AdvancedGroup>
+      )}
+
+      {/* A template's stack is decided; editing it is the expert's door, not
+          the first thing on the card. */}
+      {templateCompose && (
+        <AdvancedGroup title="Compose">
+          <ComposeSummary
+            services={composeServices}
+            diagnostics={composeDiags}
+            onOpen={() => setComposeOpen(true)}
+          />
         </AdvancedGroup>
       )}
 
@@ -941,7 +1014,7 @@ export function NewAppWizard({
               </div>
             )}
 
-            {useCompose && (
+            {useCompose && !isTemplate && (
               <ComposeSummary
                 services={composeServices}
                 diagnostics={composeDiags}
@@ -1038,6 +1111,20 @@ export function NewAppWizard({
         value={compose}
         onSave={onComposeSaved}
         title={isTemplate ? templateTitle(template!) : "Docker Compose"}
+      />
+      <NameClashDialog
+        clashes={clash?.clashes ?? []}
+        open={clash !== null}
+        onOpenChange={(o) => !o && setClash(null)}
+        pending={pending}
+        onRename={() => {
+          const held = clash;
+          if (!held) return;
+          startTransition(async () => {
+            await submit({ ...held.input, renameClashes: true });
+            setClash(null);
+          });
+        }}
       />
       <EnvDraftDialog
         open={envOpen}

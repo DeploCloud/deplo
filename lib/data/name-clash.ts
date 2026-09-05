@@ -28,7 +28,7 @@ export interface Placement {
  * a Docker network lives on one machine, so a database in another Environment is
  * not a clash and refusing it would only take an ordinary name away.
  */
-async function namesOnNetwork(
+export async function namesOnNetwork(
   to: Placement,
   exceptId: string,
 ): Promise<Map<string, string>> {

@@ -13,6 +13,7 @@ import {
   listApps,
   getAppBySlug,
   getAppById,
+  composeNameClashes,
   createApp,
   updateAppBuild,
   setAppBuildServer,
@@ -41,6 +42,7 @@ import {
   setAppRollbackKeep,
   type AppSummary,
   type ResourceLimitsInput,
+  type ComposeNameClash,
 } from "@/lib/data/apps";
 import {
   revealDeployHook,
@@ -581,8 +583,46 @@ const CreateAppInputType = builder.inputType("CreateAppInput", {
     folderId: t.string({ required: false }),
     projectId: t.string({ required: false }),
     environmentId: t.string({ required: false }),
+    renameClashes: t.boolean({
+      required: false,
+      description:
+        "Rename a service whose name a neighbour on the destination network " +
+        "already answers to (`db` becomes `db-2`), carrying its references, " +
+        "instead of refusing the stack. See `composeNameClashes`.",
+    }),
   }),
 });
+
+const ComposeNameClashesInputType = builder.inputType(
+  "ComposeNameClashesInput",
+  {
+    fields: (t) => ({
+      compose: t.string({ required: true }),
+      serverId: t.string({ required: false }),
+      folderId: t.string({ required: false }),
+      projectId: t.string({ required: false }),
+      environmentId: t.string({ required: false }),
+    }),
+  },
+);
+
+const ComposeNameClashRef = builder
+  .objectRef<ComposeNameClash>("ComposeNameClash")
+  .implement({
+    description:
+      "A service name this stack shares with an app or database already on the " +
+      "destination network, and what the rename would call it.",
+    fields: (t) => ({
+      name: t.exposeString("name"),
+      owner: t.exposeString("owner", {
+        description: "The app or database already answering to the name.",
+      }),
+      renamedTo: t.exposeString("renamedTo", {
+        description:
+          "The free name `createApp(renameClashes: true)` would use.",
+      }),
+    }),
+  });
 
 const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
   fields: (t) => ({
@@ -716,6 +756,26 @@ const AppTransferInfoRef = builder
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
+  composeNameClashes: t.field({
+    type: [ComposeNameClashRef],
+    authScopes: { capability: "create_apps" },
+    description:
+      "The service names a stack would share with something already on the " +
+      "network it lands on - what `createApp` refuses it over, asked before " +
+      "creating so the caller can pass `renameClashes` instead. Empty when " +
+      "nothing clashes.",
+    args: {
+      input: t.arg({ type: ComposeNameClashesInputType, required: true }),
+    },
+    resolve: (_r, { input }) =>
+      composeNameClashes({
+        compose: input.compose,
+        serverId: input.serverId ?? undefined,
+        folderId: input.folderId ?? null,
+        projectId: input.projectId ?? null,
+        environmentId: input.environmentId ?? null,
+      }),
+  }),
   appTransferInfo: t.field({
     type: AppTransferInfoRef,
     authScopes: { capability: "move_apps" },
@@ -910,6 +970,7 @@ builder.mutationFields((t) => ({
         folderId: input.folderId ?? null,
         projectId: input.projectId ?? null,
         environmentId: input.environmentId ?? null,
+        renameClashes: input.renameClashes ?? undefined,
       }),
   }),
   renameApp: t.field({

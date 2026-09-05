@@ -782,6 +782,27 @@ type CertificateAccount {
   unavailable: String
 }
 
+"""
+A service name this stack shares with an app or database already on the destination network, and what the rename would call it.
+"""
+type ComposeNameClash {
+  name: String
+
+  """The app or database already answering to the name."""
+  owner: String
+
+  """The free name `createApp(renameClashes: true)` would use."""
+  renamedTo: String
+}
+
+input ComposeNameClashesInput {
+  compose: String!
+  environmentId: String
+  folderId: String
+  projectId: String
+  serverId: String
+}
+
 input ConnectGitProviderInput {
   """
   Allow an address inside the deployment, for a git server on your own network. Instance-admin only; refused otherwise.
@@ -968,6 +989,11 @@ input CreateAppInput {
   mounts: [MountInput!]
   name: String!
   projectId: String
+
+  """
+  Rename a service whose name a neighbour on the destination network already answers to (`db` becomes `db-2`), carrying its references, instead of refusing the stack. See `composeNameClashes`.
+  """
+  renameClashes: Boolean
   repo: GitRepoInput
   serverId: String
 
@@ -4104,6 +4130,11 @@ type Query {
   The hosts this team can compile on, for an app's 'Build on' setting. Wider than the deploy-target list on purpose: a build-only server is here BECAUSE it cannot deploy, and an ordinary server is here too (one big machine can build for several small ones without giving up its own apps). Two roles are excluded: storage-only (no Docker, no build) and a migration source (it has Docker, but it is another platform's machine and a build would ship the app's source and decrypted env there). `hostArch` is included so the caller can disable the servers whose architecture cannot produce a runnable image for the target.
   """
   buildServerChoices: [BuildServerChoice!]
+
+  """
+  The service names a stack would share with something already on the network it lands on - what `createApp` refuses it over, asked before creating so the caller can pass `renameClashes` instead. Empty when nothing clashes.
+  """
+  composeNameClashes(input: ComposeNameClashesInput!): [ComposeNameClash!]
 
   """Attachable instances + default target for an app's console."""
   consoleInfo(appId: String!): ConsoleInfo

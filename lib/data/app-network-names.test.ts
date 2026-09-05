@@ -22,7 +22,7 @@ import {
 import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
-import { createApp } from "./apps";
+import { createApp, composeNameClashes } from "./apps";
 import { loadAppGraph } from "./app-graph-load";
 
 /**
@@ -227,23 +227,23 @@ test("a generated stack is renamed around a taken name, and what named the servi
   );
 
   const graph = (await loadAppGraph(second.id))!;
-  assert.match(graph.compose!, /^  second-db:/m);
-  assert.match(graph.compose!, /^  second-web:/m);
+  assert.match(graph.compose!, /^  db-2:/m);
+  assert.match(graph.compose!, /^  web-2:/m);
   assert.doesNotMatch(graph.compose!, /^  (db|web):/m);
-  assert.match(graph.compose!, /- second-db$/m, "depends_on follows");
+  assert.match(graph.compose!, /- db-2$/m, "depends_on follows");
   assert.match(
     graph.compose!,
-    /DATABASE_URL: postgres:\/\/second-db:5432\/app/,
+    /DATABASE_URL: postgres:\/\/db-2:5432\/app/,
     "the inline environment follows",
   );
-  assert.equal(graph.mounts?.[0]?.content, "proxy_pass http://second-db/;");
+  assert.equal(graph.mounts?.[0]?.content, "proxy_pass http://db-2/;");
 
   const routes = await db
     .select({ service: domainsTable.service, primary: domainsTable.isPrimary })
     .from(domainsTable)
     .where(eq(domainsTable.appId, second.id));
-  assert.equal(routes.find((r) => r.primary)?.service, "second-web");
-  assert.equal(routes.find((r) => !r.primary)?.service, "second-db");
+  assert.equal(routes.find((r) => r.primary)?.service, "web-2");
+  assert.equal(routes.find((r) => !r.primary)?.service, "db-2");
 
   const env = Object.fromEntries(
     (
@@ -253,8 +253,8 @@ test("a generated stack is renamed around a taken name, and what named the servi
         .where(eq(envVarsTable.appId, second.id))
     ).map((r) => [r.key, decryptSecret(r.valueEnc)]),
   );
-  assert.equal(env.DB_HOST, "second-db");
-  assert.equal(env.URL, "postgres://second-db:5432/x");
+  assert.equal(env.DB_HOST, "db-2");
+  assert.equal(env.URL, "postgres://db-2:5432/x");
   assert.equal(env.POSTGRES_DB, "db", "a database NAME is not a hostname");
 
   // The trail says it happened, or the compose reads as if the user wrote it so.
@@ -285,6 +285,62 @@ test("a generated stack nothing contests is left byte-identical", async () => {
     .from(appMounts)
     .where(eq(appMounts.appId, app.id));
   assert.equal(mounts.length, 0);
+});
+
+test("composeNameClashes says what createApp would refuse, and the name it would use", async () => {
+  // The wizard asks this BEFORE creating, so a taken name is a dialog with a
+  // rename on it rather than a refusal to read. Same rule, same free name.
+  assert.deepEqual(
+    await asUser1(() => composeNameClashes({ compose: GENERATED_STACK })),
+    [],
+    "nothing there yet, nothing clashes",
+  );
+  await asUser1(() =>
+    createApp({
+      name: "first",
+      source: "compose",
+      repo: null,
+      compose: GENERATED_STACK,
+      deploy: false,
+    }),
+  );
+  const clashes = await asUser1(() =>
+    composeNameClashes({ compose: GENERATED_STACK }),
+  );
+  assert.deepEqual(clashes, [
+    { name: "db", owner: "first", renamedTo: "db-2" },
+    { name: "web", owner: "first", renamedTo: "web-2" },
+  ]);
+  // And `db-2` is what the rename then really produces, so the dialog told the truth.
+  const second = await asUser1(() =>
+    createApp({
+      name: "second",
+      source: "compose",
+      repo: null,
+      compose: GENERATED_STACK,
+      renameClashes: true,
+      deploy: false,
+    }),
+  );
+  assert.match((await loadAppGraph(second.id))!.compose!, /^  db-2:/m);
+  // A third copy skips the taken `-2` too - said, and then done.
+  assert.deepEqual(
+    (await asUser1(() => composeNameClashes({ compose: GENERATED_STACK }))).map(
+      (c) => c.renamedTo,
+    ),
+    ["db-3", "web-3"],
+  );
+  const third = await asUser1(() =>
+    createApp({
+      name: "third",
+      source: "compose",
+      repo: null,
+      compose: GENERATED_STACK,
+      renameClashes: true,
+      deploy: false,
+    }),
+  );
+  assert.match((await loadAppGraph(third.id))!.compose!, /^  db-3:/m);
 });
 
 test("a stack the user wrote is still refused, with the free name in the message", async () => {
