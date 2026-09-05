@@ -85,7 +85,7 @@ async function capabilitiesByMembership(
  * rows, never clamped to the token making the request. What a personal token's
  * reach and the MCP door read.
  */
-export async function teamsWhereUserHolds(
+export const teamsWhereUserHolds = cache(async function teamsWhereUserHolds(
   userId: string,
   cap: Capability,
 ): Promise<Set<string>> {
@@ -103,10 +103,10 @@ export async function teamsWhereUserHolds(
       ),
     );
   return new Set(rows.map((r) => r.teamId));
-}
+});
 
 /** All teams the given user is a member of, in creation order. */
-export async function teamsForUser(userId: string): Promise<Team[]> {
+export const teamsForUser = cache(async (userId: string): Promise<Team[]> => {
   const rows = await getDb()
     .select({
       id: teamsTable.id,
@@ -130,7 +130,7 @@ export async function teamsForUser(userId: string): Promise<Team[]> {
     avatarUrl: teamAvatarUrl(t.image),
     createdAt: t.createdAt,
   }));
-}
+});
 
 /* ------------------------------------------------------------------ */
 /* Two-factor policy                                                   */
@@ -232,7 +232,7 @@ export async function twoFactorMandateForCurrentUser(): Promise<string | null> {
 }
 
 /** The user's membership in a specific team (with capabilities), or null. */
-export async function membershipFor(
+export const membershipFor = cache(async function membershipFor(
   userId: string,
   teamId: string,
 ): Promise<Membership | null> {
@@ -265,7 +265,7 @@ export async function membershipFor(
     capabilities: clampToToken(caps, userId, teamId),
     createdAt: m.createdAt,
   };
-}
+});
 
 /**
  * Narrow a member's effective capabilities to what the API token making this

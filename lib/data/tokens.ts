@@ -47,6 +47,7 @@ import { expandFolders } from "./node-scope";
 import { recordActivity } from "./activity";
 import { assertUser, getCurrentUser } from "../auth";
 import { sha256Hex, randomToken } from "../crypto";
+import { cache } from "../request-cache";
 import {
   ALL_CAPABILITIES,
   type AlertKey,
@@ -1383,7 +1384,9 @@ async function writeScope(
 /**
  * Flatten a stored scope for the request identity.
  */
-async function loadScope(tokenId: string): Promise<TokenScope> {
+const loadScope = cache(async function loadScope(
+  tokenId: string,
+): Promise<TokenScope> {
   const db = getDb();
   const [teamRows, projRows, folderRows, appRows] = await Promise.all([
     db
@@ -1459,7 +1462,7 @@ async function loadScope(tokenId: string): Promise<TokenScope> {
       ),
     ],
   };
-}
+});
 
 async function actorUsername(): Promise<string> {
   return (await getCurrentUser())?.username ?? "an admin";
