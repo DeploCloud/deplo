@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "@/lib/request-cache";
 import { eq } from "drizzle-orm";
 
-import { getDb } from "./db/client";
+import { prepared } from "./db/prepared";
 import { instanceSettings } from "./db/schema/control-plane";
 import { sha256Hex } from "./crypto";
 import {
@@ -28,10 +28,12 @@ const SETTINGS_ID = "default";
  * chosen to hand gravatar.com an address hash yet.
  */
 export const gravatarEnabled = cache(async (): Promise<boolean> => {
-  const [row] = await getDb()
-    .select({ gravatarEnabled: instanceSettings.gravatarEnabled })
-    .from(instanceSettings)
-    .where(eq(instanceSettings.id, SETTINGS_ID));
+  const [row] = await prepared("gravatar-enabled", (db) =>
+    db
+      .select({ gravatarEnabled: instanceSettings.gravatarEnabled })
+      .from(instanceSettings)
+      .where(eq(instanceSettings.id, SETTINGS_ID)),
+  ).execute();
   return row?.gravatarEnabled ?? false;
 });
 

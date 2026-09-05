@@ -2,8 +2,9 @@ import "server-only";
 
 import { cache } from "@/lib/request-cache";
 import { cookies, headers } from "next/headers";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "./db/client";
+import { prepared } from "./db/prepared";
 import { holdsAPasskey, passkeyCountsForThisRequest } from "./passkey-policy";
 import { teamAvatarUrl } from "./avatar";
 import {
@@ -56,31 +57,6 @@ export {
  */
 
 /**
- * Reassemble the `capabilities` array for a set of memberships from the junction
- * in ONE query (batch-load, never per-membership - relational-store PLAN §6
- * "N+1 on capabilities"). Returns a map of membershipId → capabilities.
- */
-async function capabilitiesByMembership(
-  membershipIds: string[],
-): Promise<Map<string, Capability[]>> {
-  const byId = new Map<string, Capability[]>();
-  if (membershipIds.length === 0) return byId;
-  const rows = await getDb()
-    .select({
-      membershipId: membershipCapabilitiesTable.membershipId,
-      capability: membershipCapabilitiesTable.capability,
-    })
-    .from(membershipCapabilitiesTable)
-    .where(inArray(membershipCapabilitiesTable.membershipId, membershipIds));
-  for (const r of rows) {
-    const list = byId.get(r.membershipId) ?? [];
-    list.push(r.capability as Capability);
-    byId.set(r.membershipId, list);
-  }
-  return byId;
-}
-
-/**
  * The teams where this person holds `cap` outright - their stored membership
  * rows, never clamped to the token making the request. What a personal token's
  * reach and the MCP door read.
@@ -89,38 +65,42 @@ export const teamsWhereUserHolds = cache(async function teamsWhereUserHolds(
   userId: string,
   cap: Capability,
 ): Promise<Set<string>> {
-  const rows = await getDb()
-    .select({ teamId: membershipsTable.teamId })
-    .from(membershipsTable)
-    .innerJoin(
-      membershipCapabilitiesTable,
-      eq(membershipCapabilitiesTable.membershipId, membershipsTable.id),
-    )
-    .where(
-      and(
-        eq(membershipsTable.userId, userId),
-        eq(membershipCapabilitiesTable.capability, cap),
+  const rows = await prepared("teams-where-user-holds", (db) =>
+    db
+      .select({ teamId: membershipsTable.teamId })
+      .from(membershipsTable)
+      .innerJoin(
+        membershipCapabilitiesTable,
+        eq(membershipCapabilitiesTable.membershipId, membershipsTable.id),
+      )
+      .where(
+        and(
+          eq(membershipsTable.userId, sql.placeholder("userId")),
+          eq(membershipCapabilitiesTable.capability, sql.placeholder("cap")),
+        ),
       ),
-    );
+  ).execute({ userId, cap });
   return new Set(rows.map((r) => r.teamId));
 });
 
 /** All teams the given user is a member of, in creation order. */
 export const teamsForUser = cache(async (userId: string): Promise<Team[]> => {
-  const rows = await getDb()
-    .select({
-      id: teamsTable.id,
-      name: teamsTable.name,
-      slug: teamsTable.slug,
-      plan: teamsTable.plan,
-      founderUserId: teamsTable.founderUserId,
-      image: teamsTable.image,
-      createdAt: teamsTable.createdAt,
-    })
-    .from(teamsTable)
-    .innerJoin(membershipsTable, eq(membershipsTable.teamId, teamsTable.id))
-    .where(eq(membershipsTable.userId, userId))
-    .orderBy(teamsTable.createdAt);
+  const rows = await prepared("teams-for-user", (db) =>
+    db
+      .select({
+        id: teamsTable.id,
+        name: teamsTable.name,
+        slug: teamsTable.slug,
+        plan: teamsTable.plan,
+        founderUserId: teamsTable.founderUserId,
+        image: teamsTable.image,
+        createdAt: teamsTable.createdAt,
+      })
+      .from(teamsTable)
+      .innerJoin(membershipsTable, eq(membershipsTable.teamId, teamsTable.id))
+      .where(eq(membershipsTable.userId, sql.placeholder("userId")))
+      .orderBy(teamsTable.createdAt),
+  ).execute({ userId });
   return rows.map((t) => ({
     id: t.id,
     name: t.name,
@@ -238,25 +218,36 @@ export const membershipFor = cache(async function membershipFor(
 ): Promise<Membership | null> {
   // THE gate.
   await assertTwoFactor(userId, teamId);
-  const rows = await getDb()
-    .select({
-      id: membershipsTable.id,
-      userId: membershipsTable.userId,
-      teamId: membershipsTable.teamId,
-      role: membershipsTable.role,
-      createdAt: membershipsTable.createdAt,
-    })
-    .from(membershipsTable)
-    .where(
-      and(
-        eq(membershipsTable.userId, userId),
-        eq(membershipsTable.teamId, teamId),
-      ),
-    )
-    .limit(1);
+  const rows = await prepared("membership-row", (db) =>
+    db
+      .select({
+        id: membershipsTable.id,
+        userId: membershipsTable.userId,
+        teamId: membershipsTable.teamId,
+        role: membershipsTable.role,
+        createdAt: membershipsTable.createdAt,
+      })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.userId, sql.placeholder("userId")),
+          eq(membershipsTable.teamId, sql.placeholder("teamId")),
+        ),
+      )
+      .limit(1),
+  ).execute({ userId, teamId });
   const m = rows[0];
   if (!m) return null;
-  const caps = (await capabilitiesByMembership([m.id])).get(m.id) ?? [];
+  const caps = (
+    await prepared("membership-capabilities", (db) =>
+      db
+        .select({ capability: membershipCapabilitiesTable.capability })
+        .from(membershipCapabilitiesTable)
+        .where(
+          eq(membershipCapabilitiesTable.membershipId, sql.placeholder("id")),
+        ),
+    ).execute({ id: m.id })
+  ).map((r) => r.capability as Capability);
   return {
     id: m.id,
     userId: m.userId,
@@ -372,7 +363,7 @@ export async function currentCapabilities(): Promise<Capability[]> {
  * Everything the current user could do SOMEWHERE in the active team: their role's
  * set, plus every capability any node grant hands them (ADR-0016).
  */
-export async function reachableCapabilities(): Promise<Capability[]> {
+export const reachableCapabilities = cache(async (): Promise<Capability[]> => {
   const user = await getCurrentUser();
   if (!user) return [];
   const teamId = await getActiveTeamId();
@@ -424,7 +415,7 @@ export async function reachableCapabilities(): Promise<Capability[]> {
     ...clampToToken(granted, user.id, teamId),
   ]);
   return ALL_CAPABILITIES.filter((c) => union.has(c));
-}
+});
 
 /** True if the user holds `cap` anywhere in the active team. See the caveat above. */
 export async function hasCapabilityAnywhere(cap: Capability): Promise<boolean> {

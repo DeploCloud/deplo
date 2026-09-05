@@ -2,9 +2,10 @@ import "server-only";
 
 // https://deplo.build/docs/advanced/api-tokens-and-oauth
 
-import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { getDb, type DbTx } from "../db/client";
+import { prepared } from "../db/prepared";
 import {
   apiTokens,
   apiTokenCapabilities,
@@ -972,11 +973,13 @@ export async function authenticateToken(
   teamHint?: string | null,
 ): Promise<RequestIdentity | null> {
   if (raw.startsWith("deplo_")) {
-    const rows = await getDb()
-      .select(TOKEN_ROW_COLUMNS)
-      .from(apiTokens)
-      .where(eq(apiTokens.tokenHash, sha256Hex(raw)))
-      .limit(1);
+    const rows = await prepared("token-by-hash", (db) =>
+      db
+        .select(TOKEN_ROW_COLUMNS)
+        .from(apiTokens)
+        .where(eq(apiTokens.tokenHash, sql.placeholder("hash")))
+        .limit(1),
+    ).execute({ hash: sha256Hex(raw) });
     return rows[0] ? identityForTokenRow(rows[0], teamHint) : null;
   }
   if (raw.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
@@ -1048,10 +1051,12 @@ async function identityForTokenRow(
   // The 2FA / membership guard, on the team the request actually resolved to.
   if (!(await membershipFor(match.userId, picked.id))) return null;
 
-  const caps = await getDb()
-    .select({ capability: apiTokenCapabilities.capability })
-    .from(apiTokenCapabilities)
-    .where(eq(apiTokenCapabilities.tokenId, match.id));
+  const caps = await prepared("token-capabilities", (db) =>
+    db
+      .select({ capability: apiTokenCapabilities.capability })
+      .from(apiTokenCapabilities)
+      .where(eq(apiTokenCapabilities.tokenId, sql.placeholder("id"))),
+  ).execute({ id: match.id });
 
   // Fire-and-forget usage stamp, once a minute per token: a failed write must
   // not block the request, and a burst must not queue one row lock per call.
