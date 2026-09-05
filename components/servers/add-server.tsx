@@ -23,6 +23,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import {
   ServerTeamAccess,
+  accessIsComplete,
   type ServerAccess,
   type TeamOption,
 } from "./server-team-access";
@@ -134,19 +135,19 @@ export function AddServer({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ServerCog className="size-4" />
-            Connect a server
+            Add a server
           </DialogTitle>
           <DialogDescription>
             {command
               ? "Run this once on the server. The agent installs itself and calls home."
-              : "Name the host, then run the install command on it. Deplo never SSHes in."}
+              : "Add a remote server: name it, then run the install command on it. Deplo never SSHes in."}
           </DialogDescription>
         </DialogHeader>
 
-        {/* gap-6, not the body's gap-4: the footer used to inherit its air from
+        {/* gap-8, not the body's gap-4: the footer used to inherit its air from
             whatever the last field rendered, so picking "Everything" glued Cancel
             to the options. */}
-        <form className="grid gap-6" onSubmit={onSubmit}>
+        <form className="grid gap-8" onSubmit={onSubmit}>
           <AnimatedHeight className="grid gap-4" scroll={false}>
             {command ? (
               <div className="space-y-2">
@@ -238,7 +239,10 @@ export function AddServer({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !host.trim()}>
+              <Button
+                type="submit"
+                disabled={pending || !host.trim() || !accessIsComplete(access)}
+              >
                 <span className="grid place-items-center">
                   <span
                     className={cn(
@@ -246,7 +250,7 @@ export function AddServer({
                       pending && "invisible",
                     )}
                   >
-                    Register server
+                    Add server
                   </span>
                   {pending && (
                     <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
