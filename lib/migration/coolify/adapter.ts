@@ -328,6 +328,11 @@ async function detail(
           `${env.unreadableKeys.join(", ")} arrived empty: {panel} shows those values once and does not answer with them again. Set them under Variables before deploying.`,
         ]
       : []),
+    ...(env.interpolatedKeys.length > 0
+      ? [
+          `${env.interpolatedKeys.join(", ")} came across exactly as written, dollar signs included. {panel} had them interpolated at deploy (not marked literal), so the app there may have seen a different value - check them under Variables.`,
+        ]
+      : []),
   ];
   // The MACHINE this resource runs on. Left out, everything looked like it was
   // on the panel's own host, and the data phase then asked that host for volumes

@@ -477,6 +477,12 @@ export interface CoolifyEnvRead {
    * and never again. They arrive EMPTY, which is not a fact about the value.
    */
   unreadableKeys: string[];
+  /**
+   * Keys holding a `$` that Coolify did NOT mark literal: it let compose
+   * interpolate them at deploy, so the container there saw something else than
+   * the text. Deplo hands every value over exactly as written.
+   */
+  interpolatedKeys: string[];
 }
 
 /** A value that spans lines, wrapped so the shared line parser reads it whole.
@@ -514,6 +520,7 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
   const previewLines = new Map<string, string>();
   const buildOnlyKeys: string[] = [];
   const unreadableKeys: string[] = [];
+  const interpolatedKeys: string[] = [];
   const sharedRefs: SharedRef[] = [];
   let sawValue = false;
 
@@ -541,6 +548,14 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
     if (typeof raw !== "string" || (r.is_shown_once && !value))
       unreadableKeys.push(key);
     if (r.is_buildtime && !r.is_runtime) buildOnlyKeys.push(key);
+    // A shared reference is Coolify's own syntax, resolved above; any other `$`
+    // in a non-literal value went through compose's interpolation there.
+    if (
+      r.is_literal === false &&
+      /\$/.test(value) &&
+      !/\{\{\s*\w+\.\w+\s*\}\}/.test(r.value ?? "")
+    )
+      interpolatedKeys.push(key);
     lines.push(`${key}=${serializeValue(value)}`);
   }
 
@@ -554,6 +569,7 @@ export function coolifyEnvBlob(rows: CoolifyEnv[]): CoolifyEnvRead {
     previewBlob: previewOnly.map((k) => previewLines.get(k)!).join("\n"),
     buildOnlyKeys,
     unreadableKeys,
+    interpolatedKeys,
     sharedRefs,
     masked: rows.length > 0 && !sawValue,
   };

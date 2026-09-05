@@ -401,6 +401,22 @@ test("coolifyEnvBlob names the variables the panel would not answer for", () => 
   assert.equal(r.blob, "PLAIN=yes\nDB_PASSWORD=\nEMPTY_ON_PURPOSE=");
 });
 
+test("a dollar the panel would have interpolated is named; a literal one is not", () => {
+  const r = coolifyEnvBlob([
+    { key: "LITERAL", value: "pa$$w0rd$1", is_literal: true },
+    { key: "OPEN", value: "pa$$w0rd$1", is_literal: false },
+    {
+      key: "REF",
+      value: "{{project.SHARED}}",
+      real_value: "x$y",
+      is_literal: false,
+    },
+    { key: "PLAIN", value: "hello", is_literal: false },
+  ]);
+  assert.deepEqual(r.interpolatedKeys, ["OPEN"]);
+  assert.match(r.blob, /LITERAL=pa\$\$w0rd\$1/);
+});
+
 test("a multi-line value survives the blob it travels in", () => {
   const key = "-----BEGIN PLAIN-----\nLINE1\nLINE2\n-----END PLAIN-----";
   const r = coolifyEnvBlob([
