@@ -2228,6 +2228,14 @@ foreign_remove() {
     # https://docs.dokploy.com/docs/core/uninstall
     step "Leaving the swarm it made"
     docker swarm leave --force >&9 2>&9 || true
+    # Its tasks die after the leave, not before it: an image one still holds
+    # survives the `rmi` below, and the swarm's own bridge outlives the swarm.
+    local i=0
+    while [ "$i" -lt 30 ] && [ -n "$(docker ps -aq --filter label=com.docker.swarm.task 2>/dev/null)" ]; do
+      sleep 1; i=$((i + 1))
+    done
+    docker ps -aq --filter label=com.docker.swarm.task 2>/dev/null | xargs -r docker rm -f >&9 2>&9 || true
+    docker network rm docker_gwbridge >&9 2>&9 || true
   fi
 
   own_v="$(platform_own_volumes "$TAKEOVER")"
