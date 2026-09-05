@@ -199,6 +199,7 @@ import {
   hasAppCapability,
   nodeCapabilitiesFor,
   requireAppCapability,
+  requireNodeCapability,
 } from "./node-access";
 import { assertDataCopyIntact } from "./data-copy";
 
@@ -804,6 +805,10 @@ async function resolvePlacement(
     // a mismatched pair is a bug (or a crafted payload), never a placement.
     if (input.projectId && input.projectId !== env.projectId)
       throw new Error("Environment not found");
+    await requireNodeCapability(
+      { kind: "project", id: env.projectId },
+      "create_apps",
+    );
     return { folderId: null, projectId: env.projectId, environmentId: env.id };
   }
   if (input.projectId) {
@@ -820,10 +825,13 @@ async function resolvePlacement(
         .limit(1)
     )[0];
     if (!p) throw new Error("Project not found");
+    await requireNodeCapability({ kind: "project", id: p.id }, "create_apps");
     // No environment named: land in the project's default one, same as a move.
     const env = await defaultEnvironmentFor(p.id);
     return { folderId: null, projectId: p.id, environmentId: env?.id ?? null };
   }
+  // The team top level belongs to no node: only the team-wide set reaches it.
+  await requireCapability("create_apps");
   return { folderId: null, projectId: null, environmentId: null };
 }
 
@@ -849,7 +857,9 @@ function cleanAppName(name: string): string {
 }
 
 export async function createApp(input: CreateAppInput): Promise<AppSummary> {
-  const { membership, userId } = await requireCapability("create_apps");
+  // `create_apps` is asked of the DESTINATION (resolvePlacement): a node grant can
+  // hold it where the role does not, and withhold it where the role has it.
+  const { membership, userId } = await requireMembership();
   input = { ...input, name: cleanAppName(input.name) };
   // A prebuilt image ref is interpolated raw into the compose `image:` scalar, so
   // reject anything that isn't a plain reference before it can inject service keys.
