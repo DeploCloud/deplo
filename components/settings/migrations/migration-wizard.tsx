@@ -1185,6 +1185,8 @@ export function MigrationWizard({
       // Stopped or failed - and either way the server has already taken it back
       // out, so there is nothing here to decide and nothing left to keep. Say
       // what happened and hand back an empty wizard.
+      // Not "everything was removed": a stop during the data step keeps what it
+      // created, and the report under History is what says which it was.
       if (res.data.error) toast.error(res.data.error);
       else
         toast.success("The migration was stopped. Its report is under History");
@@ -1667,7 +1669,6 @@ export function MigrationWizard({
                   scanError={scanError}
                   queue={queue}
                   targetTeams={targetTeams}
-                  uncovered={uncovered}
                   adding={adding}
                   onAdd={() => void identifyAndAdd()}
                   onRetarget={(i, target) =>
@@ -1813,7 +1814,6 @@ function ConnectStep({
   scanError,
   queue,
   targetTeams,
-  uncovered,
   adding,
   onAdd,
   onRetarget,
@@ -1838,8 +1838,6 @@ function ConnectStep({
   queue: QueuedTeam[];
   /** The teams a row may land in, besides a new one. */
   targetTeams: TargetTeam[];
-  /** The panel's teams no token here covers, when the panel will name them. */
-  uncovered: string[];
   adding: boolean;
   onAdd: () => void;
   onRetarget: (i: number, target: TeamTarget) => void;
@@ -1996,11 +1994,6 @@ function ConnectStep({
                 </li>
               ))}
             </ul>
-            {uncovered.length > 0 && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {`Not covered yet: ${uncovered.join(", ")}. Each needs its own ${copy.tokenLabel}.`}
-              </p>
-            )}
           </div>
         )}
 
@@ -2062,9 +2055,6 @@ function ConnectStep({
                   />
                 ))}
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Deplo migrates these two.
-              </p>
             </div>
           </div>
         )}
@@ -2139,9 +2129,7 @@ function TargetSelect({
         <SelectItem value={NEW_TEAM}>
           <span className="flex items-center gap-2">
             <Plus className="size-4 text-muted-foreground" />
-            <span className="truncate">
-              New team &ldquo;{sourceName}&rdquo;
-            </span>
+            <span className="truncate">New team</span>
           </span>
         </SelectItem>
       </SelectContent>
