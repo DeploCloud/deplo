@@ -1,4 +1,5 @@
 import Link from "@/components/ui/link";
+import { cn } from "@/lib/utils";
 import { Lock, CloudOff, X } from "lucide-react";
 
 import { hasCapabilityAnywhere, isInstanceAdmin } from "@/lib/membership";
@@ -39,9 +40,12 @@ function one(v: string | string[] | undefined): string | undefined {
 /** The wizard's own chrome: the mark, and the one way out. */
 function FocusFrame({
   exitHref,
+  narrow,
   children,
 }: {
   exitHref: string;
+  /** A template needs no source picker, so its wizard takes a tighter column. */
+  narrow?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -57,7 +61,9 @@ function FocusFrame({
         </Button>
       </header>
       <main className="flex flex-1 items-center justify-center px-4 pb-16">
-        <div className="w-full max-w-2xl">{children}</div>
+        <div className={cn("w-full", narrow ? "max-w-lg" : "max-w-2xl")}>
+          {children}
+        </div>
       </main>
     </div>
   );
@@ -154,7 +160,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   ]);
 
   return (
-    <FocusFrame exitHref={exitHref}>
+    <FocusFrame exitHref={exitHref} narrow={Boolean(template)}>
       <NewAppWizard
         servers={servers}
         buildServers={buildServers}

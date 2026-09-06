@@ -54,8 +54,9 @@ export function ShellFrame({
   contentKey: string;
   children: React.ReactNode;
 }) {
+  const pathname = useFlatPathname();
   const full = useFullBleedRoute();
-  const dotted = !full && isDottedRoute(useFlatPathname());
+  const dotted = !full && isDottedRoute(pathname);
 
   return (
     <div
