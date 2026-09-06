@@ -684,7 +684,12 @@ export function ResourceLimitsForm({
             </LimitCell>
 
             {sideCell && (
-              <div className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:col-span-2 lg:col-span-1">
+              <div
+                className={cn(
+                  "flex flex-col gap-3 rounded-lg border border-border p-4 sm:col-span-2 lg:col-span-1",
+                  showSuggestion && "deplo-brand-wash",
+                )}
+              >
                 {hostCap && (
                   <div className="flex items-center gap-2 text-sm">
                     <Server className="size-4 shrink-0 text-muted-foreground" />
@@ -698,7 +703,7 @@ export function ResourceLimitsForm({
                   <div className="mt-auto flex flex-wrap items-end justify-between gap-3">
                     <div className="space-y-0.5">
                       <p className="flex items-center gap-2 text-sm">
-                        <Sparkles className="size-4 shrink-0 text-muted-foreground" />
+                        <Sparkles className="size-4 shrink-0" />
                         <span>
                           Suggested:{" "}
                           <span className="font-medium">
@@ -714,7 +719,6 @@ export function ResourceLimitsForm({
                     <Button
                       type="button"
                       size="sm"
-                      variant="outline"
                       onClick={() => setSize(suggestion)}
                     >
                       Apply
