@@ -2,7 +2,45 @@ import "server-only";
 
 import { installationCloneUrl } from "../github/app";
 import { readGitCredential } from "../data/git-connections";
+import { assertSafeOutboundHost, assertSafeOutboundUrl } from "../outbound-url";
 import type { GitRepo } from "../types";
+
+/**
+ * The outbound guard for a repository address the owning agent will clone AS
+ * TYPED (no installation, no connection): http(s) and ssh/scp forms alike, so a
+ * repository cannot be a way to dial the fleet's own addresses. Instance admins
+ * may name a private host, as they may for a git connection.
+ */
+export async function assertCloneTargetSafe(
+  url: string,
+  opts: { allowPrivate?: boolean } = {},
+): Promise<void> {
+  if (opts.allowPrivate) return;
+  const raw = url.trim();
+  if (!raw) return;
+  const scp = /^[\w.-]+@([^:/]+):/.exec(raw);
+  if (scp) {
+    await assertSafeOutboundHost(scp[1], "The repository address");
+    return;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("The repository address must be a valid URL");
+  }
+  if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+    await assertSafeOutboundUrl(raw, "The repository address", {
+      allowHttp: true,
+    });
+    return;
+  }
+  if (parsed.protocol === "ssh:" || parsed.protocol === "git:") {
+    await assertSafeOutboundHost(parsed.hostname, "The repository address");
+    return;
+  }
+  throw new Error("The repository address must be an http(s) or ssh URL");
+}
 
 /**
  * The URL the deploy agent actually clones - the one place that decides how a

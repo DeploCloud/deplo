@@ -557,6 +557,23 @@ test("composeJoinsForeignNetwork: an app's own network, and the shared one, stay
   );
 });
 
+test("gpus, a non-default runtime and extra_hosts host-gateway are host privileges", () => {
+  const svc = (body: string) =>
+    composeNeedsHostPrivileges(`services:\n  x:\n    image: alpine\n${body}\n`);
+  assert.equal(svc("    gpus: all"), true);
+  assert.equal(
+    svc("    gpus:\n      - driver: nvidia\n        count: all"),
+    true,
+  );
+  assert.equal(svc("    runtime: nvidia"), true);
+  assert.equal(svc("    runtime: sysbox-runc"), true);
+  assert.equal(svc("    runtime: runc"), false);
+  assert.equal(svc('    extra_hosts:\n      - "gw:host-gateway"'), true);
+  assert.equal(svc("    extra_hosts:\n      gw: host-gateway"), true);
+  assert.equal(svc('    extra_hosts:\n      - "gw:${GW}"'), true);
+  assert.equal(svc('    extra_hosts:\n      - "db:10.0.0.9"'), false);
+});
+
 test("oom_score_adj is a privilege only when NEGATIVE; group_add and a foreign logging driver always are", () => {
   const svc = (line: string) =>
     composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n${line}`);

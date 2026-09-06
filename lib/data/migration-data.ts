@@ -63,7 +63,7 @@ import {
 import { recordActivity } from "./activity";
 import { clearDataCopyError, markDataCopyFailed } from "./data-copy";
 import { runAsMigration } from "./migration-guard";
-import { listServersForTeam } from "./servers";
+import { getServerById, listServersForTeam } from "./servers";
 import {
   appendRunItem,
   assertImportGate,
@@ -1145,8 +1145,14 @@ async function runMoveMigrationServiceData(
   // A `./x` bind is Deplo's own stack directory on both sides, so there is no host
   // path anybody typed to gate - and gating it took the common case (a one-click
   // stack whose data sits beside its compose) away from everyone but an admin.
+  // ...and only off a machine that hosts nothing else (a migration source,
+  // ADR-0025): a fleet host's paths are other tenants' too, and the panel
+  // decides what `sourcePath` is.
+  const sourceHostsNothing = Boolean(
+    (await getServerById(sourceServerId))?.importOnly,
+  );
   const mayCopyHostPaths =
-    binds.every((b) => b.stackRelative) ||
+    (binds.every((b) => b.stackRelative) && sourceHostsNothing) ||
     ((await isInstanceAdmin()) && (await canMountHostVolumes()));
 
   if (paired.value.length === 0 && binds.length === 0) {

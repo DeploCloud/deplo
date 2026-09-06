@@ -16,6 +16,7 @@ import { getDb } from "../db/client";
 import {
   domains as domainsTable,
   apps as appsTable,
+  pendingTeardowns as pendingTeardownsTable,
   appBuild as appBuildTable,
   appBuildMethodSettings as appBuildMethodSettingsTable,
   appMounts as appMountsTable,
@@ -58,7 +59,7 @@ import {
   withNetworkLock,
 } from "./name-clash";
 import { renameClashingServices, renameHostTokens } from "../migration/map";
-import { stackName } from "../deploy/deploy-key";
+import { appSlugFromDeployKey, stackName } from "../deploy/deploy-key";
 import {
   composeNamesOnNetwork,
   composeServiceNames,
@@ -246,6 +247,7 @@ export interface AppSummary extends App {
 // model - the backfill/live writes store normalized rows). `deriveVolumeName` is
 // still used by `validateVolumes` here and re-exported for the volume tests.
 import { deriveVolumeName } from "./normalize-app";
+import { assertCloneTargetSafe } from "../git/clone-url";
 
 export { deriveVolumeName };
 
@@ -948,6 +950,12 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       (r) => r.slug,
     ),
   );
+  // A slug whose stack is still awaiting teardown on a host stays taken: the new
+  // app (of any team) would otherwise adopt the old one's volumes and files.
+  for (const p of await getDb()
+    .select({ deployKey: pendingTeardownsTable.deployKey })
+    .from(pendingTeardownsTable))
+    existing.add(appSlugFromDeployKey(p.deployKey));
   const slugRoot = slugBase || `project-${newId("").slice(1, 6)}`;
   // `deplo-<slug>` is the container name and the name it answers to on the network
   // (ADR-0029), so a slug minting one of the platform's own is taken like any other:
@@ -1630,6 +1638,11 @@ async function scopeRepoCredentials(
   ) {
     out.connectionId = null;
   }
+  // No credential means the agent clones the address exactly as typed.
+  if (!out.installationId && !out.connectionId)
+    await assertCloneTargetSafe(out.url, {
+      allowPrivate: await isInstanceAdmin(),
+    });
   return out;
 }
 

@@ -94,17 +94,6 @@ export async function assertSafeOutboundHost(
     // A literal we cannot canonicalize is not a literal we can vouch for.
     if (canon === null) throw refuseError();
     if (isInternalHost(canon)) refuse();
-    // NAT64 (`64:ff9b::<v4>`) carries an embedded IPv4 that a NAT64 gateway
-    // translates back - read it out and judge the address it really reaches.
-    const nat64 = /^64:ff9b:(?::|.*:)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(
-      canon,
-    );
-    if (nat64) {
-      const a = parseInt(nat64[1], 16);
-      const b = parseInt(nat64[2], 16);
-      const v4 = `${(a >> 8) & 0xff}.${a & 0xff}.${(b >> 8) & 0xff}.${b & 0xff}`;
-      if (isInternalHost(v4)) refuse();
-    }
     return;
   }
   // A canonical dotted-quad is its own answer (isInternalHost already ran).
@@ -135,14 +124,58 @@ function isInternalHost(host: string): boolean {
     );
   }
   if (host.includes(":")) {
-    // An IPv6 literal (brackets stripped by the caller).
-    return (
-      host === "::" ||
-      host === "::1" || // loopback
-      /^fe[89ab]/.test(host) || // link-local fe80::/10
-      /^f[cd]/.test(host) || // ULA fc00::/7 (covers fd00::/8)
-      host.startsWith("::ffff:") // v4-mapped - must not dodge the v4 checks
-    );
+    // An IPv6 literal (brackets stripped by the caller), in any spelling.
+    const n = expandV6(host);
+    if (!n) return true; // unreadable - not one to vouch for
+    if (n.slice(0, 7).every((v) => v === 0) && n[7] <= 1) return true; // :: and ::1
+    if ((n[0] & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
+    if ((n[0] & 0xfe00) === 0xfc00) return true; // ULA fc00::/7
+    // v4-mapped, NAT64, 6to4 and Teredo all carry an IPv4 a translator reaches:
+    // judge THAT address with the v4 rule.
+    const v4 = embeddedV4(n);
+    return v4 !== null && isInternalHost(v4);
   }
   return false;
+}
+
+/** The eight hextets of an IPv6 literal, or null when it does not read as one. */
+function expandV6(host: string): number[] | null {
+  const bare = host.split("%")[0];
+  const dotted = /^(.*):(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(bare);
+  if (dotted) {
+    const [a, b, c, d] = dotted.slice(2).map(Number);
+    return expandV6(
+      `${dotted[1]}:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`,
+    );
+  }
+  const halves = bare.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const groups =
+    halves.length === 2
+      ? [
+          ...head,
+          ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"),
+          ...tail,
+        ]
+      : head;
+  if (groups.length !== 8) return null;
+  const n = groups.map((g) =>
+    /^[0-9a-f]{1,4}$/i.test(g) ? parseInt(g, 16) : NaN,
+  );
+  return n.some(Number.isNaN) ? null : n;
+}
+
+/** The IPv4 an IPv6 address stands for, when its prefix says it does. */
+function embeddedV4(n: number[]): string | null {
+  const v4 = (hi: number, lo: number) =>
+    `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+  const zeroTo = (k: number) => n.slice(0, k).every((v) => v === 0);
+  if (zeroTo(5) && n[5] === 0xffff) return v4(n[6], n[7]); // ::ffff:a.b.c.d
+  if (n[0] === 0x64 && n[1] === 0xff9b && (n[2] === 0 || n[2] === 1))
+    return v4(n[6], n[7]); // NAT64 64:ff9b::/96 and 64:ff9b:1::/48
+  if (n[0] === 0x2002) return v4(n[1], n[2]); // 6to4
+  if (n[0] === 0x2001 && n[1] === 0) return v4(n[6] ^ 0xffff, n[7] ^ 0xffff); // Teredo, client address inverted
+  return null;
 }

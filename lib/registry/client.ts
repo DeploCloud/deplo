@@ -8,10 +8,8 @@ import "server-only";
  * registry.
  */
 
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
-
 import { parseImageRef, DOCKER_HUB_REGISTRY } from "./image-ref";
+import { assertSafeOutboundHost } from "../outbound-url";
 
 /** Manifest media types to advertise so multi-arch (OCI index / manifest list)
  * tags resolve on a HEAD instead of 404/406-ing. */
@@ -29,66 +27,9 @@ const DEFAULT_TIMEOUT = 8000;
 // SSRF guard
 // ---------------------------------------------------------------------------
 
-/** Private / loopback / link-local IPv4, incl. 169.254.169.254 (cloud metadata). */
-function isPrivateIPv4(addr: string): boolean {
-  const o = addr.split(".").map(Number);
-  if (
-    o.length !== 4 ||
-    o.some((n) => !Number.isInteger(n) || n < 0 || n > 255)
-  ) {
-    return true;
-  }
-  return (
-    o[0] === 0 || // "this network" (0.0.0.0/8 routes to localhost)
-    o[0] === 127 || // loopback
-    o[0] === 10 || // RFC1918
-    (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || // RFC1918
-    (o[0] === 192 && o[1] === 168) || // RFC1918
-    (o[0] === 169 && o[1] === 254) // link-local, incl. the metadata IP
-  );
-}
-
-/** Loopback / link-local / ULA IPv6, plus IPv4-mapped forms of the above. */
-function isPrivateIPv6(addr: string): boolean {
-  const a = addr.toLowerCase();
-  // Dotted IPv4 tail ("::ffff:10.0.0.1") - judge the embedded IPv4.
-  const dotted = a.match(/(\d+\.\d+\.\d+\.\d+)$/);
-  if (dotted) return isPrivateIPv4(dotted[1]);
-  // Expand "::" so the prefix checks see real hextets.
-  const halves = a.split("::");
-  const head = halves[0] ? halves[0].split(":") : [];
-  const tail = halves[1] ? halves[1].split(":") : [];
-  const groups =
-    halves.length === 2
-      ? [
-          ...head,
-          ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"),
-          ...tail,
-        ]
-      : head;
-  if (groups.length !== 8) return true; // malformed - refuse rather than guess
-  const n = groups.map((g) => parseInt(g || "0", 16));
-  if (n.slice(0, 7).every((v) => v === 0)) return n[7] <= 1; // "::" and "::1"
-  if (n.slice(0, 5).every((v) => v === 0) && n[5] === 0xffff) {
-    // Hex-form IPv4-mapped ("::ffff:7f00:1").
-    return isPrivateIPv4(
-      `${n[6] >> 8}.${n[6] & 255}.${n[7] >> 8}.${n[7] & 255}`,
-    );
-  }
-  if ((n[0] & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
-  if ((n[0] & 0xfe00) === 0xfc00) return true; // ULA fc00::/7 (covers fd00::/8)
-  return false;
-}
-
-function isPrivateAddress(addr: string): boolean {
-  const family = isIP(addr);
-  if (family === 4) return isPrivateIPv4(addr);
-  if (family === 6) return isPrivateIPv6(addr);
-  return true; // not an IP literal - hostnames are resolved by the caller
-}
-
 /**
- * SSRF guard for every outbound registry fetch.
+ * SSRF guard for every outbound registry fetch: https only, and the ONE outbound
+ * host rule (`lib/outbound-url.ts`), so this client cannot drift from it.
  */
 async function isPublicHttpsUrl(url: string): Promise<boolean> {
   let parsed: URL;
@@ -98,17 +39,11 @@ async function isPublicHttpsUrl(url: string): Promise<boolean> {
     return false;
   }
   if (parsed.protocol !== "https:") return false;
-  // URL() canonicalizes exotic IPv4 spellings (hex/octal/decimal) for us;
-  // IPv6 literals keep their brackets in `hostname`.
-  const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (!host || host === "localhost" || host.endsWith(".localhost"))
-    return false;
-  if (isIP(host)) return !isPrivateAddress(host);
   try {
-    const addrs = await lookup(host, { all: true });
-    return addrs.length > 0 && addrs.every((a) => !isPrivateAddress(a.address));
+    await assertSafeOutboundHost(parsed.hostname, "Registry");
+    return true;
   } catch {
-    return false; // unresolvable - the fetch could not have succeeded anyway
+    return false;
   }
 }
 

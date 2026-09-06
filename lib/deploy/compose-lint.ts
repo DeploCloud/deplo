@@ -1664,6 +1664,12 @@ const HOST_PRIVILEGE_KEYS = [
   "post_start",
   "pre_stop",
   "deploy",
+  // `gpus` is the shorthand for the device reservation gated above; `runtime`
+  // swaps the OCI runtime (nvidia hands over the GPUs, sysbox/kata change the
+  // sandbox); `host-gateway` in `extra_hosts` names the host itself.
+  "gpus",
+  "runtime",
+  "extra_hosts",
 ] as const;
 
 /**
@@ -1840,6 +1846,22 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
         ? v.filter((o) => !SAFE_SECURITY_OPTS.test(String(o).trim()))
         : [v];
       if (weakening.length > 0) out.push(key);
+      continue;
+    }
+    if (key === "runtime") {
+      // `runc` is docker's own default and selects nothing.
+      if (typeof v !== "string" || v.trim().toLowerCase() !== "runc")
+        out.push(key);
+      continue;
+    }
+    if (key === "extra_hosts") {
+      const entries = Array.isArray(v)
+        ? v.map(String)
+        : v && typeof v === "object"
+          ? Object.values(v as Record<string, unknown>).map(String)
+          : [String(v)];
+      if (entries.some((e) => /host-gateway/i.test(e) || interpolates(e)))
+        out.push(key);
       continue;
     }
     if (

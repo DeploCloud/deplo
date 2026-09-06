@@ -528,6 +528,22 @@ export function buildToRow(appId: string, b: BuildConfig): AppBuildInsert {
 }
 
 /**
+ * A build tool's pinned version: `1.2.3`, with or without a `v`, `latest`, or
+ * nothing. The agent pastes it into a download URL it then executes as root, so
+ * a `/` or `..` in it would be a path to somebody else's release asset.
+ */
+export function cleanToolVersion(
+  raw: string | null | undefined,
+): string | null {
+  const v = (raw ?? "").trim();
+  if (!v) return null;
+  if (v.toLowerCase() === "latest") return "latest";
+  const m = /^v?(\d+\.\d+\.\d+)$/.exec(v);
+  if (!m) throw new Error("Use a version like 1.2.3, or latest");
+  return m[1];
+}
+
+/**
  * The 1-to-1 `app_build_method_settings` row.
  */
 export function methodSettingsToRow(
@@ -538,7 +554,7 @@ export function methodSettingsToRow(
     dockerfilePath: ms.dockerfilePath ?? null,
     dockerContextPath: ms.dockerContextPath ?? null,
     dockerBuildStage: ms.dockerBuildStage ?? null,
-    railpackVersion: ms.railpackVersion ?? null,
+    railpackVersion: cleanToolVersion(ms.railpackVersion),
     nixpacksPublishDirectory: ms.nixpacksPublishDirectory ?? null,
     staticSinglePageApp: ms.staticSinglePageApp ?? null,
   } satisfies Record<keyof BuildMethodSettings, unknown>;
