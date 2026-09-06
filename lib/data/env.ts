@@ -15,6 +15,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireMembership } from "../membership";
 import { recordActivity } from "./activity";
+import { markPendingChanges } from "./pending-changes";
 import {
   appCapabilitiesForTeam,
   hasAppCapability,
@@ -244,6 +245,7 @@ export async function upsertEnv(input: {
       ]);
     }
   });
+  await markPendingChanges([input.appId]);
   await recordActivity("env", `Updated env var ${key}`, user.name, input.appId);
 }
 
@@ -285,6 +287,7 @@ export async function renameEnv(
     .where(
       and(eq(envVarsTable.id, id), eq(envVarsTable.appId, existing.appId)),
     );
+  await markPendingChanges([existing.appId]);
   await recordActivity(
     "env",
     `Renamed env var ${existing.key} → ${newKey}`,
@@ -406,6 +409,7 @@ export async function setAppEnv(
     if (removed.length > 0)
       await tx.delete(envVarsTable).where(inArray(envVarsTable.id, removed));
   });
+  await markPendingChanges([appId]);
   await recordActivity(
     "env",
     `Edited environment (${wanted.size} variable${wanted.size === 1 ? "" : "s"})`,
@@ -422,5 +426,6 @@ export async function deleteEnv(id: string): Promise<void> {
   await requireAppCapability(e.appId, "manage_env");
   // The env_var_targets child rows CASCADE on the delete.
   await getDb().delete(envVarsTable).where(eq(envVarsTable.id, id));
+  await markPendingChanges([e.appId]);
   await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.appId);
 }

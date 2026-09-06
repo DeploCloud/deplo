@@ -85,6 +85,7 @@ import { MAX_PORT, MIN_USER_PORT, isValidExposePort } from "../databases/ports";
 import { encryptSecret } from "../crypto";
 import type { EnvEntryType } from "../deploy/env-resolve";
 import { recordActivity } from "./activity";
+import { markPendingChanges } from "./pending-changes";
 import { setSharedVarAppLink } from "./shared-vars";
 import { teardownOrQueue } from "./teardown-queue";
 import { matchesQuery } from "../match-query";
@@ -1088,6 +1089,12 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     }
   }
 
+  if (input.mounts)
+    input.mounts = input.mounts.map((m) => ({
+      ...m,
+      filePath: cleanMountPath(m.filePath),
+    }));
+
   // An "upload" project has no archive at creation (it is uploaded from the
   // Settings page afterward, which triggers its own deploy via the upload route).
   // Deploying now would fail with "Nothing to deploy", so it is born idle instead
@@ -1390,6 +1397,33 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   return summarizeOne((await loadAppGraph(project.id))!);
 }
 
+/**
+ * A config file's path inside the app's Files dir: relative, no `..`, no control
+ * characters, and never the stack's own env-file, which the deploy writes there.
+ */
+function cleanMountPath(raw: string): string {
+  const rel = raw
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^(\.\/)+/, "")
+    .replace(/\/{2,}/g, "/")
+    .replace(/\/$/, "");
+  if (!rel || rel === ".")
+    throw new Error("Give each config file a path inside the app's files");
+  if (rel.startsWith("/") || rel.split("/").some((seg) => seg === ".."))
+    throw new Error(
+      `A config file path must stay inside the app's files: ${raw}`,
+    );
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f:$]/.test(rel))
+    throw new Error(`A config file path can't contain that character: ${raw}`);
+  if (rel === ".env")
+    throw new Error(
+      "The .env file is written by Deplo from the app's variables - edit those in Settings → Environment.",
+    );
+  return rel;
+}
+
 export async function createAppFromTemplate(
   input: CreateAppFromTemplateInput,
 ): Promise<AppSummary> {
@@ -1496,6 +1530,7 @@ export async function updateAppBuild(
         id,
       );
   }
+  await markPendingChanges([id]);
   await recordActivity("app", `Updated build settings`, user.name, id);
 }
 
@@ -2246,7 +2281,7 @@ export async function setAppPorts(
     if (rows.length > 0) await tx.insert(appPortsTable).values(rows);
     await tx
       .update(appsTable)
-      .set({ updatedAt: nowIso() })
+      .set({ pendingChangesAt: nowIso(), updatedAt: nowIso() })
       .where(eq(appsTable.id, id));
   });
   await recordActivity("app", "Updated published ports", user.name, id);
@@ -2450,6 +2485,7 @@ export async function updateAppResources(
   }
   await updateAppOwned(id, membership.teamId, {
     ...resourceLimitsToRow(cleaned),
+    pendingChangesAt: nowIso(),
     updatedAt: nowIso(),
   });
   await recordActivity("app", "Updated resource limits", user.name, id);
@@ -2482,6 +2518,7 @@ export async function updateAppHealthCheck(
   if (problem) throw new Error(problem);
   await updateAppOwned(id, membership.teamId, {
     ...healthCheckToRow(input),
+    pendingChangesAt: nowIso(),
     updatedAt: nowIso(),
   });
   await recordActivity(

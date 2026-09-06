@@ -188,7 +188,8 @@ export function PreviewOverrides({
           />
         </div>
         <p className="mt-1 pl-6 text-sm text-muted-foreground">
-          Values used only by pull request previews. Production is untouched.
+          Values used only by pull request previews, from their next deploy.
+          Production is untouched.
         </p>
       </div>
 

@@ -14,6 +14,7 @@ import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { listPreviewEnvVars } from "@/lib/data/previews";
 import { EnvManager } from "@/components/env/env-manager";
+import { PendingChangesNotice } from "@/components/apps/pending-changes-notice";
 import { PreviewOverrides } from "@/components/env/preview-overrides";
 import { EmptyState } from "@/components/shared/empty-state";
 
@@ -86,6 +87,12 @@ export default async function AppEnvPage(
 
   return (
     <div className="space-y-6">
+      <PendingChangesNotice
+        appId={project.id}
+        slug={project.slug}
+        pendingChangesAt={project.pendingChangesAt ?? null}
+        neverDeployed={project.latestDeploymentId == null}
+      />
       <EnvManager
         appId={project.id}
         vars={vars}

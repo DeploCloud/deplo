@@ -959,6 +959,11 @@ export interface App {
    * 404, and no user-facing list returns it (`listApps` filters on this).
    */
   deletingAt?: string | null;
+  /**
+   * When config was last saved without being deployed since, or null when the app
+   * is up to date. Cleared by the next successful deploy.
+   */
+  pendingChangesAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

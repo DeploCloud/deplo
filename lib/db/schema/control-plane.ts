@@ -904,6 +904,9 @@ export const apps = pgTable(
     }),
     // When someone confirmed this app's deletion (migration 0097).
     deletingAt: isoTimestamptz("deleting_at"),
+    // Config saved but not live yet (env vars, resources, ports, health check,
+    // build settings). Cleared by the next successful deploy - see commitOutcome.
+    pendingChangesAt: isoTimestamptz("pending_changes_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },

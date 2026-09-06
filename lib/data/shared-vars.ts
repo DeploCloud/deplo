@@ -31,6 +31,10 @@ import {
 } from "../membership";
 import { recordActivity } from "./activity";
 import {
+  markPendingChanges,
+  markPendingChangesForSharedVar,
+} from "./pending-changes";
+import {
   appCapabilitiesForTeam,
   hasAppCapability,
   requireAppCapability,
@@ -958,6 +962,7 @@ export async function saveSharedVar(input: {
       null,
       t,
     );
+  await markPendingChangesForSharedVar(savedId);
   return savedId;
 }
 
@@ -1031,6 +1036,7 @@ export async function setSharedVarAppLink(
     .update(varsTable)
     .set({ updatedByUserId: userId, updatedAt: nowIso() })
     .where(eq(varsTable.id, varId));
+  await markPendingChanges([appId]);
   await recordActivity(
     "env",
     `${linked ? "Linked" : "Unlinked"} shared variable ${v[0].key}`,
@@ -1058,6 +1064,8 @@ export async function deleteSharedVar(id: string): Promise<void> {
     .select({ teamId: teamJunction.teamId })
     .from(teamJunction)
     .where(eq(teamJunction.varId, id));
+  // Before the delete: the per-app links CASCADE with it.
+  await markPendingChangesForSharedVar(id);
   // The five child sets CASCADE on the parent delete.
   await getDb()
     .delete(varsTable)

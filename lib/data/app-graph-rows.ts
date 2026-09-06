@@ -215,6 +215,9 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     // Deliberately absent from `appToRow`: the stamp is written by the delete
     // path alone, never carried along by an ordinary save of the app.
     deletingAt: row.deletingAt ?? null,
+    // Like `deletingAt`, absent from `appToRow`: it is stamped by the writers in
+    // lib/data/pending-changes.ts and cleared by a deploy, never by a plain save.
+    pendingChangesAt: row.pendingChangesAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

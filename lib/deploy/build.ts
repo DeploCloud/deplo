@@ -476,12 +476,19 @@ async function commitOutcome(
     // No alert: a cancel is somebody pressing "Stop build", and they know.
     return false;
   }
-  await setDeployState(target, appPatch);
+  const ok = depPatch.status === "ready";
+  // A deploy re-renders the env and the compose from the database, so a successful
+  // one - rollback included - is what makes every saved change live.
+  await setDeployState(
+    target,
+    ok && target.kind !== "preview"
+      ? { ...appPatch, pendingChangesAt: null }
+      : appPatch,
+  );
   // Every terminal outcome of every deploy funnels through here, so this one hook
   // covers success, build failure, an unreachable agent, an agent too old and a
   // thrown error, on both the single-image and the compose path, and, since previews
   // share the path, a pull request build too.
-  const ok = depPatch.status === "ready";
   const what =
     target.kind === "preview"
       ? `${target.name} #${target.prNumber}`

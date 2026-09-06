@@ -1100,6 +1100,13 @@
       "when": 1788634015080,
       "tag": "0156_migration_run_end_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1788634016080,
+      "tag": "0157_app_pending_changes",
+      "breakpoints": true
     }
   ]
 }
