@@ -92,6 +92,9 @@ export function XtermView({
       lineHeight: 1.2,
       scrollback: 5000,
       theme: { ...THEME, background: terminalBackground(host) },
+      // Whatever the container prints is the container's: an OSC 8 hyperlink
+      // in its output must not become a click in the panel.
+      linkHandler: { activate: () => {} },
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

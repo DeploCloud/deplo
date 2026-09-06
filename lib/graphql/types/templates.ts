@@ -1,4 +1,6 @@
 import { revalidateTag } from "next/cache";
+import { assertUser } from "@/lib/auth";
+import { rateLimit } from "@/lib/security";
 import { builder } from "../builder";
 import { matchesQuery } from "@/lib/match-query";
 import {
@@ -139,7 +141,18 @@ builder.mutationFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "Drop the cached template catalog so the next read hits the catalog service.",
-    resolve: () => {
+    resolve: async () => {
+      // A drop costs the whole instance a catalog fetch, and the catalog is
+      // rate-limited per instance: a few per person per minute is plenty.
+      const { id } = await assertUser();
+      const limit = await rateLimit(`refresh-templates:${id}`, {
+        limit: 3,
+        windowMs: 60_000,
+      });
+      if (!limit.ok)
+        throw new Error(
+          `Too many refreshes. Try again in ${limit.retryAfterSec}s.`,
+        );
       // The tag `templates/catalog.ts` stamps on every catalog fetch. `expire: 0`
       // because a Refresh button that answers with stale content is a lie.
       revalidateTag("templates", { expire: 0 });

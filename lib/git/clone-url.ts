@@ -15,9 +15,12 @@ export async function assertCloneTargetSafe(
   url: string,
   opts: { allowPrivate?: boolean } = {},
 ): Promise<void> {
-  if (opts.allowPrivate) return;
   const raw = url.trim();
   if (!raw) return;
+  // A token in the address is stored and shown as typed - at the view floor.
+  if (/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*:[^/?#]*@/i.test(raw))
+    throw new Error("Put the token in a git connection, not in the address");
+  if (opts.allowPrivate) return;
   const scp = /^[\w.-]+@([^:/]+):/.exec(raw);
   if (scp) {
     await assertSafeOutboundHost(scp[1], "The repository address");

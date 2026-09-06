@@ -130,7 +130,9 @@ export const yoga = createYoga({
   maskedErrors: { maskError },
   // Next.js owns the HTTP layer; let Yoga produce a Fetch Response.
   fetchAPI: { Response },
-  graphiql: {
+  // The IDE loads its bundle from a public CDN into the panel's origin, with the
+  // session cookie on every call it makes: development only.
+  graphiql: process.env.NODE_ENV === "development" && {
     title: "Deplo API",
     defaultQuery: /* GraphQL */ `
       # Welcome to the Deplo GraphQL API.

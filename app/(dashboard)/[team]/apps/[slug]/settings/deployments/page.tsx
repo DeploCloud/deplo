@@ -13,6 +13,8 @@ import { gitProviderChoices } from "@/lib/git/provider-choices";
 import { requiredAccess } from "@/lib/git/provider-access";
 import { repoCloneRefusal } from "@/lib/git/repo-access";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
+import { hasAppCapability } from "@/lib/data/node-access";
+import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
 import { RollbackSettingsForm } from "@/components/apps/settings/rollback-settings-form";
@@ -100,7 +102,13 @@ export default async function AppDeploymentSettingsPage(
                 }
               : null
           }
-          compose={project.compose}
+          compose={
+            (await hasAppCapability(project.id, "configure_apps"))
+              ? project.compose
+              : project.compose == null
+                ? null
+                : redactComposeForDisplay(project.compose)
+          }
           serverId={project.serverId}
           servers={servers}
           neighbours={neighbours}

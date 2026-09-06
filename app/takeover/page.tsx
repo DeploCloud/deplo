@@ -70,7 +70,8 @@ export default async function TakeoverPage() {
   const finished = runs.find((r) => r.status === "done") ?? null;
   // What no run could copy, every team's included: the old panel holds the
   // only copy, and the cutover stops it for good.
-  const dataLoss = finished ? await takeoverDataLoss() : [];
+  // Every team's services are named in it, so only the operator reads it.
+  const dataLoss = finished && admin ? await takeoverDataLoss() : [];
 
   return (
     <Screen>

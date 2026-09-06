@@ -5,6 +5,7 @@ import { listDomains } from "@/lib/data/domains";
 import { productionDomain } from "@/lib/deploy/domains";
 import { isRoutableDomain } from "@/lib/deploy/cloudflare";
 import { composeServiceNames } from "@/lib/deploy/compose-stack";
+import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
 import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -69,6 +70,10 @@ export default async function AppDomainsPage(
     .filter((d) => (d.importedFrom ?? "").trim())
     .map((d) => ({ id: d.id, name: d.name, importedFrom: d.importedFrom! }));
 
+  // The client components only read service names from it, and the values a
+  // compose inlines are not the view floor's to see.
+  const composeForBrowser =
+    project.compose == null ? null : redactComposeForDisplay(project.compose);
   return (
     // Adding a domain closes its dialog at once and puts the hostname in the
     // table as a pulsing row while the DNS check and the reroute run - the
@@ -86,7 +91,7 @@ export default async function AppDomainsPage(
             project={{
               id: project.id,
               name: project.name,
-              compose: project.compose,
+              compose: composeForBrowser,
               defaultPort: project.build.port,
             }}
             suggestedDomain={suggestedDomain}
@@ -142,7 +147,7 @@ export default async function AppDomainsPage(
                     <DomainRow
                       key={d.id}
                       domain={d}
-                      compose={project.compose}
+                      compose={composeForBrowser}
                       isCompose={isComposeStack}
                       showContainer={showContainer}
                       serverIp={serverIp}
