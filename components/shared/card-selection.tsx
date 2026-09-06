@@ -8,7 +8,7 @@ import type { CardSelection } from "@/components/shared/use-card-selection";
 
 /** The rubber-band box: an outline, so it never tints what it sweeps over. */
 export const MARQUEE_BOX =
-  "pointer-events-none absolute z-0 hidden rounded-md border-2 border-primary";
+  "pointer-events-none absolute z-20 hidden rounded-xl border-2 border-primary";
 
 /** The multi-selection highlight, shared by every selectable card. */
 export const SELECTED_RING =
