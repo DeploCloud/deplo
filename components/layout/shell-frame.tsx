@@ -20,10 +20,11 @@ const FULL_BLEED = [
 ];
 
 /**
- * The dotted ground marks a canvas of resources: the grids of things you own and
- * a resource's own pages. Lists, streams, forms and settings stay flat.
+ * The dotted ground is the surface that answers the mouse: the three grids where
+ * cards drag and marquee-select (`use-card-selection`). Everything else is a
+ * reading surface and stays flat.
  */
-const DOTTED = [/^\/$/, /^\/apps(\/|$)/, /^\/storage(\/|$)/, /^\/servers\/?$/];
+const DOTTED = [/^\/$/, /^\/apps\/?$/, /^\/storage\/?$/];
 
 export function isDottedRoute(pathname: string): boolean {
   return DOTTED.some((re) => re.test(pathname));
