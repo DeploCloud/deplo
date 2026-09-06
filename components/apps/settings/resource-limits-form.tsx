@@ -11,6 +11,7 @@ import {
   HardDrive,
   Layers,
   Gauge,
+  Server,
   Sparkles,
 } from "lucide-react";
 import {
@@ -107,7 +108,7 @@ function LimitInput({
   className?: string;
 }) {
   return (
-    <div className={cn("relative w-36 shrink-0 sm:w-40", className)}>
+    <div className={cn("relative w-32 shrink-0", className)}>
       <Input
         id={id}
         type={type}
@@ -149,8 +150,13 @@ function LimitRow({
 }) {
   return (
     <div className="py-2.5">
-      <div className="flex items-center justify-between gap-4">
-        <FieldLabel htmlFor={id} info={info} docs={docs}>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <FieldLabel
+          htmlFor={id}
+          info={info}
+          docs={docs}
+          className="whitespace-nowrap"
+        >
           {label}
         </FieldLabel>
         {children}
@@ -170,48 +176,121 @@ function LimitGroup({
   children: React.ReactNode;
 }) {
   return (
-    <fieldset>
-      <legend className="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+    <div
+      role="group"
+      aria-label={title}
+      className="rounded-lg border border-border px-4 py-3"
+    >
+      <p className="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
         <Icon className="size-3.5" />
         {title}
-      </legend>
+      </p>
       <div className="mt-1 divide-y divide-border">{children}</div>
-    </fieldset>
+    </div>
   );
 }
 
-/** The cap against the whole machine, with what is used drawn over it. */
+/** A headline limit: label and input on top, the slider and its readings under. */
+function LimitCell({
+  id,
+  label,
+  info,
+  docs,
+  input,
+  children,
+}: {
+  id: string;
+  label: string;
+  info: React.ReactNode;
+  docs?: DocsTopic;
+  input: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <FieldLabel
+          htmlFor={id}
+          info={info}
+          docs={docs}
+          className="whitespace-nowrap"
+        >
+          {label}
+        </FieldLabel>
+        {input}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Thumb size, in px: the track is inset by half of it so the cap segment ends
+ *  exactly under the thumb. */
+const THUMB = 16;
+
+/** The cap against the whole machine, draggable, with what is used drawn over it. */
 function Meter({
   cap,
   used,
   full,
+  step,
+  label,
+  valueText,
+  onChange,
 }: {
   cap: number | null;
   used: number | null;
   full: number;
+  step: number;
+  label: string;
+  valueText: string;
+  /** 0 means "no limit". */
+  onChange: (value: number) => void;
 }) {
   const pct = (n: number) => `${Math.min(100, (n / full) * 100)}%`;
   const overCap = cap != null && used != null && used > cap;
   return (
-    <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
-      {cap != null && (
-        <div
-          className={cn(
-            "absolute inset-y-0 left-0 rounded-full transition-[width]",
-            cap > full ? "bg-warning" : "bg-primary",
-          )}
-          style={{ width: pct(cap) }}
-        />
-      )}
-      {used != null && used > 0 && (
-        <div
-          className={cn(
-            "absolute inset-y-0 left-0 rounded-full transition-[width]",
-            overCap ? "bg-warning" : "bg-muted-foreground",
-          )}
-          style={{ width: pct(used) }}
-        />
-      )}
+    <div className="relative flex h-4 items-center">
+      <div
+        className="relative h-2 flex-1 overflow-hidden rounded-full bg-secondary"
+        style={{ marginInline: THUMB / 2 }}
+      >
+        {cap != null && (
+          <div
+            className={cn(
+              "absolute inset-y-0 left-0 rounded-full",
+              cap > full ? "bg-warning" : "bg-primary",
+            )}
+            style={{ width: pct(cap) }}
+          />
+        )}
+        {used != null && used > 0 && (
+          <div
+            className={cn(
+              "absolute inset-y-0 left-0 rounded-full transition-[width]",
+              overCap ? "bg-warning" : "bg-muted-foreground",
+            )}
+            style={{ width: pct(used) }}
+          />
+        )}
+      </div>
+      <input
+        type="range"
+        aria-label={label}
+        aria-valuetext={valueText}
+        min={0}
+        max={full}
+        step={step}
+        value={Math.min(full, cap ?? 0)}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className={cn(
+          "absolute inset-0 w-full cursor-pointer appearance-none bg-transparent focus-visible:outline-none disabled:cursor-not-allowed",
+          "[&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent",
+          "[&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-sm",
+          "[&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-background [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow-sm",
+          "[&:focus-visible::-moz-range-thumb]:ring-2 [&:focus-visible::-moz-range-thumb]:ring-ring [&:focus-visible::-webkit-slider-thumb]:ring-2 [&:focus-visible::-webkit-slider-thumb]:ring-ring",
+        )}
+      />
     </div>
   );
 }
@@ -247,7 +326,10 @@ function SizeTile({
     >
       <span className="text-sm font-medium">{label}</span>
       {sub.map((line) => (
-        <span key={line} className="text-xs text-muted-foreground">
+        <span
+          key={line}
+          className="text-xs whitespace-nowrap text-muted-foreground"
+        >
           {line}
         </span>
       ))}
@@ -421,15 +503,17 @@ export function ResourceLimitsForm({
           : "Not running";
   const capLine = (cap: string | null, full: string | null) =>
     cap && full
-      ? `${cap} of ${full} on ${host!.name}`
+      ? `${cap} of ${full}`
       : cap
         ? cap
         : full
-          ? `No limit · ${full} on ${host!.name}`
+          ? `No limit of ${full}`
           : "No limit";
 
   const memBelowPeak = memCap != null && peak != null && memCap < peak.memoryMb;
   const cpuBelowPeak = cpuCap != null && peak != null && cpuCap < peak.cpuCores;
+  const showSuggestion = suggestion != null && !suggestionIsCurrent;
+  const sideCell = hostCap != null || showSuggestion;
 
   return (
     <>
@@ -454,7 +538,7 @@ export function ResourceLimitsForm({
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-3">
           {/* One click sets Memory + CPU together. */}
           <div
             role="radiogroup"
@@ -491,132 +575,161 @@ export function ResourceLimitsForm({
             })}
           </div>
 
-          <div className="space-y-2">
-            <LimitRow
+          <div
+            className={cn(
+              "grid gap-3 sm:grid-cols-2",
+              sideCell && "lg:grid-cols-3",
+            )}
+          >
+            <LimitCell
               id="limit-memory"
               label="Memory limit"
               info="Hard RAM ceiling. The container is restarted (OOM-killed) if it exceeds this. In MB - 1024 = 1 GB, 2048 = 2 GB."
               docs="resources.core"
-              note={
-                <div className="mt-2 space-y-1.5">
-                  {hostCap && hostCap.memoryMb > 0 && (
-                    <Meter
-                      cap={memCap}
-                      used={current ? current.memUsed / MIB : null}
-                      full={hostCap.memoryMb}
-                    />
-                  )}
-                  <div className="flex flex-col gap-0.5 text-xs text-muted-foreground sm:flex-row sm:justify-between sm:gap-4">
-                    <span>
-                      {usageLine(
-                        formatBytes(last?.memUsed ?? 0),
-                        formatBytes((peak?.memoryMb ?? 0) * MIB),
-                      )}
-                    </span>
-                    <span className="sm:text-right">
-                      {capLine(
-                        memCap != null ? fmtMemMb(memCap) : null,
-                        hostCap && hostCap.memoryMb > 0
-                          ? fmtMemMb(hostCap.memoryMb)
-                          : null,
-                      )}
-                    </span>
-                  </div>
-                  {memBelowPeak && (
-                    <p className="text-xs text-warning">
-                      Below the recent peak - the container would be killed at
-                      this size.
-                    </p>
-                  )}
-                </div>
+              input={
+                <LimitInput
+                  id="limit-memory"
+                  unit="MB"
+                  min={6}
+                  placeholder="No limit"
+                  value={form.memoryMb}
+                  onChange={set("memoryMb")}
+                />
               }
             >
-              <LimitInput
-                id="limit-memory"
-                unit="MB"
-                min={6}
-                placeholder="No limit"
-                value={form.memoryMb}
-                onChange={set("memoryMb")}
-              />
-            </LimitRow>
+              {hostCap && hostCap.memoryMb > 0 && (
+                <Meter
+                  cap={memCap}
+                  used={current ? current.memUsed / MIB : null}
+                  full={hostCap.memoryMb}
+                  step={128}
+                  label="Memory limit"
+                  valueText={memCap != null ? fmtMemMb(memCap) : "No limit"}
+                  onChange={(v) => set("memoryMb")(v ? String(v) : "")}
+                />
+              )}
+              <div className="space-y-0.5 text-xs text-muted-foreground">
+                <p>
+                  {capLine(
+                    memCap != null ? fmtMemMb(memCap) : null,
+                    hostCap && hostCap.memoryMb > 0
+                      ? fmtMemMb(hostCap.memoryMb)
+                      : null,
+                  )}
+                </p>
+                <p>
+                  {usageLine(
+                    formatBytes(last?.memUsed ?? 0),
+                    formatBytes((peak?.memoryMb ?? 0) * MIB),
+                  )}
+                </p>
+              </div>
+              {memBelowPeak && (
+                <p className="text-xs text-warning">
+                  Below the recent peak - the container would be killed at this
+                  size.
+                </p>
+              )}
+            </LimitCell>
 
-            <LimitRow
+            <LimitCell
               id="limit-cpu"
               label="CPU limit"
               info="Maximum CPU cores. 0.5 = half a core, 2 = two cores. Fractions allowed."
               docs="resources.core"
-              note={
-                <div className="mt-2 space-y-1.5">
-                  {hostCap && hostCap.cpuCores > 0 && (
-                    <Meter
-                      cap={cpuCap}
-                      used={current ? current.cpu / 100 : null}
-                      full={hostCap.cpuCores}
-                    />
-                  )}
-                  <div className="flex flex-col gap-0.5 text-xs text-muted-foreground sm:flex-row sm:justify-between sm:gap-4">
-                    <span>
-                      {usageLine(
-                        fmtCpu((last?.cpu ?? 0) / 100),
-                        fmtCpu(peak?.cpuCores ?? 0),
-                      )}
-                    </span>
-                    <span className="sm:text-right">
-                      {capLine(
-                        cpuCap != null ? fmtCpu(cpuCap) : null,
-                        hostCap && hostCap.cpuCores > 0
-                          ? fmtCpu(hostCap.cpuCores)
-                          : null,
-                      )}
-                    </span>
-                  </div>
-                  {cpuBelowPeak && (
-                    <p className="text-xs text-warning">
-                      Below the recent peak - the {noun} would be throttled.
-                    </p>
-                  )}
-                </div>
+              input={
+                <LimitInput
+                  id="limit-cpu"
+                  unit="cores"
+                  min={0}
+                  step={0.1}
+                  placeholder="No limit"
+                  value={form.cpuCores}
+                  onChange={set("cpuCores")}
+                />
               }
             >
-              <LimitInput
-                id="limit-cpu"
-                unit="cores"
-                min={0}
-                step={0.1}
-                placeholder="No limit"
-                value={form.cpuCores}
-                onChange={set("cpuCores")}
-              />
-            </LimitRow>
-          </div>
+              {hostCap && hostCap.cpuCores > 0 && (
+                <Meter
+                  cap={cpuCap}
+                  used={current ? current.cpu / 100 : null}
+                  full={hostCap.cpuCores}
+                  step={0.25}
+                  label="CPU limit"
+                  valueText={cpuCap != null ? fmtCpu(cpuCap) : "No limit"}
+                  onChange={(v) => set("cpuCores")(v ? String(v) : "")}
+                />
+              )}
+              <div className="space-y-0.5 text-xs text-muted-foreground">
+                <p>
+                  {capLine(
+                    cpuCap != null ? fmtCpu(cpuCap) : null,
+                    hostCap && hostCap.cpuCores > 0
+                      ? fmtCpu(hostCap.cpuCores)
+                      : null,
+                  )}
+                </p>
+                <p>
+                  {usageLine(
+                    fmtCpu((last?.cpu ?? 0) / 100),
+                    fmtCpu(peak?.cpuCores ?? 0),
+                  )}
+                </p>
+              </div>
+              {cpuBelowPeak && (
+                <p className="text-xs text-warning">
+                  Below the recent peak - the {noun} would be throttled.
+                </p>
+              )}
+            </LimitCell>
 
-          {suggestion && !suggestionIsCurrent && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2">
-              <p className="flex items-center gap-2 text-sm">
-                <Sparkles className="size-4 shrink-0 text-muted-foreground" />
-                <span>
-                  Suggested:{" "}
-                  <span className="font-medium">
-                    {suggestion.label} · {fmtCpu(suggestion.cpuCores)},{" "}
-                    {fmtMemMb(suggestion.memoryMb)}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    - 1.5x the peak of the last 15 minutes
-                  </span>
-                </span>
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setSize(suggestion)}
-              >
-                Apply
-              </Button>
-            </div>
-          )}
+            {sideCell && (
+              <div className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:col-span-2 lg:col-span-1">
+                {hostCap && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Server className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate font-medium">{host!.name}</span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {fmtMemMb(hostCap.memoryMb)} · {fmtCpu(hostCap.cpuCores)}
+                    </span>
+                  </div>
+                )}
+                {showSuggestion ? (
+                  <div className="mt-auto flex flex-wrap items-end justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <p className="flex items-center gap-2 text-sm">
+                        <Sparkles className="size-4 shrink-0 text-muted-foreground" />
+                        <span>
+                          Suggested:{" "}
+                          <span className="font-medium">
+                            {suggestion.label} · {fmtMemMb(suggestion.memoryMb)}
+                            , {fmtCpu(suggestion.cpuCores)}
+                          </span>
+                        </span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        1.5x the peak of the last 15 minutes.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSize(suggestion)}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                ) : (
+                  peak && (
+                    <p className="mt-auto text-xs text-muted-foreground">
+                      Fits the peak of the last 15 minutes.
+                    </p>
+                  )
+                )}
+              </div>
+            )}
+          </div>
 
           <Accordion
             type="single"
@@ -628,182 +741,184 @@ export function ResourceLimitsForm({
               <AccordionTrigger className="text-sm hover:no-underline">
                 Advanced limits
               </AccordionTrigger>
-              <AccordionContent className="space-y-6 pt-1">
-                <LimitGroup icon={MemoryStick} title="Memory">
-                  <LimitRow
-                    id="limit-mem-reservation"
-                    label="Memory reservation"
-                    info="Soft RAM floor the scheduler tries to keep available for this app under contention. Must be ≤ the memory limit."
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+              <AccordionContent className="pt-1">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <LimitGroup icon={MemoryStick} title="Memory">
+                    <LimitRow
                       id="limit-mem-reservation"
-                      unit="MB"
-                      min={6}
-                      placeholder="e.g. 256"
-                      value={form.memoryReservationMb}
-                      onChange={set("memoryReservationMb")}
-                    />
-                  </LimitRow>
-                  <LimitRow
-                    id="limit-swap"
-                    label="Swap limit"
-                    info="Total memory + swap ceiling. Needs a memory limit set, and must be ≥ it (the difference is how much swap the app may use)."
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+                      label="Memory reservation"
+                      info="Soft RAM floor the scheduler tries to keep available for this app under contention. Must be ≤ the memory limit."
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-mem-reservation"
+                        unit="MB"
+                        min={6}
+                        placeholder="e.g. 256"
+                        value={form.memoryReservationMb}
+                        onChange={set("memoryReservationMb")}
+                      />
+                    </LimitRow>
+                    <LimitRow
                       id="limit-swap"
-                      unit="MB"
-                      min={6}
-                      placeholder="e.g. 1024"
-                      value={form.swapMb}
-                      onChange={set("swapMb")}
-                    />
-                  </LimitRow>
-                </LimitGroup>
+                      label="Swap limit"
+                      info="Total memory + swap ceiling. Needs a memory limit set, and must be ≥ it (the difference is how much swap the app may use)."
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-swap"
+                        unit="MB"
+                        min={6}
+                        placeholder="e.g. 1024"
+                        value={form.swapMb}
+                        onChange={set("swapMb")}
+                      />
+                    </LimitRow>
+                  </LimitGroup>
 
-                <LimitGroup icon={Cpu} title="CPU">
-                  <LimitRow
-                    id="limit-cpu-shares"
-                    label="CPU shares"
-                    info="Relative CPU weight when the host is busy (default 1024) - 2048 gets twice the share of 1024. Doesn't cap idle-time usage."
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+                  <LimitGroup icon={Cpu} title="CPU">
+                    <LimitRow
                       id="limit-cpu-shares"
-                      unit="weight"
-                      min={2}
-                      placeholder="1024"
-                      value={form.cpuShares}
-                      onChange={set("cpuShares")}
-                    />
-                  </LimitRow>
-                  <LimitRow
-                    id="limit-cpuset"
-                    label="CPU pinning"
-                    info='Pin the app to specific host cores, e.g. "0", "0,1" or "0-3". Leave empty to run on any core.'
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+                      label="CPU shares"
+                      info="Relative CPU weight when the host is busy (default 1024) - 2048 gets twice the share of 1024. Doesn't cap idle-time usage."
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-cpu-shares"
+                        unit="weight"
+                        min={2}
+                        placeholder="1024"
+                        value={form.cpuShares}
+                        onChange={set("cpuShares")}
+                      />
+                    </LimitRow>
+                    <LimitRow
                       id="limit-cpuset"
-                      type="text"
-                      placeholder="e.g. 0,2-3"
-                      value={form.cpuset}
-                      onChange={set("cpuset")}
-                    />
-                  </LimitRow>
-                </LimitGroup>
+                      label="CPU pinning"
+                      info='Pin the app to specific host cores, e.g. "0", "0,1" or "0-3". Leave empty to run on any core.'
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-cpuset"
+                        type="text"
+                        placeholder="e.g. 0,2-3"
+                        value={form.cpuset}
+                        onChange={set("cpuset")}
+                      />
+                    </LimitRow>
+                  </LimitGroup>
 
-                <LimitGroup icon={Layers} title="Processes & files">
-                  <LimitRow
-                    id="limit-pids"
-                    label="Process limit"
-                    info="Maximum number of processes/threads the container may spawn - a guard against fork bombs and runaway workers."
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+                  <LimitGroup icon={Layers} title="Processes & files">
+                    <LimitRow
                       id="limit-pids"
-                      unit="count"
-                      min={1}
-                      placeholder="e.g. 512"
-                      value={form.pidsLimit}
-                      onChange={set("pidsLimit")}
-                    />
-                  </LimitRow>
-                  <LimitRow
-                    id="limit-nofile"
-                    label="Open files"
-                    info="Maximum open file descriptors (ulimit nofile). Raise it for high-connection servers hitting 'too many open files'."
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+                      label="Process limit"
+                      info="Maximum number of processes/threads the container may spawn - a guard against fork bombs and runaway workers."
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-pids"
+                        unit="count"
+                        min={1}
+                        placeholder="e.g. 512"
+                        value={form.pidsLimit}
+                        onChange={set("pidsLimit")}
+                      />
+                    </LimitRow>
+                    <LimitRow
                       id="limit-nofile"
-                      unit="count"
-                      min={1}
-                      placeholder="e.g. 1024"
-                      value={form.nofile}
-                      onChange={set("nofile")}
-                    />
-                  </LimitRow>
-                  <LimitRow
-                    id="limit-nproc"
-                    label="User processes"
-                    info="Per-user process ceiling (ulimit nproc). Usually redundant with the process limit above."
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+                      label="Open files"
+                      info="Maximum open file descriptors (ulimit nofile). Raise it for high-connection servers hitting 'too many open files'."
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-nofile"
+                        unit="count"
+                        min={1}
+                        placeholder="e.g. 1024"
+                        value={form.nofile}
+                        onChange={set("nofile")}
+                      />
+                    </LimitRow>
+                    <LimitRow
                       id="limit-nproc"
-                      unit="count"
-                      min={1}
-                      placeholder="e.g. 512"
-                      value={form.nproc}
-                      onChange={set("nproc")}
-                    />
-                  </LimitRow>
-                </LimitGroup>
+                      label="User processes"
+                      info="Per-user process ceiling (ulimit nproc). Usually redundant with the process limit above."
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-nproc"
+                        unit="count"
+                        min={1}
+                        placeholder="e.g. 512"
+                        value={form.nproc}
+                        onChange={set("nproc")}
+                      />
+                    </LimitRow>
+                  </LimitGroup>
 
-                <LimitGroup icon={HardDrive} title="Storage">
-                  <LimitRow
-                    id="limit-shm"
-                    label="Shared memory"
-                    info="Size of /dev/shm (shared-memory segment). Default is 64 MB; raise it for apps that need more (some databases, Chromium/Puppeteer)."
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+                  <LimitGroup icon={HardDrive} title="Storage">
+                    <LimitRow
                       id="limit-shm"
-                      unit="MB"
-                      min={1}
-                      placeholder="e.g. 64"
-                      value={form.shmSizeMb}
-                      onChange={set("shmSizeMb")}
-                    />
-                  </LimitRow>
-                  <LimitRow
-                    id="limit-storage"
-                    label="Disk quota"
-                    info="Caps the writable layer, not Volume storage. Needs host support (XFS + pquota or devicemapper) or the deploy is rejected."
-                    docs="resources.advanced"
-                  >
-                    <LimitInput
+                      label="Shared memory"
+                      info="Size of /dev/shm (shared-memory segment). Default is 64 MB; raise it for apps that need more (some databases, Chromium/Puppeteer)."
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-shm"
+                        unit="MB"
+                        min={1}
+                        placeholder="e.g. 64"
+                        value={form.shmSizeMb}
+                        onChange={set("shmSizeMb")}
+                      />
+                    </LimitRow>
+                    <LimitRow
                       id="limit-storage"
-                      unit="GB"
-                      min={1}
-                      placeholder="e.g. 10"
-                      value={form.storageGb}
-                      onChange={set("storageGb")}
-                    />
-                  </LimitRow>
-                </LimitGroup>
+                      label="Disk quota"
+                      info="Caps the writable layer, not Volume storage. Needs host support (XFS + pquota or devicemapper) or the deploy is rejected."
+                      docs="resources.advanced"
+                    >
+                      <LimitInput
+                        id="limit-storage"
+                        unit="GB"
+                        min={1}
+                        placeholder="e.g. 10"
+                        value={form.storageGb}
+                        onChange={set("storageGb")}
+                      />
+                    </LimitRow>
+                  </LimitGroup>
 
-                <LimitGroup icon={Gauge} title="Under memory pressure">
-                  <LimitRow
-                    id="limit-oom"
-                    label="OOM priority"
-                    info={
-                      canProtectFromOom
-                        ? "Range -1000 to 1000. If the host runs out of memory, higher scores are killed first - negative protects this app."
-                        : "Range -1000 to 1000. Higher scores are killed first when the host runs out of memory. Negative needs the host-volumes grant."
-                    }
-                    docs="resources.advanced"
-                    note={
-                      oomNegative &&
-                      !canProtectFromOom && (
-                        <p className="mt-1.5 text-xs text-destructive">
-                          Negative values need the host-volumes grant.
-                        </p>
-                      )
-                    }
-                  >
-                    <LimitInput
+                  <LimitGroup icon={Gauge} title="Under memory pressure">
+                    <LimitRow
                       id="limit-oom"
-                      unit="score"
-                      min={canProtectFromOom ? -1000 : 0}
-                      placeholder="0"
-                      value={form.oomScoreAdj}
-                      onChange={set("oomScoreAdj")}
-                    />
-                  </LimitRow>
-                </LimitGroup>
+                      label="OOM priority"
+                      info={
+                        canProtectFromOom
+                          ? "Range -1000 to 1000. If the host runs out of memory, higher scores are killed first - negative protects this app."
+                          : "Range -1000 to 1000. Higher scores are killed first when the host runs out of memory. Negative needs the host-volumes grant."
+                      }
+                      docs="resources.advanced"
+                      note={
+                        oomNegative &&
+                        !canProtectFromOom && (
+                          <p className="mt-1.5 text-xs text-destructive">
+                            Negative values need the host-volumes grant.
+                          </p>
+                        )
+                      }
+                    >
+                      <LimitInput
+                        id="limit-oom"
+                        unit="score"
+                        min={canProtectFromOom ? -1000 : 0}
+                        placeholder="0"
+                        value={form.oomScoreAdj}
+                        onChange={set("oomScoreAdj")}
+                      />
+                    </LimitRow>
+                  </LimitGroup>
+                </div>
               </AccordionContent>
             </AccordionItem>
           </Accordion>
