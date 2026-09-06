@@ -119,3 +119,76 @@ export function activeResourcePreset(
       f.memoryMb === String(p.memoryMb) && f.cpuCores === String(p.cpuCores),
   );
 }
+
+/** A Memory + CPU pair in the form's units. */
+export interface ResourceSize {
+  memoryMb: number;
+  cpuCores: number;
+}
+
+/** The owning machine's capacity; 0 on either axis means "not reported yet". */
+export type HostCapacity = ResourceSize;
+
+/** False only when the host is known and too small on some axis. */
+export function sizeFitsHost(
+  size: ResourceSize,
+  host: HostCapacity | null,
+): boolean {
+  if (!host) return true;
+  return (
+    (host.memoryMb <= 0 || size.memoryMb <= host.memoryMb) &&
+    (host.cpuCores <= 0 || size.cpuCores <= host.cpuCores)
+  );
+}
+
+/** The highest memory (bytes) and CPU (% of one core) in a metrics window. */
+export function usagePeak(
+  samples: readonly { memUsed: number; cpu: number }[],
+): ResourceSize | null {
+  let mem = 0;
+  let cpu = 0;
+  for (const s of samples) {
+    mem = Math.max(mem, s.memUsed);
+    cpu = Math.max(cpu, s.cpu);
+  }
+  if (mem <= 0) return null;
+  return { memoryMb: mem / 1048576, cpuCores: cpu / 100 };
+}
+
+const HEADROOM = 1.5;
+const roundUp = (n: number, step: number) =>
+  Math.max(step, Math.ceil(n / step) * step);
+
+/**
+ * The size to suggest for a peak: the smallest preset with 1.5x headroom on both
+ * axes, else twice the peak rounded up; null when the host cannot give headroom.
+ */
+export function suggestedSize(
+  peak: ResourceSize,
+  host: HostCapacity | null,
+): (ResourceSize & { label: string }) | null {
+  const preset = RESOURCE_PRESETS.find(
+    (p) =>
+      p.memoryMb >= peak.memoryMb * HEADROOM &&
+      p.cpuCores >= peak.cpuCores * HEADROOM &&
+      sizeFitsHost(p, host),
+  );
+  if (preset) return preset;
+  const custom = {
+    label: "Custom",
+    memoryMb: roundUp(peak.memoryMb * 2, 256),
+    cpuCores: roundUp(peak.cpuCores * 2, 0.25),
+  };
+  return sizeFitsHost(custom, host) ? custom : null;
+}
+
+/** "256 MB" / "1 GB" / "1.5 GB" in the form's own unit. */
+export function fmtMemMb(mb: number): string {
+  return mb >= 1024 ? `${Number((mb / 1024).toFixed(2))} GB` : `${mb} MB`;
+}
+
+/** "0.5 CPU" / "1 CPU" / "2 CPUs". */
+export function fmtCpu(cores: number): string {
+  const n = Number(cores.toFixed(2));
+  return `${n} CPU${n > 1 ? "s" : ""}`;
+}

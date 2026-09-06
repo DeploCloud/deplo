@@ -1,18 +1,18 @@
 import { notFound } from "next/navigation";
 import { Cpu } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
+import { getAppMetricsHistory } from "@/lib/data/container-metrics";
+import { hasAppCapability } from "@/lib/data/node-access";
+import { listServers } from "@/lib/data/servers";
+import { canMountHostVolumes } from "@/lib/membership";
+import { serverLabel, usesComposeStack } from "@/lib/utils";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
-import { usesComposeStack } from "@/lib/utils";
 
 export const metadata = { title: "Resources" };
 
-/**
- * Resources settings: per-app caps on RAM / CPU / processes / disk. Baked into
- * the rendered compose at deploy time, so a runaway app can't starve its
- * neighbours on a shared host, no Docker knowledge required.
- */
+/** Per-app caps, baked into the rendered compose on the next deploy. */
 export default async function AppResourcesSettingsPage(
   props: PageProps<"/[team]/apps/[slug]/settings/resources">,
 ) {
@@ -20,13 +20,15 @@ export default async function AppResourcesSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // A compose stack still gets limits, but per service - the form notes it.
-  const isComposeStack = usesComposeStack({
-    source: project.source,
-    compose: project.compose,
-    repo: project.repo,
-    dockerImage: project.dockerImage,
-  });
+  const [servers, canViewMetrics, canRedeploy, canProtectFromOom] =
+    await Promise.all([
+      listServers(),
+      hasAppCapability(project.id, "view_metrics"),
+      hasAppCapability(project.id, "deploy_apps"),
+      canMountHostVolumes(),
+    ]);
+  const server = servers.find((s) => s.id === project.serverId);
+  const usage = canViewMetrics ? await getAppMetricsHistory(project.id) : null;
 
   return (
     <section className="space-y-4">
@@ -38,9 +40,23 @@ export default async function AppResourcesSettingsPage(
       />
       <CapabilityFieldset cap="configure_apps">
         <ResourceLimitsForm
-          appId={project.id}
+          kind="app"
+          id={project.id}
+          slug={project.slug}
           resources={project.resources}
-          isComposeStack={isComposeStack}
+          isComposeStack={usesComposeStack(project)}
+          host={
+            server
+              ? {
+                  name: serverLabel(server),
+                  memoryMb: server.memoryMb,
+                  cpuCores: server.cpuCores,
+                }
+              : null
+          }
+          usage={usage}
+          canRedeploy={canRedeploy}
+          canProtectFromOom={canProtectFromOom}
         />
       </CapabilityFieldset>
     </section>

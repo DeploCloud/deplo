@@ -8,6 +8,11 @@ import {
   serializeResourceForm,
   activeResourcePreset,
   RESOURCE_PRESETS,
+  sizeFitsHost,
+  usagePeak,
+  suggestedSize,
+  fmtMemMb,
+  fmtCpu,
 } from "./resource-limits-model";
 import type { ResourceLimits } from "../types";
 
@@ -112,4 +117,69 @@ test("preset detection matches Memory + CPU exactly", () => {
   assert.equal(activeResourcePreset(form)?.label, "Small");
   // A tweaked memory value no longer matches any preset.
   assert.equal(activeResourcePreset({ ...form, memoryMb: "1000" }), undefined);
+});
+
+test("a size fits an unknown host, and a known host on both axes", () => {
+  const small = RESOURCE_PRESETS[2]; // 1 GB, 1 CPU
+  assert.equal(sizeFitsHost(small, null), true);
+  assert.equal(sizeFitsHost(small, { memoryMb: 0, cpuCores: 0 }), true);
+  assert.equal(sizeFitsHost(small, { memoryMb: 2048, cpuCores: 2 }), true);
+  assert.equal(sizeFitsHost(small, { memoryMb: 512, cpuCores: 2 }), false);
+  assert.equal(sizeFitsHost(small, { memoryMb: 2048, cpuCores: 0.5 }), false);
+});
+
+test("the peak of a window is its highest memory and CPU, in form units", () => {
+  assert.equal(usagePeak([]), null);
+  assert.equal(usagePeak([{ memUsed: 0, cpu: 0 }]), null);
+  const peak = usagePeak([
+    { memUsed: 100 * 1048576, cpu: 20 },
+    { memUsed: 480 * 1048576, cpu: 5 },
+    { memUsed: 200 * 1048576, cpu: 150 },
+  ]);
+  assert.deepEqual(peak, { memoryMb: 480, cpuCores: 1.5 });
+});
+
+test("the suggestion is the smallest preset with 1.5x headroom that fits", () => {
+  // 480 MB × 1.5 = 720 → Small (1 GB); 0.4 CPU × 1.5 = 0.6 → Small too.
+  assert.equal(
+    suggestedSize({ memoryMb: 480, cpuCores: 0.4 }, null)?.label,
+    "Small",
+  );
+  // CPU alone can push the size up: 1.5 cores needs 2.25 → Large.
+  assert.equal(
+    suggestedSize({ memoryMb: 480, cpuCores: 1.5 }, null)?.label,
+    "Large",
+  );
+  // A host too small for Large skips it: nothing preset fits, so 2x rounded.
+  assert.deepEqual(
+    suggestedSize(
+      { memoryMb: 480, cpuCores: 1.5 },
+      { memoryMb: 3072, cpuCores: 4 },
+    ),
+    { label: "Custom", memoryMb: 1024, cpuCores: 3 },
+  );
+  // Past every preset: twice the peak, rounded up to 256 MB / 0.25 CPU.
+  assert.deepEqual(suggestedSize({ memoryMb: 3000, cpuCores: 2.1 }, null), {
+    label: "Custom",
+    memoryMb: 6144,
+    cpuCores: 4.25,
+  });
+  // No headroom on the host at all: no suggestion rather than a wrong one.
+  assert.equal(
+    suggestedSize(
+      { memoryMb: 3000, cpuCores: 2.1 },
+      { memoryMb: 4096, cpuCores: 4 },
+    ),
+    null,
+  );
+});
+
+test("sizes format in the form's own units", () => {
+  assert.equal(fmtMemMb(256), "256 MB");
+  assert.equal(fmtMemMb(1024), "1 GB");
+  assert.equal(fmtMemMb(1536), "1.5 GB");
+  assert.equal(fmtCpu(0.25), "0.25 CPU");
+  assert.equal(fmtCpu(1), "1 CPU");
+  assert.equal(fmtCpu(2), "2 CPUs");
+  assert.equal(fmtCpu(1.1), "1.1 CPUs");
 });
