@@ -78,21 +78,27 @@ export function McpSwitchMenu({
               <EllipsisVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuItem
               // Stays open: a switch is flipped, not picked.
               onSelect={(e) => {
                 e.preventDefault();
                 toggle(!enabled);
               }}
-              className="gap-3"
+              className="items-start gap-3"
             >
-              <span className="flex-1">Enable MCP Server</span>
+              <span className="min-w-0 flex-1">
+                <span className="block">Enable MCP Server</span>
+                <span className="mt-1 block text-xs leading-snug text-muted-foreground">
+                  Off means no member can reach Deplo from an agent, and the
+                  agents already connected stop working.
+                </span>
+              </span>
               <Switch
                 checked={enabled}
                 aria-label="Enable MCP Server"
                 tabIndex={-1}
-                className="pointer-events-none"
+                className="pointer-events-none mt-0.5"
               />
             </DropdownMenuItem>
           </DropdownMenuContent>

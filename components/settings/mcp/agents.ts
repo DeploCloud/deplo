@@ -131,7 +131,7 @@ export const AGENTS: AgentDef[] = [
     veil: { hue: 39 },
     kind: "token",
     form: "command",
-    hint: "Run it once in your terminal. Add --scope user to reuse it in every project.",
+    hint: "Paste it into your terminal and run it once.",
     docsUrl: "https://code.claude.com/docs/en/mcp",
     snippet: ({ url, token }) =>
       `claude mcp add --transport http Deplo ${url} --header "Authorization: Bearer ${token}"`,

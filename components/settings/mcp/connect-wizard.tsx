@@ -342,6 +342,13 @@ function WizardRun({
         ? "key"
         : "idle";
 
+  // Nothing is left to do beside the picture, so the last step takes the middle
+  // of the screen instead of the content column.
+  if (step === "done" && agent)
+    return (
+      <DoneStep agent={agent} connected={connected} onRestart={onRestart} />
+    );
+
   return (
     // Two columns only from `xl`, not `lg`. The content column can never be squeezed by
     // it - the picture only takes what the window itself grew by.
@@ -393,13 +400,16 @@ function WizardRun({
             <StepShell
               title="The MCP Server is off for this team"
               lead="Turning it on lets members connect their own agents here. What an agent may actually do is its token's permissions, and nothing else."
+              action={
+                canManageTeam ? (
+                  <Button onClick={turnOn} disabled={pending}>
+                    {pending && <Loader2 className="size-4 animate-spin" />}
+                    Turn on MCP for this team
+                  </Button>
+                ) : null
+              }
             >
-              {canManageTeam ? (
-                <Button onClick={turnOn} disabled={pending}>
-                  {pending && <Loader2 className="size-4 animate-spin" />}
-                  Turn on MCP for this team
-                </Button>
-              ) : (
+              {!canManageTeam && (
                 <p className="text-sm text-muted-foreground">
                   A team admin has to switch it on before an agent can connect.
                 </p>
@@ -434,6 +444,26 @@ function WizardRun({
             <StepShell
               title={`What may ${agent.label} do?`}
               lead="Deplo mints an API token here. You can change or revoke it later without touching the agent."
+              action={
+                <>
+                  <ToolsDialog
+                    tools={tools}
+                    highlight={caps}
+                    trigger={
+                      <Button variant="outline" className="mr-auto">
+                        See tools
+                      </Button>
+                    }
+                  />
+                  <Button
+                    onClick={createToken}
+                    disabled={pending || !name.trim() || !canConnect}
+                  >
+                    {pending && <Loader2 className="size-4 animate-spin" />}
+                    Create token
+                  </Button>
+                </>
+              }
             >
               <div className="w-full space-y-4 text-left">
                 <div className="grid gap-2">
@@ -504,29 +534,7 @@ function WizardRun({
                     </div>
                   </div>
                 </div>
-
-                <ToolsDialog
-                  tools={tools}
-                  highlight={caps}
-                  trigger={
-                    <button
-                      type="button"
-                      className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                    >
-                      This opens {reachedTools(tools, caps)} of {tools.length}{" "}
-                      tools. See which
-                    </button>
-                  }
-                />
               </div>
-
-              <Button
-                onClick={createToken}
-                disabled={pending || !name.trim() || !canConnect}
-              >
-                {pending && <Loader2 className="size-4 animate-spin" />}
-                Create token
-              </Button>
             </StepShell>
           )}
 
@@ -544,6 +552,27 @@ function WizardRun({
                 web
                   ? agent.hint
                   : "The token is already in it. This is the only time Deplo can show that secret."
+              }
+              action={
+                <>
+                  {gaveUp ? (
+                    <Button
+                      variant="outline"
+                      className="mr-auto"
+                      onClick={checkAgain}
+                    >
+                      Check again
+                    </Button>
+                  ) : (
+                    <span className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" />
+                      Waiting for {agent.label} to call Deplo
+                    </span>
+                  )}
+                  {/* Deplo listens, but the reader may know it worked before the
+                      first call lands - or never intend to run it here. */}
+                  <Button onClick={() => setStep("done")}>Done</Button>
+                </>
               }
             >
               <div className="w-full space-y-3 text-left">
@@ -600,29 +629,15 @@ function WizardRun({
                   {agent.label} documentation
                   <ExternalLink className="size-3" />
                 </a>
-              </div>
 
-              {gaveUp ? (
-                <div className="space-y-2">
+                {gaveUp && (
                   <p className="text-sm text-muted-foreground">
                     Deplo has not heard from {agent.label} yet. Start it, or ask
                     it to list its tools.
                   </p>
-                  <Button variant="outline" onClick={checkAgain}>
-                    Check again
-                  </Button>
-                </div>
-              ) : (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" />
-                  Waiting for {agent.label} to call Deplo
-                </p>
-              )}
+                )}
+              </div>
             </StepShell>
-          )}
-
-          {step === "done" && agent && (
-            <DoneStep agent={agent} onRestart={onRestart} />
           )}
         </div>
       </div>
@@ -644,7 +659,7 @@ function WizardRun({
         open={editing === "permissions"}
         onOpenChange={(open) => setEditing(open ? "permissions" : null)}
       >
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               What {agent?.label ?? "this agent"} may do
@@ -711,7 +726,7 @@ function WizardRun({
         open={editing === "access"}
         onOpenChange={(open) => setEditing(open ? "access" : null)}
       >
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>
               What {agent?.label ?? "this agent"} can reach
@@ -751,18 +766,21 @@ function WizardRun({
 
 /**
  * Every step is the same shape: a question, one line under it, the controls, then
- * one primary button.
+ * the buttons - always the last row, primary pinned to the right edge.
  */
 function StepShell({
   mark,
   title,
   lead,
   children,
+  action,
 }: {
   mark?: React.ReactNode;
   title: string;
   lead: string;
   children: React.ReactNode;
+  /** The step's buttons. Anything that belongs left of the primary takes `mr-auto`. */
+  action?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col items-start gap-5">
@@ -772,6 +790,11 @@ function StepShell({
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">{lead}</p>
       </div>
       {children}
+      {action ? (
+        <div className="flex w-full flex-wrap items-center justify-end gap-3">
+          {action}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -862,34 +885,53 @@ function AgentCard({
 }
 
 /**
- * The last step, reached only by a real request from the agent.
+ * The last step, centred over the window: the two-column layout is for a step with
+ * something to do beside the picture, and this one has none.
  */
 function DoneStep({
   agent,
+  connected,
   onRestart,
 }: {
   agent: AgentDef;
+  /** False when the reader pressed Done before the agent called. */
+  connected: boolean;
   onRestart: () => void;
 }) {
   return (
-    <StepShell
-      mark={<AgentMark agent={agent} size="lg" />}
-      title="Connected successfully!"
-      lead="It made its first call to Deplo. Change or revoke its access at any time under Settings → API tokens."
-    >
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={onRestart}>
-          <Check className="size-4" />
-          Done
-        </Button>
-        <Button asChild variant="outline">
+    <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
+      {connected && <ConfettiBurst rain className="z-50" count={60} />}
+
+      <RobotGraphic
+        state={connected ? "connected" : "reaching"}
+        accent={agent.veil}
+        className="h-48 w-auto"
+      />
+
+      <div>
+        <h2 className="text-xl font-semibold">
+          {connected ? "Connected successfully!" : `${agent.label} is set up`}
+        </h2>
+        <p className="mt-1 text-sm text-balance text-muted-foreground">
+          {connected
+            ? "It made its first call to Deplo. Change or revoke its access at any time under Settings → API tokens."
+            : `Deplo has not heard from ${agent.label} yet. It appears here as soon as it makes its first call.`}
+        </p>
+      </div>
+
+      <div className="flex w-full flex-wrap items-center justify-end gap-3">
+        <Button asChild variant="outline" className="mr-auto">
           <Link href="/settings/tokens">
             <KeyRound className="size-4" />
             API tokens
           </Link>
         </Button>
+        <Button onClick={onRestart}>
+          <Check className="size-4" />
+          Done
+        </Button>
       </div>
-    </StepShell>
+    </div>
   );
 }
 
@@ -952,14 +994,4 @@ function SummaryRow({
       <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
     </button>
   );
-}
-
-/** How many tools a capability set actually opens. `null` requires nothing. */
-function reachedTools(tools: McpToolSummary[], caps: string[]): number {
-  const held = new Set(caps);
-  return tools.filter(
-    (t) =>
-      t.requires === null ||
-      (t.requires !== "instanceAdmin" && held.has(t.requires)),
-  ).length;
 }
