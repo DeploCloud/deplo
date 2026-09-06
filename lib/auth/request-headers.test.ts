@@ -106,3 +106,11 @@ test("cookies that are not Better Auth's are left exactly as they are", () => {
   const out = authRequestHeaders(null, "deplo_team=team_a; theme=dark");
   assert.equal(out.get("cookie"), "deplo_team=team_a; theme=dark");
 });
+
+test("the twin cookie name is not offered on an https request", () => {
+  const cookie = "deplo.session_token=abc";
+  const plain = authRequestHeaders(null, cookie);
+  assert.match(plain.get("cookie")!, /__Secure-deplo\.session_token=abc/);
+  const https = authRequestHeaders(null, cookie, { twinCookieNames: false });
+  assert.equal(https.get("cookie"), cookie);
+});

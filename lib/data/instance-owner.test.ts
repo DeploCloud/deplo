@@ -160,14 +160,38 @@ test("the owner cannot uncrown themselves by dropping their own admin flag", asy
 /* What the guard must NOT break                                       */
 /* ------------------------------------------------------------------ */
 
-test("the owner can still edit their own account (password included)", async () => {
+test("the owner can still edit their own account, but not set their own password here", async () => {
   await seedOwnedInstance();
   await asUser(OWNER, () =>
-    updateUserAdmin(edit(OWNER, { newPassword: "A-new-passw0rd!" })),
+    updateUserAdmin(edit(OWNER, { canExposePorts: true })),
+  );
+  // One's own password is changed with the current one in hand, never from a
+  // door a stolen session could walk through.
+  await assert.rejects(
+    () =>
+      asUser(OWNER, () =>
+        updateUserAdmin(edit(OWNER, { newPassword: "A-new-passw0rd!" })),
+      ),
+    /Settings → Security/,
   );
   const row = await userRow(OWNER);
-  assert.ok(await verifyPassword("A-new-passw0rd!", row.passwordHash!));
+  assert.ok(await verifyPassword(SEEDED_PW, row.passwordHash!));
   assert.equal(row.isInstanceAdmin, true);
+});
+
+test("transferring the instance asks for the second factor when the owner has one", async () => {
+  await seedOwnedInstance();
+  await db
+    .update(usersTable)
+    .set({ twoFactorEnabled: true })
+    .where(eq(usersTable.id, OWNER));
+  await assert.rejects(
+    () =>
+      asUser(OWNER, () =>
+        transferInstanceOwner({ userId: ADMIN, password: SEEDED_PW }),
+      ),
+    /authenticator app/,
+  );
 });
 
 test("the owner can demote and suspend OTHER admins", async () => {

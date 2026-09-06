@@ -584,13 +584,18 @@ builder.mutationFields((t) => ({
     // requires the caller to BE the current owner, which no scope can express.
     authScopes: { instanceAdmin: true },
     description:
-      "Hand instance ownership to another instance admin. Owner-only; requires the caller's password. Returns true.",
+      "Hand instance ownership to another instance admin. Owner-only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.",
     args: {
       userId: t.arg.string({ required: true }),
       password: t.arg.string({ required: true }),
+      code: t.arg.string({ required: false }),
     },
-    resolve: async (_r, { userId, password }) => {
-      await transferInstanceOwner({ userId, password });
+    resolve: async (_r, { userId, password, code }) => {
+      await transferInstanceOwner({
+        userId,
+        password,
+        code: code ?? undefined,
+      });
       return true;
     },
   }),

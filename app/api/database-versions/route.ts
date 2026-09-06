@@ -37,7 +37,7 @@ const TTL_MS = 6 * 60 * 60 * 1000; // 6h - engine majors change slowly.
 const cache = new Map<DatabaseType, { at: number; versions: string[] }>();
 
 function isEngine(v: string | null): v is DatabaseType {
-  return v != null && v in HUB_REPO;
+  return v != null && Object.hasOwn(HUB_REPO, v);
 }
 
 /** Clean numeric tag ("18", "18.1", "8.4"); rejects "18-alpine", "latest", "". */

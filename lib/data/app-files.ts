@@ -41,6 +41,12 @@ export function normalizeRel(relPath: string): string {
   if (rel.split("/").some((seg) => seg === "..")) {
     throw new Error("Path traversal is not allowed");
   }
+  // The stack's decrypted env-file lives at the root of this tree: reading it is
+  // `reveal_secrets`, writing it is `manage_env`, and this editor is neither.
+  if (rel.replace(/^(\.\/)+/, "") === ".env")
+    throw new Error(
+      "The .env file is written by Deplo from the app's variables - edit those in Settings → Environment.",
+    );
   return rel;
 }
 
@@ -195,5 +201,5 @@ async function syncAppMount(
 /** Record a project-scoped activity line for a files change. */
 async function note(appId: string, message: string): Promise<void> {
   const user = await getCurrentUser();
-  await recordActivity("app", message, user?.email ?? "system", appId);
+  await recordActivity("app", message, user?.name ?? "system", appId);
 }

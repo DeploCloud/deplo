@@ -20,7 +20,7 @@ const SESSION_COOKIES = ["deplo.session_token", "__Secure-deplo.session_token"];
 // Paths reachable WITHOUT a session. `/register/<token>` is how a brand-new
 // person self-registers an account + team from a single-use link, so it must be
 // public, otherwise the proxy bounces them to /login before the page renders.
-const PUBLIC_PATHS = ["/login", "/signup", "/setup", "/register"];
+const PUBLIC_PATHS = ["/login", "/setup", "/register"];
 
 /**
  * Whether THIS request arrived over TLS. It also outlived turning HTTPS off from

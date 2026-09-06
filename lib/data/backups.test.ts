@@ -1054,3 +1054,22 @@ test("getDatabaseBackupSummary counts an ad-hoc run as the last run", async () =
     assert.equal(s.lastStatus, "failed");
   });
 });
+
+test("downloading an APP archive is a reveal: restore_backups alone is refused", async () => {
+  await asUser1(() =>
+    seedRun(db, {
+      id: "brun_app",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    }),
+  );
+  // The restorer may put the archive back, not read the variables it carries.
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: USER_RESTORER, teamId: TEAM_A }, () =>
+        downloadBackupArtifact("brun_app"),
+      ),
+    /reveal secret values/i,
+  );
+});

@@ -51,6 +51,7 @@ import {
   requireAuth,
   sessionCookieNames,
   SECURE_COOKIE_PREFIX,
+  SESSION_MAX_AGE_MS,
   SESSION_TTL_SECONDS,
 } from "./auth/better-auth";
 import {
@@ -441,7 +442,13 @@ export async function authHeaders(): Promise<Headers> {
   } catch {
     /* no request scope */
   }
-  return authRequestHeaders(request, cookie);
+  let https = false;
+  try {
+    https = await requestIsHttps();
+  } catch {
+    /* no request scope */
+  }
+  return authRequestHeaders(request, cookie, { twinCookieNames: !https });
 }
 
 /**
@@ -475,9 +482,16 @@ const currentSession = cache(async () => {
   if (currentIdentity()) return null;
   const auth = getAuth();
   if (!auth) return null;
-  return auth.api
+  const s = await auth.api
     .getSession({ headers: await authHeaders() })
     .catch(() => null);
+  // The absolute lifetime, on top of Better Auth's rolling one.
+  if (
+    s &&
+    Date.now() - new Date(s.session.createdAt).getTime() > SESSION_MAX_AGE_MS
+  )
+    return null;
+  return s;
 });
 
 /**

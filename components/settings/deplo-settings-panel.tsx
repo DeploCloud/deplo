@@ -98,12 +98,14 @@ type TabId = (typeof TABS)[number];
 export function DeploSettingsPanel({
   settings,
   viewerIsOwner,
+  viewerTwoFactorEnabled,
   ownerCandidates,
   fleet,
   hosts,
 }: {
   settings: InstanceSettings;
   viewerIsOwner: boolean;
+  viewerTwoFactorEnabled: boolean;
   ownerCandidates: OwnerCandidate[];
   fleet: FleetSummary;
   hosts: DiagnosticHost[];
@@ -159,6 +161,7 @@ export function DeploSettingsPanel({
             <InstanceOwnerCard
               ownerName={settings.ownerName}
               viewerIsOwner={viewerIsOwner}
+              viewerTwoFactorEnabled={viewerTwoFactorEnabled}
               candidates={ownerCandidates}
             />
           </div>

@@ -57,12 +57,18 @@ function evict(s: AttachSession) {
   destroy(s.id);
 }
 
-function enforceSessionCaps(appId: string) {
-  const forApp = [...sessions.values()].filter((s) => s.appId === appId);
+function enforceSessionCaps(appId: string, userId: string) {
+  // Only the caller's OWN sessions are ever evicted: a cap reached by other
+  // people's streams is a refusal, never a way to close their consoles.
+  const mine = [...sessions.values()].filter((s) => s.userId === userId);
+  const forApp = mine.filter((s) => s.appId === appId);
   if (forApp.length >= MAX_SESSIONS_PER_APP) evict(forApp[0]);
   if (sessions.size >= MAX_SESSIONS) {
-    const oldest = sessions.values().next().value;
-    if (oldest) evict(oldest);
+    if (mine[0]) evict(mine[0]);
+    else
+      throw new Error(
+        "Too many live sessions on this Deplo right now. Try again in a moment.",
+      );
   }
 }
 
@@ -79,7 +85,7 @@ export function open(
   handle: AttachHandle,
   cleanup?: () => void,
 ): AttachSession {
-  enforceSessionCaps(appId);
+  enforceSessionCaps(appId, userId);
   const id = `att_${randomBytes(12).toString("hex")}`;
   const session: AttachSession = {
     id,

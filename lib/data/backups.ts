@@ -48,7 +48,7 @@ import {
 } from "./node-access";
 import { loadAppGraph, loadTeamApp, appScopeWhere } from "./app-graph-load";
 import { setAppStatus } from "./apps";
-import { decryptSecret } from "../crypto";
+import { decryptSecretOrThrow } from "../crypto";
 import {
   DEFAULT_SCHEDULE,
   invalidScheduleMessage,
@@ -445,7 +445,9 @@ function databaseDescriptor(db: Database): DatabaseDescriptor {
     dbType: db.type,
     dbName: db.dbName,
     user: dumpUserFor(db),
-    password: parseConnectionPassword(decryptSecret(db.connectionStringEnc)),
+    password: parseConnectionPassword(
+      decryptSecretOrThrow(db.connectionStringEnc, "The database password"),
+    ),
   };
 }
 
@@ -1083,6 +1085,10 @@ export async function downloadBackupArtifact(runId: string): Promise<{
       "This backup did not complete successfully and cannot be downloaded",
     );
   await requireBackupCapability(run, "restore_backups");
+  // An app archive carries the app's variables DECRYPTED (its snapshot), so
+  // handing the bytes over is a reveal, and takes that capability too.
+  if (run.targetKind === "app" && run.appId)
+    await requireAppCapability(run.appId, "reveal_secrets");
 
   const creds = await getDestinationWithSecretsForTeam(
     teamId,
@@ -1199,23 +1205,23 @@ export async function restoreBackup(runId: string): Promise<void> {
     teamId,
     run.destinationId,
   );
-  const target = await resolveTarget(
-    teamId,
-    run.targetKind,
-    run.databaseId,
-    run.appId,
-  );
-
   let failure: string | null = null;
   // A restore is stop → wipe → untar → reroute, so it must not interleave with a
-  // deploy, a delete, or a second restore of the same app: those all hold
-  // `app-lifecycle:<appId>` (see `deleteApp` and the deploy pipeline) and this did
-  // not, so a concurrent `compose up` could race the wipe on the same volumes.
+  // deploy, a delete, a transfer or a second restore of the same app: those all
+  // hold `app-lifecycle:<appId>` (see `deleteApp` and the deploy pipeline). The
+  // target is resolved UNDER the lock, so a transfer that commits first is seen.
   const withLifecycleLock = async <T>(fn: () => Promise<T>): Promise<T> =>
-    run.targetKind === "app" && target.appId
-      ? withKeyedLock(`app-lifecycle:${target.appId}`, fn)
+    run.targetKind === "app" && run.appId
+      ? withKeyedLock(`app-lifecycle:${run.appId}`, fn)
       : fn();
+  let target!: Awaited<ReturnType<typeof resolveTarget>>;
   await withLifecycleLock(async () => {
+    target = await resolveTarget(
+      teamId,
+      run.targetKind,
+      run.databaseId,
+      run.appId,
+    );
     try {
       // Say what is happening BEFORE it starts.
       if (run.targetKind === "app" && target.appId)

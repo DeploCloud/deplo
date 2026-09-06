@@ -166,6 +166,10 @@ type App {
   The server that BUILDS this app's image, when that is not `serverId`. Null is Automatic: a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs. Setting it to `serverId` means 'always build on this app's own server'. Ignored by a compose stack and a docker-image source, neither of which Deplo builds.
   """
   buildServerId: ID
+
+  """
+  The authored compose file. Its inline values are masked unless you can configure the app.
+  """
   compose: String
 
   """
@@ -1252,7 +1256,7 @@ type Database {
   createdAt: String
 
   """
-  Expert override: replaces the container command verbatim (redis's default command carries --requirepass - omit it and auth is off).
+  Expert override: replaces the container command verbatim (redis's default command carries --requirepass - omit it and auth is off). Null unless you can configure databases: a command can carry a password.
   """
   customCommand: String
 
@@ -1282,7 +1286,7 @@ type Database {
   logo: String
 
   """
-  Expert override: the engine's own config files, written next to the stack and bind-mounted into the container. Empty for almost every database. Saving them applies immediately - the container is recreated.
+  Expert override: the engine's own config files, written next to the stack and bind-mounted into the container. Empty for almost every database, and for anyone who can't configure databases - a config file can carry a password. Saving them applies immediately.
   """
   mounts: [DatabaseMount!]
 
@@ -3724,9 +3728,9 @@ type Mutation {
   transferAppToTeam(appId: String!, teamId: String!): Boolean
 
   """
-  Hand instance ownership to another instance admin. Owner-only; requires the caller's password. Returns true.
+  Hand instance ownership to another instance admin. Owner-only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.
   """
-  transferInstanceOwner(password: String!, userId: String!): Boolean
+  transferInstanceOwner(code: String, password: String!, userId: String!): Boolean
 
   """
   Hand the active team to another member, who is put on the Owner role with the whole team in reach as part of the same write. Primary-owner only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.

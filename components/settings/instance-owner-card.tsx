@@ -8,6 +8,7 @@ import { Crown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { RevealInput } from "@/components/ui/password-field";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/shared/combobox";
@@ -28,17 +29,21 @@ export type OwnerCandidate = {
 export function InstanceOwnerCard({
   ownerName,
   viewerIsOwner,
+  viewerTwoFactorEnabled,
   candidates,
 }: {
   /** The current owner's display name, or null on an unowned instance. */
   ownerName: string | null;
   viewerIsOwner: boolean;
+  /** The transfer asks for a code as well when the viewer's account has 2FA. */
+  viewerTwoFactorEnabled: boolean;
   /** Active instance admins who could take it. Empty is a real state. */
   candidates: OwnerCandidate[];
 }) {
   const router = useRouter();
   const [successor, setSuccessor] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [code, setCode] = React.useState("");
   const [confirm, setConfirm] = React.useState(false);
 
   const picked = candidates.find((c) => c.userId === successor) ?? null;
@@ -137,7 +142,10 @@ export function InstanceOwnerCard({
           open={confirm}
           onOpenChange={(v) => {
             setConfirm(v);
-            if (!v) setPassword("");
+            if (!v) {
+              setPassword("");
+              setCode("");
+            }
           }}
           title={`Make @${picked.username} the instance owner?`}
           description={
@@ -151,22 +159,39 @@ export function InstanceOwnerCard({
           confirmText={picked.username}
           successMessage="Instance ownership transferred"
           extra={
-            <div className="space-y-2">
-              <Label htmlFor="transfer-password">Your password</Label>
-              <RevealInput
-                id="transfer-password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="transfer-password">Your password</Label>
+                <RevealInput
+                  id="transfer-password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              {viewerTwoFactorEnabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="transfer-code">
+                    Code from your authenticator app
+                  </Label>
+                  <Input
+                    id="transfer-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
           }
           onConfirm={async () => {
             const res = await gqlAction(
-              `mutation ($userId: String!, $password: String!) {
-                transferInstanceOwner(userId: $userId, password: $password)
+              `mutation ($userId: String!, $password: String!, $code: String) {
+                transferInstanceOwner(userId: $userId, password: $password, code: $code)
               }`,
-              { userId: picked.userId, password },
+              { userId: picked.userId, password, code: code || null },
             );
             // The crown moved: this viewer is no longer the owner, so the card
             // has to re-render as the read-only half rather than keep offering

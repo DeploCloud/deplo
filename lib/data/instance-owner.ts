@@ -13,6 +13,7 @@ import { verifyPassword } from "../crypto";
 import { requireInstanceAdmin } from "../membership";
 import { rateLimit } from "../security";
 import { recordActivity } from "./activity";
+import { stepUpCode } from "./two-factor";
 
 /**
  * The instance owner - the instance-level twin of a team's founder "crown"
@@ -82,9 +83,14 @@ export async function claimInstanceOwner(
 export async function transferInstanceOwner(input: {
   userId: string;
   password: string;
+  /** The second factor, required when the actor's account has one. */
+  code?: string;
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
   const actor = await assertUser();
+  // The same step-up a team transfer asks for: the crown must not be one factor
+  // weaker than the team it sits above.
+  if (actor.twoFactorEnabled) await stepUpCode(input.code ?? "");
   // The password check below is a re-auth, and this is the highest-value one in the
   // product: on success the instance changes hands.
   const limit = await rateLimit(`account-reauth:${actingUserId}`, {

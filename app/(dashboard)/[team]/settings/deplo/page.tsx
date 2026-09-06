@@ -7,6 +7,7 @@ import { getInstanceSettings } from "@/lib/data/instance-settings";
 import { viewerIsInstanceOwner } from "@/lib/data/instance-owner";
 import { listAllUsers } from "@/lib/data/members";
 import { listAllServers } from "@/lib/data/servers";
+import { getCurrentUser } from "@/lib/auth";
 import { isInstanceAdmin } from "@/lib/membership";
 import { agentUpdateAvailable, reportedAgentVersion } from "@/lib/version";
 import { resolveExpectedAgentVersion } from "@/lib/agent/release";
@@ -18,14 +19,21 @@ export const metadata = { title: "Settings · Deplo" };
  */
 export default async function DeploSettingsPage() {
   if (!(await isInstanceAdmin())) notFound();
-  const [settings, viewerIsOwner, users, servers, expectedAgentVersion] =
-    await Promise.all([
-      getInstanceSettings(),
-      viewerIsInstanceOwner(),
-      listAllUsers(),
-      listAllServers(),
-      resolveExpectedAgentVersion(),
-    ]);
+  const [
+    settings,
+    viewerIsOwner,
+    users,
+    servers,
+    expectedAgentVersion,
+    viewer,
+  ] = await Promise.all([
+    getInstanceSettings(),
+    viewerIsInstanceOwner(),
+    listAllUsers(),
+    listAllServers(),
+    resolveExpectedAgentVersion(),
+    getCurrentUser(),
+  ]);
 
   // Who the crown could go to, narrowed to exactly what the server would accept: an
   // active instance admin who isn't already the owner.
@@ -76,6 +84,7 @@ export default async function DeploSettingsPage() {
       <DeploSettingsPanel
         settings={settings}
         viewerIsOwner={viewerIsOwner}
+        viewerTwoFactorEnabled={viewer?.twoFactorEnabled ?? false}
         ownerCandidates={ownerCandidates}
         fleet={fleet}
         hosts={hosts}

@@ -33,6 +33,8 @@ import { MCP_RESOURCE_PATH } from "@/lib/auth/oauth-metadata";
  */
 
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+/** The ABSOLUTE lifetime: the rolling one alone never expires a session in weekly use. */
+export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** The session cookie's base name. Better Auth prefixes `__Secure-` when secure. */
 export const SESSION_COOKIE_NAME = "deplo.session_token";

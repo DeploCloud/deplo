@@ -20,6 +20,15 @@ export const SESSION_METADATA_HEADERS = [
 export function authRequestHeaders(
   request: Headers | null | undefined,
   cookie: string,
+  opts: {
+    /**
+     * Offer each cookie under its twin name too (see {@link withBothCookieNames}).
+     * Off on an https request: there the `__Secure-` name is the only one the
+     * browser could have been given, and honouring a plain twin would let a cookie
+     * planted over http sign somebody in on the https address.
+     */
+    twinCookieNames?: boolean;
+  } = {},
 ): Headers {
   const out = new Headers();
   if (request)
@@ -27,7 +36,11 @@ export function authRequestHeaders(
       const value = request.get(name);
       if (value) out.set(name, value);
     }
-  if (cookie) out.set("cookie", withBothCookieNames(cookie));
+  if (cookie)
+    out.set(
+      "cookie",
+      opts.twinCookieNames === false ? cookie : withBothCookieNames(cookie),
+    );
   return out;
 }
 

@@ -1224,7 +1224,7 @@ trace_on
 trace_off
 if ! grep -q '^DEPLO_SETUP_KEY=' "$ENV_FILE"; then
   umask 077
-  echo "DEPLO_SETUP_KEY=$(openssl rand -hex 8)" >> "$ENV_FILE"
+  echo "DEPLO_SETUP_KEY=$(openssl rand -hex 16)" >> "$ENV_FILE"
 fi
 SETUP_KEY="$(grep '^DEPLO_SETUP_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
 trace_on
