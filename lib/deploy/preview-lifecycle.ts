@@ -23,6 +23,7 @@ import { getServerById } from "../data/servers";
 import { teardownOrQueue } from "../data/teardown-queue";
 import { getDb } from "../db/client";
 import {
+  appVolumes as appVolumesTable,
   apps as appsTable,
   appPreviews as appPreviewsTable,
   deployments as deploymentsTable,
@@ -61,6 +62,7 @@ export type PreviewRefusal =
   | { kind: "previews-off" }
   | { kind: "not-github" }
   | { kind: "fork-denied" }
+  | { kind: "fork-host-reach" }
   | { kind: "awaiting-approval" }
   | { kind: "evicted"; max: number };
 
@@ -71,6 +73,8 @@ export function refusalMessage(r: PreviewRefusal): string {
       return "Pull request previews are off for this app.";
     case "not-github":
       return "Pull request previews need an app deployed from a GitHub repository.";
+    case "fork-host-reach":
+      return "A fork can't be previewed while this app reaches the server (a Bind of a server folder, or a privileged compose setting).";
     case "fork-denied":
       return "This pull request comes from a fork, and this app does not build fork pull requests.";
     case "awaiting-approval":
@@ -161,6 +165,15 @@ export async function openOrSyncPreview(
         previewId: null,
         deploymentId: null,
         refusal: { kind: "fork-denied" },
+      };
+    }
+    // A stranger's code with the app's host reach (a Bind, a privileged compose)
+    // would run on the server with it: refused whatever the policy or approval.
+    if (pr.isFork && (await appReachesHost(appId))) {
+      return {
+        previewId: existing?.id ?? null,
+        deploymentId: null,
+        refusal: { kind: "fork-host-reach" },
       };
     }
     // Per COMMIT, not per pull request.
@@ -350,6 +363,27 @@ export async function deployPreviewRow(
   });
 }
 
+/**
+ * Whether the app's stack reaches past its containers: a compose the host grant
+ * had to allow, or a Bind of a server folder in Storage.
+ */
+export async function appReachesHost(appId: string): Promise<boolean> {
+  const [app] = await getDb()
+    .select({ hostReachBy: appsTable.hostReachBy })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  if (app?.hostReachBy) return true;
+  const binds = await getDb()
+    .select({ appId: appVolumesTable.appId })
+    .from(appVolumesTable)
+    .where(
+      and(eq(appVolumesTable.appId, appId), eq(appVolumesTable.type, "host")),
+    )
+    .limit(1);
+  return binds.length > 0;
+}
+
 async function startPreviewDeployment(
   p: typeof appPreviewsTable.$inferSelect,
   opts: {
@@ -360,6 +394,9 @@ async function startPreviewDeployment(
 ): Promise<string> {
   const previewId = p.id;
   try {
+    // Every manual path (Redeploy, Approve) lands here too.
+    if (p.isFork && (await appReachesHost(p.appId)))
+      throw new Error(refusalMessage({ kind: "fork-host-reach" }));
     return await startDeployment(p.appId, {
       environment: "preview",
       creator: opts.actor,

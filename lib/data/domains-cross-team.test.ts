@@ -5,6 +5,8 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { eq } from "drizzle-orm";
+import { apps as appsTable } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import {
@@ -258,4 +260,39 @@ test("the panel's own addresses can't be claimed by an app", async () => {
     process.env.DEPLO_PUBLIC_URL = prev.url;
     process.env.DEPLO_SERVER_IP = prev.ip;
   }
+});
+
+test("a preview base domain claims its zone against other teams' hostnames, both ways", async () => {
+  await db
+    .update(appsTable)
+    .set({ previewBaseDomain: "preview.victim.example" })
+    .where(eq(appsTable.id, "prj_victim"));
+  // A preview host never enters `domains`, so the exact-name check alone let an
+  // attacker route a path under it.
+  await assert.rejects(
+    asAttacker(() =>
+      addDomain("prj_attacker", "blog-pr-7.preview.victim.example", {
+        pathPrefix: "/api",
+      }),
+    ),
+    /another team's preview domain/,
+  );
+  await assert.rejects(
+    asAttacker(() => addDomain("prj_attacker", "preview.victim.example", {})),
+    /another team's preview domain/,
+  );
+  // ...and the same base, or a zone around it, is not another team's to take.
+  await assert.rejects(
+    () => assertPreviewBaseNotAnotherTeams("preview.victim.example", TEAM_B),
+    /another team/,
+  );
+  await assert.rejects(
+    () => assertPreviewBaseNotAnotherTeams("victim.example", TEAM_B),
+    /another team/,
+  );
+  // The owning team keeps its own zone.
+  await assertPreviewBaseNotAnotherTeams("preview.victim.example", TEAM_A);
+  await asVictim(() =>
+    addDomain("prj_victim", "docs.preview.victim.example", {}),
+  );
 });

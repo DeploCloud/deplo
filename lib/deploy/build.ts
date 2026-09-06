@@ -151,6 +151,7 @@ import type {
   VolumeMount,
 } from "../types";
 import { mountOptions, parseMountPropagation } from "../apps/volume-model";
+import { publicBranchHead } from "../github/app";
 
 /**
  * Statuses a reroute must not bring up: stopped on purpose, or mid-deploy. Every
@@ -284,6 +285,15 @@ type DeployTarget = {
   | { kind: "preview"; previewId: string; prNumber: number; deployKey: string }
 );
 
+/** `owner/repo` from a GitHub clone URL, or "" when it does not read as one. */
+function forkFullName(cloneUrl: string): string {
+  try {
+    return new URL(cloneUrl).pathname.replace(/^\/+/, "").replace(/\.git$/, "");
+  } catch {
+    return "";
+  }
+}
+
 /**
  * The bits of a pull request preview a running deploy needs: the host it routes on
  * and the certificate provider that host was minted with.
@@ -295,6 +305,8 @@ async function loadPreviewForDeploy(previewId: string): Promise<{
   prNumber: number;
   isFork: boolean;
   headCloneUrl: string;
+  /** The commit a person reviewed - the only one a fork may be built at. */
+  approvedSha: string | null;
   /** Frozen at creation from the app's `preview_port`. NULL ⇒ the build port. */
   port: number | null;
 } | null> {
@@ -306,6 +318,7 @@ async function loadPreviewForDeploy(previewId: string): Promise<{
       prNumber: appPreviewsTable.prNumber,
       isFork: appPreviewsTable.isFork,
       headCloneUrl: appPreviewsTable.headCloneUrl,
+      approvedSha: appPreviewsTable.approvedSha,
       port: appPreviewsTable.port,
     })
     .from(appPreviewsTable)
@@ -790,8 +803,17 @@ export async function appEnv(
   // `T extends { type: EnvEntryType }` rather than a cast: the cast is what let
   // two of the four layers arrive with no `type` at all and be kept as if they
   // were plain. Every loader below now has to carry it, and the compiler says so.
-  const keep = <T extends { type: EnvEntryType }>(list: T[]): T[] =>
-    dropSecrets ? list.filter((e) => e.type !== "secret") : list;
+  // A FORK gets the preview-only overrides and nothing the app itself was given:
+  // a plain-typed value is a credential often enough (ADR-0017 §7).
+  const keep = <T extends { type: EnvEntryType }>(
+    list: T[],
+    inherited = true,
+  ): T[] =>
+    dropSecrets
+      ? inherited
+        ? []
+        : list.filter((e) => e.type !== "secret")
+      : list;
   const out: Record<string, string> = preview ? previewEnvExtras(preview) : {};
   for (const e of resolveEnvEntries(
     target,
@@ -799,7 +821,7 @@ export async function appEnv(
     keep(vars),
     keep(sharedVars),
     keep(autoInjected),
-    keep(previewOverrides),
+    keep(previewOverrides, false),
   )) {
     // STRICT at the deploy edge. Refusing to deploy is the only honest answer to a
     // secret we cannot read.
@@ -849,8 +871,17 @@ async function appEnvKeys(
   // `T extends { type: EnvEntryType }` rather than a cast: the cast is what let
   // two of the four layers arrive with no `type` at all and be kept as if they
   // were plain. Every loader below now has to carry it, and the compiler says so.
-  const keep = <T extends { type: EnvEntryType }>(list: T[]): T[] =>
-    dropSecrets ? list.filter((e) => e.type !== "secret") : list;
+  // A FORK gets the preview-only overrides and nothing the app itself was given:
+  // a plain-typed value is a credential often enough (ADR-0017 §7).
+  const keep = <T extends { type: EnvEntryType }>(
+    list: T[],
+    inherited = true,
+  ): T[] =>
+    dropSecrets
+      ? inherited
+        ? []
+        : list.filter((e) => e.type !== "secret")
+      : list;
   // De-dupe on key (the resolver emits lowest-precedence first; a later entry
   // wins on value, but for NAMES we just need the distinct set). The `DEPLO_*`
   // preview context rides the same env-file, so its keys belong here too.
@@ -863,7 +894,7 @@ async function appEnvKeys(
     keep(vars),
     keep(sharedVars),
     keep(autoInjected),
-    keep(previewOverrides),
+    keep(previewOverrides, false),
   )) {
     seen.add(e.key);
   }
@@ -1467,6 +1498,8 @@ async function buildOnBuildServer(opts: {
   /** The stack's own Docker network (lib/deploy/network.ts). */
   network: string;
   env: Record<string, string>;
+  /** A fork preview: no team credential reaches the builder either. */
+  forkPreview?: boolean;
   plan: AgentBuildPlan;
   noCache?: boolean;
   sink: (level: LogLine["level"], text: string) => void;
@@ -1494,6 +1527,7 @@ async function buildOnBuildServer(opts: {
         network: opts.network,
         env: opts.env,
         plan: opts.plan,
+        forkPreview: opts.forkPreview,
         noCache: opts.noCache,
         buildOnly: true,
         sink: { log: opts.sink },
@@ -1611,6 +1645,8 @@ async function tryAgent(opts: {
   localAllowed?: boolean;
   /** The lines explaining that choice, logged only when a build actually runs. */
   planLines?: { level: LogLine["level"]; text: string }[];
+  /** A fork preview: the agent gets no team credential for it. */
+  forkPreview?: boolean;
 }): Promise<AgentAttempt> {
   // Serialize the agent bring-up against deleteApp/deleteApps on the app's lifecycle
   // lock (the same mutex the databases use for provision/delete).
@@ -1693,6 +1729,7 @@ async function tryAgent(opts: {
         network: opts.network,
         env: opts.env,
         plan,
+        forkPreview: opts.forkPreview,
         readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
         noCache: opts.noCache,
         forceRecreate: opts.forceRecreate,
@@ -2159,6 +2196,20 @@ async function runDeployment(depId: string): Promise<void> {
           if (refusal) throw new Error(refusal);
         }
         const cloneUrl = forkUrl ?? (await resolveCloneUrl(repo));
+        // A fork is built at the ONE commit somebody reviewed, and the clone takes
+        // the branch tip: ask GitHub where the tip is before cloning, and refuse a
+        // branch that has moved on. Best-effort - the check after the clone is the
+        // one that cannot be dodged.
+        if (forkUrl && preview?.approvedSha) {
+          const tip = await publicBranchHead(
+            forkFullName(preview.headCloneUrl),
+            dep.branch,
+          );
+          if (tip && tip !== preview.approvedSha)
+            throw new Error(
+              `The fork's branch moved past the reviewed commit (${preview.approvedSha.slice(0, 7)} → ${tip.slice(0, 7)}). Approve the new commit to build it.`,
+            );
+        }
         // One tag per deployment, and the agent builds under exactly this string - it
         // resolves the commit sha but never retags with it.
         imageRef = deployImageRef(deployKey, depId);
@@ -2193,11 +2244,31 @@ async function runDeployment(depId: string): Promise<void> {
           },
           noCache,
           forceRecreate,
+          forkPreview: Boolean(forkUrl),
           ...buildServerOpts,
         });
         if (attempt.commitSha) {
           commitSha = attempt.commitSha;
           await setDep(depId, { commitSha });
+          // What actually got cloned. A fork whose branch moved between approval
+          // and clone is taken straight down again: the review was of another commit.
+          if (
+            forkUrl &&
+            preview?.approvedSha &&
+            attempt.commitSha !== preview.approvedSha
+          ) {
+            log(
+              depId,
+              "error",
+              `The fork's branch moved past the reviewed commit (${preview.approvedSha.slice(0, 7)} → ${attempt.commitSha.slice(0, 7)}); the stack was taken down. Approve the new commit to build it.`,
+            );
+            await destroyStack(deployKey, { removeVolumes: true }).catch(
+              () => {},
+            );
+            throw new Error(
+              "The fork's branch moved past the reviewed commit.",
+            );
+          }
         }
         agentOutcome = attempt.outcome === "agent" ? "agent" : "failed";
         break;

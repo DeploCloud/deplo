@@ -55,6 +55,13 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: USER_2, teamId: TEAM_B, role: "owner" },
+      {
+        id: "user_3",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+        capabilities: ["view", "manage_crons"],
+      },
     ],
   });
   await seedServer(db);
@@ -549,4 +556,42 @@ test("a database job cannot name a container", async () => {
   );
   const view = await asOwner(() => crons.listDatabaseCronJobs("db_1"));
   assert.equal(view.primaryService, null);
+});
+
+test("running as root on an app that reaches the server takes the host grant", async () => {
+  const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
+    runWithIdentity({ userId: "user_3", teamId: TEAM_A }, fn);
+  // Without host reach anybody with manage_crons may run as root: the container
+  // is the boundary and root inside it is the image's own business.
+  await asMember(() =>
+    crons.createCronJob("app", "prj_1", { ...validJob, user: "root" }),
+  );
+  await db
+    .update(appsTable)
+    .set({ hostReachBy: USER_1 })
+    .where(eq(appsTable.id, "prj_1"));
+  await assert.rejects(
+    () =>
+      asMember(() =>
+        crons.createCronJob("app", "prj_1", {
+          ...validJob,
+          name: "as root",
+          user: "0:0",
+        }),
+      ),
+    /Bind server folders/,
+  );
+  const job = await asMember(() =>
+    crons.createCronJob("app", "prj_1", {
+      ...validJob,
+      name: "as app",
+      user: "app",
+    }),
+  );
+  await assert.rejects(
+    () => asMember(() => crons.updateCronJob(job.id, { user: "root" })),
+    /Bind server folders/,
+  );
+  // The grant holder (an owner is an instance admin here) may.
+  await asOwner(() => crons.updateCronJob(job.id, { user: "root" }));
 });

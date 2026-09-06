@@ -25,6 +25,7 @@ import { stackFilesDir } from "./deploy-key";
 import { fileBindsUnderFilesDir } from "./file-binds";
 import { composeDeployArgs } from "./compose-args";
 import { loadRegistryAuthsForApp } from "../data/registries";
+import { cleanToolVersion } from "../data/app-graph-rows";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { appVolumes as appVolumesTable } from "../db/schema/control-plane";
@@ -157,7 +158,7 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
     nixpacksPublishDirectory:
       b.methodSettings.nixpacksPublishDirectory?.trim() ?? "",
     herokuVersion: "",
-    railpackVersion: b.methodSettings.railpackVersion?.trim() ?? "",
+    railpackVersion: cleanToolVersion(b.methodSettings.railpackVersion) ?? "",
     staticSinglePageApp: b.methodSettings.staticSinglePageApp ?? false,
   };
 }
@@ -298,6 +299,8 @@ export async function runAgentDeploy(opts: {
   composeUpArgs?: string[];
   /** This host is a BUILD SERVER: build the image and stop. */
   buildOnly?: boolean;
+  /** A pull request preview of a FORK: a stranger's code, so no team credential. */
+  forkPreview?: boolean;
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
   // P5: fail fast if the agent doesn't answer, rather than hanging a deploy.
@@ -357,7 +360,9 @@ export async function runAgentDeploy(opts: {
     ...opts,
     // The team's registry credentials: every pull the agent makes for this deploy
     // authenticates with them (image ref, compose images, a Dockerfile's base).
-    registryAuth: await loadRegistryAuthsForApp(opts.appId),
+    registryAuth: opts.forkPreview
+      ? []
+      : await loadRegistryAuthsForApp(opts.appId),
   });
   // Same reasoning, louder: extra compose flags are a deliberate instruction, so
   // an agent that drops them is running a DIFFERENT command than the settings

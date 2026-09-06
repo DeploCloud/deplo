@@ -141,14 +141,18 @@ secrets on the operator's host. Two independent layers:
 - **Policy** (`preview_fork_policy`, default `approve`): the preview appears in the list as
   blocked and builds nothing until a member with `manage_previews` approves it. `deny` ignores forks
   entirely; `allow` is expert mode.
-- **Secrets, unconditionally**: a fork preview never receives a `secret`-typed variable,
-  whatever the policy says.
+- **No inherited credential, unconditionally**: a fork preview receives only the app's
+  preview-only overrides (never a `secret`-typed one) - not its own variables, not the shared
+  ones, not the instance globals, whatever their type, since a `plain` value is a credential
+  often enough. It gets no registry credential either, and it is refused outright while the
+  app reaches the server (a Bind of a server folder, a privileged compose setting): a
+  stranger's code must not run with the host grant somebody else holds.
 
-Approval is per pull request, not per commit. Per-commit is safer on paper and unusable in
-practice (a click per push), and it is how GitHub's own "Approve and run" behaves;
-`approved_sha` records what was reviewed. The residual risk is stated plainly in the approval
-dialog and here: an approved fork preview runs untrusted code on the shared `deplo` network.
-A per-preview network is the follow-up.
+Approval is per commit (`approved_sha`): a push after approval blocks the preview again, and
+the build refuses a fork whose branch has moved past the reviewed commit - before the clone
+when GitHub answers, and after it in every case, taking the stack straight down. The residual
+risk is stated plainly in the approval dialog: an approved fork preview runs untrusted code
+on its own preview network.
 
 Fork clones use the **fork's own** clone URL, because a fork's head ref does not exist on the
 base repo and `git clone --branch` accepts neither a SHA nor `refs/pull/N/head`. A fork of a

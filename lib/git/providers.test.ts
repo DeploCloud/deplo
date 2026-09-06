@@ -63,7 +63,7 @@ test("gitea: hex HMAC in its own header, or GitHub's prefixed one", () => {
   assert.equal(gt.verify(SECRET, headers({}), body), "bad");
 });
 
-test("bitbucket: signed when a secret is set, 'unsigned' when it is not", () => {
+test("bitbucket: signed when a secret is set, refused when the signature is missing", () => {
   const bb = api("bitbucket");
   const body = '{"push":{}}';
   assert.equal(
@@ -78,9 +78,9 @@ test("bitbucket: signed when a secret is set, 'unsigned' when it is not", () => 
     bb.verify(SECRET, headers({ "x-hub-signature": "sha256=deadbeef" }), body),
     "bad",
   );
-  // No header at all: Bitbucket only signs when a secret is configured on its
-  // side, so the unguessable token in the delivery URL is what authenticates it.
-  assert.equal(bb.verify(SECRET, headers({}), body), "unsigned");
+  // No header at all: Deplo registers every hook with a secret, and Bitbucket
+  // signs whenever one is set - so an unsigned delivery is not Bitbucket's.
+  assert.equal(bb.verify(SECRET, headers({}), body), "bad");
 });
 
 /* ---- push parsing ---------------------------------------------------- */

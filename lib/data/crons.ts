@@ -16,6 +16,7 @@ import { encryptSecret } from "../crypto";
 import { composeServiceNames } from "../deploy/compose-stack";
 import { newId, nowIso } from "../ids";
 import {
+  canMountHostVolumes,
   currentCapabilities,
   requireActiveTeamId,
   requireCapability,
@@ -214,6 +215,31 @@ async function gateApp(appId: string) {
   const app = await loadAppGraph(appId);
   if (!app || app.teamId !== teamId) throw new Error("App not found");
   return { app, teamId };
+}
+
+/**
+ * Running as root on an app whose compose reaches the server (a bind of a host
+ * folder, the docker socket) is the host grant by another door: the console runs
+ * as the image's user, a job must not run as more.
+ */
+async function assertRunAsAllowed(
+  app: { id: string } | null,
+  user: string | null | undefined,
+): Promise<void> {
+  if (!app || !user) return;
+  const name = user.split(":")[0].toLowerCase();
+  if (name !== "root" && name !== "0") return;
+  const row = (
+    await getDb()
+      .select({ hostReachBy: appsTable.hostReachBy })
+      .from(appsTable)
+      .where(eq(appsTable.id, app.id))
+      .limit(1)
+  )[0];
+  if (row?.hostReachBy && !(await canMountHostVolumes()))
+    throw new Error(
+      'This app reaches the server, so running a job as root needs the "Bind server folders" permission. Run it as another user.',
+    );
 }
 
 /**
@@ -772,6 +798,7 @@ export async function createCronJob(
     throw new Error("Give the cron job a schedule");
 
   const patch = buildPatch(input);
+  await assertRunAsAllowed(gated.app, patch.user);
   const env = input.env ? validateEnv(input.env) : [];
   const now = nowIso();
   const id = newId("cron");
@@ -857,6 +884,7 @@ export async function updateCronJob(
   const user = await getCurrentUser();
   assertServiceInTarget(input.service?.trim(), app);
   const patch = buildPatch(input, job);
+  await assertRunAsAllowed(app, patch.user ?? job.user);
   if (Object.keys(patch).length > 0 || input.env !== undefined) {
     patch.updatedAt = nowIso();
     const rows = await getDb()

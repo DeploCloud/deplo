@@ -313,6 +313,30 @@ async function githubGet(
 }
 
 /**
+ * The tip commit of a branch on a PUBLIC repository, or null when GitHub would not
+ * say (rate limit, private, gone). Best-effort by design: the caller has a second
+ * check after the clone.
+ */
+export async function publicBranchHead(
+  fullName: string,
+  branch: string,
+): Promise<string | null> {
+  if (!OWNER_REPO_RE.test(fullName)) return null;
+  try {
+    const res = await githubGet(
+      `/repos/${fullName}/branches/${encodeURIComponent(branch)}`,
+      null,
+      AbortSignal.timeout(8_000),
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { commit?: { sha?: string } };
+    return json.commit?.sha ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether a repository is visible to an installation - or, with a null id, to an
  * anonymous caller, which is exactly what a credential-less clone gets.
  */

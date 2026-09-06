@@ -3,7 +3,7 @@ import "server-only";
 // https://deplo.build/docs/guides/networking/domains-and-https
 
 import { resolve4 } from "node:dns/promises";
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, isNotNull, ne, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -61,6 +61,7 @@ import {
   type WwwRedirect,
 } from "../www-redirect";
 import type { CertProvider, Domain, DomainEntrypoint } from "../types";
+import { withKeyedLock } from "./keyed-mutex";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
 
@@ -141,6 +142,27 @@ async function assertHostnameNotAnotherTeams(
     throw new Error(
       `${name} is already routed by another team on this Deplo. A hostname belongs to one team.`,
     );
+  // A preview host never enters `domains`, so its zone is claimed by the base.
+  for (const base of await foreignPreviewBases(teamId))
+    if (name === base || name.endsWith(`.${base}`))
+      throw new Error(
+        `${name} is under another team's preview domain on this Deplo. A hostname belongs to one team.`,
+      );
+}
+
+/** The preview base domains of every OTHER team, lower-cased. */
+async function foreignPreviewBases(teamId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ base: appsTable.previewBaseDomain })
+    .from(appsTable)
+    .where(
+      and(ne(appsTable.teamId, teamId), isNotNull(appsTable.previewBaseDomain)),
+    );
+  return [
+    ...new Set(
+      rows.map((r) => (r.base ?? "").trim().toLowerCase()).filter(Boolean),
+    ),
+  ];
 }
 
 /** The panel's own addresses. An app routed there would answer for the dashboard. */
@@ -177,9 +199,12 @@ export async function assertPreviewBaseNotAnotherTeams(
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId));
   const sameZone = (a: string, b: string) =>
     a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
-  const taken = rows.find(
-    (r) => r.teamId !== teamId && sameZone(r.name.toLowerCase(), clean),
-  );
+  const taken =
+    rows.some(
+      (r) => r.teamId !== teamId && sameZone(r.name.toLowerCase(), clean),
+    ) ||
+    // ...and the other teams' preview bases, in both directions too.
+    (await foreignPreviewBases(teamId)).some((b) => sameZone(b, clean));
   if (taken)
     throw new Error(
       `${clean} is served by another team on this Deplo, so previews can't be published under it. A preview domain belongs to one team.`,
@@ -663,6 +688,18 @@ export async function addDomain(
   name: string,
   config: DomainConfig = {},
 ): Promise<Domain> {
+  // The cross-team claim is a check-then-write; one hostname at a time closes
+  // the race between two teams adding the same name on two paths.
+  return withKeyedLock(`domain:${name.trim().toLowerCase()}`, () =>
+    addDomainUnlocked(appId, name, config),
+  );
+}
+
+async function addDomainUnlocked(
+  appId: string,
+  name: string,
+  config: DomainConfig,
+): Promise<Domain> {
   const { membership } = await requireAppCapability(appId, "manage_domains");
   const user = (await getCurrentUser())!;
   const clean = name
@@ -939,6 +976,17 @@ export interface DomainPatch {
  * only reach the running container once its stack file is re-rendered).
  */
 export async function updateDomain(
+  id: string,
+  patch: DomainPatch,
+): Promise<string> {
+  // Same lock as `addDomain`, keyed on the name a rename claims.
+  return withKeyedLock(
+    `domain:${(patch.name ?? "").trim().toLowerCase() || id}`,
+    () => updateDomainUnlocked(id, patch),
+  );
+}
+
+async function updateDomainUnlocked(
   id: string,
   patch: DomainPatch,
 ): Promise<string> {

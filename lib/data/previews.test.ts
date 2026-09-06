@@ -431,6 +431,30 @@ test("a fork's pull request is recorded but builds nothing", async () => {
   assert.equal(row.isFork, true);
 });
 
+test("a fork is refused outright while the app reaches the server", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", forkPolicy: "allow" });
+  await db
+    .update(appsTable)
+    .set({ hostReachBy: USER_1 })
+    .where(eq(appsTable.id, "prj_1"));
+  const res = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, isFork: true, headRepo: "mallory/blog" },
+    { actor: "mallory" },
+  );
+  assert.deepEqual(res.refusal, { kind: "fork-host-reach" });
+  assert.equal(res.deploymentId, null);
+  assert.equal((await db.select().from(appPreviewsTable)).length, 0);
+  // The repository's own pull requests are untouched by it.
+  const own = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 2 },
+    { actor: "o" },
+  );
+  assert.equal(own.refusal, undefined);
+  assert.ok(own.previewId);
+});
+
 test("fork policy `deny` records nothing at all", async () => {
   await seedPreviewApp("prj_1", { slug: "blog", forkPolicy: "deny" });
   const res = await openOrSyncPreview(

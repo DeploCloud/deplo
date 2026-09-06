@@ -691,10 +691,9 @@ const bitbucket: GitProviderApi = {
 
   verify(secret, headers, rawBody) {
     const sig = headers.get("x-hub-signature");
-    // Bitbucket signs only when a secret is set on its side. Without one there is
-    // nothing to check here, and the unguessable token in the delivery URL is the
-    // shared secret - the caller decides whether that is enough.
-    if (!sig) return "unsigned";
+    // Bitbucket signs whenever a secret is set on its side, and Deplo registers
+    // every hook with one - so a delivery without a signature is not Bitbucket's.
+    if (!sig) return "bad";
     return sameSecret(sig, `sha256=${hmacHex(secret, rawBody)}`) ? "ok" : "bad";
   },
 
