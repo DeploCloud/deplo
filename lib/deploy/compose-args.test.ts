@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  COMPOSE_UP_ARGS_MAX_TOKENS,
+  composeDeployArgs,
   composeUpCommandPreview,
   parseComposeUpArgs,
   validateComposeUpArgs,
@@ -91,14 +93,55 @@ test("the preview is the command, not a description of it", () => {
     composeUpCommandPreview({ slug: "api", usesEnvFile: false, extra: [] }),
     "docker compose -p deplo-api -f /data/stacks/api.yml up -d --remove-orphans",
   );
-  // A compose stack interpolates ${VAR}, so its bring-up carries an env-file.
+  // A compose stack interpolates ${VAR}, so its bring-up carries an env-file,
+  // and a deploy of it pulls.
   assert.equal(
     composeUpCommandPreview({
       slug: "api",
       usesEnvFile: true,
-      extra: ["--pull", "always"],
+      extra: ["--wait"],
     }),
     "docker compose -p deplo-api -f /data/stacks/api.yml --env-file /data/stacks/api.env " +
-      "up -d --remove-orphans --pull always",
+      "up -d --remove-orphans --pull always --wait",
   );
+  // The operator's own --pull is the one that runs.
+  assert.equal(
+    composeUpCommandPreview({
+      slug: "api",
+      usesEnvFile: true,
+      extra: ["--pull", "missing"],
+    }),
+    "docker compose -p deplo-api -f /data/stacks/api.yml --env-file /data/stacks/api.env " +
+      "up -d --remove-orphans --pull missing",
+  );
+});
+
+test("a compose stack's deploy pulls unless the operator chose a pull policy", () => {
+  assert.deepEqual(composeDeployArgs([]), ["--pull", "always"]);
+  assert.deepEqual(composeDeployArgs(["--wait"]), [
+    "--pull",
+    "always",
+    "--wait",
+  ]);
+  // `--pull missing` is how an image that exists only on the host keeps working.
+  assert.deepEqual(composeDeployArgs(["--pull", "missing"]), [
+    "--pull",
+    "missing",
+  ]);
+  assert.deepEqual(composeDeployArgs(["--wait", "--pull=never"]), [
+    "--wait",
+    "--pull=never",
+  ]);
+  // The agent drops the whole set past its cap, so a set at the cap stays as is.
+  const atCap = Array.from(
+    { length: COMPOSE_UP_ARGS_MAX_TOKENS - 1 },
+    () => "--wait",
+  );
+  assert.deepEqual(composeDeployArgs(atCap), atCap);
+  const withRoom = atCap.slice(0, COMPOSE_UP_ARGS_MAX_TOKENS - 2);
+  assert.deepEqual(composeDeployArgs(withRoom), [
+    "--pull",
+    "always",
+    ...withRoom,
+  ]);
 });

@@ -61,6 +61,20 @@ export function validateComposeUpArgs(raw: string): string | null {
 }
 
 /**
+ * The flags a DEPLOY of a compose stack brings it up with: `--pull always` in
+ * front of the operator's own, so a redeploy fetches what its tags point at now.
+ * `docker compose up` alone pulls only what is missing, which made "Redeploy" a
+ * no-op for every `:latest` stack. An operator who sets `--pull` keeps theirs
+ * (`--pull missing` is the opt-out for an image that exists only on the host).
+ */
+export function composeDeployArgs(extra: string[]): string[] {
+  const own = extra.some((t) => t === "--pull" || t.startsWith("--pull="));
+  // The agent drops the WHOLE set past its cap, pull included.
+  if (own || extra.length + 2 > COMPOSE_UP_ARGS_MAX_TOKENS) return extra;
+  return ["--pull", "always", ...extra];
+}
+
+/**
  * The full command the owning server will run, for the settings page to show
  * live. Built from the same pieces the agent uses (`internal/server/deploy.go`
  * composeUpArgs), so the preview is the command, not a description of it.
@@ -77,6 +91,9 @@ export function composeUpCommandPreview(opts: {
   const parts = ["docker", "compose", "-p", `deplo-${opts.slug}`, "-f", stack];
   if (opts.usesEnvFile)
     parts.push("--env-file", `/data/stacks/${opts.slug}.env`);
-  parts.push("up", "-d", "--remove-orphans", ...opts.extra);
+  // A compose stack's deploy pulls (composeDeployArgs); a single-image app's
+  // image is pulled or built before the bring-up, so its command stays bare.
+  const extra = opts.usesEnvFile ? composeDeployArgs(opts.extra) : opts.extra;
+  parts.push("up", "-d", "--remove-orphans", ...extra);
   return parts.join(" ");
 }

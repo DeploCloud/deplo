@@ -42,9 +42,15 @@ export function ComposeArgsPanel({
   const error = React.useMemo(() => validateComposeUpArgs(text), [text]);
   const extra = React.useMemo(() => parseComposeUpArgs(text), [text]);
   const dirty = text.trim() !== saved.trim();
-  // Deplo's half of the command, so the preview can print it muted next to the
-  // operator's - same builder the deploy path uses, so it can't drift.
-  const base = composeUpCommandPreview({ slug, usesEnvFile, extra: [] });
+  // The whole command, from the same builder the deploy path uses, so it can't
+  // drift; the operator's flags are always its tail, printed in full contrast.
+  const yours = error ? "" : extra.join(" ");
+  const full = composeUpCommandPreview({
+    slug,
+    usesEnvFile,
+    extra: error ? [] : extra,
+  });
+  const base = yours ? full.slice(0, -yours.length) : full;
 
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -91,8 +97,8 @@ export function ComposeArgsPanel({
         </p>
         <p className="text-xs text-muted-foreground">
           Add flags to the command that brings this app up, like{" "}
-          <code className="font-mono text-[0.7rem]">--pull always</code>. Leave
-          empty for the default.
+          <code className="font-mono text-[0.7rem]">--wait</code>. Leave empty
+          for the default.
         </p>
       </div>
 
@@ -100,7 +106,7 @@ export function ComposeArgsPanel({
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="--pull always"
+          placeholder="--wait"
           spellCheck={false}
           autoComplete="off"
           aria-label="Extra compose flags"
@@ -127,10 +133,8 @@ export function ComposeArgsPanel({
             className="size-3 shrink-0 translate-y-px text-muted-foreground/70"
           />
           <span className="text-muted-foreground/70">{base}</span>
-          {extra.length > 0 && !error && (
-            <span className="font-medium text-foreground">
-              {extra.join(" ")}
-            </span>
+          {yours && (
+            <span className="font-medium text-foreground">{yours}</span>
           )}
         </code>
       </div>

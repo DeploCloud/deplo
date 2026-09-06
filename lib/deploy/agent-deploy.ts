@@ -23,6 +23,7 @@ import {
 } from "../infra/agent-client";
 import { stackFilesDir } from "./deploy-key";
 import { fileBindsUnderFilesDir } from "./file-binds";
+import { composeDeployArgs } from "./compose-args";
 import { loadRegistryAuthsForApp } from "../data/registries";
 import { generateDockerfile } from "./dockerfile";
 import {
@@ -332,27 +333,27 @@ export async function runAgentDeploy(opts: {
         "one instead. Update the agent (reissue the install command from the server's actions menu).",
     );
   }
-  // Same reasoning, louder: extra compose flags are a deliberate instruction, so
-  // an agent that drops them is running a DIFFERENT command than the settings
-  // page shows. Say which flags went missing, not just that some did.
-  if (
-    opts.composeUpArgs?.length &&
-    !hello.capabilities.includes("deploy.compose-args")
-  ) {
-    opts.sink.log(
-      "warn",
-      `This server's agent is too old to apply this app's extra compose flags (${opts.composeUpArgs.join(" ")}) - ` +
-        "it is bringing the stack up without them. Update the agent (reissue the install " +
-        "command from the server's actions menu).",
-    );
-  }
-
   const req = await buildDeployRequest({
     ...opts,
     // The team's registry credentials: every pull the agent makes for this deploy
     // authenticates with them (image ref, compose images, a Dockerfile's base).
     registryAuth: await loadRegistryAuthsForApp(opts.appId),
   });
+  // Same reasoning, louder: extra compose flags are a deliberate instruction, so
+  // an agent that drops them is running a DIFFERENT command than the settings
+  // page shows. Say which flags went missing, not just that some did - Deplo's
+  // own `--pull always` for a compose stack included.
+  if (
+    req.composeUpArgs.length &&
+    !hello.capabilities.includes("deploy.compose-args")
+  ) {
+    opts.sink.log(
+      "warn",
+      `This server's agent is too old to apply this app's compose flags (${req.composeUpArgs.join(" ")}) - ` +
+        "it is bringing the stack up without them. Update the agent (reissue the install " +
+        "command from the server's actions menu).",
+    );
+  }
 
   // Cursor: the highest seq we've successfully consumed. A reattach asks the
   // agent to replay everything AFTER this, so a reconnect never double-logs and
@@ -591,13 +592,15 @@ export async function buildDeployRequest(opts: {
   };
 
   if (opts.plan.kind === "compose") {
-    // A multi-service compose stack (Part C): no build, no image pull - the agent
-    // writes the env to a --env-file (the YAML interpolates `${VAR}`), the mount files
-    // under its files dir, then `docker compose up`s the rendered stack and waits for
+    // A multi-service compose stack (Part C): no build, no single image to pull -
+    // the agent writes the env to a --env-file (the YAML interpolates `${VAR}`), the
+    // mount files under its files dir, then `docker compose up`s the rendered stack
+    // and waits for it. The bring-up pulls every service's image (composeDeployArgs).
     return {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_COMPOSE,
       buildKind: BuildKind.BUILD_KIND_NONE,
+      composeUpArgs: composeDeployArgs(opts.composeUpArgs ?? []),
       mounts: opts.plan.mounts.map((m) => ({
         path: m.filePath,
         content: m.content,

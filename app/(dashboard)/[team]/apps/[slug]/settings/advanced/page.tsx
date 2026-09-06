@@ -174,7 +174,11 @@ export default async function AppAdvancedSettingsPage(
         </CardContent>
       </Card>
 
-      <RebuildContainerCard appId={project.id} slug={slug} />
+      <RebuildContainerCard
+        appId={project.id}
+        slug={slug}
+        source={project.source}
+      />
 
       <DangerSettings appId={project.id} name={project.name} />
     </section>

@@ -39,7 +39,7 @@ const base = {
   env: { API_KEY: "secret", PORT: "8080" },
 };
 
-test("compose plan → SOURCE_KIND_COMPOSE, no build, no pull", async () => {
+test("compose plan → SOURCE_KIND_COMPOSE, no build, no single image to pull", async () => {
   const req = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },
@@ -49,6 +49,47 @@ test("compose plan → SOURCE_KIND_COMPOSE, no build, no pull", async () => {
   assert.equal(req.pullImage, false);
   // No build context is tarred for a compose stack.
   assert.equal(req.contextTar.length, 0);
+});
+
+test("a compose stack's bring-up pulls every service's image, the operator's flags after", async () => {
+  // `docker compose up -d` alone pulls only a MISSING image, so a redeploy of a
+  // `:latest` stack kept running the old one.
+  const plain = await buildDeployRequest({
+    ...base,
+    plan: { kind: "compose", mounts: [] },
+  });
+  assert.deepEqual(plain.composeUpArgs, ["--pull", "always"]);
+  const withFlags = await buildDeployRequest({
+    ...base,
+    plan: { kind: "compose", mounts: [] },
+    composeUpArgs: ["--wait"],
+  });
+  assert.deepEqual(withFlags.composeUpArgs, ["--pull", "always", "--wait"]);
+  // The operator's own pull policy wins.
+  const optedOut = await buildDeployRequest({
+    ...base,
+    plan: { kind: "compose", mounts: [] },
+    composeUpArgs: ["--pull", "missing"],
+  });
+  assert.deepEqual(optedOut.composeUpArgs, ["--pull", "missing"]);
+});
+
+test("a single image is pulled or built BEFORE the bring-up, so its command stays bare", async () => {
+  // A built image exists only on the host: `--pull always` there would fail the deploy.
+  const built = await buildDeployRequest({
+    ...base,
+    imageRef: "deplo/myapp:abc123",
+    plan: { kind: "image", image: "deplo/myapp:abc123", pull: false },
+    composeUpArgs: ["--wait"],
+  });
+  assert.deepEqual(built.composeUpArgs, ["--wait"]);
+  const pulled = await buildDeployRequest({
+    ...base,
+    imageRef: "nginx:latest",
+    plan: { kind: "image", image: "nginx:latest", pull: true },
+  });
+  assert.equal(pulled.pullImage, true);
+  assert.deepEqual(pulled.composeUpArgs, []);
 });
 
 test("compose plan carries the rendered YAML and the decrypted env for the --env-file", async () => {

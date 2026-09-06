@@ -15,6 +15,20 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
+import type { DeploySource } from "@/lib/types";
+
+/** What the button does per source: only a source Deplo builds has layers. */
+const REBUILD_TIP: Record<DeploySource, string> = {
+  github:
+    "A full deployment from the current source, for a container that looks stuck. Cached layers are reused.",
+  git: "A full deployment from the current source, for a container that looks stuck. Cached layers are reused.",
+  upload:
+    "A full deployment from the current source, for a container that looks stuck. Cached layers are reused.",
+  "docker-image":
+    "Pulls the image again and replaces the container even when nothing changed, for one that looks stuck.",
+  compose:
+    "Pulls every service's image again and replaces every container, for a stack that looks stuck.",
+};
 
 /**
  * Advanced settings: rebuild the container.
@@ -22,9 +36,11 @@ import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 export function RebuildContainerCard({
   appId,
   slug,
+  source,
 }: {
   appId: string;
   slug: string;
+  source: DeploySource;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -61,10 +77,7 @@ export function RebuildContainerCard({
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           <Hammer className="size-4 text-muted-foreground" />
           Rebuild container
-          <InfoTip
-            content="A full deployment from the current source, for a container that looks stuck. Cached layers are reused."
-            docs="deploy.trace"
-          />
+          <InfoTip content={REBUILD_TIP[source]} docs="deploy.trace" />
         </CardTitle>
         {/* The consequence, which is the thing you want to know before clicking. */}
         <CardDescription>
