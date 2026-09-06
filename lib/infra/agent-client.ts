@@ -2543,9 +2543,15 @@ export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
 const CLEANUP_KEEP_PER_SLUG_CAPABILITY = "cleanup.keep-per-slug";
 
 /**
- * The Hello capability gating CLEANUP_SCOPE_LEFTOVER_APP_FILES.
+ * The Hello capability each scope needs, for the scopes that have one. An agent
+ * answers an unknown scope with INVALID_ARGUMENT, which fails the WHOLE sweep.
  */
-const CLEANUP_LEFTOVER_FILES_CAPABILITY = "cleanup.leftover-files";
+const CLEANUP_SCOPE_CAPABILITY: Partial<Record<CleanupScope, string>> = {
+  [CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES]: "cleanup.leftover-files",
+  [CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS]: "cleanup.leftover-networks",
+  [CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES]: "cleanup.orphan-volumes",
+  [CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES]: "cleanup.pulled-images",
+};
 
 /**
  * Reclaim Docker disk on `serverId`'s host: dial → Hello → capability pre-flight →
@@ -2572,22 +2578,29 @@ export function compensateKeepPerSlug(
 }
 
 /**
- * Strip scopes THIS agent does not implement, so an old host still gets the four
- * it does understand.
+ * Strip scopes THIS agent does not implement, so an old host still gets the ones
+ * it does understand. The inventory lists stay: an agent that cannot read them
+ * ignores them, and an old one still reads live_slugs for its files scope.
  */
 export function dropUnsupportedScopes(
   req: DockerCleanupRequest,
   hello: HelloResponse,
 ): DockerCleanupRequest {
-  if (hello.capabilities?.includes(CLEANUP_LEFTOVER_FILES_CAPABILITY))
+  const caps = hello.capabilities ?? [];
+  const scopes = req.scopes.flatMap((s) => {
+    const cap = CLEANUP_SCOPE_CAPABILITY[s];
+    if (!cap || caps.includes(cap)) return [s];
+    // An agent without the anonymous-volume scope still has its buildkit subset.
+    if (s === CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES)
+      return [CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE];
+    return [];
+  });
+  if (
+    scopes.every((s, i) => s === req.scopes[i]) &&
+    scopes.length === req.scopes.length
+  )
     return req;
-  const scopes = req.scopes.filter(
-    (s) => s !== CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
-  );
-  if (scopes.length === req.scopes.length) return req;
-  // The list goes too: it is meaningless without its scope, and sending a host's
-  // whole app inventory to an agent that will not read it is needless.
-  return { ...req, scopes, liveSlugs: [] };
+  return { ...req, scopes };
 }
 
 export async function runAgentCleanup(

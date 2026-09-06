@@ -9,7 +9,6 @@ import type { TestDb } from "../db/test-harness";
 import type {
   CleanupRunItem,
   CleanupRunStatus,
-  CleanupScopeId,
   CleanupTrigger,
 } from "./docker-cleanup";
 import { SERVER_1 } from "./app-graph-test-helpers";
@@ -40,7 +39,7 @@ export interface SeedCleanupPolicyOpts {
   /** Defaults to the three conservative scopes - a deliberate fixture, NOT the
    *  instance defaults (those are all four): tests that care about `unused_app_images`
    *  say so explicitly. */
-  scopes?: CleanupScopeId[];
+  scopes?: string[];
   /** Servers the SCHEDULED sweep skips. Seed the servers first - this FKs to them. */
   excludedServerIds?: string[];
   updatedAt?: string;
@@ -57,7 +56,7 @@ export async function seedCleanupPolicy(
   const scopes = opts.scopes ?? [
     "build_cache",
     "dangling_images",
-    "orphan_buildkit_cache",
+    "orphan_volumes",
   ];
   await db
     .insert(dockerCleanupPolicy)

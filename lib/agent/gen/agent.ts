@@ -359,6 +359,19 @@ export enum CleanupScope {
    * that are gone. Never the platform's own (`deplo`, `deplo-internal`, `deplo-socket`).
    */
   CLEANUP_SCOPE_LEFTOVER_NETWORKS = 6,
+  /**
+   * CLEANUP_SCOPE_ORPHAN_VOLUMES - ANONYMOUS volumes (a 64-hex name nothing can ever mount again by name) that NO
+   * container references, older than min_age_hours: the data dirs of removed
+   * containers. A NAMED volume is never a candidate, however dangling.
+   */
+  CLEANUP_SCOPE_ORPHAN_VOLUMES = 7,
+  /**
+   * CLEANUP_SCOPE_UNUSED_PULLED_IMAGES - Tagged images Deplo did NOT build (no deplo.managed label) that NO container
+   * references, last pulled/tagged more than min_age_hours ago: the images of stacks
+   * that are gone and the tags a redeploy moved past. Build tooling is spared. A
+   * deploy that needs one again pulls it.
+   */
+  CLEANUP_SCOPE_UNUSED_PULLED_IMAGES = 8,
   UNRECOGNIZED = -1,
 }
 
@@ -385,6 +398,12 @@ export function cleanupScopeFromJSON(object: any): CleanupScope {
     case 6:
     case "CLEANUP_SCOPE_LEFTOVER_NETWORKS":
       return CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS;
+    case 7:
+    case "CLEANUP_SCOPE_ORPHAN_VOLUMES":
+      return CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES;
+    case 8:
+    case "CLEANUP_SCOPE_UNUSED_PULLED_IMAGES":
+      return CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -408,6 +427,10 @@ export function cleanupScopeToJSON(object: CleanupScope): string {
       return "CLEANUP_SCOPE_LEFTOVER_APP_FILES";
     case CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS:
       return "CLEANUP_SCOPE_LEFTOVER_NETWORKS";
+    case CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES:
+      return "CLEANUP_SCOPE_ORPHAN_VOLUMES";
+    case CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES:
+      return "CLEANUP_SCOPE_UNUSED_PULLED_IMAGES";
     case CleanupScope.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -2097,9 +2120,11 @@ export interface DockerCleanupRequest {
    */
   keepPerSlug: { [key: string]: number };
   /**
-   * LEFTOVER_APP_FILES only: every stack slug the control plane still knows - Apps,
-   * their preview stacks (`<slug>__pr-<n>`) and databases - INSTANCE-WIDE, not just the
-   * ones placed on this host.
+   * Every stack slug the control plane still knows - Apps, their preview stacks
+   * (`<slug>__pr-<n>`) and databases - INSTANCE-WIDE, not just the ones placed on this
+   * host. Read by LEFTOVER_APP_FILES, by UNUSED_APP_IMAGES (an image of a slug absent
+   * from it keeps nothing) and by LEFTOVER_NETWORKS (a `deplo-<slug>_*` project
+   * network of one). Empty => none of those judgements is made.
    */
   liveSlugs: string[];
   /**

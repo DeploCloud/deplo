@@ -4730,9 +4730,10 @@ const FLEET: McpToolDef[] = [
       scopes: z.array(
         z.enum([
           "unused_app_images",
+          "unused_pulled_images",
           "dangling_images",
           "build_cache",
-          "orphan_buildkit_cache",
+          "orphan_volumes",
           "leftover_networks",
           "leftover_app_files",
         ]),

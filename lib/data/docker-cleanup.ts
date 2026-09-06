@@ -55,8 +55,9 @@ const POLICY_ID = "default";
 export const CLEANUP_SCOPES = [
   "build_cache",
   "dangling_images",
-  "orphan_buildkit_cache",
+  "orphan_volumes",
   "unused_app_images",
+  "unused_pulled_images",
   "leftover_app_files",
   "leftover_networks",
 ] as const;
@@ -190,10 +191,12 @@ function normalizeScopes(scopes: readonly string[]): CleanupScopeId[] {
 const SCOPE_SINCE: Record<CleanupScopeId, string> = {
   build_cache: "2026-01-01T00:00:00.000Z",
   dangling_images: "2026-01-01T00:00:00.000Z",
-  orphan_buildkit_cache: "2026-01-01T00:00:00.000Z",
   unused_app_images: "2026-01-01T00:00:00.000Z",
   leftover_app_files: "2026-08-23T16:31:09.000Z",
   leftover_networks: "2026-08-30T00:00:00.000Z",
+  // Supersedes `orphan_buildkit_cache` (a buildkit store is one anonymous volume).
+  orphan_volumes: "2026-09-06T00:00:00.000Z",
+  unused_pulled_images: "2026-09-06T00:00:00.000Z",
 };
 
 /**
@@ -222,11 +225,23 @@ function notProvisionedMessage(serverName: string): string {
 const SCOPE_TO_WIRE: Record<CleanupScopeId, CleanupScope> = {
   build_cache: CleanupScope.CLEANUP_SCOPE_BUILD_CACHE,
   dangling_images: CleanupScope.CLEANUP_SCOPE_DANGLING_IMAGES,
-  orphan_buildkit_cache: CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE,
+  orphan_volumes: CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES,
   unused_app_images: CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES,
+  unused_pulled_images: CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES,
   leftover_app_files: CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
   leftover_networks: CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS,
 };
+
+/** The scopes a deploy-time sweep runs, in allow-list order: the images the deploy
+ *  just superseded and the cache ceiling the build just pushed against. */
+export function deploySweepScopes(
+  scopes: readonly CleanupScopeId[],
+): CleanupScope[] {
+  return CLEANUP_SCOPES.filter(
+    (s) =>
+      (s === "unused_app_images" || s === "build_cache") && scopes.includes(s),
+  ).map((s) => SCOPE_TO_WIRE[s]);
+}
 
 const WIRE_TO_SCOPE = new Map<CleanupScope, CleanupScopeId>(
   (Object.entries(SCOPE_TO_WIRE) as [CleanupScopeId, CleanupScope][]).map(
@@ -700,14 +715,10 @@ async function finishCleanupRun(args: {
       // Per-app retention wins over the instance number wherever an app names one
       // - that is what keeps its rollbacks alive. See rollbackKeepBySlug.
       keepPerSlug: await rollbackKeepBySlug(serverId),
-      // What `leftover_app_files` judges a directory against.
-      liveSlugs: policy.scopes.includes("leftover_app_files")
-        ? await liveStackSlugs()
-        : [],
-      // The same proof for networks: an empty list SKIPS the scope agent-side.
-      liveNetworks: policy.scopes.includes("leftover_networks")
-        ? await liveNetworkNames()
-        : [],
+      // What the files, images and networks scopes judge a leftover against. An
+      // empty list SKIPS the judgement agent-side, never "nothing is live".
+      liveSlugs: await liveStackSlugs(),
+      liveNetworks: await liveNetworkNames(),
     });
     // A per-scope `error`/`skipped` is NOT a run failure - the agent declines a scope it
     // cannot prove is safe and sweeps the rest. Only `ok:false` (the sweep could not
@@ -1066,9 +1077,11 @@ export async function liveNetworkNames(): Promise<string[]> {
 }
 
 /**
- * Remove the superseded app images a deploy just left behind on `serverId` - the
- * deploy-time half of app-image retention. Scope is `unused_app_images` ONLY - the
- * cache scopes stay on the schedule where their age filter belongs.
+ * Remove what a deploy just left behind on `serverId`: the app images it
+ * superseded and the build cache past the host's ceiling, NOW rather than at the
+ * nightly sweep. A day of builds can fill a disk before 04:00 (see
+ * {@link deploySweepScopes}). Never the leftover scopes: an app deleted an hour
+ * ago belongs on the schedule, past its grace window.
  */
 export async function sweepSupersededAppImages(
   serverId: string,
@@ -1077,24 +1090,23 @@ export async function sweepSupersededAppImages(
   deploySweepInFlight.add(serverId);
   try {
     const policy = await loadPolicy();
-    if (!policy.scopes.includes("unused_app_images")) return 0;
+    const scopes = deploySweepScopes(policy.scopes);
+    if (scopes.length === 0) return 0;
     if (policy.excludedServerIds.includes(serverId)) return 0;
     // A full sweep already running on this host will get there itself.
     if ((await listServersWithCleanupRunning()).includes(serverId)) return 0;
 
     const resp = await runAgentCleanup(serverId, {
-      scopes: [SCOPE_TO_WIRE.unused_app_images],
+      scopes,
       dryRun: false,
-      // Carried for wire compatibility; agents ≥ 1.12 ignore it for this scope
-      // (count-based retention + their fixed deploy grace decide).
+      // The cache scope's age filter; the images scope is count-based.
       minAgeHours: policy.minAgeHours,
       keepImagesPerApp: policy.keepImagesPerApp,
       // THE sweep that decides whether a rollback is possible: this one runs right after
       // the deploy that superseded the previous image, so if it reads the instance scalar
       // instead of the app's own depth, the rollback target is gone before anybody could
       keepPerSlug: await rollbackKeepBySlug(serverId),
-      // Images only here: the files and network sweeps belong on the schedule,
-      // where an app deleted an hour ago is already past its grace window.
+      // No inventory: a deleted app's images are the schedule's business.
       liveSlugs: [],
       liveNetworks: [],
     });

@@ -518,7 +518,7 @@ async function sweepAfterDeploy(
     log(
       depId,
       "info",
-      `Reclaimed ${formatBytes(freed)} from superseded app images`,
+      `Reclaimed ${formatBytes(freed)} of superseded images and build cache`,
     );
   }
 }

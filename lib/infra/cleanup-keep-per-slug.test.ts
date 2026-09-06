@@ -87,27 +87,66 @@ test("an agent that advertises no capabilities at all is treated as old", async 
  * INVALID_ARGUMENT, which fails the whole sweep. So an operator who ticks the new
  * scope must not lose the other four on every host that is a version behind.
  */
-test("an old agent keeps the scopes it knows and loses only the new one", () => {
+test("an old agent keeps the scopes it knows and loses only the new ones", () => {
   const out = dropUnsupportedScopes(
     req({
       scopes: [
         CleanupScope.CLEANUP_SCOPE_BUILD_CACHE,
         CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
+        CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS,
+        CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES,
       ],
       liveSlugs: ["web", "db-shop"],
     }),
     hello(["docker-cleanup"]),
   );
   assert.deepEqual(out.scopes, [CleanupScope.CLEANUP_SCOPE_BUILD_CACHE]);
-  // And the inventory goes with it - it means nothing without its scope.
-  assert.deepEqual(out.liveSlugs, []);
+  // The inventory stays: the images scope reads it on a newer agent, and an
+  // agent that cannot read it ignores it.
+  assert.deepEqual(out.liveSlugs, ["web", "db-shop"]);
 });
 
-test("a capable agent gets the scope and the list untouched", () => {
+test("each gated scope needs ITS capability, not just any newer one", () => {
+  const out = dropUnsupportedScopes(
+    req({
+      scopes: [
+        CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
+        CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS,
+      ],
+    }),
+    hello(["cleanup.leftover-files"]),
+  );
+  assert.deepEqual(out.scopes, [CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES]);
+});
+
+test("an agent without the anonymous-volume scope gets its buildkit subset", () => {
+  const out = dropUnsupportedScopes(
+    req({ scopes: [CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES] }),
+    hello(["docker-cleanup"]),
+  );
+  assert.deepEqual(out.scopes, [
+    CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE,
+  ]);
+});
+
+test("a capable agent gets every scope and the list untouched", () => {
   const input = req({
-    scopes: [CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES],
+    scopes: [
+      CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
+      CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS,
+      CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES,
+      CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES,
+    ],
     liveSlugs: ["web"],
   });
-  const out = dropUnsupportedScopes(input, hello(["cleanup.leftover-files"]));
+  const out = dropUnsupportedScopes(
+    input,
+    hello([
+      "cleanup.leftover-files",
+      "cleanup.leftover-networks",
+      "cleanup.orphan-volumes",
+      "cleanup.pulled-images",
+    ]),
+  );
   assert.equal(out, input);
 });

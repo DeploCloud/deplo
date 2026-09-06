@@ -1616,15 +1616,16 @@ enum DockerCleanupRunStatus {
 }
 
 """
-A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible). Deplo pushes to no registry, so a removed image comes back only by a rebuild - the newest image per app always survives. leftover_app_files = the config files of Apps and databases that were DELETED, judged against the stacks this instance still knows about; the only scope that removes something no rebuild recreates, so it is skipped outright on an agent too old to have the list. leftover_networks = the Docker networks of Environments and previews that are gone, judged against the same kind of list; it reclaims address space rather than disk. All are on by default.
+A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache, plus the build directories a crashed build left behind. dangling_images = untagged layers (never `-a`). orphan_volumes = ANONYMOUS volumes no container references (the data dirs of removed containers, abandoned buildkit stores); a named volume is never touched. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible); an app that was DELETED keeps none. Deplo pushes to no registry, so a removed image comes back only by a rebuild. unused_pulled_images = tagged images Deplo did not build that no container uses, aged on when they were last pulled here; a deploy that needs one pulls it again, and build tooling is spared. leftover_app_files = the config files of Apps and databases that were DELETED, judged against the stacks this instance still knows about; skipped outright on an agent too old to have the list. leftover_networks = the Docker networks of Environments, previews and stacks that are gone, judged against the same kind of list; it reclaims address space rather than disk. All are on by default.
 """
 enum DockerCleanupScope {
   build_cache
   dangling_images
   leftover_app_files
   leftover_networks
-  orphan_buildkit_cache
+  orphan_volumes
   unused_app_images
+  unused_pulled_images
 }
 
 enum DockerCleanupTrigger {
@@ -3420,7 +3421,7 @@ type Mutation {
   runDatabaseBackup(databaseId: String!, destinationId: String!): Boolean
 
   """
-  START a sweep of this server now, with the policy's scopes - whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at (unreachable, unprovisioned, an agent too old) lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.
+  START a sweep of this server now, with the policy's scopes - whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at (unreachable, unprovisioned, an agent too old) lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never removes a container, a named volume, or anything a container still uses, so a stopped app and its data survive.
   """
   runDockerCleanupNow(serverId: String!): DockerCleanupRun
 

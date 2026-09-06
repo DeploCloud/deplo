@@ -39,7 +39,7 @@ const CLEANUP_RUNS_SUBSCRIPTION = /* GraphQL */ `
 `;
 
 /**
- * The four scopes, in the allow-list's order.
+ * The scopes, in the allow-list's order.
  */
 const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
   {
@@ -65,13 +65,13 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     ),
   },
   {
-    id: "orphan_buildkit_cache",
-    label: "Orphaned build caches",
+    id: "orphan_volumes",
+    label: "Orphaned volumes",
     info: (
       <>
-        Abandoned buildkit volumes, often the biggest win on a full host.
-        Removed only if it holds a <code>buildkitd.lock</code>, so your data is
-        safe.
+        Anonymous volumes no container references: the data dirs of removed
+        containers and abandoned build caches. A <strong>named</strong> volume
+        is never touched, so your data is safe.
       </>
     ),
   },
@@ -82,7 +82,18 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
       <>
         Old images no container, running <em>or</em> stopped, references. Also
         swept right after each deploy. Removed ones come back only by
-        rebuilding; the newest per app is always kept.
+        rebuilding; the newest per app is kept, and a deleted app keeps none.
+      </>
+    ),
+  },
+  {
+    id: "unused_pulled_images",
+    label: "Unused pulled images",
+    info: (
+      <>
+        Images Deplo did not build that no container uses: what a deleted stack
+        pulled, or the tag a redeploy moved past. A deploy that needs one pulls
+        it again.
       </>
     ),
   },
@@ -102,9 +113,9 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     label: "Leftover networks",
     info: (
       <>
-        The networks of environments and previews that are gone. They take no
-        disk, but each one holds a slice of the address range this server can
-        hand out.
+        The networks of environments, previews and stacks that are gone. They
+        take no disk, but each one holds a slice of the address range this
+        server can hand out.
       </>
     ),
   },
@@ -266,7 +277,7 @@ export function ServerCleanupTab({
   /**
    * One click, no confirmation: it reclaims exactly the SAVED policy's scopes on
    * this host now. Nothing here is destructive: the agent's allow-list never
-   * prunes a container, a data volume or a network.
+   * removes a container, a named volume, or anything a container still uses.
    */
   function runNow() {
     setStarting(true);
@@ -302,8 +313,8 @@ export function ServerCleanupTab({
             Reclaim disk now
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Frees build cache and unused images on this server. Your apps, their
-            data and their networks are never touched.
+            Frees build cache, unused images and orphaned volumes on this
+            server. Your apps and their data are never touched.
           </p>
         </CardHeader>
         <CardContent>
@@ -445,7 +456,7 @@ export function ServerCleanupTab({
 
             <div className="space-y-2.5">
               <FieldLabel
-                info="Scheduled or manual, a sweep reclaims only this list. Containers, data volumes and networks are never pruned."
+                info="Scheduled or manual, a sweep reclaims only this list. Named volumes and anything a container still uses are never touched."
                 docs="servers.cleanupScopes"
               >
                 What to reclaim

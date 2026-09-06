@@ -26,8 +26,11 @@ import {
   seedCleanupRun,
   TRUNCATE_CLEANUP,
 } from "./docker-cleanup-test-helpers";
+import { CleanupScope } from "../agent/gen/agent";
 import {
   __settleCleanupSweeps,
+  CLEANUP_SCOPES,
+  deploySweepScopes,
   getCleanupPolicy,
   liveNetworkNames,
   liveStackSlugs,
@@ -186,7 +189,7 @@ test("updateCleanupPolicy clamps minAgeHours and keepImagesPerApp into range", a
 
 test("updateCleanupPolicy replaces the scopes junction whole-set", async () => {
   await seedCleanupPolicy(db, {
-    scopes: ["build_cache", "dangling_images", "orphan_buildkit_cache"],
+    scopes: ["build_cache", "dangling_images", "orphan_volumes"],
   });
 
   const saved = await asOwner(() =>
@@ -246,8 +249,9 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
   assert.deepEqual(policy.scopes, [
     "build_cache",
     "dangling_images",
-    "orphan_buildkit_cache",
+    "orphan_volumes",
     "unused_app_images",
+    "unused_pulled_images",
     "leftover_app_files",
     "leftover_networks",
   ]);
@@ -274,13 +278,19 @@ test("a scope added after the policy was saved is ON, not silently off", async (
     "a scope that shipped after the save was never a box the operator unticked",
   );
   assert.ok(policy.scopes.includes("leftover_networks"));
+  assert.ok(policy.scopes.includes("orphan_volumes"));
+  assert.ok(policy.scopes.includes("unused_pulled_images"));
+  // The retired scope is dropped on read, never thrown on.
+  assert.ok(
+    !policy.scopes.some((s) => (s as string) === "orphan_buildkit_cache"),
+  );
 });
 
 // The other half, and the reason this is not just "default everything on": a scope
 // the operator DID see and turn off has to stay off.
 test("a scope the operator unticked stays off", async () => {
   await seedCleanupPolicy(db, {
-    scopes: ["dangling_images", "orphan_buildkit_cache", "unused_app_images"],
+    scopes: ["dangling_images", "orphan_volumes", "unused_app_images"],
     // Saved after every scope below existed, so the absence IS a decision.
     updatedAt: "2026-12-01T00:00:00.000Z",
   });
@@ -578,9 +588,27 @@ test("the executor prunes after every sweep - even a failed one", async () => {
 /* (g) The deploy-time sweep: gated by the policy, silent, deploy-safe */
 /* ------------------------------------------------------------------ */
 
+test("the deploy-time sweep runs the image and cache scopes the policy has, nothing else", () => {
+  assert.deepEqual(
+    deploySweepScopes(["dangling_images", "leftover_app_files"]),
+    [],
+  );
+  assert.deepEqual(deploySweepScopes(["unused_app_images"]), [
+    CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES,
+  ]);
+  assert.deepEqual(
+    deploySweepScopes([...CLEANUP_SCOPES]),
+    [
+      CleanupScope.CLEANUP_SCOPE_BUILD_CACHE,
+      CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES,
+    ],
+    "the cache ceiling rides the deploy too; the leftover scopes never do",
+  );
+});
+
 test("sweepSupersededAppImages honors the policy's controls and never throws", async () => {
-  // `unused_app_images` unchecked → the deploy-time sweep is off. No dial, no rows.
-  await seedCleanupPolicy(db, { scopes: ["build_cache"] });
+  // Neither deploy-time scope checked → the sweep is off. No dial, no rows.
+  await seedCleanupPolicy(db, { scopes: ["dangling_images"] });
   assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
 
   // Scope on but the server opted out of automatic sweeps → skipped: nobody is
