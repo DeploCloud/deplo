@@ -48,6 +48,7 @@ import {
 } from "./project-container-card";
 import { CreateFolderDialog } from "./create-folder-dialog";
 import { useCardSelection } from "@/components/shared/use-card-selection";
+import { MARQUEE_BOX } from "@/components/shared/card-selection";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import { Button } from "@/components/ui/button";
@@ -1146,10 +1147,7 @@ function SortableGrid({
         >
           {/* Imperatively positioned by the selection hook during a drag (no
               per-pointermove re-render); hidden when idle. */}
-          <div
-            ref={marqueeRef}
-            className="pointer-events-none absolute z-20 hidden rounded-sm border border-primary bg-primary-wash-strong"
-          />
+          <div ref={marqueeRef} className={MARQUEE_BOX} />
           {(openFolder || openProject) && (
             <DroppableBreadcrumb
               path={folderPath}

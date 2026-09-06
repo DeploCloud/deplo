@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CardSelection } from "@/components/shared/use-card-selection";
 
+/** The rubber-band box: an outline, so it never tints what it sweeps over. */
+export const MARQUEE_BOX =
+  "pointer-events-none absolute z-20 hidden rounded-sm border border-primary";
+
 /** The multi-selection highlight, shared by every selectable card. */
 export const SELECTED_RING =
   "ring-2 ring-primary ring-offset-2 ring-offset-background";
@@ -30,10 +34,7 @@ export function SelectionCanvas({
     >
       {/* Positioned imperatively by the selection hook during a drag (no
           re-render per pointermove); hidden when idle. */}
-      <div
-        ref={marqueeRef}
-        className="pointer-events-none absolute z-20 hidden rounded-sm border border-primary"
-      />
+      <div ref={marqueeRef} className={MARQUEE_BOX} />
       {children}
     </div>
   );
