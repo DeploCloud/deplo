@@ -475,4 +475,8 @@ test("a team left with no member manager is healed, and says so first", async ()
   const held = caps.map((c) => c.capability);
   assert.ok(held.includes("manage_members"), "the survivor can manage members");
   assert.ok(held.includes("manage_team"), "the survivor can manage the team");
+  assert.ok(
+    held.includes("manage_roles"),
+    "and the roles - every write to a member re-asserts all three",
+  );
 });

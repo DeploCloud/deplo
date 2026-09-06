@@ -1,7 +1,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -11,11 +11,12 @@ import {
   folders as foldersTable,
   instanceSettings,
   memberships as membershipsTable,
+  membershipCapabilities as membershipCapabilitiesTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
-import { listRoles } from "./roles";
+import { listRoles, createRole } from "./roles";
 import { updateMember } from "./members";
 import {
   addUserToTeam,
@@ -594,4 +595,92 @@ test("manage_members alone cannot mint an owner, nor edit one", async () => {
     /only an owner/i,
     "a non-owner demoted an owner",
   );
+});
+
+const capsOfDev = async (): Promise<string[]> =>
+  (
+    await db
+      .select({ capability: membershipCapabilitiesTable.capability })
+      .from(membershipCapabilitiesTable)
+      .innerJoin(
+        membershipsTable,
+        eq(membershipsTable.id, membershipCapabilitiesTable.membershipId),
+      )
+      .where(
+        and(
+          eq(membershipsTable.userId, DEV),
+          eq(membershipsTable.teamId, TEAM_A),
+        ),
+      )
+  )
+    .map((r) => r.capability)
+    .sort();
+
+test("an admin can't add THEMSELVES to a team", async () => {
+  const owner = (await rolesOfTeamA()).find((r) => r.builtinKey === "owner")!;
+  await assert.rejects(
+    () =>
+      as(ADMIN, () =>
+        addUserToTeam({ userId: ADMIN, teamId: TEAM_A, roleId: owner.id }),
+      ),
+    /yourself/,
+  );
+  assert.equal(
+    (
+      await db
+        .select({ id: membershipsTable.id })
+        .from(membershipsTable)
+        .where(
+          and(
+            eq(membershipsTable.userId, ADMIN),
+            eq(membershipsTable.teamId, TEAM_A),
+          ),
+        )
+    ).length,
+    0,
+  );
+});
+
+test("a granular member holds nothing team-wide, with or without a set sent along", async () => {
+  const org = await as(
+    FOUNDER,
+    () =>
+      createRole({
+        name: "Org",
+        capabilities: ["view", "organize_projects", "deploy_apps"],
+      }),
+    TEAM_A,
+  );
+  // No `capabilities` in the input - the shape every older client sends.
+  await as(
+    FOUNDER,
+    () =>
+      setMemberAccess({
+        userId: DEV,
+        roleId: org.id,
+        granular: true,
+        grants: [{ folderIds: [FLD], capabilities: ["deploy_apps"] }],
+      }),
+    TEAM_A,
+  );
+  assert.deepEqual(await capsOfDev(), ["deploy_apps", "view"]);
+  // Assigning a role on the legacy door keeps the clamp too.
+  await as(
+    FOUNDER,
+    () => updateMember({ userId: DEV, roleId: org.id }),
+    TEAM_A,
+  );
+  assert.deepEqual(await capsOfDev(), ["deploy_apps", "view"]);
+  const row = (
+    await db
+      .select({ granular: membershipsTable.granular })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.userId, DEV),
+          eq(membershipsTable.teamId, TEAM_A),
+        ),
+      )
+  )[0]!;
+  assert.equal(row.granular, true, "the reach was not silently widened");
 });

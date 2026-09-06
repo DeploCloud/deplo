@@ -88,6 +88,7 @@ import type {
   PublishedPort,
   VolumeMount,
 } from "@/lib/types";
+import { hasAppCapability } from "@/lib/data/node-access";
 
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
@@ -305,7 +306,17 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
     }),
     source: t.field({ type: DeploySourceEnum, resolve: (p) => p.source }),
     dockerImage: t.exposeString("dockerImage", { nullable: true }),
-    compose: t.exposeString("compose", { nullable: true }),
+    compose: t.string({
+      nullable: true,
+      description:
+        "The authored compose file. Its inline values are masked unless you can configure the app.",
+      resolve: async (p) =>
+        p.compose == null
+          ? null
+          : (await hasAppCapability(p.id, "configure_apps"))
+            ? p.compose
+            : redactComposeForDisplay(p.compose),
+    }),
     volumes: t.field({
       type: [VolumeRef],
       description: "Persistent volumes mounted into this app.",

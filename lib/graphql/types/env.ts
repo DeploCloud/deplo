@@ -54,7 +54,7 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
   fields: (t) => ({
     id: t.exposeID("id"),
     key: t.exposeString("key"),
-    // Masked placeholder for secrets; reveal the real value via revealEnv().
+    // A secret is masked here and has no reveal path at all.
     value: t.exposeString("value"),
     isMasked: t.exposeBoolean("masked"),
     targets: t.field({

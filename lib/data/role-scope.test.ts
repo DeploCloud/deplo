@@ -8,6 +8,7 @@ import {
   activities as activitiesTable,
   folderGrants as folderGrantsTable,
   folders as foldersTable,
+  membershipCapabilities as membershipCapabilitiesTable,
   memberships as membershipsTable,
   projects as projectsTable,
   teamRoles as teamRolesTable,
@@ -22,6 +23,7 @@ import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { nodeCapabilities } from "./node-access";
 import { listApps } from "./apps";
 import { listFolders } from "./folders";
+import { deleteProject, renameProject, setProjectColor } from "./projects";
 import type { Capability } from "../types";
 import { eq } from "drizzle-orm";
 
@@ -1323,3 +1325,37 @@ async function updateRoleCaps(capabilities: Capability[]): Promise<void> {
   const { updateRole } = await import("./roles");
   await updateRole({ id: ROLE, name: "Scoped", capabilities });
 }
+
+test("a project outside a limited member's reach is NOT FOUND to rename, recolour or delete", async () => {
+  await scopeTo({ projects: [PRC_IN] });
+  // The team-wide verbs straight on the membership row - the shape a granular
+  // member used to be left with, and the one every gate below must not trust.
+  const m = (
+    await db
+      .select({ id: membershipsTable.id })
+      .from(membershipsTable)
+      .where(eq(membershipsTable.userId, DEV))
+  )[0];
+  await db
+    .insert(membershipCapabilitiesTable)
+    .values(
+      (["organize_projects", "delete_projects"] as Capability[]).map(
+        (capability) => ({ membershipId: m.id, capability }),
+      ),
+    );
+  for (const attempt of [
+    () => renameProject(PRC_OUT, "Taken"),
+    () => setProjectColor(PRC_OUT, "#ff0000"),
+    () => deleteProject(PRC_OUT),
+  ])
+    await assert.rejects(() => as(DEV, attempt), /Project not found/);
+  // Inside the reach the same verbs work.
+  await as(DEV, () => renameProject(PRC_IN, "Renamed"));
+  const names = await db
+    .select({ id: projectsTable.id, name: projectsTable.name })
+    .from(projectsTable);
+  assert.deepEqual(Object.fromEntries(names.map((p) => [p.id, p.name])), {
+    [PRC_IN]: "Renamed",
+    [PRC_OUT]: "Out",
+  });
+});

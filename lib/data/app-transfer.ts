@@ -31,7 +31,7 @@ import {
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
-import { membershipFor, requireCapability } from "../membership";
+import { holdsTeamWideCapability, membershipFor } from "../membership";
 import { currentIdentity } from "../auth/request-context";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build";
@@ -304,14 +304,19 @@ export async function transferAppToTeam(
   if (destTeamId === teamId)
     throw new Error("That app is already in this team");
 
-  // A SCOPED API token must not move an app into a team outside its scope.
+  // A SCOPED API token must not move an app into a team outside its scope - and
+  // reaching the team through ONE project of it is outside: the app lands at the
+  // destination's top level.
   const tokenScope = currentIdentity()?.token?.scope;
-  if (tokenScope && !tokenScope.teamIds.includes(destTeamId))
+  if (tokenScope && !tokenScope.wholeTeamIds.includes(destTeamId))
     throw new Error("This API token can't move apps into that team.");
 
   const dest = await membershipFor(userId, destTeamId);
   if (!dest) throw new Error("You're not a member of that team");
-  if (!dest.capabilities.includes("move_apps"))
+  // Team-wide, not the raw membership row: `membershipFor` never clamps to the
+  // token for a team other than the request's, and a member whose reach there is
+  // a few nodes could not touch the app once it landed.
+  if (!(await holdsTeamWideCapability(destTeamId, "move_apps")))
     throw new Error("You don't have permission to manage apps in that team");
   const destTeam = (
     await db

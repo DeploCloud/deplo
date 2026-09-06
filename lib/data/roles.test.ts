@@ -10,6 +10,7 @@ import {
   membershipCapabilities as membershipCapabilitiesTable,
   memberships as membershipsTable,
   teamRoles as teamRolesTable,
+  projects as projectsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -627,4 +628,63 @@ test("every capability that exists is reachable: the Owner role holds all of the
   for (const cap of ALL_CAPABILITIES) {
     assert.ok(held.has(cap), `the owner's membership is missing "${cap}"`);
   }
+});
+
+test("un-scoping a role is bounded to what the actor holds", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      {
+        id: "mgr",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+        capabilities: ["view", "manage_roles", "deploy_apps"],
+      },
+      {
+        id: "x",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+        capabilities: ["view"],
+      },
+    ],
+  });
+  await db.insert(projectsTable).values({
+    id: "prc_1",
+    teamId: TEAM_A,
+    name: "P",
+    slug: "p",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const role = await asOwner(() =>
+    createRole({
+      name: "Ops",
+      capabilities: ["view", "manage_members", "deploy_apps"],
+      scope: { projectIds: ["prc_1"] },
+    }),
+  );
+  await asOwner(() => updateMember({ userId: "x", roleId: role.id }));
+  assert.ok(
+    !(await capsOf("x")).includes("manage_members"),
+    "scoped, so the team-wide half is clamped away",
+  );
+  // The manager holds neither manage_members nor the whole team: widening the
+  // role's reach would hand x what the manager can't give.
+  await assert.rejects(
+    () =>
+      asUser("mgr", () =>
+        updateRole({ id: role.id, name: "Ops", scope: null }),
+      ),
+    /permissions you hold yourself/,
+  );
+  // A rename by the same manager leaves every holder as they were.
+  await asUser("mgr", () => updateRole({ id: role.id, name: "Ops team" }));
+  assert.ok(!(await capsOf("x")).includes("manage_members"));
+  // The owner holds it all, so the owner may.
+  await asOwner(() =>
+    updateRole({ id: role.id, name: "Ops team", scope: null }),
+  );
+  assert.ok((await capsOf("x")).includes("manage_members"));
 });

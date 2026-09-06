@@ -319,6 +319,22 @@ async function projectInTeam(id: string, teamId: string): Promise<boolean> {
   return rows[0]?.teamId === teamId && inProjectScope(id);
 }
 
+/**
+ * A project of this team the caller REACHES, or "not found": a member limited to
+ * part of the team must not rename, recolour or delete a container outside it,
+ * and the refusal must not confirm the id exists.
+ */
+async function requireReachableProject(
+  id: string,
+  teamId: string,
+): Promise<void> {
+  if (
+    !(await projectInTeam(id, teamId)) ||
+    !projectInScope(await currentMemberScope(), id)
+  )
+    throw new Error("Project not found");
+}
+
 export async function createProject(
   name: string,
   color?: string | null,
@@ -377,6 +393,7 @@ export async function createProject(
 
 export async function renameProject(id: string, name: string): Promise<void> {
   const { teamId } = await requireCapability("organize_projects");
+  await requireReachableProject(id, teamId);
   await assertContainerNotMigrating("project", id);
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
@@ -410,6 +427,7 @@ export async function setProjectColor(
   color: string | null,
 ): Promise<void> {
   const { teamId } = await requireCapability("organize_projects");
+  await requireReachableProject(id, teamId);
   await assertContainerNotMigrating("project", id);
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const next = color ? normalizeHexColor(color) : null;
@@ -444,6 +462,7 @@ export async function deleteProject(
   opts: { deleteApps?: boolean } = {},
 ): Promise<void> {
   const { teamId } = await requireCapability("delete_projects");
+  await requireReachableProject(id, teamId);
   // The destructive half is the one that matters most: this takes the
   // environments and the apps with it, and a run is still filling them.
   await assertContainerNotMigrating("project", id);

@@ -1034,6 +1034,9 @@ export async function updateRole(input: {
           .from(teamRoleCapabilitiesTable)
           .where(eq(teamRoleCapabilitiesTable.roleId, role.id))
       ).map((r) => r.capability as Capability);
+    // Un-scoping hands holders the whole authored set instead of the clamped one,
+    // so it is bounded like every other widening: to what the actor holds.
+    if (role.scoped && !scoped) withinActor(authored, membership);
     if (capabilities !== undefined) {
       await tx
         .delete(teamRoleCapabilitiesTable)

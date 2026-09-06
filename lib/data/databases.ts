@@ -387,7 +387,10 @@ export async function getDatabaseForTeam(
 ): Promise<DatabaseDTO | null> {
   // The SESSION-FREE twin, so it does NOT consult the ambient request identity - its
   // only caller is the status stream, whose ticks run after the HTTP handler returned
-  // the streaming Response, with no cookies left to read.
+  // the streaming Response, with no cookies left to read. The token scope is not a
+  // cookie: yoga re-establishes it on every tick, and a database has no per-project
+  // meaning (`loadDatabase`).
+  if (narrowedScope()) return null;
   const rows = await getDb()
     .select()
     .from(databasesTable)

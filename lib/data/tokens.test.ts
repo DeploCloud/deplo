@@ -14,7 +14,9 @@ import {
   memberships,
   membershipCapabilities,
   projects as projectsTable,
+  teams as teamsTable,
 } from "../db/schema/control-plane";
+import { oauthClient } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./leaf-test-helpers";
 import { ALL_CAPABILITIES, type Capability } from "../types";
@@ -37,7 +39,7 @@ let db: TestDb;
 let pg: PGlite;
 
 const T0 = "2026-01-01T00:00:00.000Z";
-const TRUNCATE = `truncate table api_tokens, projects, activities, users, teams restart identity cascade;`;
+const TRUNCATE = `truncate table api_tokens, oauth_client, projects, activities, users, teams restart identity cascade;`;
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -1075,4 +1077,171 @@ test("no expiry is the default, and it stays null", async () => {
     .from(apiTokens)
     .where(eq(apiTokens.name, "Forever"));
   assert.equal(rows[0]!.expiresAt, null);
+});
+
+test("a token narrowed to one project can't mint a whole-team token, nor reach another project", async () => {
+  await seedProject("prc_a", TEAM_A, "A");
+  await seedProject("prc_b", TEAM_A, "B");
+  const asNarrow = <T>(fn: () => Promise<T>): Promise<T> =>
+    runWithIdentity(
+      {
+        userId: USER_1,
+        teamId: TEAM_A,
+        token: {
+          id: "tok_narrow",
+          capabilities: ["view", "manage_tokens"] as Capability[],
+          instanceAdmin: false,
+          scope: {
+            teamIds: [TEAM_A],
+            wholeTeamIds: [],
+            projectIds: ["prc_a"],
+            folderIds: [],
+            appIds: [],
+            appProjectIds: [],
+          },
+        },
+      },
+      fn,
+    );
+  await asNarrow(async () => {
+    await assert.rejects(
+      () =>
+        createToken({
+          name: "whole",
+          capabilities: ["view"],
+          teamIds: [TEAM_A],
+        }),
+      /outside its own scope/i,
+      "the team it reaches through one project is not a team it holds",
+    );
+    await assert.rejects(
+      () =>
+        createToken({
+          name: "other",
+          capabilities: ["view"],
+          projectIds: ["prc_b"],
+        }),
+      /outside its own scope/i,
+    );
+    const ok = await createToken({
+      name: "same",
+      capabilities: ["view"],
+      projectIds: ["prc_a"],
+    });
+    assert.deepEqual(ok.token.projectIds, ["prc_a"]);
+  });
+});
+
+test("a bearer token edits and revokes only ITSELF", async () => {
+  const a = await asUser1(() =>
+    createToken({ name: "a", capabilities: ["view", "manage_tokens"] }),
+  );
+  const b = await asUser1(() =>
+    createToken({ name: "b", capabilities: ["view"] }),
+  );
+  const asA = <T>(fn: () => Promise<T>): Promise<T> =>
+    runWithIdentity(
+      {
+        userId: USER_1,
+        teamId: TEAM_A,
+        token: {
+          id: a.token.id,
+          capabilities: ["view", "manage_tokens"] as Capability[],
+          instanceAdmin: false,
+          scope: null,
+        },
+      },
+      fn,
+    );
+  await asA(async () => {
+    await assert.rejects(
+      () => updateToken({ id: b.token.id, name: "renamed" }),
+      /Token not found/,
+    );
+    await assert.rejects(() => revokeToken(b.token.id), /Token not found/);
+    await updateToken({ id: a.token.id, name: "me" });
+  });
+  const names = (await asUser1(() => listTokens())).map((t) => t.name).sort();
+  assert.deepEqual(names, ["b", "me"]);
+});
+
+test("a token that expires can't mint or re-author a successor that outlives it", async () => {
+  const hour = 60 * 60 * 1000;
+  const inOneDay = new Date(Date.now() + 24 * hour).toISOString();
+  const a = await asUser1(() =>
+    createToken({
+      name: "a",
+      capabilities: ["view", "manage_tokens"],
+      expiresAt: inOneDay,
+    }),
+  );
+  const asA = <T>(fn: () => Promise<T>): Promise<T> =>
+    runWithIdentity(
+      {
+        userId: USER_1,
+        teamId: TEAM_A,
+        token: {
+          id: a.token.id,
+          capabilities: ["view", "manage_tokens"] as Capability[],
+          instanceAdmin: false,
+          scope: null,
+        },
+      },
+      fn,
+    );
+  await asA(async () => {
+    await assert.rejects(
+      () => createToken({ name: "forever", capabilities: ["view"] }),
+      /expire no later/i,
+    );
+    await assert.rejects(
+      () =>
+        createToken({
+          name: "later",
+          capabilities: ["view"],
+          expiresAt: new Date(Date.now() + 48 * hour).toISOString(),
+        }),
+      /expire no later/i,
+    );
+    const ok = await createToken({
+      name: "sooner",
+      capabilities: ["view"],
+      expiresAt: new Date(Date.now() + hour).toISOString(),
+    });
+    assert.ok(ok.token.expiresAt);
+    await assert.rejects(
+      () => updateToken({ id: a.token.id, name: "a", expiresAt: null }),
+      /expire no later/i,
+      "a token can't un-expire itself",
+    );
+    // Leaving the expiry alone is fine.
+    await updateToken({ id: a.token.id, name: "still a" });
+  });
+});
+
+test("an MCP connection's token stops resolving in a team that turned MCP off", async () => {
+  const t = await asUser1(() =>
+    createToken({ name: "claude", capabilities: ["view"] }),
+  );
+  await db.insert(oauthClient).values({
+    id: "oac_claude",
+    clientId: "cli_claude",
+    name: "Claude",
+    redirectUris: [],
+  });
+  await db
+    .update(apiTokens)
+    .set({ oauthClientId: "cli_claude" })
+    .where(eq(apiTokens.id, t.token.id));
+  assert.ok(await authenticateToken(t.raw), "resolves while MCP is on");
+  await db
+    .update(teamsTable)
+    .set({ mcpEnabled: false })
+    .where(eq(teamsTable.id, TEAM_A));
+  assert.equal(await authenticateToken(t.raw), null);
+  // A plain API token minted by hand is untouched by the switch.
+  const plain = await asUser1(() =>
+    createToken({ name: "ci", capabilities: ["view"] }),
+  );
+  assert.ok(await authenticateToken(plain.raw));
 });

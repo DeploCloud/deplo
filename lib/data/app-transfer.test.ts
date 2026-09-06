@@ -600,6 +600,55 @@ test("a scoped API token can't move an app into a team outside its scope", async
   );
 });
 
+test("the destination has to be reached WHOLLY - not through one project, not as a limited member", async () => {
+  const caps: Capability[] = ["view", "move_apps", "create_apps", "manage_env"];
+  await joinTeam(USER_1, TEAM_B, caps);
+  // A token reaching TEAM_B only through one of its projects: the app would land
+  // at the top level, outside the token's reach.
+  await runWithIdentity(
+    {
+      userId: USER_1,
+      teamId: TEAM_A,
+      token: {
+        id: "tok_1",
+        capabilities: caps,
+        instanceAdmin: false,
+        scope: {
+          teamIds: [TEAM_A, TEAM_B],
+          wholeTeamIds: [TEAM_A],
+          projectIds: ["prc_b"],
+          folderIds: [],
+          appIds: [],
+          appProjectIds: [],
+        },
+      },
+    },
+    async () => {
+      await assert.rejects(
+        transferAppToTeam(APP, TEAM_B),
+        /can't move apps into that team/i,
+      );
+    },
+  );
+  // A member whose reach in TEAM_B is a hand-picked set of nodes.
+  await db
+    .update(membershipsTable)
+    .set({ granular: true })
+    .where(
+      and(
+        eq(membershipsTable.userId, USER_1),
+        eq(membershipsTable.teamId, TEAM_B),
+      ),
+    );
+  await asOwner(async () => {
+    await assert.rejects(
+      transferAppToTeam(APP, TEAM_B),
+      /permission to manage apps in that team/i,
+    );
+  });
+  assert.equal((await appRow()).teamId, TEAM_A, "nothing moved");
+});
+
 test("a transfer into the app's own team is refused", async () => {
   await asOwner(async () => {
     await assert.rejects(

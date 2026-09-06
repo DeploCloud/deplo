@@ -29,6 +29,7 @@ import {
   type DatabaseDTO,
 } from "@/lib/data/databases";
 import type { ResourceLimitsInput } from "@/lib/data/apps";
+import { hasCapability } from "@/lib/membership";
 
 /* ------------------------------------------------------------------ */
 /* Local enums (not in the shared enums.ts)                            */
@@ -103,19 +104,24 @@ export const DatabaseRef = builder
           "Expert override: the full image ref replacing the derived engine " +
           "image; the version field is inert while set.",
       }),
-      customCommand: t.exposeString("customCommand", {
+      customCommand: t.string({
         nullable: true,
         description:
           "Expert override: replaces the container command verbatim (redis's " +
-          "default command carries --requirepass - omit it and auth is off).",
+          "default command carries --requirepass - omit it and auth is off). " +
+          "Null unless you can configure databases: a command can carry a password.",
+        resolve: async (d) =>
+          (await hasCapability("configure_databases")) ? d.customCommand : null,
       }),
       mounts: t.field({
         type: [DatabaseMountRef],
         description:
           "Expert override: the engine's own config files, written next to the " +
           "stack and bind-mounted into the container. Empty for almost every " +
-          "database. Saving them applies immediately - the container is recreated.",
-        resolve: (d) => d.mounts,
+          "database, and for anyone who can't configure databases - a config " +
+          "file can carry a password. Saving them applies immediately.",
+        resolve: async (d) =>
+          (await hasCapability("configure_databases")) ? d.mounts : [],
       }),
       sizeMb: t.exposeInt("sizeMb"),
       createdAt: t.exposeString("createdAt"),

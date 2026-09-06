@@ -90,6 +90,7 @@ const IRREGULAR = [
   "rotateAppDeployHook",
   "destinationRecoveryKey",
   "createToken",
+  "updateToken",
   "mintRegistrationLink",
   // Mints an install command carrying a server's agent enrolment token.
   "reissueServerBootstrap",

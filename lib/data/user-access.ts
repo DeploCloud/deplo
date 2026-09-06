@@ -452,8 +452,11 @@ function memberCapabilities(
   assignment: { capabilities: Capability[]; scoped: boolean },
   input: { granular: boolean; capabilities?: Capability[] },
 ): Capability[] {
-  if (!input.capabilities) return assignment.capabilities;
-  const own = withView(cleanCapabilities(input.capabilities, "viewer"));
+  const own = input.capabilities
+    ? withView(cleanCapabilities(input.capabilities, "viewer"))
+    : assignment.capabilities;
+  // A reach of named nodes holds nothing team-wide, whatever the base role says -
+  // with or without a set sent along.
   return input.granular || assignment.scoped
     ? boundedBy(own, NODE_GRANTABLE_CAPABILITIES)
     : own;
@@ -465,7 +468,10 @@ export async function addUserToTeam(input: {
   teamId: string;
   roleId: string;
 }): Promise<UserTeamAccessDTO[]> {
-  await requireInstanceAdmin();
+  const { userId: actingUserId } = await requireInstanceAdmin();
+  // The same line `requireEditableMembership` draws: access is never self-serve.
+  if (input.userId === actingUserId)
+    throw new Error("You can't add yourself to a team. Ask another admin.");
   const db = getDb();
   await ensureTeamRoles(db, input.teamId);
   const assignment = await roleAssignment(db, input.teamId, input.roleId);

@@ -778,6 +778,41 @@ async function ownerCeiling(
   return withinActor(caps, { capabilities: ceiling } as Membership, "token");
 }
 
+/**
+ * A bearer token edits or revokes ITSELF and nothing else: `listTokens` already
+ * hides its owner's other credentials from it, and a write must not reach what a
+ * read may not name.
+ */
+function requireOwnOrSession(tokenId: string): void {
+  const acting = currentIdentity()?.token;
+  if (acting && acting.id !== tokenId) throw new Error("Token not found");
+}
+
+/**
+ * A token never mints or re-authors a successor that outlives it: a leaked
+ * short-lived credential must not be able to make itself permanent. `undefined`
+ * is "leave the stored expiry alone", which was bounded when it was written.
+ */
+async function assertExpiryWithinActingToken(
+  expiresAt: string | null | undefined,
+): Promise<void> {
+  const acting = currentIdentity()?.token;
+  if (!acting || expiresAt === undefined) return;
+  const own =
+    (
+      await getDb()
+        .select({ expiresAt: apiTokens.expiresAt })
+        .from(apiTokens)
+        .where(eq(apiTokens.id, acting.id))
+        .limit(1)
+    )[0]?.expiresAt ?? null;
+  if (!own) return;
+  if (expiresAt === null || Date.parse(expiresAt) > Date.parse(own))
+    throw new Error(
+      "This API token expires, so a token it creates has to expire no later than it does.",
+    );
+}
+
 /** Returns the raw token ONCE; only the hash is persisted. */
 export async function createToken(
   input: {
@@ -794,6 +829,7 @@ export async function createToken(
   const name = cleanTokenName(input.name);
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt = cleanExpiry(input.expiresAt);
+  await assertExpiryWithinActingToken(expiresAt);
   const scope = await resolveScopeInput(input, userId);
   assertScopeWithinActingToken(scope, scoped);
   const reach = await reachOf(scope, userId);
@@ -887,10 +923,12 @@ export async function updateToken(
   } & TokenScopeInput,
 ): Promise<void> {
   const { id: userId } = await assertUser();
+  requireOwnOrSession(input.id);
   const name = cleanTokenName(input.name);
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt =
     input.expiresAt === undefined ? undefined : cleanExpiry(input.expiresAt);
+  await assertExpiryWithinActingToken(expiresAt);
   const scope = await resolveScopeInput(input, userId);
   assertScopeWithinActingToken(scope, scoped);
 
@@ -954,6 +992,8 @@ interface TokenRow {
   scoped: boolean;
   /** When it stops working. Null ⇒ never. */
   expiresAt: string | null;
+  /** Set when an OAuth consent minted it - an MCP connection's credential. */
+  oauthClientId: string | null;
 }
 
 const TOKEN_ROW_COLUMNS = {
@@ -962,6 +1002,7 @@ const TOKEN_ROW_COLUMNS = {
   instanceAdmin: apiTokens.instanceAdmin,
   scoped: apiTokens.scoped,
   expiresAt: apiTokens.expiresAt,
+  oauthClientId: apiTokens.oauthClientId,
 } as const;
 
 /**
@@ -1009,6 +1050,8 @@ async function oauthTokenRow(raw: string): Promise<TokenRow | null> {
       and(
         eq(oauthAccessToken.token, hash),
         gt(oauthAccessToken.expiresAt, new Date()),
+        // RFC 7009 revocation stamps the row rather than deleting it.
+        isNull(oauthAccessToken.revoked),
         // A disabled client stops resolving immediately; the plugin's own token
         // lookup does not check this, and a credential whose client was turned
         // off is exactly the one an operator thinks they have stopped.
@@ -1039,9 +1082,30 @@ async function identityForTokenRow(
   // holding `manage_tokens`, so losing either silently narrows every token that
   // person minted, and losing the last one stops the token resolving at all.
   const mine = await tokenReach(match.userId);
-  const reachable = scope
+  let reachable = scope
     ? mine.filter((t) => scope.teamIds.includes(t.id))
     : mine;
+  // A team's MCP switch is the kill switch for the credentials minted through
+  // it, on every door - not only on /api/mcp.
+  if (match.oauthClientId && reachable.length > 0) {
+    const off = new Set(
+      (
+        await getDb()
+          .select({ id: teamsTable.id })
+          .from(teamsTable)
+          .where(
+            and(
+              inArray(
+                teamsTable.id,
+                reachable.map((t) => t.id),
+              ),
+              eq(teamsTable.mcpEnabled, false),
+            ),
+          )
+      ).map((r) => r.id),
+    );
+    reachable = reachable.filter((t) => !off.has(t.id));
+  }
   if (reachable.length === 0) return null;
   const picked =
     (teamHint &&
@@ -1108,6 +1172,7 @@ export function stampMcpUse(tokenId: string): void {
  */
 export async function revokeToken(id: string): Promise<void> {
   const { id: userId } = await assertUser();
+  requireOwnOrSession(id);
 
   // Read the reach BEFORE the row goes: afterwards there is nothing left to ask.
   // (Also before any transaction - this helper queries on its own connection and
@@ -1274,6 +1339,18 @@ async function resolveScopeInput(
   for (const id of teamIds)
     if (!mine.has(id))
       throw new Error("You can't use API tokens in one of those teams");
+  // A SCOPED token minting (or re-authoring) one: every ticked node has to sit
+  // INSIDE its own scope. Breadth alone is not enough - a token holding one project
+  // of a team reaches that team, and could otherwise tick the whole of it.
+  const acting = currentIdentity()?.token?.scope;
+  const withinActing = (ok: boolean) => {
+    if (acting && !ok)
+      throw new Error(
+        "This API token can't create a token that reaches outside its own scope.",
+      );
+  };
+  for (const id of teamIds)
+    withinActing(!acting || acting.wholeTeamIds.includes(id));
   const reached = new Set<string>(teamIds);
   // Refused rather than reinterpreted: `loadScope` lets the narrower tick win, so
   // accepting both would hand back a token that reads as whole-team and behaves
@@ -1302,6 +1379,11 @@ async function resolveScopeInput(
     for (const r of rows) {
       narrower(r.teamId);
       reached.add(r.teamId);
+      withinActing(
+        !acting ||
+          acting.wholeTeamIds.includes(r.teamId) ||
+          acting.projectIds.includes(r.id),
+      );
     }
   }
   if (folderIds.length > 0) {
@@ -1319,11 +1401,22 @@ async function resolveScopeInput(
     for (const r of rows) {
       narrower(r.teamId);
       reached.add(r.teamId);
+      // The acting scope's folders are already the expanded subtree.
+      withinActing(
+        !acting ||
+          acting.wholeTeamIds.includes(r.teamId) ||
+          acting.folderIds.includes(r.id),
+      );
     }
   }
   if (appIds.length > 0) {
     const rows = await db
-      .select({ id: appsTable.id, teamId: appsTable.teamId })
+      .select({
+        id: appsTable.id,
+        teamId: appsTable.teamId,
+        folderId: appsTable.folderId,
+        projectId: appsTable.projectId,
+      })
       .from(appsTable)
       .where(inArray(appsTable.id, appIds));
     if (rows.length !== appIds.length || rows.some((r) => !mine.has(r.teamId)))
@@ -1333,6 +1426,13 @@ async function resolveScopeInput(
     for (const r of rows) {
       narrower(r.teamId);
       reached.add(r.teamId);
+      withinActing(
+        !acting ||
+          acting.wholeTeamIds.includes(r.teamId) ||
+          acting.appIds.includes(r.id) ||
+          (r.folderId != null && acting.folderIds.includes(r.folderId)) ||
+          (r.projectId != null && acting.projectIds.includes(r.projectId)),
+      );
     }
   }
   return { teamIds, projectIds, folderIds, appIds, teamsReached: [...reached] };

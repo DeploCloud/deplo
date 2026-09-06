@@ -90,7 +90,11 @@ export interface DeleteUserResult {
 // A team must never be left with zero holders of these - that locks it out of
 // member/team management irrecoverably (same set as `members.ts`, which enforces
 // it for removeMember; a cascaded membership can't be caught there).
-const CRITICAL_CAPABILITIES: Capability[] = ["manage_members", "manage_team"];
+const CRITICAL_CAPABILITIES: Capability[] = [
+  "manage_members",
+  "manage_roles",
+  "manage_team",
+];
 
 /* ------------------------------------------------------------------ */
 /* Shared resolution (used by both the preview and the delete)         */

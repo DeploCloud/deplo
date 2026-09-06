@@ -63,7 +63,11 @@ import {
   membershipFor,
   requireTeamWide,
 } from "../membership";
-import { accessDelta, cleanCapabilities } from "../membership-shared";
+import {
+  NODE_GRANTABLE_CAPABILITIES,
+  accessDelta,
+  cleanCapabilities,
+} from "../membership-shared";
 import {
   effectiveRoleCapabilities,
   ensureTeamRoles,
@@ -826,11 +830,14 @@ export async function updateMember(input: {
   const db = getDb();
   await ensureTeamRoles(db, teamId);
   const assignment = await resolveAssignment(db, teamId, input, membership);
-  const caps = assignment.capabilities;
   await db.transaction(async (tx) => {
     const founderId = await teamFounderUserId(tx, teamId);
     const rows = await tx
-      .select({ id: membershipsTable.id, role: membershipsTable.role })
+      .select({
+        id: membershipsTable.id,
+        role: membershipsTable.role,
+        granular: membershipsTable.granular,
+      })
       .from(membershipsTable)
       .where(
         and(
@@ -841,6 +848,11 @@ export async function updateMember(input: {
       .limit(1);
     const m = rows[0];
     if (!m) throw new Error("Member not found");
+    // A reach of named nodes holds nothing team-wide (the clamp `setMemberAccess`
+    // applies); assigning a role here must not hand it back.
+    const caps = m.granular
+      ? boundedBy(assignment.capabilities, NODE_GRANTABLE_CAPABILITIES)
+      : assignment.capabilities;
     // The ABSOLUTE owner (founder / "crown") is immutable: their role and
     // permissions can't be changed by anyone, including themselves and instance
     // admins, so the creator can never be demoted or locked out of their team.
@@ -1106,6 +1118,12 @@ export async function updateUserAdmin(input: {
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
   const newPassword = input.newPassword?.trim() ? input.newPassword : null;
+  // One's own password is changed with the current one in hand (`changePassword`):
+  // this door asks for nothing, so a stolen session must not reach it.
+  if (newPassword && input.userId === actingUserId)
+    throw new Error(
+      "Change your own password from Settings → Security, where the current one is asked for.",
+    );
   if (newPassword) {
     assertPasswordPolicy(newPassword);
     await assertPasswordNotPwned(newPassword);
