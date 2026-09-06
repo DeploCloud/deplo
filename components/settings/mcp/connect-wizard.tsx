@@ -793,7 +793,7 @@ function AgentMark({
       className={cn(
         "flex shrink-0 items-center justify-center rounded-md ring-1 ring-border",
         size === "lg" ? "size-10" : "size-8",
-        !agent.brand && "bg-muted/50 text-muted-foreground",
+        !agent.brand && "bg-surface-strong text-muted-foreground",
       )}
       style={
         agent.brand

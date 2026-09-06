@@ -49,7 +49,7 @@ export function FrameworkRow({
         className,
       )}
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted/50">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-strong">
         <FrameworkIcon id={framework.id} className="size-4" />
       </span>
       <span className="min-w-0">

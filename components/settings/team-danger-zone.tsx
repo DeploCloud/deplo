@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 /** Both actions are outline-destructive: neither is the one you reach for. */
 const dangerButton =
-  "self-start border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive";
+  "self-start border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive";
 
 /** A member this team could be handed to. */
 export interface TransferCandidate {

@@ -97,7 +97,7 @@ export function StatTile({
             <div
               className={cn(
                 "h-full rounded-full transition-all",
-                over ? "bg-[var(--warning)]" : "bg-foreground/80",
+                over ? "bg-[var(--warning)]" : "bg-muted-foreground",
               )}
               style={{ width: `${Math.min(100, Math.max(2, pct))}%` }}
             />

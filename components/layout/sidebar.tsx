@@ -33,7 +33,7 @@ import { docsUrl } from "@/lib/docs";
  */
 /** The two rows in the sidebar's footer wear one shape. */
 const FOOTER_LINK =
-  "group flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5";
+  "group flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:bg-surface";
 
 export function Sidebar({
   capabilities = [],
@@ -167,8 +167,8 @@ export function Sidebar({
         aria-orientation="vertical"
         aria-label="Resize sidebar"
         className={cn(
-          "absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-foreground/15",
-          dragging && "bg-foreground/25",
+          "absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-border",
+          dragging && "bg-ring",
         )}
       />
     </aside>

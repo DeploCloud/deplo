@@ -32,7 +32,7 @@ export function SettingsDrawer({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
+        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-surface"
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="font-medium">{title}</span>

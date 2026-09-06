@@ -203,7 +203,7 @@ function Chip({
       className={cn(
         "flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs transition-colors",
         active
-          ? "border-primary/60 bg-primary/[0.06] text-foreground"
+          ? "border-primary/60 bg-primary-wash text-foreground"
           : "border-border text-muted-foreground hover:text-foreground",
       )}
       {...props}

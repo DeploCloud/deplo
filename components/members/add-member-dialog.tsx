@@ -288,7 +288,7 @@ export function AddMemberDialog({
                       }}
                       className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-accent"
                     >
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-wash-strong text-primary transition-colors group-hover:bg-primary-wash-strong">
                         <UserPlus className="size-4" />
                       </span>
                       <span className="flex flex-col">

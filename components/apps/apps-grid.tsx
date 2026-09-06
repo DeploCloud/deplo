@@ -1148,7 +1148,7 @@ function SortableGrid({
               per-pointermove re-render); hidden when idle. */}
           <div
             ref={marqueeRef}
-            className="pointer-events-none absolute z-20 hidden rounded-sm border border-primary bg-primary/10"
+            className="pointer-events-none absolute z-20 hidden rounded-sm border border-primary bg-primary-wash-strong"
           />
           {(openFolder || openProject) && (
             <DroppableBreadcrumb
@@ -1374,7 +1374,7 @@ function DroppableBreadcrumb({
       className={cn(
         "flex flex-wrap items-center gap-2 rounded-md px-1 py-1 transition-colors",
         dragging && "ring-dashed ring-1 ring-border",
-        isOver && "bg-primary/10 ring-1 ring-primary/40",
+        isOver && "bg-primary-wash-strong ring-1 ring-primary/40",
       )}
     >
       <FolderTrail path={path} view={view} />

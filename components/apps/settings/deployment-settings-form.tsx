@@ -796,7 +796,7 @@ export function DeploymentSettingsForm({
                     </ul>
                   )}
                   {webhook.url && (
-                    <div className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+                    <div className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2">
                       <code className="min-w-0 flex-1 font-mono text-xs leading-relaxed break-all">
                         {webhook.url}
                       </code>
@@ -909,7 +909,7 @@ export function DeploymentSettingsForm({
                       </SelectContent>
                     </Select>
                     <Collapse open={serverMoveWarned}>
-                      <div className="flex items-start gap-2 rounded-md rounded-t-none border border-t-0 border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                      <div className="flex items-start gap-2 rounded-md rounded-t-none border border-t-0 border-warning/40 bg-warning-wash-strong px-3 py-2 text-xs text-warning">
                         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                         <span>
                           Saving redeploys this app on the new server and copies

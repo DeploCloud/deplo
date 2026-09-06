@@ -206,6 +206,63 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent: var(--sidebar-accent);
 
+  /* Filled washes: a tint composed ONTO the page, never an alpha - the dotted
+     ground sits under every page and shows through anything translucent.
+     `-strong` is the same hue one step up (selected/hover). */
+  --color-surface: color-mix(in srgb, var(--muted) 35%, var(--background));
+  --color-surface-strong: color-mix(
+    in srgb,
+    var(--muted) 70%,
+    var(--background)
+  );
+  --color-primary-wash: color-mix(
+    in srgb,
+    var(--primary) 8%,
+    var(--background)
+  );
+  --color-primary-wash-strong: color-mix(
+    in srgb,
+    var(--primary) 15%,
+    var(--background)
+  );
+  --color-destructive-wash: color-mix(
+    in srgb,
+    var(--destructive) 8%,
+    var(--background)
+  );
+  --color-destructive-wash-strong: color-mix(
+    in srgb,
+    var(--destructive) 15%,
+    var(--background)
+  );
+  --color-warning-wash: color-mix(
+    in srgb,
+    var(--warning) 8%,
+    var(--background)
+  );
+  --color-warning-wash-strong: color-mix(
+    in srgb,
+    var(--warning) 15%,
+    var(--background)
+  );
+  --color-success-wash: color-mix(
+    in srgb,
+    var(--success) 8%,
+    var(--background)
+  );
+  --color-info-wash: color-mix(in srgb, var(--info) 8%, var(--background));
+  --color-violet-wash: color-mix(in srgb, var(--violet) 15%, var(--background));
+  --color-primary-hover: color-mix(
+    in srgb,
+    var(--primary) 90%,
+    var(--background)
+  );
+  --color-destructive-hover: color-mix(
+    in srgb,
+    var(--destructive) 90%,
+    var(--background)
+  );
+
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 

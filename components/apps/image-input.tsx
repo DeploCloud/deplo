@@ -262,7 +262,9 @@ export function ImageInput({
                       }}
                       className={cn(
                         "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
-                        i === highlight ? "bg-accent" : "hover:bg-accent/60",
+                        i === highlight
+                          ? "bg-accent"
+                          : "hover:bg-surface-strong",
                       )}
                     >
                       <span className="flex min-w-0 items-center gap-2">
@@ -270,7 +272,7 @@ export function ImageInput({
                           {s.data.name}
                         </span>
                         {s.kind === "name" && s.data.official && (
-                          <span className="shrink-0 rounded bg-primary/10 px-1 text-[10px] font-medium text-primary">
+                          <span className="shrink-0 rounded bg-primary-wash-strong px-1 text-[10px] font-medium text-primary">
                             official
                           </span>
                         )}

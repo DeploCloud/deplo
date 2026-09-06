@@ -62,7 +62,7 @@ export function DetailFrame({
 /** Why the page below it does nothing. */
 function MigrationNotice() {
   return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
+    <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
       <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" />
       <div>
         <p className="font-medium">Still being brought over by a migration</p>

@@ -398,7 +398,7 @@ export function ContainerMonitoringDashboard({
       <>
         {/* When caps are set, the % gauges read against the cap, not the host. */}
         {hasLimits && (
-          <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+          <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
             <Gauge className="mt-0.5 size-4 shrink-0" />
             <p>
               <span className="font-medium text-foreground">

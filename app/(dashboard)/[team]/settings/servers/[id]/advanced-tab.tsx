@@ -187,7 +187,10 @@ function HostDetails({
           <div className="space-y-2">
             {/* A skeleton, not a spinner - the shape of what is coming. */}
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-8 animate-pulse rounded bg-muted/50" />
+              <div
+                key={i}
+                className="h-8 animate-pulse rounded bg-surface-strong"
+              />
             ))}
           </div>
         ) : error ? (
@@ -339,7 +342,7 @@ function ServerClock({
             {/* The clock itself: big, live, and in the SERVER's zone, so a host
               whose clock is wrong shows its wrong time rather than the browser's
               right one. */}
-            <div className="rounded-lg border border-border bg-muted/30 p-4">
+            <div className="rounded-lg border border-border bg-surface p-4">
               {hostNow && info ? (
                 <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
                   <div className="min-w-0">
@@ -379,8 +382,8 @@ function ServerClock({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="h-9 w-40 animate-pulse rounded bg-muted/60" />
-                  <div className="h-4 w-56 animate-pulse rounded bg-muted/50" />
+                  <div className="h-9 w-40 animate-pulse rounded bg-surface-strong" />
+                  <div className="h-4 w-56 animate-pulse rounded bg-surface-strong" />
                 </div>
               )}
             </div>
@@ -701,7 +704,7 @@ function ChangeAddress({ server }: { server: ServerSummary }) {
               </div>
             )}
             {refusal && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+              <div className="rounded-md border border-destructive/40 bg-destructive-wash-strong p-3 text-sm">
                 <p>{refusal}</p>
                 <p className="mt-1 text-muted-foreground">
                   Save anyway if the host is not up at the new address yet -

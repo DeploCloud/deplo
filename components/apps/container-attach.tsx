@@ -187,7 +187,7 @@ export function ContainerAttach({
       </div>
 
       {status === "ended" || status === "error" ? (
-        <div className="flex items-center gap-2 border-t border-border bg-secondary/20 px-3 py-2">
+        <div className="flex items-center gap-2 border-t border-border bg-surface px-3 py-2">
           <span className="text-[11px] text-muted-foreground">
             {status === "error"
               ? "Couldn't attach to this container."

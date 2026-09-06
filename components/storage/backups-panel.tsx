@@ -708,7 +708,7 @@ function ScheduleBackup({
             {/* One heading block, same shape on every step, so the eye lands in
                 the same place each time the body swaps under it. */}
             <div className="flex flex-col items-center gap-2 text-center">
-              <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+              <span className="flex size-10 items-center justify-center rounded-full bg-primary-wash-strong">
                 <StepIcon className="size-5 text-primary" />
               </span>
               <h2 className="text-base font-semibold lg:text-lg">{title}</h2>

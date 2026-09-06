@@ -323,7 +323,7 @@ export function MigrationConsole({
         </div>
 
         <div
-          className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-muted/30 font-mono text-xs"
+          className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-surface font-mono text-xs"
           onWheel={(e) => {
             // Scrolling UP is the signal, and it is the only one that is never
             // ambiguous: a wheel down at the bottom means nothing.

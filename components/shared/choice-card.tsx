@@ -40,8 +40,8 @@ export function ChoiceCard({
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         selected
-          ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
-          : "border-border hover:border-foreground/20 hover:bg-muted/40",
+          ? "border-primary bg-primary-wash ring-1 ring-primary/60"
+          : "border-border hover:border-foreground/20 hover:bg-surface",
       )}
     >
       <span
@@ -49,7 +49,7 @@ export function ChoiceCard({
           "flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors",
           selected
             ? "border-primary/40 bg-background text-primary"
-            : "border-border bg-muted/50 text-muted-foreground",
+            : "border-border bg-surface-strong text-muted-foreground",
         )}
       >
         <Icon className="size-4" />

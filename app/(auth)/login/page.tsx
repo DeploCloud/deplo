@@ -172,7 +172,7 @@ export default function LoginPage() {
 
   const banner = (
     <Collapse open={Boolean(error)}>
-      <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive-wash-strong px-3 py-2 text-sm text-destructive">
         <AlertCircle className="size-4 shrink-0" />
         {error}
       </div>

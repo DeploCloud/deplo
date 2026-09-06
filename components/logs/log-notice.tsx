@@ -26,9 +26,9 @@ export interface LogNotice {
 }
 
 const TONE: Record<LogNotice["tone"], string> = {
-  error: "border-destructive/40 bg-destructive/10 text-destructive",
+  error: "border-destructive/40 bg-destructive-wash-strong text-destructive",
   warn: "border-[var(--warning)]/40 bg-[var(--warning)]/10 text-[var(--warning)]",
-  muted: "border-border bg-secondary/60 text-muted-foreground",
+  muted: "border-border bg-surface-strong text-muted-foreground",
 };
 
 export function LogNoticeChip({

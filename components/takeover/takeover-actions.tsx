@@ -191,7 +191,7 @@ function TakeoverConfirm({
             : `Deplo takes ports 80 and 443 from ${platformLabel}, inherits its certificates, and takes it off this machine for good.`}
         </p>
         {error !== null && (
-          <div className="mt-4 flex w-full items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-left text-sm">
+          <div className="mt-4 flex w-full items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-wash-strong p-3 text-left text-sm">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0">
               <p className="font-medium">
@@ -238,7 +238,7 @@ function TakeoverConfirm({
             }
             extra={
               <div className="grid gap-2">
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-warning/40 bg-warning-wash-strong p-3 text-sm">
                   <Checkbox
                     checked={understood}
                     onCheckedChange={(v) => setUnderstood(v === true)}
@@ -258,7 +258,7 @@ function TakeoverConfirm({
                   </span>
                 </label>
                 {lossy && (
-                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive-wash-strong p-3 text-sm">
                     <Checkbox
                       checked={lossAccepted}
                       onCheckedChange={(v) => setLossAccepted(v === true)}

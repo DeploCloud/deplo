@@ -86,7 +86,7 @@ export function EnvRowsEditor({
         <div
           className={cn(
             singleRow ? GRID_SINGLE : GRID,
-            "bg-secondary/40 px-2 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase",
+            "bg-surface px-2 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase",
           )}
         >
           <span className="px-1.5">Key</span>
@@ -102,7 +102,7 @@ export function EnvRowsEditor({
               className={cn(
                 singleRow ? GRID_SINGLE : GRID,
                 "px-2 py-1.5",
-                bad && "bg-destructive/5",
+                bad && "bg-destructive-wash",
               )}
             >
               <Input

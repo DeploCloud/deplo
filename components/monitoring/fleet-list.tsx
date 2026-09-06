@@ -142,7 +142,7 @@ export function FleetList({
                 ref={selected ? selectedRef : undefined}
                 className={cn(
                   "relative flex items-center transition-colors",
-                  selected ? "bg-accent/40" : "hover:bg-accent/20",
+                  selected ? "bg-surface" : "hover:bg-surface",
                 )}
               >
                 <button

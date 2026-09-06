@@ -264,7 +264,7 @@ function CredentialCard({
         <div className="flex min-w-0 items-center gap-2.5">
           <span
             aria-hidden
-            className="grid size-8 shrink-0 place-items-center rounded-lg bg-foreground/[0.06] text-muted-foreground"
+            className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"
           >
             <UserRound className="size-4" />
           </span>

@@ -217,7 +217,7 @@ export function ConfirmAction({
  */
 export function ConsequenceNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+    <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-wash p-3 text-sm text-destructive">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
       <span>{children}</span>
     </p>

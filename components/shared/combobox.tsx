@@ -371,7 +371,7 @@ export function Combobox<T>({
                             trailing && "pr-9",
                             i === activeIndex
                               ? "bg-accent"
-                              : "hover:bg-accent/60",
+                              : "hover:bg-surface-strong",
                           )}
                         >
                           {renderOption(item)}

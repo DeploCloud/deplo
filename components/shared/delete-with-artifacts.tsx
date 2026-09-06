@@ -90,7 +90,7 @@ export function DeleteWithArtifacts({
       confirmText={targetName}
       extra={
         refused && forceRetry ? (
-          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive-wash p-3 text-sm">
             <Checkbox
               checked={force}
               onCheckedChange={(v) => setForce(v === true)}

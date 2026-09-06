@@ -60,7 +60,7 @@ export default async function TokenPage(
         />
       </div>
       {token.oauthClientName ? (
-        <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-border bg-surface p-3 text-sm text-muted-foreground">
           Created by connecting {token.oauthClientName}. Changes take effect on
           its next call, without connecting it again.
         </p>

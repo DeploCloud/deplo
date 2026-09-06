@@ -112,16 +112,14 @@ export function RegistrationLinkRow({
     <div
       className={cn(
         "rounded-lg border p-3",
-        expired
-          ? "border-destructive/30 bg-destructive/[0.03]"
-          : "border-border",
+        expired ? "border-destructive/30 bg-destructive-wash" : "border-border",
       )}
     >
       <div className="flex items-start gap-3">
         <div
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-full",
-            expired ? "bg-destructive/10" : "bg-muted",
+            expired ? "bg-destructive-wash-strong" : "bg-muted",
           )}
         >
           <LinkIcon

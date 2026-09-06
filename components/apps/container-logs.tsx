@@ -510,7 +510,7 @@ export function ContainerLogs({
       {/* One toolbar row, wrapping on narrow viewports. Everything in it that
           sits beside the search input is h-9: `size="sm"` is h-8 and lands a
           button 4px short of an Input, which reads as a broken row. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <ScrollText className="size-4 shrink-0 text-muted-foreground" />
         <PaneTitleLink title={title} />
         {toolbar}
@@ -587,7 +587,7 @@ export function ContainerLogs({
                   ? "bg-destructive"
                   : status === "reattaching"
                     ? "animate-pulse bg-[var(--warning)]"
-                    : "bg-muted-foreground/50",
+                    : "bg-ring",
             )}
           />
           {statusLabel[status]}

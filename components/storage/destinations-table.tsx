@@ -100,7 +100,9 @@ function DestinationRow({
   return (
     <TableRow
       {...selectableProps(dest.id, (e) => onSelect(dest.id, e))}
-      className={cn(selected && "bg-primary/10 hover:bg-primary/10")}
+      className={cn(
+        selected && "bg-primary-wash-strong hover:bg-primary-wash-strong",
+      )}
     >
       <TableCell className="font-medium">
         <span className="flex items-center gap-2">

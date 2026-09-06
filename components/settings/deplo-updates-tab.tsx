@@ -302,7 +302,7 @@ function Changelog({
   error: string | null;
 }) {
   if (releases === null)
-    return <div className="h-40 animate-pulse rounded-xl bg-muted/50" />;
+    return <div className="h-40 animate-pulse rounded-xl bg-surface-strong" />;
 
   if (releases.length === 0)
     return (

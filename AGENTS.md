@@ -616,6 +616,16 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   (`bg-background`, `text-muted-foreground`). App defaults to dark; theme is a **custom provider**
   (`useTheme` from `@/components/theme-provider`, not next-themes), zero-flash via the `theme`
   cookie read in `app/layout.tsx`. `cn()` from `@/lib/utils`; the only path alias is `@/* → ./*`.
+- **Every FILL is opaque - never `bg-<token>/<alpha>`.** The dotted ground sits under
+  every page, so a translucent surface lets the dots through it. Neutral surfaces are
+  `bg-surface` / `bg-surface-strong`, a tint is `bg-<colour>-wash` / `-wash-strong`
+  (`primary`, `destructive`, `warning`, `success`, `info`, `violet`) - all composed onto
+  `--background` with `color-mix` in `app/globals.css`, so they are real colours, not veils.
+  The ONLY alpha backgrounds left are the ones that must show what they cover: `bg-black/*`
+  (a dialog or sheet backdrop) and `bg-background/*` / `bg-popover/*` (a sticky bar behind
+  `backdrop-blur`). `filled-backgrounds.test.ts` fails on anything else. Same rule for a
+  container: a panel or a table on a page owns a background (`Table` carries `bg-card`
+  itself), it does not borrow the page's.
 - **An illustration NEVER draws a grey as white-with-alpha.** Every `*-graphic.tsx` and every
   animated or static illustration paints in **solid tokens at 100%**: if a grey is wanted, use the
   token that IS that grey. `foreground/40`, `primary/45`, `muted-foreground/25`, `bg-white/[0.04]`,

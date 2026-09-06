@@ -275,7 +275,7 @@ export function RepoBrowser({
     // Chosen repo - a compact confirmation, so the common "already picked" case isn't a
     // wall of repos.
     return (
-      <div className="rounded-lg border border-border bg-accent/30">
+      <div className="rounded-lg border border-border bg-surface">
         <div className="flex items-center gap-3 p-3">
           {avatarUrl !== undefined && (
             <Avatar className="size-8">

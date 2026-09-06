@@ -42,7 +42,7 @@ export function UpdateBanner() {
   }
 
   return (
-    <div className="flex items-center gap-3 border-b border-border bg-secondary/50 px-4 py-2 text-sm sm:px-6">
+    <div className="flex items-center gap-3 border-b border-border bg-surface-strong px-4 py-2 text-sm sm:px-6">
       <Sparkles className="size-4 shrink-0 text-[var(--success)]" />
       <span className="min-w-0 truncate">
         Deplo <span className="font-medium">{update.latest}</span> is available

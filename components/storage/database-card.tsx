@@ -198,7 +198,7 @@ function DatabaseCardGrid({
          * the connection string up top as the same click-to-reveal chip the Variables page
          * uses (masked, so the endpoint still reads at a glance), placement + exposure
          */}
-        <div className="rounded-lg border border-border bg-secondary/40 p-3">
+        <div className="rounded-lg border border-border bg-surface p-3">
           <ConnectionChip db={db} canReveal={canReveal} />
           <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
             <ServerIcon className="size-3.5 shrink-0" />

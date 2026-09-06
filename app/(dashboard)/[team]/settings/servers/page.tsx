@@ -66,7 +66,7 @@ function Spec({
   unit: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/30 p-3">
+    <div className="rounded-lg border border-border bg-surface p-3">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon className="size-3.5" />
         {label}
@@ -134,10 +134,7 @@ function SpecTilesSkeleton() {
   return (
     <>
       {Array.from({ length: 4 }).map((_, i) => (
-        <div
-          key={i}
-          className="rounded-lg border border-border bg-muted/30 p-3"
-        >
+        <div key={i} className="rounded-lg border border-border bg-surface p-3">
           <div className="flex items-center gap-1.5">
             <Skeleton className="size-3.5 rounded" />
             <Skeleton className="h-3 w-12" />

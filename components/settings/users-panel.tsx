@@ -227,7 +227,7 @@ export function UsersPanel({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    className="border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive"
                   >
                     Revoke all
                   </Button>

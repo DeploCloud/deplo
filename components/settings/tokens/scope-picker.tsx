@@ -744,7 +744,7 @@ function Row({
     <div
       className={cn(
         "flex items-center gap-2 py-2 pr-3",
-        depth === 0 && "bg-muted/20",
+        depth === 0 && "bg-surface",
       )}
       // Indent by depth rather than by a class per level: folders nest as deep
       // as the Overview lets them, so there is no fixed set of levels.

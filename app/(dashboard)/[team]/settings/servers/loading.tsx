@@ -59,7 +59,7 @@ export default function Loading() {
                 {Array.from({ length: 4 }).map((_, spec) => (
                   <div
                     key={spec}
-                    className="rounded-lg border border-border bg-muted/30 p-3"
+                    className="rounded-lg border border-border bg-surface p-3"
                   >
                     <div className="flex items-center gap-1.5">
                       <Skeleton className="size-3.5 rounded" />

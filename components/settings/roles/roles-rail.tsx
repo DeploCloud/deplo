@@ -123,7 +123,7 @@ export function RolesRail({
               className={cn(
                 "flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
                 active
-                  ? "border-primary bg-primary/5"
+                  ? "border-primary bg-primary-wash"
                   : "border-transparent hover:bg-accent",
               )}
             >
@@ -133,7 +133,7 @@ export function RolesRail({
                   role.builtinKey === "owner"
                     ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                     : active
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-primary-wash-strong text-primary"
                       : "bg-muted text-muted-foreground",
                 )}
               >
@@ -177,8 +177,8 @@ export function RolesRail({
         })}
 
         {activeId === "new" && (
-          <div className="flex items-center gap-2.5 rounded-lg border border-dashed border-primary bg-primary/5 px-2.5 py-2">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <div className="flex items-center gap-2.5 rounded-lg border border-dashed border-primary bg-primary-wash px-2.5 py-2">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary-wash-strong text-primary">
               <Plus className="size-3.5" aria-hidden />
             </span>
             <span className="text-sm font-medium">New role</span>

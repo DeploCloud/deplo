@@ -247,7 +247,7 @@ export default async function AppOverview(
               <Link
                 key={d.id}
                 href={`/apps/${slug}/deployments/${d.id}`}
-                className="flex cursor-pointer items-center gap-4 border-b border-border px-4 py-3 last:border-0 hover:bg-accent/40"
+                className="flex cursor-pointer items-center gap-4 border-b border-border px-4 py-3 last:border-0 hover:bg-surface"
               >
                 <StatusDot status={d.status} />
                 <div className="min-w-0 flex-1">

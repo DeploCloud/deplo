@@ -257,7 +257,7 @@ export function RegisterUserWizard({
             {step === "access" && (
               <>
                 <div className="flex flex-col items-center gap-2 text-center">
-                  <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-primary-wash-strong">
                     <UserPlus className="size-5 text-primary" />
                   </span>
                   <h2 className="text-base font-semibold lg:text-lg">
@@ -295,7 +295,7 @@ export function RegisterUserWizard({
             {step === "teams" && (
               <>
                 <div className="flex flex-col items-center gap-2 text-center">
-                  <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-primary-wash-strong">
                     <Users className="size-5 text-primary" />
                   </span>
                   <h2 className="text-base font-semibold lg:text-lg">
@@ -399,7 +399,7 @@ export function RegisterUserWizard({
                                   className={cn(
                                     "rounded-md border px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                                     a.role === r
-                                      ? "border-primary bg-primary/5 text-foreground"
+                                      ? "border-primary bg-primary-wash text-foreground"
                                       : "border-border text-muted-foreground hover:bg-accent",
                                   )}
                                 >
@@ -418,7 +418,7 @@ export function RegisterUserWizard({
             {step === "link" && link && (
               <>
                 <div className="flex flex-col items-center gap-2 text-center">
-                  <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-primary-wash-strong">
                     <Link2 className="size-5 text-primary" />
                   </span>
                   <h2 className="text-base font-semibold lg:text-lg">

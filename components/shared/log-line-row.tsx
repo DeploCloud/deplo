@@ -179,7 +179,7 @@ export function LogRow({
         zebra && "bg-terminal-stripe",
         // The level's own faint wash, hover included. `info` supplies only the
         // neutral hover, so an ordinary line stays an ordinary line.
-        LEVEL_ROW_CLASS[level] ?? "hover:bg-white/[0.04]",
+        LEVEL_ROW_CLASS[level] ?? "hover:bg-surface",
       )}
     >
       {/* The rail. Absolute so it costs no horizontal space and spans the full

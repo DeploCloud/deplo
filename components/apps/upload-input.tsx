@@ -104,7 +104,7 @@ export function UploadInput({
   return (
     <div className="space-y-3">
       {shown && (
-        <div className="flex items-center gap-3 rounded-md border border-border bg-muted/40 p-3">
+        <div className="flex items-center gap-3 rounded-md border border-border bg-surface p-3">
           <FileArchive className="size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{shown.filename}</p>
@@ -138,7 +138,7 @@ export function UploadInput({
         data-active={dragging || undefined}
         className={cn(
           "group flex min-h-72 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border p-8 text-center transition-colors",
-          dragging && "border-primary bg-primary/5",
+          dragging && "border-primary bg-primary-wash",
           uploading && "cursor-default opacity-80",
         )}
       >

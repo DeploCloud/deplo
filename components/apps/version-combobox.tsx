@@ -149,7 +149,9 @@ export function VersionCombobox({
                     }}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left font-mono text-xs",
-                      i === activeIndex ? "bg-accent" : "hover:bg-accent/60",
+                      i === activeIndex
+                        ? "bg-accent"
+                        : "hover:bg-surface-strong",
                     )}
                   >
                     {it.label}

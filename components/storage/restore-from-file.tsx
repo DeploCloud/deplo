@@ -173,7 +173,7 @@ export function RestoreFromFile({
                   : `Restoring the ${noun} on its server`}
               </p>
               {lines.length > 0 && (
-                <pre className="max-h-32 overflow-auto rounded-md border border-border bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
+                <pre className="max-h-32 overflow-auto rounded-md border border-border bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground">
                   {lines.join("\n")}
                 </pre>
               )}

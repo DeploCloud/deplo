@@ -63,7 +63,7 @@ const TIERS = [
     label: "Critical",
     icon: OctagonAlert,
     tone: "text-destructive",
-    box: "border-destructive/40 bg-destructive/5",
+    box: "border-destructive/40 bg-destructive-wash",
     dot: "bg-destructive",
     body: "",
   },
@@ -72,7 +72,7 @@ const TIERS = [
     label: "Fix by hand",
     icon: TriangleAlert,
     tone: "text-warning",
-    box: "border-warning/40 bg-warning/5",
+    box: "border-warning/40 bg-warning-wash",
     dot: "bg-warning",
     body: "",
   },
@@ -81,8 +81,8 @@ const TIERS = [
     label: "Minor",
     icon: Info,
     tone: "text-muted-foreground",
-    box: "border-border bg-muted/30",
-    dot: "bg-muted-foreground/60",
+    box: "border-border bg-surface",
+    dot: "bg-ring",
     body: "text-muted-foreground",
   },
 ] as const;
@@ -210,7 +210,7 @@ export function PanelAddressDialog({
        */}
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
         <form className="grid grid-cols-[minmax(0,1fr)]" onSubmit={onSubmit}>
-          <div className="flex justify-center border-b border-border bg-muted/30 px-6 pt-7 pb-5">
+          <div className="flex justify-center border-b border-border bg-surface px-6 pt-7 pb-5">
             <PanelMoveGraphic />
           </div>
 
@@ -236,7 +236,7 @@ export function PanelAddressDialog({
                 refusing to move an address because a probe failed would take
                 away the very recovery this page is for. */}
             {failed && (
-              <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+              <p className="rounded-lg border border-destructive/40 bg-destructive-wash p-4 text-sm text-destructive">
                 {failed}
               </p>
             )}
@@ -293,7 +293,7 @@ export function PanelAddressDialog({
 
             {/* Last line, always: the one address this change cannot break. */}
             {impact?.panelFallbackUrl && (
-              <p className="flex items-start gap-2.5 rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">
+              <p className="flex items-start gap-2.5 rounded-lg bg-surface p-3 text-sm text-muted-foreground">
                 <LifeBuoy className="mt-0.5 size-4 shrink-0" />
                 <span>
                   You can always get back in at{" "}

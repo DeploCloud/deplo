@@ -58,7 +58,7 @@ export function RevealChip({
     return (
       <span
         title={locked ? lockedHint : placeholder}
-        className={cn(OUTER, "bg-foreground/[0.04] ring-border/50", className)}
+        className={cn(OUTER, "bg-surface ring-border/50", className)}
       >
         <span className={INNER}>
           <code
@@ -96,8 +96,8 @@ export function RevealChip({
         OUTER,
         "group cursor-pointer text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         revealed
-          ? "ring-border/40 hover:bg-foreground/[0.03]"
-          : "bg-foreground/[0.06] ring-border/50 hover:bg-foreground/[0.09]",
+          ? "ring-border/40 hover:bg-surface"
+          : "bg-surface ring-border/50 hover:bg-surface",
         pending && "cursor-progress",
         className,
       )}

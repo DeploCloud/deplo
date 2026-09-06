@@ -79,7 +79,7 @@ export default function Loading() {
 
                   {/* connection box: the reveal chip + copy, then server ·
                       exposure */}
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3">
+                  <div className="rounded-lg border border-border bg-surface p-3">
                     <div className="flex items-center gap-1.5">
                       <Skeleton className="h-7 flex-1 rounded-md" />
                       <Skeleton className="size-7 rounded-md" />

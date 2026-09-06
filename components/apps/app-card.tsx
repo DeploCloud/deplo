@@ -690,7 +690,7 @@ export function AppCard({
 
           {/* Latest deployment */}
           {dep ? (
-            <div className="rounded-lg border border-border bg-secondary/40 p-3">
+            <div className="rounded-lg border border-border bg-surface p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {/* Non-git deploys (compose / image / upload) have no commit
                     SHA; render it only when present so an empty <code> + gap

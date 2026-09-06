@@ -698,7 +698,7 @@ function ProjectsSection({
               className={cn(
                 "rounded-lg border transition-colors",
                 scope
-                  ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
+                  ? "border-primary bg-primary-wash ring-1 ring-primary/60"
                   : "border-border hover:border-foreground/20",
               )}
             >
@@ -802,7 +802,7 @@ function ModeButton({
         "rounded-md border px-2.5 py-1 text-xs transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         selected
-          ? "border-primary bg-primary/10 font-medium text-foreground"
+          ? "border-primary bg-primary-wash-strong font-medium text-foreground"
           : "border-border text-muted-foreground hover:text-foreground",
       )}
     >
@@ -885,8 +885,8 @@ function AppsSection({
                   "flex items-center gap-3 rounded-lg border p-3 text-left transition-colors",
                   "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
                   on
-                    ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
-                    : "border-border hover:border-foreground/20 hover:bg-muted/40",
+                    ? "border-primary bg-primary-wash ring-1 ring-primary/60"
+                    : "border-border hover:border-foreground/20 hover:bg-surface",
                 )}
               >
                 <AppLogo logo={a.logo} size={32} />
@@ -1136,7 +1136,7 @@ function TeamsSection({
         {shown.map((t) => (
           <label
             key={t.id}
-            className="flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent/40"
+            className="flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-surface"
           >
             <Checkbox
               checked={set.has(t.id)}

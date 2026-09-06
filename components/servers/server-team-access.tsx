@@ -154,7 +154,7 @@ export function AccessOption({
           ? accent
             ? "border-primary ring-1 ring-primary/60"
             : "border-primary bg-accent"
-          : "border-border hover:bg-accent/50",
+          : "border-border hover:bg-surface-strong",
         disabled && "cursor-not-allowed opacity-50",
         veil.className,
       )}

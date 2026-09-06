@@ -26,11 +26,14 @@ export type SidebarTipTone =
 
 const TONE: Record<SidebarTipTone, { card: string; icon: string }> = {
   default: { card: "border-border bg-card", icon: "" },
-  info: { card: "border-info/40 bg-info/10", icon: "text-info" },
-  success: { card: "border-success/40 bg-success/10", icon: "text-success" },
-  warning: { card: "border-warning/40 bg-warning/10", icon: "text-warning" },
+  info: { card: "border-info/40 bg-info-wash", icon: "text-info" },
+  success: { card: "border-success/40 bg-success-wash", icon: "text-success" },
+  warning: {
+    card: "border-warning/40 bg-warning-wash-strong",
+    icon: "text-warning",
+  },
   destructive: {
-    card: "border-destructive/40 bg-destructive/10",
+    card: "border-destructive/40 bg-destructive-wash-strong",
     icon: "text-destructive",
   },
 };

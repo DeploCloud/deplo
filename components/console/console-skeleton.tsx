@@ -18,7 +18,7 @@ export function ConsoleSkeleton({ label }: { label: string }) {
     >
       {/* Toolbar: name, container picker, status, shell picker, Shell/Attach,
           and the three actions on the right. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Skeleton className="size-4" />
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-9 w-32 rounded-md" />

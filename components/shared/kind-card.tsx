@@ -36,10 +36,10 @@ export function KindCard({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "rounded-lg border border-border p-3 text-left transition-colors hover:bg-accent/40",
+        "rounded-lg border border-border p-3 text-left transition-colors hover:bg-surface",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent",
-        selected && "border-primary bg-primary/[0.06] ring-1 ring-primary/60",
+        selected && "border-primary bg-primary-wash ring-1 ring-primary/60",
       )}
     >
       <span className="flex items-center gap-2 text-sm font-medium">

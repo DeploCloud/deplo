@@ -769,7 +769,7 @@ export function FacetMenu<T>({
             "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-50",
             on
-              ? "border-primary/60 bg-primary/[0.06] text-foreground"
+              ? "border-primary/60 bg-primary-wash text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -969,7 +969,7 @@ export function FacetCombobox<T>({
               // button, and its summary-as-placeholder reads as a VALUE, not a
               // hint - it is what the filter is doing right now.
               on &&
-                "border-primary/60 bg-primary/[0.06] placeholder:text-foreground",
+                "border-primary/60 bg-primary-wash placeholder:text-foreground",
             )}
           />
           <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 opacity-50" />

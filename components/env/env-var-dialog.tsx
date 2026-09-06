@@ -348,7 +348,7 @@ function AddDialog({
             ) : (
               // A segmented control on a track - the same shape the app wears
               // elsewhere, so the idle half still reads as a place you can go.
-              <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-secondary/40 p-1">
+              <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-surface p-1">
                 <TabsTrigger
                   value="standalone"
                   className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -498,7 +498,7 @@ function StandaloneTab({
         <EnvRowsEditor rows={rows} onChange={setRows} />
 
         {looksSecret && (
-          <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
+          <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
             <Info className="mt-px size-3.5 shrink-0" />
             <span>
               “{filled[0].key.trim()}” reads like a credential. Turn on Secret
@@ -508,7 +508,7 @@ function StandaloneTab({
         )}
 
         {filled.length > 1 ? (
-          <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
+          <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
             <Info className="mt-px size-3.5 shrink-0" />
             <span>
               Pasted variables are added as plain - flip individual ones to
@@ -634,7 +634,7 @@ function SharedTab({
               // Same table grammar as the Standalone tab: a labelled header, one
               // row per variable, no card floating loose inside a card.
               <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-                <div className="flex items-center justify-between bg-secondary/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                <div className="flex items-center justify-between bg-surface px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                   <span>Shared variable</span>
                   <span aria-hidden />
                 </div>
@@ -731,7 +731,7 @@ function SharedVarLinkRow({
     );
 
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-accent/30">
+    <div className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-surface">
       <div className="min-w-0 space-y-1">
         <p className="truncate font-mono text-xs font-medium">
           {sharedVar.key}

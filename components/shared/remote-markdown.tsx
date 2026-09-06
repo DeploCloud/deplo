@@ -44,7 +44,7 @@ export function RemoteMarkdown({ source }: { source: string }) {
             </code>
           ),
           pre: ({ children }) => (
-            <pre className="overflow-x-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-xs">
+            <pre className="overflow-x-auto rounded-md border border-border bg-surface p-3 font-mono text-xs">
               {children}
             </pre>
           ),

@@ -164,7 +164,7 @@ function RunRow({
             </p>
           )}
           {output ? (
-            <pre className="max-h-80 overflow-auto rounded-md bg-muted/40 p-2 font-mono text-xs">
+            <pre className="max-h-80 overflow-auto rounded-md bg-surface p-2 font-mono text-xs">
               {output}
             </pre>
           ) : (

@@ -804,7 +804,7 @@ function CertificatesCard() {
             </div>
 
             {loading ? (
-              <div className="h-[5.5rem] animate-pulse rounded-lg bg-muted/50" />
+              <div className="h-[5.5rem] animate-pulse rounded-lg bg-surface-strong" />
             ) : error ? (
               <p className="text-sm text-muted-foreground">{error}</p>
             ) : accounts && accounts.length > 0 ? (

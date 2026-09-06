@@ -131,7 +131,7 @@ function ExposureCard({
               </Select>
             </div>
             {movingServer && (
-              <div className="rounded-md border border-border bg-secondary/40 p-3">
+              <div className="rounded-md border border-border bg-surface p-3">
                 <div className="flex items-start gap-2">
                   <ArrowRightLeft className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <div className="space-y-1 text-xs">
@@ -258,7 +258,7 @@ function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
               <Eye className="size-3.5" />
               New connection string - shown once, copy it now.
             </p>
-            <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-2.5 py-1.5">
+            <div className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
               <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap">
                 {newConn}
               </code>

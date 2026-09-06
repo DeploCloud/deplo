@@ -20,20 +20,20 @@ export const SERVER_USES: Record<
   everything: {
     label: "Everything",
     icon: ServerCog,
-    className: "bg-info/15 text-info",
+    className: "bg-info-wash text-info",
     title: "Runs your deployments and builds them.",
   },
   build: {
     label: "Build only",
     icon: Hammer,
-    className: "bg-warning/15 text-warning",
+    className: "bg-warning-wash-strong text-warning",
     title:
       "This server only builds images, for apps that run on your other servers. Nothing is deployed here and it has no proxy.",
   },
   storage: {
     label: "Backups only",
     icon: Archive,
-    className: "bg-violet/15 text-violet",
+    className: "bg-violet-wash text-violet",
     title:
       "This server only holds backup files. It has no Docker and nothing is deployed here.",
   },

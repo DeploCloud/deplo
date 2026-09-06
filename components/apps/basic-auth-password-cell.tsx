@@ -75,8 +75,8 @@ export function BasicAuthPasswordCell({
           OUTER,
           "group cursor-pointer text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           revealed
-            ? "ring-border/40 hover:bg-foreground/[0.03]"
-            : "bg-foreground/[0.06] ring-border/50 hover:bg-foreground/[0.09]",
+            ? "ring-border/40 hover:bg-surface"
+            : "bg-surface ring-border/50 hover:bg-surface",
         )}
       >
         <span className={INNER}>

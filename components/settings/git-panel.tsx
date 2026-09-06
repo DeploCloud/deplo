@@ -476,7 +476,7 @@ function ConnectionCard({
       }
     >
       {conn.health === "failing" ? (
-        <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+        <div className="mt-3 rounded-md border border-destructive/30 bg-destructive-wash p-3">
           <p className="flex items-center gap-1.5 text-xs font-medium">
             <AlertTriangle className="size-3.5 text-destructive" />
             This connection stopped working

@@ -184,10 +184,10 @@ function Note({
 }) {
   const toneClass =
     tone === "warning"
-      ? "border-warning/40 bg-warning/10 text-warning"
+      ? "border-warning/40 bg-warning-wash-strong text-warning"
       : tone === "destructive"
-        ? "border-destructive/40 bg-destructive/10 text-destructive"
-        : "border-border bg-muted/30 text-muted-foreground";
+        ? "border-destructive/40 bg-destructive-wash-strong text-destructive"
+        : "border-border bg-surface text-muted-foreground";
   return (
     <p
       className={cn(
@@ -205,7 +205,7 @@ function Note({
 function EditorSkeleton() {
   return (
     <div
-      className="animate-pulse rounded-lg border border-input bg-muted/30"
+      className="animate-pulse rounded-lg border border-input bg-surface"
       style={{ minHeight: EDITOR_MIN_HEIGHT }}
       aria-hidden
     />

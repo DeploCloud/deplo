@@ -195,7 +195,7 @@ export function ConsolePane({
       {/* One toolbar row, wrapping on narrow viewports. Everything beside a
           Select in it is h-9: `size="sm"` is h-8 and lands 4px short, which
           reads as a broken row. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <TerminalSquare className="size-4 shrink-0 text-muted-foreground" />
         <PaneTitleLink title={title} />
 
@@ -222,9 +222,7 @@ export function ConsolePane({
                       <span
                         className={cn(
                           "size-1.5 rounded-full",
-                          inst.running
-                            ? "bg-[var(--success)]"
-                            : "bg-muted-foreground/50",
+                          inst.running ? "bg-[var(--success)]" : "bg-ring",
                         )}
                       />
                       {inst.service}
@@ -401,7 +399,7 @@ export function ConsoleEmpty({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <TerminalSquare className="size-4 shrink-0 text-muted-foreground" />
         <PaneTitleLink title={title} />
       </div>
@@ -440,7 +438,7 @@ function ConsoleStatus({
             ? "bg-[var(--success)]"
             : tone === "bad"
               ? "bg-destructive"
-              : "bg-muted-foreground/50",
+              : "bg-ring",
           pulse && "animate-pulse",
         )}
       />

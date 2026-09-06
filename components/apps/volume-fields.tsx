@@ -364,7 +364,7 @@ function MountRow({
           onClick={onToggle}
           aria-expanded={expanded}
           aria-label={`Edit this ${meta.label}`}
-          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
         >
           <Badge variant={meta.chip} className="shrink-0 gap-1.5">
             <Icon className="size-3" />
@@ -437,7 +437,7 @@ function MountRow({
           {/* Zone 2 - the blanks. */}
           <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2">
             {blockedBind && (
-              <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning sm:col-span-2">
+              <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-wash-strong px-3 py-2 text-xs text-warning sm:col-span-2">
                 <ShieldAlert className="mt-px size-3.5 shrink-0" />
                 Your account can&apos;t save a Bind. An admin turns it on with
                 &quot;Bind server folders&quot; in Settings → Users. Volume and
@@ -601,7 +601,7 @@ function MountRow({
           </div>
 
           {/* Zone 3 - what it will do, or the one thing wrong with it. */}
-          <div className="space-y-1.5 border-t border-border bg-muted/30 px-4 py-2.5">
+          <div className="space-y-1.5 border-t border-border bg-surface px-4 py-2.5">
             {problem ? (
               <p className="flex items-start gap-2 text-xs text-destructive">
                 <TriangleAlert className="mt-px size-3.5 shrink-0" />
@@ -662,8 +662,8 @@ function KindCard({
         "flex h-full items-start gap-2.5 rounded-lg border p-3 text-left transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         selected
-          ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
-          : "border-border hover:border-foreground/20 hover:bg-muted/40",
+          ? "border-primary bg-primary-wash ring-1 ring-primary/60"
+          : "border-border hover:border-foreground/20 hover:bg-surface",
       )}
     >
       <span
@@ -671,7 +671,7 @@ function KindCard({
           "flex size-7 shrink-0 items-center justify-center rounded-md border",
           selected
             ? "border-primary/40 bg-background text-primary"
-            : "border-border bg-muted/50 text-muted-foreground",
+            : "border-border bg-surface-strong text-muted-foreground",
         )}
       >
         <Icon className="size-3.5" />
@@ -790,7 +790,7 @@ function EmptyPicker({
               key={kind}
               type="button"
               onClick={() => onAdd(kind)}
-              className="flex flex-col gap-1.5 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
+              className="flex flex-col gap-1.5 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-surface"
             >
               <span className="flex items-center gap-2">
                 <Icon className="size-4 text-muted-foreground" />
@@ -814,7 +814,7 @@ function EmptyPicker({
       <button
         type="button"
         onClick={() => onAdd("host")}
-        className="mt-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-left transition-colors hover:bg-muted/40"
+        className="mt-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-left transition-colors hover:bg-surface"
       >
         <FolderSymlink className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="text-xs font-medium">{VOLUME_KINDS.host.label}</span>

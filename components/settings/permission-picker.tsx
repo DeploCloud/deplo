@@ -167,7 +167,7 @@ export function PermissionPicker({
                 key={cat.key}
                 className="overflow-hidden rounded-lg border border-border"
               >
-                <header className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
+                <header className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
                   <h4 className="text-sm font-medium">{cat.label}</h4>
                   <Badge
                     variant={granted === 0 ? "muted" : "secondary"}

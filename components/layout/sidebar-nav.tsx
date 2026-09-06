@@ -302,7 +302,7 @@ export function SidebarNav({
                       collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
                       active
                         ? "text-foreground"
-                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5",
+                        : "text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:bg-surface",
                     )}
                   >
                     {showIcon && <NavIcon item={item} active={active} />}

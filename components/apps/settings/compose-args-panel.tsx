@@ -120,7 +120,7 @@ export function ComposeArgsPanel({
 
       {/* The command as the owning server will run it: Deplo's part muted, yours
           in full contrast. Scrolls on its own so a long flag never widens the card. */}
-      <div className="overflow-x-auto rounded-md border border-border bg-muted/30 px-3 py-2">
+      <div className="overflow-x-auto rounded-md border border-border bg-surface px-3 py-2">
         <code className="flex items-baseline gap-1.5 font-mono text-[0.7rem] leading-relaxed whitespace-pre">
           <Terminal
             aria-hidden

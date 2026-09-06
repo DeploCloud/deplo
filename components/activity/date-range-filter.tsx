@@ -62,7 +62,7 @@ export function DateRangeFilter({
             "flex h-9 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors",
             "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
             on
-              ? "border-primary/60 bg-primary/[0.06] text-foreground"
+              ? "border-primary/60 bg-primary-wash text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

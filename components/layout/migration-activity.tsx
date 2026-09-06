@@ -170,7 +170,7 @@ export function MigrationChip({ canOpen }: { canOpen: boolean }) {
           second row of furniture, and the chip already has the shape of one. */}
       <span
         aria-hidden
-        className="absolute inset-y-0 left-0 bg-warning/30 transition-[width] duration-500"
+        className="absolute inset-y-0 left-0 bg-warning-wash-strong transition-[width] duration-500"
         style={{ width: `${pct}%` }}
       />
       <span className="relative flex items-center gap-1.5">

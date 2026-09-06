@@ -727,7 +727,7 @@ function PaletteBody({
 
       <div
         aria-hidden
-        className="flex h-11 shrink-0 items-center gap-4 border-t border-border bg-muted/30 px-4 text-xs text-muted-foreground max-sm:hidden"
+        className="flex h-11 shrink-0 items-center gap-4 border-t border-border bg-surface px-4 text-xs text-muted-foreground max-sm:hidden"
       >
         <Hint chord="↵" label="Select" />
         <span className="ml-auto flex items-center gap-1.5">

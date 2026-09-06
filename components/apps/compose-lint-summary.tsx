@@ -47,7 +47,7 @@ export function ComposeLintSummary({
   }
 
   return (
-    <div className="space-y-1.5 rounded-md border border-border bg-muted/30 p-2">
+    <div className="space-y-1.5 rounded-md border border-border bg-surface p-2">
       <div className="flex items-center gap-3 text-xs font-medium">
         {(["error", "warning", "info"] as const).map((sev) =>
           counts[sev] > 0 ? (

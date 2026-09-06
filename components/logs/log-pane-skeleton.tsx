@@ -38,7 +38,7 @@ export function LogPaneSkeleton() {
       aria-label="Loading logs"
     >
       {/* Toolbar: container picker, status, search, level filter, actions. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Skeleton className="size-4" />
         {/* The name, which is the only heading this route has. */}
         <Skeleton className="h-4 w-28" />

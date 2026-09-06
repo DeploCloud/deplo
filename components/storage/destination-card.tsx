@@ -195,7 +195,7 @@ export function DestinationCard({
             <button
               type="button"
               onClick={openLog}
-              className="flex w-full items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-left transition-colors hover:bg-destructive/10"
+              className="flex w-full items-start gap-2 rounded-lg border border-destructive/30 bg-destructive-wash p-3 text-left transition-colors hover:bg-destructive-wash-strong"
             >
               <ScrollText className="mt-0.5 size-3.5 shrink-0 text-destructive" />
               <span className="min-w-0 flex-1 space-y-0.5">

@@ -261,7 +261,7 @@ function DisconnectedNotification() {
         glow: "#10b981",
       }
     : {
-        core: "border-destructive/30 bg-destructive/15 text-destructive",
+        core: "border-destructive/30 bg-destructive-wash-strong text-destructive",
         glow: "var(--destructive)",
       };
 
@@ -328,7 +328,7 @@ function DisconnectedNotification() {
               <span
                 key={cycleKey}
                 aria-hidden
-                className="absolute inset-0 origin-left bg-primary-foreground/20 motion-reduce:hidden"
+                className="absolute inset-0 origin-left bg-[color-mix(in_srgb,var(--primary-foreground)_20%,var(--primary))] motion-reduce:hidden"
                 style={{
                   animation: `reconnect-progress ${cycleMs}ms linear forwards`,
                 }}

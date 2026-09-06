@@ -41,7 +41,7 @@ export function SetupKey({ secret }: { secret: string }) {
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+    <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
       <div className="flex items-center gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">
           TOTP setup key

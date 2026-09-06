@@ -41,7 +41,9 @@ export function BackupRow({
   return (
     <TableRow
       {...selectableProps(backup.id, (e) => onSelect(backup.id, e))}
-      className={cn(selected && "bg-primary/10 hover:bg-primary/10")}
+      className={cn(
+        selected && "bg-primary-wash-strong hover:bg-primary-wash-strong",
+      )}
     >
       {/* A dump takes minutes and nothing here changes by itself: re-read the
           page while this one runs, wherever it was started from. */}

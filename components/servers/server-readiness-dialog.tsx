@@ -114,13 +114,13 @@ const VERDICT_META: Record<
   not_ready: {
     icon: CircleX,
     label: "Not ready to deploy",
-    box: "border-destructive/30 bg-destructive/10",
+    box: "border-destructive/30 bg-destructive-wash-strong",
     tone: "text-destructive",
   },
   provisioning: {
     icon: Hourglass,
     label: "Still provisioning",
-    box: "border-border bg-muted/30",
+    box: "border-border bg-surface",
     tone: "text-muted-foreground",
   },
 };

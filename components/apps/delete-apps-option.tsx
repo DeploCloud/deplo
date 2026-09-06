@@ -25,7 +25,7 @@ export function DeleteAppsOption({
         ? "the app inside"
         : `all ${count} apps inside`;
   return (
-    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive-wash p-3 text-sm">
       <Checkbox
         checked={checked}
         onCheckedChange={(v) => onChange(v === true)}

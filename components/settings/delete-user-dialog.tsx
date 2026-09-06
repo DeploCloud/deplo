@@ -169,7 +169,7 @@ export function DeleteUserDialog({
             </div>
           )}
           {failed && (
-            <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
+            <p className="rounded-lg border border-destructive/40 bg-destructive-wash p-3 text-xs text-destructive">
               {failed}
             </p>
           )}
@@ -178,7 +178,7 @@ export function DeleteUserDialog({
               {/* Not optional, so not a checkbox - a statement of fact, with the
                   numbers that make it concrete. */}
               {impact.soloTeams.length > 0 && (
-                <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+                <div className="rounded-lg border border-destructive/40 bg-destructive-wash p-3">
                   <p className="flex items-center gap-1.5 font-medium text-destructive">
                     <AlertTriangle className="size-4 shrink-0" />
                     {impact.soloTeams.length === 1
@@ -426,7 +426,7 @@ function Option({
     <label
       className={cn(
         "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-colors",
-        danger ? "border-destructive/40 bg-destructive/5" : "border-border",
+        danger ? "border-destructive/40 bg-destructive-wash" : "border-border",
       )}
     >
       <Checkbox

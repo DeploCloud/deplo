@@ -25,7 +25,7 @@ const TextEditor = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-64 animate-pulse rounded-lg border border-input bg-muted/40" />
+      <div className="h-64 animate-pulse rounded-lg border border-input bg-surface" />
     ),
   },
 );

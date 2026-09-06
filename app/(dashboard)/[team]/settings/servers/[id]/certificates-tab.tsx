@@ -150,7 +150,7 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
               {Array.from({ length: 2 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-16 animate-pulse rounded bg-muted/50"
+                  className="h-16 animate-pulse rounded bg-surface-strong"
                 />
               ))}
             </div>

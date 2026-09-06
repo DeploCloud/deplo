@@ -566,7 +566,7 @@ function PortConflictRow({
   const toggleField = `imp-expose-${service.sourceId}`;
   return (
     <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-warning/10 py-2 pr-3 text-xs text-warning"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-warning-wash-strong py-2 pr-3 text-xs text-warning"
       style={{ paddingLeft: `${0.75 + 3 * 1.25}rem` }}
     >
       <span className="flex items-start gap-2">
@@ -845,7 +845,7 @@ function Row({
     <div
       className={cn(
         "flex items-center gap-2 py-2 pr-3",
-        depth === 0 && "bg-muted/20",
+        depth === 0 && "bg-surface",
       )}
       // Indent by depth rather than a class per level, exactly as the scope
       // picker does - the two trees have to line up visually.

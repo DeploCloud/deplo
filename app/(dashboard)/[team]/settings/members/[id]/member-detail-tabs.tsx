@@ -452,7 +452,7 @@ export function MemberDetailTabs({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive"
                   onClick={() => setConfirmTransfer(true)}
                 >
                   <Crown className="size-4" />
@@ -476,7 +476,7 @@ export function MemberDetailTabs({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive"
                   onClick={() => setConfirmRemove(true)}
                 >
                   <UserMinus className="size-4" />

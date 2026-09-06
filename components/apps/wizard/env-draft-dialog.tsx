@@ -131,7 +131,7 @@ function EnvDraftBody({
     <>
       <form onSubmit={onSubmit} className="grid gap-4">
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-          <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-secondary/40 p-1">
+          <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-surface p-1">
             <TabsTrigger value="variables">
               <Variable className="size-4" />
               Variables
@@ -157,7 +157,7 @@ function EnvDraftBody({
             {sharedVars.map((v) => (
               <label
                 key={v.id}
-                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/40"
+                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-surface"
               >
                 <Checkbox
                   checked={picked.includes(v.id)}

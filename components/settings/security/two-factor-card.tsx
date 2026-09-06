@@ -174,7 +174,7 @@ export function TwoFactorCard({
         )}
 
         {codes && (
-          <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-3">
+          <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
             <p className="text-sm font-medium">Your new recovery codes</p>
             <p className="text-sm text-muted-foreground">
               Each one signs you in once. This is the only time they are shown.

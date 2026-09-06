@@ -80,7 +80,7 @@ export function DeploDiagnosticsCard({
         <CopyButton value={report} label="Copy" />
       </CardHeader>
       <CardContent>
-        <pre className="overflow-x-auto rounded-lg border border-border bg-muted/30 p-3 font-mono text-xs text-muted-foreground">
+        <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-xs text-muted-foreground">
           {report}
         </pre>
       </CardContent>

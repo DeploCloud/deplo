@@ -36,7 +36,7 @@ export function StatCard({
     </CardContent>
   );
   return (
-    <Card className={cn(href && "transition-colors hover:bg-accent/40")}>
+    <Card className={cn(href && "transition-colors hover:bg-surface")}>
       {href ? <Link href={href}>{body}</Link> : body}
     </Card>
   );

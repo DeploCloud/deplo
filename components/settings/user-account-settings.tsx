@@ -416,7 +416,7 @@ export function UserAccountSettings({
         ) : (
           <>
             {ownerLocked && (
-              <p className="rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+              <p className="rounded-lg border border-border bg-surface-strong p-3 text-xs text-muted-foreground">
                 This account owns the instance. Only its owner can change it -
                 no other admin can demote, suspend, reset or delete them.
                 Ownership moves only when the owner transfers it.
@@ -596,7 +596,7 @@ export function UserAccountSettings({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        className="border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive"
                         disabled={pending}
                         onClick={() => setConfirmResetTwoFactor(true)}
                       >
@@ -629,7 +629,7 @@ export function UserAccountSettings({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        className="border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive"
                         disabled={pending}
                         onClick={() => setConfirmSuspend(true)}
                       >
@@ -942,7 +942,7 @@ function sectionShell(tone: "default" | "destructive") {
   return cn(
     "space-y-3 rounded-lg border p-3",
     tone === "destructive"
-      ? "border-destructive/40 bg-destructive/5"
+      ? "border-destructive/40 bg-destructive-wash"
       : "border-border",
   );
 }
@@ -1029,8 +1029,8 @@ function RowNotice({
       className={cn(
         "flex items-center gap-2 rounded-b-lg border border-t-0 px-3 py-2 text-xs",
         tone === "warning"
-          ? "border-warning/40 bg-warning/10 text-warning"
-          : "border-border bg-muted/40 text-muted-foreground",
+          ? "border-warning/40 bg-warning-wash-strong text-warning"
+          : "border-border bg-surface text-muted-foreground",
       )}
     >
       <AlertCircle className="size-3.5 shrink-0" />

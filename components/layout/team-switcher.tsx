@@ -199,7 +199,7 @@ function TeamRow({
         "group relative cursor-pointer overflow-hidden",
         // The active team is the row that is already lit, so it needs no mark of
         // its own. Same token the sidebar tints its rows with.
-        active && "bg-foreground/10",
+        active && "bg-secondary",
         isDragging && "z-10 opacity-80",
       )}
       onSelect={onSelect}

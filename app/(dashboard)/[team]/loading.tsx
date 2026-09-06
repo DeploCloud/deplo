@@ -74,7 +74,7 @@ export default function Loading() {
                 <Skeleton className="size-8 rounded-md" />
               </div>
               {/* Latest deployment box */}
-              <div className="rounded-lg border border-border bg-secondary/40 p-3">
+              <div className="rounded-lg border border-border bg-surface p-3">
                 <div className="flex items-center gap-2">
                   <Skeleton className="size-1.5 rounded-full" />
                   <Skeleton className="h-3.5 w-14" />

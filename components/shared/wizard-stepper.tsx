@@ -55,7 +55,7 @@ export function WizardStepper<T extends string>({
                 className={cn(
                   "flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px]",
                   active
-                    ? "border-primary bg-primary/10 text-primary"
+                    ? "border-primary bg-primary-wash-strong text-primary"
                     : done
                       ? "border-primary/40 text-primary"
                       : "border-border",

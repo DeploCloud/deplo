@@ -269,7 +269,9 @@ export function TwoFactorWizard({
               <span
                 className={cn(
                   "flex size-10 items-center justify-center rounded-full",
-                  step === "codes" ? "bg-[var(--warning)]/10" : "bg-primary/10",
+                  step === "codes"
+                    ? "bg-[var(--warning)]/10"
+                    : "bg-primary-wash-strong",
                 )}
               >
                 <StepIcon
@@ -288,7 +290,7 @@ export function TwoFactorWizard({
             {error && step !== "password" && (
               <p
                 role="alert"
-                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive"
+                className="rounded-md border border-destructive/40 bg-destructive-wash-strong px-3 py-2 text-center text-sm text-destructive"
               >
                 {error}
               </p>
@@ -310,7 +312,7 @@ export function TwoFactorWizard({
                     className={cn(fieldControl, error && invalidField)}
                   />
                 </Field>
-                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
                   <AuthenticatorAppGraphic className="size-12 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-xs font-medium">
@@ -386,7 +388,7 @@ export function TwoFactorWizard({
 
             {step === "codes" && (
               <div className="space-y-4">
-                <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-muted/30 p-3">
+                <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-surface p-3">
                   {backupCodes.map((c, i) => (
                     <li
                       key={c}

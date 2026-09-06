@@ -264,7 +264,7 @@ export function BuildLogStream({
                 size="sm"
                 onClick={stopBuild}
                 disabled={stopping}
-                className="h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="h-9 border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive"
               >
                 <Ban />
                 {stopping ? "Stopping" : "Stop build"}
