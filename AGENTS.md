@@ -616,8 +616,12 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   (`bg-background`, `text-muted-foreground`). App defaults to dark; theme is a **custom provider**
   (`useTheme` from `@/components/theme-provider`, not next-themes), zero-flash via the `theme`
   cookie read in `app/layout.tsx`. `cn()` from `@/lib/utils`; the only path alias is `@/* → ./*`.
-- **Every FILL is opaque - never `bg-<token>/<alpha>`.** The dotted ground sits under
-  every page, so a translucent surface lets the dots through it. Neutral surfaces are
+- **The dotted ground marks a CANVAS of resources**, not the whole dashboard: the Overview,
+  `/apps`, `/storage` and `/servers` plus a resource's own pages (`isDottedRoute`,
+  `components/layout/shell-frame.tsx`). A list, a stream, a form or a settings screen is a
+  reading surface and stays flat.
+- **Every FILL is opaque - never `bg-<token>/<alpha>`.** A translucent surface lets that
+  ground through it, and a veil over a plain page is a colour nobody chose. Neutral surfaces are
   `bg-surface` / `bg-surface-strong`, a tint is `bg-<colour>-wash` / `-wash-strong`
   (`primary`, `destructive`, `warning`, `success`, `info`, `violet`) - all composed onto
   `--background` with `color-mix` in `app/globals.css`, so they are real colours, not veils.
