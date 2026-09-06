@@ -268,7 +268,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         <ArchiveDropZone href={newAppHref(placement, { source: "upload" })} />
       )}
       {/* Right rail */}
-      <div className="order-2 space-y-6 lg:order-2">
+      <div className="relative z-10 order-2 space-y-6 lg:order-2">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm lg:text-sm">
