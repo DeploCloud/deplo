@@ -603,7 +603,9 @@ test("the team kill switch stops an OAuth connection too", async () => {
   await pg.query(`update teams set mcp_enabled = false where id = $1`, [
     TEAM_A,
   ]);
-  assert.equal((await mcp(conn.accessToken)).status, 403);
+  // The credential stops RESOLVING, on this door and on /api/graphql alike -
+  // the same 401 losing the membership answers, not a door-specific 403.
+  assert.equal((await mcp(conn.accessToken)).status, 401);
 });
 
 test("losing the membership stops an OAuth connection", async () => {
