@@ -65,6 +65,11 @@ const FILE_EXTENSIONS = new Set([
   "pub",
   "jks",
   "keystore",
+  "lock",
+  "dat",
+  "bin",
+  "cert",
+  "ovpn",
 ]);
 
 // Well-known config files with no extension. `.ssh` / `.config` style dirs are
@@ -103,11 +108,13 @@ function normalizeRel(p: string): string {
 /**
  * The file-shaped binds a RENDERED stack takes from `filesDir`, as paths relative
  * to it, minus the ones in `written` (the config files the agent writes anyway).
+ * A path in `knownFiles` (a Storage **File** row) is a file whatever its name.
  */
 export function fileBindsUnderFilesDir(
   stackYaml: string,
   filesDir: string,
   written: Iterable<string> = [],
+  knownFiles: Iterable<string> = [],
 ): string[] {
   let doc: { services?: Record<string, { volumes?: unknown }> } | null;
   try {
@@ -119,6 +126,7 @@ export function fileBindsUnderFilesDir(
   if (!services || typeof services !== "object") return [];
   const root = filesDir.replace(/\/+$/, "") + "/";
   const skip = new Set(Array.from(written, normalizeRel));
+  const files = new Set(Array.from(knownFiles, normalizeRel));
   const out = new Set<string>();
   for (const svc of Object.values(services)) {
     if (!Array.isArray(svc?.volumes)) continue;
@@ -127,7 +135,8 @@ export function fileBindsUnderFilesDir(
       if (!src?.startsWith(root)) continue;
       const rel = normalizeRel(src.slice(root.length));
       if (!rel || skip.has(rel)) continue;
-      if (looksLikeFileMount(src, volumeTarget(v).mountPath)) out.add(rel);
+      if (files.has(rel) || looksLikeFileMount(src, volumeTarget(v).mountPath))
+        out.add(rel);
     }
   }
   return [...out];

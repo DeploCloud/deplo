@@ -893,3 +893,16 @@ test("network_mode names a NETWORK unless it is a keyword, so it is allowlisted"
   assert.equal(mode("host"), true);
   assert.equal(mode("container:other"), true);
 });
+
+test("lint: the ./ note says a missing path is created, as a file or a folder", () => {
+  const diags = lintCompose(`services:
+  web:
+    image: nginx
+    volumes:
+      - ./config.yml:/app/config.yml
+`);
+  const note = diags.find((d) => d.rule === "bind-mount-files-note");
+  assert.ok(note, "the note is emitted");
+  assert.match(note.message, /creates it there if it is missing/);
+  assert.match(note.message, /as a file when the name looks like one/);
+});

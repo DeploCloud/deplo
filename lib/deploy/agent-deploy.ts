@@ -25,6 +25,9 @@ import { stackFilesDir } from "./deploy-key";
 import { fileBindsUnderFilesDir } from "./file-binds";
 import { composeDeployArgs } from "./compose-args";
 import { loadRegistryAuthsForApp } from "../data/registries";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "../db/client";
+import { appVolumes as appVolumesTable } from "../db/schema/control-plane";
 import { generateDockerfile } from "./dockerfile";
 import {
   normalizeBuildConfig,
@@ -203,6 +206,17 @@ export interface AgentDeployResult {
 /**
  * Run a deploy through the agent.
  */
+/** The paths of the app's Storage **File** rows: files by definition, whatever the name. */
+export async function fileVolumePathsForApp(appId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ path: appVolumesTable.projectPath })
+    .from(appVolumesTable)
+    .where(
+      and(eq(appVolumesTable.appId, appId), eq(appVolumesTable.type, "app")),
+    );
+  return rows.map((r) => r.path ?? "").filter(Boolean);
+}
+
 /** What the agent finds at a path in the app's files dir. */
 async function filesPathState(
   conn: Pick<AgentConnection, "readFile">,
@@ -240,7 +254,13 @@ export async function ensureFileBinds(
     const state = await filesPathState(conn, slug, rel);
     if (state === "file") continue;
     if (state === "folder") {
-      if ((await conn.listFiles(slug, rel)).length > 0) {
+      // A folder that vanished between the two calls is simply missing.
+      const entries = await conn.listFiles(slug, rel).catch((e) => {
+        if ((e as { code?: number } | null)?.code === GrpcStatus.NOT_FOUND)
+          return [];
+        throw e;
+      });
+      if (entries.length > 0) {
         log(
           "warn",
           `${rel} in this app's Files is a folder with content, so it is mounted as a folder.`,
@@ -375,6 +395,7 @@ export async function runAgentDeploy(opts: {
           opts.composeYaml,
           stackFilesDir(opts.slug),
           req.mounts.map((m) => m.path),
+          await fileVolumePathsForApp(opts.appId),
         ),
         (level, text) => opts.sink.log(level, text),
       );

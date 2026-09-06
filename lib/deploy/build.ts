@@ -2966,6 +2966,9 @@ async function rerouteAppLocked(
         rendered,
         composeFilesDir(deployKey),
         mounts.map((m) => m.path),
+        (project.volumes ?? [])
+          .filter((v) => v.type === "app")
+          .map((v) => v.projectPath ?? ""),
       ),
       (level, text) => {
         if (level === "warn") console.warn(`[deplo] ${appId}: ${text}`);
