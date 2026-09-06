@@ -425,7 +425,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
           diags.push({
             severity: "info",
             rule: "bind-mount-files-note",
-            message: `\`${name}\` mounts \`${src}\` - Deplo rewrites this to your project's isolated files directory at deploy time.`,
+            message: `\`${name}\` mounts \`${src}\` - Deplo rewrites this to your project's isolated files directory at deploy time, and creates it there if it is missing: as a file when the name looks like one (config.yml), else as a folder.`,
             line: volLine,
           });
         } else if (isEscapingSource(src)) {
@@ -783,7 +783,10 @@ export function composeFileBindings(composeYaml: string): ComposeFileBinding[] {
 }
 
 /** Target side of a volume entry: the container path and whether it is read-only. */
-function volumeTarget(v: unknown): { mountPath: string; readOnly: boolean } {
+export function volumeTarget(v: unknown): {
+  mountPath: string;
+  readOnly: boolean;
+} {
   if (typeof v === "string") {
     const [, target = "", mode = ""] = v.split(":");
     return { mountPath: target.trim(), readOnly: mode.trim() === "ro" };

@@ -15,7 +15,14 @@ import {
   type BuildSpec,
 } from "../agent/gen/agent";
 import { explainNetworkError } from "./network";
-import { connectAgent, agentPreflight } from "../infra/agent-client";
+import { status as GrpcStatus } from "@grpc/grpc-js";
+import {
+  connectAgent,
+  agentPreflight,
+  type AgentConnection,
+} from "../infra/agent-client";
+import { stackFilesDir } from "./deploy-key";
+import { fileBindsUnderFilesDir } from "./file-binds";
 import { loadRegistryAuthsForApp } from "../data/registries";
 import { generateDockerfile } from "./dockerfile";
 import {
@@ -195,6 +202,60 @@ export interface AgentDeployResult {
 /**
  * Run a deploy through the agent.
  */
+/** What the agent finds at a path in the app's files dir. */
+async function filesPathState(
+  conn: Pick<AgentConnection, "readFile">,
+  slug: string,
+  rel: string,
+): Promise<"file" | "folder" | "missing"> {
+  try {
+    await conn.readFile(slug, rel); // binary / too-large still resolve: a file
+    return "file";
+  } catch (e) {
+    const code = (e as { code?: number } | null)?.code;
+    const msg = e instanceof Error ? e.message : String(e);
+    if (code === GrpcStatus.NOT_FOUND) return "missing";
+    if (code === GrpcStatus.INVALID_ARGUMENT && /not a file/i.test(msg))
+      return "folder";
+    throw e;
+  }
+}
+
+/**
+ * Create every file-shaped bind that is not on the host yet, as an empty FILE, so
+ * `compose up` cannot invent a folder in its place. An empty folder a past deploy
+ * left there is replaced; one with content is kept and named in the log.
+ */
+export async function ensureFileBinds(
+  conn: Pick<
+    AgentConnection,
+    "readFile" | "writeFile" | "listFiles" | "deleteFile"
+  >,
+  slug: string,
+  rels: string[],
+  log: (level: "info" | "warn", text: string) => void,
+): Promise<void> {
+  for (const rel of rels) {
+    const state = await filesPathState(conn, slug, rel);
+    if (state === "file") continue;
+    if (state === "folder") {
+      if ((await conn.listFiles(slug, rel)).length > 0) {
+        log(
+          "warn",
+          `${rel} in this app's Files is a folder with content, so it is mounted as a folder.`,
+        );
+        continue;
+      }
+      await conn.deleteFile(slug, rel);
+    }
+    await conn.writeFile(slug, rel, "");
+    log(
+      "info",
+      `Created an empty ${rel} in this app's Files, mounted as a file.`,
+    );
+  }
+}
+
 export async function runAgentDeploy(opts: {
   serverId: string;
   deployId: string;
@@ -303,6 +364,24 @@ export async function runAgentDeploy(opts: {
   // is a deploy ERROR (or a RECONNECT), never a silent local rebuild.
   let started = false;
   const first = await connectAgent(opts.serverId);
+  // Before the stack comes up, never on a build server (nothing of the app is there).
+  if (!opts.buildOnly) {
+    try {
+      await ensureFileBinds(
+        first,
+        opts.slug,
+        fileBindsUnderFilesDir(
+          opts.composeYaml,
+          stackFilesDir(opts.slug),
+          req.mounts.map((m) => m.path),
+        ),
+        (level, text) => opts.sink.log(level, text),
+      );
+    } catch (e) {
+      first.close();
+      throw e;
+    }
+  }
   try {
     const outcome = await consumeStream(
       first.deploy(req),

@@ -122,7 +122,9 @@ import {
   runAgentDeploy,
   AgentUnavailableError,
   type AgentBuildPlan,
+  ensureFileBinds,
 } from "./agent-deploy";
+import { fileBindsUnderFilesDir } from "./file-binds";
 import {
   connectAgent,
   agentPreflight,
@@ -2955,6 +2957,20 @@ async function rerouteAppLocked(
     // A reroute is a bring-up too, so the app's extra flags apply here as well,
     // otherwise "re-apply routing" would quietly run a different command than a
     // deploy does.
+    // A reroute is a bring-up too: a file bind the compose gained since the last
+    // deploy would otherwise come up as a folder.
+    await ensureFileBinds(
+      conn,
+      deployKey,
+      fileBindsUnderFilesDir(
+        rendered,
+        composeFilesDir(deployKey),
+        mounts.map((m) => m.path),
+      ),
+      (level, text) => {
+        if (level === "warn") console.warn(`[deplo] ${appId}: ${text}`);
+      },
+    );
     const r = await conn.reroute({
       slug: deployKey,
       composeYaml: rendered,

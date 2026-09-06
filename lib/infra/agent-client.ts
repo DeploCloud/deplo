@@ -620,6 +620,8 @@ export interface AgentConnection {
     content: string,
   ): Promise<AgentFileEntry>;
   filesExist(slug: string): Promise<boolean>;
+  /** Remove a file or a whole folder under the app's files dir. */
+  deleteFile(slug: string, path: string): Promise<void>;
 
   close(): void;
 }
@@ -2022,6 +2024,16 @@ function dial(target: DialTarget): AgentConnection {
           filesDeadline(),
           (err, resp) =>
             err ? reject(toAgentError(err)) : resolve(resp.exists),
+        );
+      });
+    },
+    deleteFile(slug: string, path: string) {
+      return new Promise<void>((resolve, reject) => {
+        client.deleteFile(
+          { slug, path },
+          new Metadata(),
+          filesDeadline(),
+          (err) => (err ? reject(toAgentError(err)) : resolve()),
         );
       });
     },

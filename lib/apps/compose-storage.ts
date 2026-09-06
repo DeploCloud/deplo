@@ -1,12 +1,14 @@
 import { stackFilesDir } from "../deploy/deploy-key";
+import { looksLikeFileMount } from "../deploy/file-binds";
 import { composeHostMounts, composeVolumeMounts } from "../migration/map";
 import { usesComposeStack } from "../utils";
 
 /** One mount a compose stack declares in its OWN yaml - shown, never edited here. */
 export interface ComposeMount {
-  /** "named" = a compose `volumes:` alias, "host" = a bind of a server folder. */
-  kind: "named" | "host";
-  /** The volume's alias, or the host path the bind shares. */
+  /** "named" = a compose `volumes:` alias, "app" = a `./x` file of the app's
+   *  Files, "host" = a bind of a server folder. */
+  kind: "named" | "host" | "app";
+  /** The volume's alias, the `./x` path, or the host path the bind shares. */
   source: string;
   /** Where the container sees it. */
   mountPath: string;
@@ -25,6 +27,7 @@ export function composeDeclaredMounts(app: {
 }): ComposeMount[] {
   if (!usesComposeStack(app)) return [];
   const compose = app.compose ?? "";
+  const filesDir = stackFilesDir(app.slug);
   return [
     ...composeVolumeMounts(compose).map((v) => ({
       kind: "named" as const,
@@ -32,11 +35,15 @@ export function composeDeclaredMounts(app: {
       mountPath: v.mountPath,
     })),
     // A `./x` source resolves to the stack's own directory, the same rewrite the
-    // renderer applies, so the row names where the data really is.
-    ...composeHostMounts(compose, stackFilesDir(app.slug)).map((m) => ({
-      kind: "host" as const,
-      source: m.hostPath,
-      mountPath: m.mountPath,
-    })),
+    // renderer applies. A file-shaped one is what the deploy creates as a File.
+    ...composeHostMounts(compose, filesDir).map((m) =>
+      m.stackRelative && looksLikeFileMount(m.hostPath, m.mountPath)
+        ? {
+            kind: "app" as const,
+            source: "./" + m.hostPath.slice(filesDir.length + 1),
+            mountPath: m.mountPath,
+          }
+        : { kind: "host" as const, source: m.hostPath, mountPath: m.mountPath },
+    ),
   ];
 }

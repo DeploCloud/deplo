@@ -73,6 +73,32 @@ test("a ./x bind resolves to the stack's own directory", () => {
   );
 });
 
+test("a ./x bind shaped like a file is the File the deploy creates", () => {
+  assert.deepEqual(
+    composeDeclaredMounts(
+      stack(`services:
+  app:
+    image: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs/example.com:/etc/letsencrypt/live/example.com
+`),
+    ),
+    [
+      {
+        kind: "app",
+        source: "./nginx.conf",
+        mountPath: "/etc/nginx/nginx.conf",
+      },
+      {
+        kind: "host",
+        source: `${process.env.DEPLO_DATA_DIR || "/data"}/stacks/files/wp/certs/example.com`,
+        mountPath: "/etc/letsencrypt/live/example.com",
+      },
+    ],
+  );
+});
+
 test("a stack that mounts nothing has no rows", () => {
   assert.deepEqual(
     composeDeclaredMounts(
