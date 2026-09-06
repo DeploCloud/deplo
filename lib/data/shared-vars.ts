@@ -36,6 +36,7 @@ import {
   requireAppCapability,
 } from "./node-access";
 import { authorOf, loadUserIdentities } from "./user-identity";
+import { teamAvatarUrl } from "../avatar";
 import { encryptSecret, decryptSecret } from "../crypto";
 import { ALL_ENV_TARGETS, sanitizeTargets, secretImmutable } from "../types";
 import type { EnvTarget, SharedVar, VarAuthor } from "../types";
@@ -198,6 +199,13 @@ async function stitch(
 /* Reads - gated `manage_env`, scoped to the active team.              */
 /* ------------------------------------------------------------------ */
 
+/** A team a variable reaches, drawn wherever it is named. */
+export interface SharedVarTeamRef {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 export interface SharedVarDTO {
   id: string;
   key: string;
@@ -209,11 +217,11 @@ export interface SharedVarDTO {
   teamWide: boolean;
   /** Every team it reaches. Two or more ⇒ it injects with no link. */
   teamIds: string[];
-  teams: { id: string; name: string }[];
+  teams: SharedVarTeamRef[];
   /** Injects into every app of every team above, with no per-app link. */
   autoInject: boolean;
   /** The owning team, or null when the instance owns it. */
-  ownerTeam: { id: string; name: string } | null;
+  ownerTeam: SharedVarTeamRef | null;
   /** The viewer's team owns it (or an instance admin owns the instance one). */
   editable: boolean;
   environmentIds: string[];
@@ -280,16 +288,28 @@ async function teamLookups(teamId: string): Promise<{
 /** Every team a set of vars names, for the owner badge and the Teams chips. */
 async function teamNames(
   vars: SharedVar[],
-): Promise<Map<string, { id: string; name: string }>> {
+): Promise<Map<string, SharedVarTeamRef>> {
   const ids = [
     ...new Set(vars.flatMap((v) => [...v.teamIds, v.teamId ?? ""])),
   ].filter(Boolean);
   if (ids.length === 0) return new Map();
   const rows = await getDb()
-    .select({ id: teamsTable.id, name: teamsTable.name })
+    .select({
+      id: teamsTable.id,
+      name: teamsTable.name,
+      image: teamsTable.image,
+    })
     .from(teamsTable)
     .where(inArray(teamsTable.id, ids));
-  return new Map(rows.map((t) => [t.id, t] as const));
+  return new Map(
+    rows.map(
+      (t) =>
+        [
+          t.id,
+          { id: t.id, name: t.name, avatarUrl: teamAvatarUrl(t.image) },
+        ] as const,
+    ),
+  );
 }
 
 /**

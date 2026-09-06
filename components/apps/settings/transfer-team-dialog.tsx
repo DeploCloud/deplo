@@ -47,6 +47,7 @@ const INFO_QUERY = /* GraphQL */ `
       targets {
         id
         name
+        avatarUrl
         serverAvailable
         githubFollows
       }

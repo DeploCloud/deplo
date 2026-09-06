@@ -1071,7 +1071,7 @@ function TeamsSection({
 }: {
   teams: TeamRef[];
   /** Teams the variable reaches that this author may not change. */
-  locked?: { id: string; name: string }[];
+  locked?: TeamRef[];
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
@@ -1124,7 +1124,7 @@ function TeamsSection({
             className="flex items-center gap-3 px-3 py-2.5 opacity-60"
           >
             <Checkbox checked disabled />
-            <TeamAvatar name={t.name} avatarUrl={null} size="lg" />
+            <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="lg" />
             <span className="min-w-0 flex-1 truncate text-sm font-medium">
               {t.name}
             </span>

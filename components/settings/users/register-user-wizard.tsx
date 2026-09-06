@@ -102,10 +102,14 @@ export function RegisterUserWizard({
       const res = await gqlAction<
         { myTeams: TeamOption[]; viewerTeam: { id: string } | null },
         { myTeams: TeamOption[]; activeTeamId: string | null }
-      >(`query { myTeams { id name } viewerTeam { id } }`, {}, (d) => ({
-        myTeams: d.myTeams,
-        activeTeamId: d.viewerTeam?.id ?? null,
-      }));
+      >(
+        `query { myTeams { id name avatarUrl } viewerTeam { id } }`,
+        {},
+        (d) => ({
+          myTeams: d.myTeams,
+          activeTeamId: d.viewerTeam?.id ?? null,
+        }),
+      );
       if (cancelled) return;
       const myTeams = res.ok && res.data ? res.data.myTeams : [];
       const activeId = res.ok && res.data ? res.data.activeTeamId : null;
