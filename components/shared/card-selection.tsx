@@ -32,7 +32,7 @@ export function SelectionCanvas({
           re-render per pointermove); hidden when idle. */}
       <div
         ref={marqueeRef}
-        className="pointer-events-none absolute z-20 hidden rounded-sm border border-primary bg-primary-wash-strong"
+        className="pointer-events-none absolute z-20 hidden rounded-sm border border-primary"
       />
       {children}
     </div>
