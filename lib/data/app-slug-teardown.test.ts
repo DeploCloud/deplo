@@ -5,13 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import { pendingTeardowns as pendingTeardownsTable } from "../db/schema/control-plane";
+import {
+  appMounts as appMountsTable,
+  pendingTeardowns as pendingTeardownsTable,
+} from "../db/schema/control-plane";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
@@ -100,4 +104,29 @@ test("a deploy key awaiting teardown keeps its slug taken, previews included", a
     }),
   );
   assert.equal(store.slug, "store-1");
+});
+
+test("a config file's path stays inside the app's files and is never the env-file", async () => {
+  const withMount = (filePath: string) =>
+    asOtherTeam(() =>
+      createApp({
+        name: `cfg-${Math.random().toString(36).slice(2, 8)}`,
+        source: "compose",
+        repo: null,
+        compose: "services:\n  cfg:\n    image: nginx:1.27\n",
+        deploy: false,
+        mounts: [{ filePath, content: "x" }],
+      }),
+    );
+  for (const bad of ["../x.conf", "/etc/app.conf", ".env", "a:b", "a$b", ""])
+    await assert.rejects(() => withMount(bad), /config file|\.env/, bad);
+  const ok = await withMount("./conf/nginx.conf");
+  const rows = await db
+    .select({ filePath: appMountsTable.filePath })
+    .from(appMountsTable)
+    .where(eq(appMountsTable.appId, ok.id));
+  assert.deepEqual(
+    rows.map((r) => r.filePath),
+    ["conf/nginx.conf"],
+  );
 });

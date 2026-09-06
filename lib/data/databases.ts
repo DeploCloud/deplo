@@ -16,6 +16,7 @@ import {
   databaseMounts as databaseMountsTable,
   databases as databasesTable,
   teamDatabaseOrder,
+  pendingTeardowns as pendingTeardownsTable,
 } from "../db/schema/control-plane";
 import { assembleDatabase, databaseToRow } from "./backup-rows";
 import { cleanResourceLimits, type ResourceLimitsInput } from "./apps";
@@ -691,6 +692,22 @@ export async function createDatabase(input: {
   if (slugCollision.length > 0)
     throw new Error(
       `A database stack named "db-${slug}" already exists on ${server.name}. Database stacks share a per-host namespace - pick a different name.`,
+    );
+  // A deleted database whose teardown the host has not confirmed yet still owns
+  // that name and its data volume there; a new stack would adopt them.
+  const pending = await getDb()
+    .select({ id: pendingTeardownsTable.id })
+    .from(pendingTeardownsTable)
+    .where(
+      and(
+        eq(pendingTeardownsTable.serverId, server.id),
+        eq(pendingTeardownsTable.deployKey, `db-${slug}`),
+      ),
+    )
+    .limit(1);
+  if (pending.length > 0)
+    throw new Error(
+      `A database stack named "db-${slug}" is still being removed from ${server.name}. Pick a different name, or wait for that removal to finish.`,
     );
 
   // Validate + reserve the host port up front when exposing.
