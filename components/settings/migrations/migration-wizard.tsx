@@ -1456,8 +1456,13 @@ export function MigrationWizard({
   // One derived value drives the picture. A run in flight wins over the step -
   // driven here or watched from here - because the cable full of packets is the
   // truest thing on the screen at that moment.
+  const cuttingOver =
+    step === "takeover" &&
+    takeover != null &&
+    takeover.state !== "pending" &&
+    takeover.state !== "failed";
   const pose: MigrationState =
-    running || takenOver
+    running || takenOver || cuttingOver
       ? "moving"
       : step === "done" || step === "takeover"
         ? "done"

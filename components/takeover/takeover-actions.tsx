@@ -7,7 +7,6 @@ import { toast } from "sonner";
 
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DocsLink } from "@/components/ui/docs-link";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -397,25 +396,19 @@ function TakeoverWaiting({
   return (
     <Working
       title="Moving the ports"
-      body={
-        <>
-          {platformLabel} is being stopped and Deplo is taking its place on the
-          web ports. This page follows the dashboard to its own address by
-          itself.
-          {slow && (
-            <>
-              <br />
-              Taking longer than usual? Open{" "}
-              <a className="underline underline-offset-4" href={finalUrl}>
-                {finalUrl}
-              </a>{" "}
-              yourself. The browser may warn once while the certificate is being
-              issued.
-            </>
-          )}
-        </>
-      }
-    />
+      body={`${platformLabel} is being stopped and Deplo is taking its place on the web ports. This page follows the dashboard to its own address by itself.`}
+    >
+      {slow && (
+        <SlowNote>
+          Taking longer than usual? Open{" "}
+          <a className="underline underline-offset-4" href={finalUrl}>
+            {finalUrl}
+          </a>{" "}
+          yourself. The browser may warn once while the certificate is being
+          issued.
+        </SlowNote>
+      )}
+    </Working>
   );
 }
 
@@ -442,6 +435,7 @@ export function TakeoverCancel({
       <div className="fixed inset-0 z-50 grid place-items-center bg-background px-4">
         <div className="w-full max-w-xl">
           <Working
+            spinner
             title="Taking Deplo back off this machine"
             body={`${platformLabel} keeps everything. Deplo is uninstalling itself now.`}
           />
@@ -505,16 +499,34 @@ export function TakeoverCancel({
   );
 }
 
-function Working({ title, body }: { title: string; body: React.ReactNode }) {
+function Working({
+  title,
+  body,
+  spinner = false,
+  children,
+}: {
+  title: string;
+  body: React.ReactNode;
+  /** For a screen with no picture of its own to say the work is going. */
+  spinner?: boolean;
+  children?: React.ReactNode;
+}) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin text-muted-foreground" />
-          {title}
-        </CardTitle>
-        <p className="mt-1 text-sm text-muted-foreground">{body}</p>
-      </CardHeader>
-    </Card>
+    <StepShell hero title={title} lead={body}>
+      {spinner && (
+        <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+      )}
+      {children}
+    </StepShell>
+  );
+}
+
+/** What to do when the cutover is taking longer than it should. */
+function SlowNote({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong p-3 text-left text-sm text-warning">
+      <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+      <span className="min-w-0 text-muted-foreground">{children}</span>
+    </div>
   );
 }
