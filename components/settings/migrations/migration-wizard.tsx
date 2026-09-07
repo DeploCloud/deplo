@@ -2565,9 +2565,8 @@ function ReportCard({
 const REDIRECT_MS = 3000;
 
 /**
- * The end, and the one step that breaks the two-column layout. Everywhere else the
- * illustration sits beside the thing you are doing, because there is a thing you
- * are doing.
+ * The end, in the same stacked shape as every other step - and the only one with
+ * no question under the drawing, just what happened and the way out.
  */
 function DoneStep({
   kind,
@@ -2597,7 +2596,7 @@ function DoneStep({
   }, [panelUrl]);
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
+    <div className="mx-auto flex w-full flex-col items-center gap-8">
       {/**
        * Over the WINDOW, not over the drawing. A burst thrown from the middle of the
        * screen is still a burst thrown from the middle of the screen - which is where the
@@ -2605,35 +2604,42 @@ function DoneStep({
        */}
       <ConfettiBurst rain className="z-50" count={60} />
 
-      <MigrationGraphic state="done" kind={kind} className="h-48 w-auto" />
+      <MigrationGraphic
+        state="done"
+        kind={kind}
+        className="h-auto w-full max-w-md"
+      />
 
-      <div>
-        <h2 className="text-xl font-semibold">
-          {panelUrl ? "This machine is Deplo's" : "You're on Deplo"}
-        </h2>
-        <p className="mt-1 text-sm text-balance text-muted-foreground">
-          {panelUrl
-            ? `Opening ${panelUrl}`
-            : "Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."}
-        </p>
-      </div>
-
-      <div className="flex w-full flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {onShowLog && (
-            <Button variant="outline" onClick={onShowLog}>
-              <ScrollText className="size-4" />
-              Show log
+      <div className="w-full max-w-xl min-w-0">
+        <StepShell
+          hero
+          title={panelUrl ? "This machine is Deplo's" : "You're on Deplo"}
+          lead={
+            panelUrl
+              ? `Opening ${panelUrl}`
+              : "Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
+          }
+        >
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {onShowLog && (
+                <Button variant="outline" onClick={onShowLog}>
+                  <ScrollText className="size-4" />
+                  Show log
+                </Button>
+              )}
+              {onAgain && (
+                <Button variant="outline" onClick={onAgain}>
+                  <Repeat className="size-4" />
+                  Migrate another
+                </Button>
+              )}
+            </div>
+            <Button onClick={onFinish}>
+              {panelUrl ? "Open Deplo" : "Finish"}
             </Button>
-          )}
-          {onAgain && (
-            <Button variant="outline" onClick={onAgain}>
-              <Repeat className="size-4" />
-              Migrate another
-            </Button>
-          )}
-        </div>
-        <Button onClick={onFinish}>{panelUrl ? "Open Deplo" : "Finish"}</Button>
+          </div>
+        </StepShell>
       </div>
     </div>
   );
