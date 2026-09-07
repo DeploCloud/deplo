@@ -40,6 +40,7 @@ import { lookup } from "node:dns/promises";
 
 import { mapLimit } from "../utils";
 import { sourceAgentReachable } from "./agent-reach";
+import { isCloudflareIp } from "../deploy/cloudflare";
 import { getCurrentUser } from "../auth";
 import { avatarResolver, teamAvatarUrl as deploTeamAvatarUrl } from "../avatar";
 import {
@@ -239,6 +240,9 @@ export interface PlanServer {
   sourceId: string;
   name: string;
   ipAddress: string | null;
+  /** That address resolves into Cloudflare's proxy ranges, so it answers as the
+   *  proxy and Deplo can never dial an agent on it. */
+  cloudflare: boolean;
   /** The Deplo server sitting at that address, when there is one. */
   deploServerId: string | null;
   deploServerName: string | null;
@@ -1257,15 +1261,35 @@ export async function setMigrationMachineAddress(input: {
 }
 
 /**
- * Which of these addresses is THIS machine. A name is not enough: a panel on the
- * same box is typed as the name it is opened on, which matched nothing - so Deplo
- * registered the host a second time and asked for another agent on it.
+ * The one resolver the plan's machine matching goes through, swappable so the
+ * pglite suite stays hermetic (a real lookup would hit the network for every
+ * seeded panel hostname). Production always uses node's.
  */
-async function selfAddresses(
+let dnsLookup: (name: string) => Promise<{ address: string }[]> = (name) =>
+  lookup(name, { all: true });
+
+export function __setDnsLookupForTest(
+  fn: (name: string) => Promise<{ address: string }[]>,
+): void {
+  dnsLookup = fn;
+}
+
+export function __resetDnsLookupForTest(): void {
+  dnsLookup = (name) => lookup(name, { all: true });
+}
+
+/**
+ * One resolution pass over every candidate address, answering both questions the
+ * plan has about it: is it THIS machine (a panel on the same box is typed as the
+ * name it is opened on, which matched nothing), and does it resolve into
+ * Cloudflare's proxy ranges - in which case it is the proxy, not a machine.
+ */
+async function resolveAddresses(
   candidates: (string | null | undefined)[],
   self: Set<string>,
-): Promise<Set<string>> {
-  const out = new Set<string>();
+): Promise<{ mine: Set<string>; cloudflare: Set<string> }> {
+  const mine = new Set<string>();
+  const cloudflare = new Set<string>();
   const wanted = [
     ...new Set(
       candidates
@@ -1275,17 +1299,18 @@ async function selfAddresses(
   ];
   await mapLimit(wanted, 8, async (a) => {
     if (isDeploHostServer({ ip: a, host: a }, self)) {
-      out.add(a);
+      mine.add(a);
       return;
     }
     try {
-      const hits = await lookup(a, { all: true });
-      if (hits.some((h) => self.has(h.address.toLowerCase()))) out.add(a);
+      const hits = await dnsLookup(a);
+      if (hits.some((h) => self.has(h.address.toLowerCase()))) mine.add(a);
+      if (hits.some((h) => isCloudflareIp(h.address))) cloudflare.add(a);
     } catch {
-      /* a name nothing resolves is simply not this machine */
+      /* a name nothing resolves is neither this machine nor behind a proxy */
     }
   });
-  return out;
+  return { mine, cloudflare };
 }
 
 async function planMachines(
@@ -1309,7 +1334,7 @@ async function planMachines(
   } catch {
     /* the client already normalised this; a bad one just matches nothing */
   }
-  const mineSelf = await selfAddresses(
+  const resolved = await resolveAddresses(
     [
       ownAddress,
       ...servers.map((s) => s.ipAddress),
@@ -1320,7 +1345,7 @@ async function planMachines(
   );
   const isSelf = (address: string | null | undefined) => {
     const a = address?.trim().toLowerCase();
-    return Boolean(a && mineSelf.has(a));
+    return Boolean(a && resolved.mine.has(a));
   };
   const at = (address: string | null) => {
     const a = address?.trim().toLowerCase();
@@ -1348,6 +1373,9 @@ async function planMachines(
       sourceId,
       name,
       ipAddress: address,
+      cloudflare: Boolean(
+        address && resolved.cloudflare.has(address.trim().toLowerCase()),
+      ),
       deploServerId: null as string | null,
       deploServerName: null as string | null,
       ...(at(address) ?? at(derived) ?? {}),

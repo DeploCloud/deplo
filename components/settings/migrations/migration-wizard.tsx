@@ -185,6 +185,7 @@ const SCAN = /* GraphQL */ `
         sourceId
         name
         ipAddress
+        cloudflare
         deploServerId
         deploServerName
         deploServerOnline
@@ -1367,6 +1368,7 @@ export function MigrationWizard({
                       deploServerId: serverId,
                       deploServerName: serverName,
                       deploServerOnline: true,
+                      cloudflare: false,
                     }
                   : m,
               ),

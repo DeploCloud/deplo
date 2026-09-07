@@ -72,6 +72,8 @@ import {
   resumableMigrationAnywhere,
   listAllMigrationRuns,
   migrationMachines,
+  __setDnsLookupForTest,
+  __resetDnsLookupForTest,
   setMigrationMachineAddress,
   drainMigrationSourceUninstalls,
   finishMigration,
@@ -2994,6 +2996,24 @@ test("a scan in another team adopts the source an earlier run registered there",
   assert.equal(inB[0]?.deploServerId, added.server.id, "granted to B now");
   const inA = await asOwner(() => migrationMachines(credential, TEAM_A));
   assert.equal(inA[0]?.deploServerId, null, "and no longer A's");
+});
+
+test("a panel behind Cloudflare is flagged instead of registered at the proxy", async () => {
+  // The address the wizard would otherwise register is Cloudflare's anycast, so no
+  // agent can ever answer on it. The install step says so and asks for the IP.
+  __setDnsLookupForTest(async () => [{ address: "104.16.0.1" }]);
+  try {
+    const rows = await asOwner(() =>
+      migrationMachines(
+        { kind: "dokploy" as const, baseUrl: URL_BASE, apiKey: CONNECT.apiKey },
+        TEAM_A,
+      ),
+    );
+    assert.equal(rows[0]?.sourceId, "", "the Dokploy host itself comes first");
+    assert.equal(rows[0]?.cloudflare, true);
+  } finally {
+    __resetDnsLookupForTest();
+  }
 });
 
 test("a corrected dial address keeps the machine recognisable by the one it came from", async () => {

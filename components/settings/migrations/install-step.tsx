@@ -110,7 +110,16 @@ const INSTALLED_BUT_UNREACHABLE =
  * CDN is that proxy rather than the machine.
  */
 const PANEL_ADDRESS_NOTICE =
-  "If the panel sits behind a proxy or a CDN, this address is the proxy, not the machine.";
+  "A proxy in front of the panel answers here, not the machine.";
+
+/**
+ * The same thing, said once Deplo has actually SEEN it - the panel's name resolves
+ * into Cloudflare's ranges, so no agent will ever answer there. Raised BEFORE the
+ * install command, since the address is already known to be wrong. What to type
+ * instead is the address field's own line, right under it.
+ */
+const CLOUDFLARE_ADDRESS_NOTICE =
+  "This address is Cloudflare's, not the machine's.";
 
 /** What the probe said, for a machine that answered badly or not at all. */
 interface Unreachable {
@@ -166,7 +175,7 @@ function AddressForm({
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="1.1.1.1 or host.example.com"
+          placeholder="203.0.113.10"
           className="w-full"
           disabled={working}
         />
@@ -188,12 +197,11 @@ function AddressForm({
           </Button>
         )}
       </form>
-      {/* The one mistake this screen invites, said where it would be made: the
-          panel is reached at a name, the machine at an address, and they are the
-          same thing only when nothing sits in front. */}
+      {/* The mistake this screen invites, said where it would be made: the panel is
+          reached at a name, the machine at an IP. A name pointing straight at the
+          machine works too - https://deplo.build/docs/guides/move-from-dokploy */}
       <p className="text-xs text-muted-foreground">
-        The machine&rsquo;s own address, not the panel&rsquo;s. An IP or a
-        hostname that points straight at it.
+        The machine&rsquo;s own IP address, not the panel&rsquo;s.
       </p>
     </>
   );
@@ -358,13 +366,17 @@ export function InstallStep({
           await reclaimMachine(m);
           continue;
         }
-        if (!m.ipAddress) {
-          // Not a dead end any more: the row below offers the field that fixes
-          // it. Marked attempted all the same, so the effect does not re-raise
-          // this on every render while somebody is typing into it.
+        // A Cloudflare address is known to be the proxy, so registering there would
+        // only mint an install command that can never answer. Not a dead end any
+        // more either way: the row below offers the field that fixes it. Marked
+        // attempted all the same, so the effect does not re-raise this on every
+        // render while somebody is typing into it.
+        if (!m.ipAddress || m.cloudflare) {
           setFailed((p) => ({
             ...p,
-            [m.sourceId]: "Deplo could not work out that machine's address.",
+            [m.sourceId]: m.cloudflare
+              ? CLOUDFLARE_ADDRESS_NOTICE
+              : "Deplo could not work out that machine's address.",
           }));
           continue;
         }
@@ -645,8 +657,10 @@ export function InstallStep({
               {p && bad && bad.status === "offline" && (
                 <div className="space-y-2">
                   <p className="text-xs text-destructive">
-                    {INSTALLED_BUT_UNREACHABLE} {AGENT_PORT_NOTICE}{" "}
-                    {PANEL_ADDRESS_NOTICE}
+                    {INSTALLED_BUT_UNREACHABLE}{" "}
+                    {m.cloudflare
+                      ? CLOUDFLARE_ADDRESS_NOTICE
+                      : `${AGENT_PORT_NOTICE} ${PANEL_ADDRESS_NOTICE}`}
                   </p>
                   <p className="text-xs text-muted-foreground">{bad.message}</p>
                   {canAddServers ? (

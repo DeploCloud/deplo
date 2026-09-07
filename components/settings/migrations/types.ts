@@ -48,6 +48,8 @@ export interface PlanServer {
   sourceId: string;
   name: string;
   ipAddress: string | null;
+  /** That address is Cloudflare's, not the machine's - see the install step. */
+  cloudflare: boolean;
   /** The Deplo server at that address, or null when Deplo has no agent there. */
   deploServerId: string | null;
   deploServerName: string | null;

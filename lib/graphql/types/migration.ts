@@ -165,6 +165,10 @@ const PlanServerRef = builder
       sourceId: t.exposeString("sourceId"),
       name: t.exposeString("name"),
       ipAddress: t.exposeString("ipAddress", { nullable: true }),
+      cloudflare: t.exposeBoolean("cloudflare", {
+        description:
+          "That address resolves into Cloudflare's proxy ranges, so it answers as the proxy: no agent can ever be dialled on it, and the machine's own IP has to be given instead.",
+      }),
       deploServerId: t.exposeString("deploServerId", {
         nullable: true,
         description:
