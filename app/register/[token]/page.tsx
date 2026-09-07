@@ -16,7 +16,7 @@ export default async function RegisterPage(props: {
   return (
     <div className="relative grid min-h-dvh place-items-center px-4 pt-10 pb-16">
       <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
-      <div className="relative z-10 flex w-full justify-center">
+      <div className="z-10 flex w-full justify-center">
         {info.valid ? (
           <RegisterWizard token={token} mode={info.mode} teams={info.teams} />
         ) : (

@@ -101,7 +101,11 @@ const LINKS = [
   { href: DISCORD_URL, Icon: DiscordIcon, label: "Discord" },
 ];
 
-/** The furniture every auth screen carries: theme, then the three links. */
+/**
+ * The furniture every auth screen carries: theme, then the three links. The links
+ * are pinned to the PAGE, not the viewport - a screen taller than the window
+ * scrolls past them rather than dragging them over its own content.
+ */
 export function AuthChrome({ hidden = false }: { hidden?: boolean }) {
   if (hidden) return null;
   return (
@@ -109,7 +113,7 @@ export function AuthChrome({ hidden = false }: { hidden?: boolean }) {
       <div className="animate-blur-in fixed top-4 right-4 z-30">
         <ThemeToggle />
       </div>
-      <div className="animate-blur-in fixed inset-x-0 bottom-4 z-30 flex items-center justify-center gap-3 text-xs text-muted-foreground">
+      <div className="animate-blur-in absolute inset-x-0 bottom-4 z-30 flex items-center justify-center gap-3 text-xs text-muted-foreground">
         {LINKS.map(({ href, Icon, label }) => (
           <a
             key={label}
