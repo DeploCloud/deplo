@@ -60,9 +60,9 @@ test("a source team lands in its namesake, else in a team of its own", () => {
   // The default rides onto the row.
   const q = added([], team(), "tok-a", teams);
   assert.deepEqual(q[0]?.target, { kind: "existing", teamId: "team_1" });
-  // A team the panel would not name is "that team" here, which is nobody's namesake.
+  // A team the panel would not name has no name here either, so it matches nobody.
   const nameless = added([], team({ teamId: null, teamName: null }), "tok-b", [
-    { id: "team_9", name: "that team" },
+    { id: "team_9", name: "Nameless" },
   ]);
   assert.deepEqual(nameless[0]?.target, { kind: "new" });
 });
@@ -93,7 +93,8 @@ test("the same team twice is refused by its id", () => {
 // A panel that will not name its teams leaves the key as the only tell.
 test("the same key twice is refused even with no id", () => {
   const q = added([], team({ teamId: null, teamName: null }), "tok-a");
-  assert.equal(q[0]?.name, "that team");
+  // "" and not a placeholder: the list draws "An unnamed organization" from it.
+  assert.equal(q[0]?.name, "");
   assert.match(addTeam(q, team({ teamId: null }), "tok-a").error ?? "", /key/);
   // A second team of the same nameless panel is still a second team.
   assert.equal(addTeam(q, team({ teamId: null }), "tok-b").error, null);

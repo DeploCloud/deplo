@@ -704,6 +704,10 @@ export function MigrationWizard({
   /** What is known about the panel so far: what answered, or what was pinned. */
   const kind: SourceKind | null = plan?.platform ?? forcedKind;
 
+  /** A source team the panel would not name is still shown, just not as a name. */
+  const sourceTeamName = (q: QueuedTeam) =>
+    q.name || `An unnamed ${copyFor(kind).teamLabel}`;
+
   const STEPS = React.useMemo(
     () => stepsFor(isInstanceAdmin, isTakeover, mode),
     [isInstanceAdmin, isTakeover, mode],
@@ -1054,11 +1058,13 @@ export function MigrationWizard({
     let home: string;
     if (team.target.kind === "existing") home = team.target.teamId;
     else {
-      // Named as it was over there, with its picture when the panel had one.
+      // Named as it was over there, with its picture when the panel had one. A
+      // panel that would not name its team still needs one HERE, so the address
+      // it came from stands in - the row itself reads "An unnamed organization".
       const made = await gqlAction<{ createTeam: { id: string } }, string>(
         CREATE_TEAM,
         {
-          name: team.name,
+          name: team.name || url.replace(/^https?:\/\//, "").split("/")[0],
           // Null is the initials, which is what a team starts with unless
           // somebody chose otherwise on Connect or Review.
           image: team.image,
@@ -1304,7 +1310,7 @@ export function MigrationWizard({
         : undefined;
     return home
       ? { name: home.name, avatarUrl: home.avatarUrl, isNew: false }
-      : { name: q.name, avatarUrl: q.image, isNew: true };
+      : { name: sourceTeamName(q), avatarUrl: q.image, isNew: true };
   }
 
   /** Where each team of the list lands, as the Review names it. */
@@ -1315,7 +1321,7 @@ export function MigrationWizard({
     return [
       {
         key: String(i),
-        team: { name: q.name, avatarUrl: null },
+        team: { name: sourceTeamName(q), avatarUrl: null },
         landsIn: landingOf(q),
         target: q.target,
         image: q.image,
@@ -1332,7 +1338,7 @@ export function MigrationWizard({
     return [
       {
         key: String(i),
-        team: { name: q.name, avatarUrl: null },
+        team: { name: sourceTeamName(q), avatarUrl: null },
         people: p.members.filter((m) => !m.inTeam),
         invites: teamInvites[i] ?? null,
         canInvite: true,
@@ -1347,7 +1353,13 @@ export function MigrationWizard({
   /** Every team's landing, for the one report at the end. */
   const teamReports = queue.flatMap((q, i) =>
     teamRuns[i]
-      ? [{ name: q.name, avatarUrl: null, report: teamRuns[i].report }]
+      ? [
+          {
+            name: sourceTeamName(q),
+            avatarUrl: null,
+            report: teamRuns[i].report,
+          },
+        ]
       : [],
   );
   const totals = teamReports.reduce(
@@ -2112,7 +2124,7 @@ function ConnectStep({
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Remove ${q.name}`}
+                        aria-label={`Remove ${q.name || `this ${copy.teamLabel}`}`}
                         onClick={() => onRemove(i)}
                       >
                         <X className="size-4" />

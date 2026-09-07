@@ -33,9 +33,10 @@ export interface SourceTeam {
   otherTeams: string[] | null;
 }
 
-/** A team with no name is still a team: the id, or the panel's own word. */
+/** The team's own name, else its id - and "" when the panel says neither, which
+ *  the list renders as "An unnamed organization" rather than as a name. */
 export function teamLabel(t: SourceTeam): string {
-  return t.teamName?.trim() || t.teamId || "that team";
+  return t.teamName?.trim() || t.teamId || "";
 }
 
 /** Two names for one team, whatever anyone typed around them. */
