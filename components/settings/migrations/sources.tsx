@@ -21,6 +21,8 @@ interface MarkPath {
   /** The brand colour, verbatim from the upstream file. Absent means the mark is
    *  monochrome, so it takes `currentColor` and the drawing decides its shade. */
   fill?: string;
+  /** A token class instead of a literal colour: `fill-border` and friends. */
+  className?: string;
   /** The upstream artwork's own layering. NOT the banned white-with-alpha: an
    *  alpha on a genuinely coloured token is allowed, and #8c52ff is one. */
   fillOpacity?: number;
@@ -62,21 +64,21 @@ export const SOURCE_ART: Record<SourceKind, SourceArt> = {
   coolify: {
     viewBox: "0 0 512 512",
     paths: [
+      // Three stacked layers, drawn in the three greys rather than one colour at
+      // three alphas: white at 30% is not a grey, it is whatever is behind it.
       {
         d: "M63.7-161.7h-90.9v272.8h90.9zm0 363.7h363.7v-90.9H63.7zm0-363.7h363.7v-90.9H63.7z",
-        fill: "#8c52ff",
-        fillOpacity: 0.302,
+        className: "fill-border",
         transform: "translate(84.664 310.016)",
       },
       {
         d: "M48.2-177.1h-90.9V95.6h90.9zm0 363.6h363.7V95.6H48.2zm0-363.6h363.7V-268H48.2z",
-        fill: "#8c52ff",
-        fillOpacity: 0.502,
+        className: "fill-ring",
         transform: "translate(71.406 296.758)",
       },
       {
         d: "M32.8-192.6h-90.9V80.2h90.9zm0 363.7h363.7V80.2H32.8zm0-363.7h363.7v-90.9H32.8z",
-        fill: "#8c52ff",
+        className: "fill-muted-foreground",
         transform: "translate(58.147 283.5)",
       },
     ],
@@ -84,19 +86,19 @@ export const SOURCE_ART: Record<SourceKind, SourceArt> = {
 };
 
 /**
- * One mark's paths. `dim` drops the brand colour AND its layering: `--border` is
- * the token for "drawn, and no longer the subject", and it has nothing below it
- * to tint with.
+ * One mark's paths. `dim` flattens it onto `currentColor`: `--border` is the
+ * token for "drawn, and no longer the subject", and it has nothing below it to
+ * tint with.
  */
 export function markPaths(art: SourceArt, dim = false): React.ReactNode {
+  const paint = (p: MarkPath) =>
+    dim
+      ? { fill: "currentColor" }
+      : p.className
+        ? { className: p.className }
+        : { fill: p.fill ?? "currentColor", fillOpacity: p.fillOpacity };
   return art.paths.map((p, i) => (
-    <path
-      key={i}
-      d={p.d}
-      transform={p.transform}
-      fill={dim ? "currentColor" : (p.fill ?? "currentColor")}
-      fillOpacity={dim ? undefined : p.fillOpacity}
-    />
+    <path key={i} d={p.d} transform={p.transform} {...paint(p)} />
   ));
 }
 

@@ -59,14 +59,22 @@ test("the illustration offers both marks until it knows which panel it is", () =
 
 test("the mark that lands is the one the scan found", () => {
   const coolify = html({ state: "install", kind: "coolify" });
-  assert.match(coolify, /#8c52ff/);
   assert.ok(coolify.includes(SOURCE_ART.coolify.paths[0].d));
   assert.equal(coolify.includes(SOURCE_ART.dokploy.paths[0].d), false);
   assert.match(coolify, /from the Coolify server toward Deplo/);
 
   const dokploy = html({ state: "install", kind: "dokploy" });
   assert.ok(dokploy.includes(SOURCE_ART.dokploy.paths[0].d));
-  assert.doesNotMatch(dokploy, /#8c52ff/);
+});
+
+// Three layers wanting three shades is what the grey ladder is for; the same
+// white at three alphas is not three greys, it is whatever sits behind it.
+test("a layered mark is drawn in tokens, never a brand colour", () => {
+  const coolify = html({ state: "install", kind: "coolify" });
+  for (const tone of ["fill-border", "fill-ring", "fill-muted-foreground"])
+    assert.match(coolify, new RegExp(tone));
+  assert.doesNotMatch(coolify, /#8c52ff/);
+  assert.doesNotMatch(coolify, /fill-opacity|fillOpacity/);
 });
 
 // `done` is the pose where the source stops being the subject. `--border` is the
