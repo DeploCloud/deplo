@@ -46,7 +46,9 @@ export function ChoiceCard({
         "disabled:cursor-not-allowed disabled:opacity-50",
         selected
           ? "border-primary bg-primary-wash ring-1 ring-primary/60"
-          : "border-border hover:border-foreground/20 hover:bg-surface",
+          : // Opaque: these cards also sit on the dotted ground, which must not
+            // show through them.
+            "border-border bg-background hover:border-foreground/20 hover:bg-surface",
       )}
     >
       <span

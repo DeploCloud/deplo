@@ -50,7 +50,9 @@ export function StepShell({
         <p
           className={cn(
             "mt-1 text-sm text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground",
-            hero ? "mx-auto mt-2" : "max-w-prose",
+            // Narrower than the cards under it, so a centred lead breaks into even
+            // lines instead of one long one and a stub.
+            hero ? "mx-auto mt-2 max-w-md" : "max-w-prose",
           )}
         >
           {lead}
