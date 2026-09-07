@@ -348,9 +348,9 @@ test("the panel's own host is the machine the wizard offers first", async () => 
   );
   // With a resource on it, the remote one keeps its uuid, so a service there
   // can be placed separately.
-  fixtures["servers/srv-eu/resources"] = fixtures[
-    "servers/srv-local/resources"
-  ].splice(0, 1);
+  fixtures["servers/srv-eu/resources"] = (
+    fixtures["servers/srv-local/resources"] as unknown[]
+  ).splice(0, 1);
   __resetCoolifyIndexForTest();
   const both = await asOwner(() => scanMigrationSource(CONNECT));
   assert.deepEqual(

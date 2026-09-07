@@ -737,7 +737,7 @@ test("a Dokploy machine Deplo already manages is recognised by its address", asy
   );
 });
 
-test("a machine nothing has ever dialed is asked, not assumed", async () => {
+test("a matched machine is dialed at scan, never assumed from its row", async () => {
   const { servers: serversTable } = await import("../db/schema/control-plane");
   const { eq } = await import("drizzle-orm");
   // What a freshly enrolled agent looks like: green from its own call-home, which
@@ -773,7 +773,12 @@ test("a machine nothing has ever dialed is asked, not assumed", async () => {
   );
   assert.deepEqual(dialed, [SERVER_1], "asked exactly once");
 
-  // The other direction: online on the row, and the port Deplo dials is shut.
+  // The other direction: online on the row, a probe that once got through, and
+  // the port Deplo dials is shut NOW - the agent was taken off the box.
+  await db
+    .update(serversTable)
+    .set({ statusCheckedAt: new Date().toISOString() })
+    .where(eq(serversTable.id, SERVER_1));
   dialed.length = 0;
   answer(false);
   const down = await asOwner(() => scanMigrationSource(CONNECT));

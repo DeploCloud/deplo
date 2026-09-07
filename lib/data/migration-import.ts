@@ -1440,30 +1440,18 @@ async function planMachines(
   ].filter((m) => !opts.only || opts.only.has(m.sourceId));
 
   // The row is MATCHED either way - that is what stops a second attempt
-  // registering the same address twice - but only an agent that ANSWERS means the
-  // machine is ready to be read.
-  //
-  // `status` alone is not that: it goes green on the agent's own CALL-HOME, which
-  // is outbound and proves nothing about the direction a copy needs - behind a CDN
-  // it read online while the port Deplo dials was never open. `statusCheckedAt` is
-  // written only by a probe that DIALED the agent, so where there is one, it is the
-  // answer. Where there is none - every freshly enrolled agent, which is every
-  // machine this wizard just installed on - nothing had ever asked, and the step
-  // sat on "not online" for a host that was answering fine. So ask, once.
-  const unproven = opts.probe
+  // registering the same address twice - but only an agent that ANSWERS NOW
+  // means the machine is ready: `status` goes green on the agent's own
+  // call-home, and stays green after the agent is gone.
+  const matched = opts.probe
     ? [
         ...new Set(
-          rows
-            .filter(
-              (m) =>
-                m.deploServerId && !byId.get(m.deploServerId)?.statusCheckedAt,
-            )
-            .map((m) => m.deploServerId!),
+          rows.flatMap((m) => (m.deploServerId ? [m.deploServerId] : [])),
         ),
       ]
     : [];
   const answered = new Map<string, boolean>();
-  await mapLimit(unproven, 4, async (id) => {
+  await mapLimit(matched, 4, async (id) => {
     answered.set(id, await sourceAgentReachable(id));
   });
 
@@ -1471,10 +1459,12 @@ async function planMachines(
     const hit = m.deploServerId ? byId.get(m.deploServerId) : null;
     return {
       ...m,
+      // Without a probe (the data step's own lookups) the last DIALED verdict
+      // stands; a row nothing ever dialed is not ready.
       deploServerOnline: hit
-        ? hit.statusCheckedAt
-          ? hit.status === "online"
-          : (answered.get(hit.id) ?? false)
+        ? opts.probe
+          ? (answered.get(hit.id) ?? false)
+          : Boolean(hit.statusCheckedAt) && hit.status === "online"
         : false,
     };
   });
