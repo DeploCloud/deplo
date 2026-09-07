@@ -108,28 +108,43 @@ test("a deploy key awaiting teardown keeps its slug taken, previews included", a
 });
 
 test("a config file's path stays inside the app's files and is never the env-file", async () => {
-  const withMount = (filePath: string) =>
-    asOtherTeam(() =>
+  const withMount = (filePath: string) => {
+    // One service name per app: two stacks answering `cfg` would clash.
+    const name = `cfg-${Math.random().toString(36).slice(2, 8)}`;
+    return asOtherTeam(() =>
       createApp({
-        name: `cfg-${Math.random().toString(36).slice(2, 8)}`,
+        name,
         source: "compose",
         repo: null,
-        compose: "services:\n  cfg:\n    image: nginx:1.27\n",
+        compose: `services:\n  ${name}:\n    image: nginx:1.27\n`,
         deploy: false,
         mounts: [{ filePath, content: "x" }],
       }),
     );
-  for (const bad of ["../x.conf", "/etc/app.conf", ".env", "a:b", "a$b", ""])
+  };
+  for (const bad of [
+    "../x.conf",
+    "/../x.conf",
+    ".env",
+    "/.env",
+    "a:b",
+    "a$b",
+    "",
+  ])
     await assert.rejects(() => withMount(bad), /config file|\.env/, bad);
-  const ok = await withMount("./conf/nginx.conf");
-  const rows = await db
-    .select({ filePath: appMountsTable.filePath })
-    .from(appMountsTable)
-    .where(eq(appMountsTable.appId, ok.id));
-  assert.deepEqual(
-    rows.map((r) => r.filePath),
-    ["conf/nginx.conf"],
-  );
+  // A leading slash is folded, as the agent folds it, so the three agree.
+  const stored = async (filePath: string) => {
+    const app = await withMount(filePath);
+    const rows = await db
+      .select({ filePath: appMountsTable.filePath })
+      .from(appMountsTable)
+      .where(eq(appMountsTable.appId, app.id));
+    return rows.map((r) => r.filePath);
+  };
+  assert.deepEqual(await stored("./conf/nginx.conf"), ["conf/nginx.conf"]);
+  assert.deepEqual(await stored("/etc/nginx/nginx.conf"), [
+    "etc/nginx/nginx.conf",
+  ]);
 });
 
 test("a queued teardown of a key is dropped when that stack lands on the host again", async () => {

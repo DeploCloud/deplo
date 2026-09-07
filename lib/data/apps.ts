@@ -1403,8 +1403,9 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
 }
 
 /**
- * A config file's path inside the app's Files dir: relative, no `..`, no control
- * characters, and never the stack's own env-file, which the deploy writes there.
+ * A config file's path inside the app's Files dir: a leading `/` is folded (as
+ * the agent folds it), `..` and control characters are refused, and so is the
+ * stack's own env-file, which the deploy writes there.
  */
 const MAX_MOUNT_BYTES = 1024 * 1024;
 
@@ -1412,12 +1413,13 @@ function cleanMountPath(raw: string): string {
   const rel = raw
     .trim()
     .replace(/\\/g, "/")
-    .replace(/^(\.\/)+/, "")
     .replace(/\/{2,}/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^(\.\/)+/, "")
     .replace(/\/$/, "");
   if (!rel || rel === ".")
     throw new Error("Give each config file a path inside the app's files");
-  if (rel.startsWith("/") || rel.split("/").some((seg) => seg === ".."))
+  if (rel.split("/").some((seg) => seg === ".."))
     throw new Error(
       `A config file path must stay inside the app's files: ${raw}`,
     );
