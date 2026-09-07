@@ -371,7 +371,7 @@ test("a token that cannot read values is refused before anything happens", async
   ];
   await assert.rejects(
     () => asOwner(() => scanMigrationSource(CONNECT)),
-    /read:sensitive/,
+    /cannot read values/,
   );
 });
 
@@ -380,7 +380,7 @@ test("with no database, the refusal comes from a resource's own variables", asyn
   fixtures["applications/app-web/envs"] = [{ key: "NODE_ENV" }];
   await assert.rejects(
     () => asOwner(() => scanMigrationSource(CONNECT)),
-    /read:sensitive/,
+    /cannot read values/,
   );
 });
 

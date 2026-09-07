@@ -2194,8 +2194,9 @@ function ConnectStep({
                 {scanLog && <ScanErrorLog log={scanLog} />}
               </div>
             </div>
-            {/* The installer already said which panel this is on a takeover. */}
-            <div hidden={takeover}>
+            {/* Hidden once a token has been read: the panel is known, and the
+                installer already said which it is on a takeover. */}
+            <div hidden={takeover || queue.length > 0}>
               <p className="text-sm font-medium">Which one is this?</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {SOURCE_KINDS.map((k) => (

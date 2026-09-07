@@ -3169,7 +3169,7 @@ async function importAppService(
         // to check their Source settings over a token scope.
         message:
           sourceClient(c).platform === "coolify"
-            ? "{panel} handed over no compose file for this stack. A token without the read:sensitive scope is what usually does that - mint one with it and import again. Otherwise create the app and paste the compose in."
+            ? "{panel} handed over no compose file for this stack. A token without root is what usually does that - mint one with it and import again. Otherwise create the app and paste the compose in."
             : "The compose file is in a git repository and {panel} would not hand over the resolved file. Create the app and paste the compose in.",
       });
       return null;

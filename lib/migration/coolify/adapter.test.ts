@@ -218,7 +218,7 @@ test("a token that cannot stop a service is refused before anything runs", async
   );
   await assert.rejects(
     () => coolifyClient(cred).assertReadable(),
-    /cannot stop a service[\s\S]*deploy ticked FIRST/,
+    /cannot stop a service[\s\S]*root ticked/,
   );
 });
 
@@ -332,7 +332,7 @@ test("a token that cannot read a compose file is refused before anything runs", 
   });
   await assert.rejects(
     () => coolifyClient(cred).assertReadable(),
-    /read:sensitive/,
+    /cannot read compose files/,
   );
 });
 

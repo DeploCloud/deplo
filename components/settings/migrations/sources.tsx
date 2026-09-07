@@ -161,7 +161,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     urlPlaceholder: "https://panel.acme.com",
     tokenLabel: "API token",
     tokenInfo:
-      "In Dokploy: Settings, Profile, API/CLI. In Coolify: Keys & Tokens, API tokens, with deploy ticked first, then read and read:sensitive. One token reads one team of the panel, so add one for each team you want to move.",
+      "In Dokploy: Settings, Profile, API/CLI. In Coolify: Keys & Tokens, API tokens, with root ticked. One token reads one team, so add one for each.",
     teamLabel: "team",
     privatePort: 3000,
     scanIdle: "Check this panel",
@@ -191,7 +191,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     urlPlaceholder: "https://coolify.acme.com",
     tokenLabel: "API token",
     tokenInfo:
-      "In Coolify: Keys & Tokens, API tokens, from an owner or admin, with deploy ticked first, then read and read:sensitive. One token reads one team, so add one for each.",
+      "In Coolify: Keys & Tokens, API tokens, with root ticked, from an owner or admin. One token reads one team, so add one for each.",
     teamLabel: "team",
     privatePort: 8000,
     scanIdle: "Check this Coolify",

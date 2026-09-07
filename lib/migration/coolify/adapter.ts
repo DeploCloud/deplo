@@ -431,19 +431,20 @@ async function detail(
  * from the JSON. So the probe is the absence of a key, and it runs ONCE, before
  * anything is created here or stopped over there.
  */
-/** The one recipe, said the same way in every refusal: Coolify's dialog clears the
- *  list when deploy is ticked, so the order is the whole trick. */
+/** The one recipe, said the same way in every refusal: root is a single tick and
+ *  it covers reading secrets and stopping a service, so there is no order to get
+ *  wrong. Mint it from a team admin or owner. */
 const TOKEN_RECIPE =
-  "Mint the token with deploy ticked FIRST, then read and read:sensitive (Coolify grants those to a team admin or owner), and connect again.";
+  "Mint a new token with root ticked, from an admin or owner, and connect again.";
 
-const READ_SENSITIVE_REFUSAL = `This token cannot read values. Coolify hides every variable value and every database password from a token without the read:sensitive scope, so the apps would arrive with their variables empty. ${TOKEN_RECIPE}`;
+const READ_SENSITIVE_REFUSAL = `This token cannot read values, so every variable and every database password would arrive empty. ${TOKEN_RECIPE}`;
 
 /**
  * Measured on a two-machine Coolify: a token with read and read:sensitive imported
  * every service and then could not stop a single one, so every copy failed with
  * "would not stop". The stop is the data step's one write, and it is `deploy`.
  */
-const STOP_REFUSAL = `This token cannot stop a service. The data step stops each service on Coolify before it copies its data, and Coolify allows that only with the deploy permission. ${TOKEN_RECIPE}`;
+const STOP_REFUSAL = `This token cannot stop a service, and the data step stops each one before it copies its data. ${TOKEN_RECIPE}`;
 
 async function assertReadable(c: SourceCredential): Promise<void> {
   await assertValuesReadable(c);
@@ -489,7 +490,7 @@ function coolifyBackupIsFor(
   return !cls || !type || type.endsWith(cls);
 }
 
-const COMPOSE_REFUSAL = `This token cannot read compose files. Coolify hides a stack's compose from a token without the read:sensitive scope, so every one-click service would arrive with nothing to deploy. ${TOKEN_RECIPE}`;
+const COMPOSE_REFUSAL = `This token cannot read compose files, so every one-click service would arrive with nothing to deploy. ${TOKEN_RECIPE}`;
 
 async function assertValuesReadable(c: SourceCredential): Promise<void> {
   // A database is the sharpest probe: without the scope its password column is not
