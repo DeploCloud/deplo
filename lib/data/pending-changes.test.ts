@@ -24,7 +24,10 @@ import {
 import { eq } from "drizzle-orm";
 import { upsertEnv, deleteEnv } from "./env";
 import { updateAppResources } from "./apps";
-import { markPendingChangesForSharedVar } from "./pending-changes";
+import {
+  dismissPendingChanges,
+  markPendingChangesForSharedVar,
+} from "./pending-changes";
 import { saveSharedVar, setSharedVarAppLink } from "./shared-vars";
 
 /**
@@ -125,4 +128,27 @@ test("a shared var stamps the apps it is linked to, and no others", async () => 
   await clearPending("prj_1");
   await asUser1(() => setSharedVarAppLink(varId, "prj_2", true));
   assert.notEqual(await pendingAt("prj_2"), null);
+});
+
+test("dismissing clears the stamp, and the next change brings it back", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+  await asUser1(() =>
+    upsertEnv({ appId: "prj_1", key: "A", value: "1", type: "plain" }),
+  );
+  assert.notEqual(await pendingAt("prj_1"), null);
+
+  await asUser1(() => dismissPendingChanges("prj_1"));
+  assert.equal(await pendingAt("prj_1"), null);
+
+  await asUser1(() =>
+    upsertEnv({ appId: "prj_1", key: "B", value: "2", type: "plain" }),
+  );
+  assert.notEqual(await pendingAt("prj_1"), null);
+});
+
+test("another team's app cannot be dismissed", async () => {
+  await seedApp(db, { id: "prj_b", teamId: TEAM_B, slug: "prj-b" });
+  await asUser1(async () => {
+    await assert.rejects(() => dismissPendingChanges("prj_b"));
+  });
 });

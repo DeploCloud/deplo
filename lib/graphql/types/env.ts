@@ -10,6 +10,7 @@ import {
   deleteEnv,
   type AppEnvGroup,
 } from "@/lib/data/env";
+import { dismissPendingChanges } from "@/lib/data/pending-changes";
 import type { EnvVarDTO, VarAuthor } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -201,6 +202,19 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id, newKey }) => {
       const appId = await renameEnv(id, newKey);
       return reloadEnv(appId, newKey);
+    },
+  }),
+  dismissPendingChanges: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_env" },
+    description:
+      'Clear this app\'s "changes not deployed yet" notice without deploying - ' +
+      "the change was undone, or it was never one a deploy has to carry. " +
+      "The next config change stamps it again.",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: async (_r, { appId }) => {
+      await dismissPendingChanges(appId);
+      return true;
     },
   }),
   deleteEnv: t.field({

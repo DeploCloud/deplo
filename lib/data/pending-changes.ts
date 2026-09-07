@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -10,6 +10,7 @@ import {
   sharedEnvVarTeams as teamJunction,
 } from "../db/schema/control-plane";
 import { nowIso } from "../ids";
+import { requireAppCapability } from "./node-access";
 
 /**
  * Stamp apps whose saved config is not live yet. Not a gate: every caller has
@@ -61,4 +62,16 @@ export async function markPendingChangesForSharedVar(
           .where(eq(teamJunction.varId, varId)),
       ),
     );
+}
+
+/**
+ * Clear the stamp without deploying: the change was undone, or it was never one a
+ * deploy has to carry. A hint, not a fact about the running stack.
+ */
+export async function dismissPendingChanges(appId: string): Promise<void> {
+  const { teamId } = await requireAppCapability(appId, "manage_env");
+  await getDb()
+    .update(appsTable)
+    .set({ pendingChangesAt: null })
+    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)));
 }

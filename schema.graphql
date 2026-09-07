@@ -3021,6 +3021,11 @@ type Mutation {
   dismissMigrationReport(runId: String!): Boolean
 
   """
+  Clear this app's "changes not deployed yet" notice without deploying - the change was undone, or it was never one a deploy has to carry. The next config change stamps it again.
+  """
+  dismissPendingChanges(appId: String!): Boolean
+
+  """
   Run a command in the app's live container (docker exec). Gated on the deploy capability - this is arbitrary code execution.
   """
   execConsole(input: ExecConsoleInput!): ExecResult
