@@ -17,6 +17,7 @@ import {
   removeServer,
   addServer,
   uninstallServerAgent,
+  listAllServers,
 } from "./servers";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 
@@ -481,14 +482,66 @@ test("a migration source cannot be registered on a machine Deplo already stands 
     /machine Deplo itself runs on/i,
     "the Deplo host was accepted as a migration source",
   );
-  // Nor a second row for a host that is already registered: the installer would
-  // clear that agent's materials and re-bootstrap it as a migration source, and
-  // the uninstall would then take a real server off the fleet.
-  await assert.rejects(
-    () =>
-      asAdmin(() =>
-        addServer({ name: "again", host: REMOTE_IP, importOnly: true }),
-      ),
-    /already registered at that address/i,
+});
+
+test("a server Deplo already reaches is offered, never registered twice", async () => {
+  const before = (await listAllServers()).length;
+  const res = await asAdmin(() =>
+    addServer({ name: "again", host: REMOTE_IP, importOnly: true }),
   );
+  assert.equal(
+    res.server.id,
+    SERVER,
+    "a second row was created for one machine",
+  );
+  // The whole danger of a second row: the installer would clear that agent's
+  // materials and re-bootstrap it AS a source, and the uninstall at the end of
+  // the migration would then take a real server off the fleet.
+  assert.equal(res.installCommand, "", "a real server was told to reinstall");
+  assert.equal((await listAllServers()).length, before);
+  const server = await getServerById(SERVER);
+  assert.equal(
+    server?.importOnly,
+    false,
+    "a real server was demoted to a source",
+  );
+  assert.equal(
+    await pinnedCert(),
+    "sha256:pinned",
+    "its pinned trust was reissued",
+  );
+});
+
+test("a source whose agent never answered gets its command back, not a refusal", async () => {
+  const first = await asAdmin(() =>
+    addServer({ name: "coolify-host", host: "192.0.2.60", importOnly: true }),
+  );
+  const before = (await listAllServers()).length;
+
+  const again = await asAdmin(() =>
+    addServer({ name: "coolify-host", host: "192.0.2.60", importOnly: true }),
+  );
+  assert.equal(
+    again.server.id,
+    first.server.id,
+    "the leftover row was not reused",
+  );
+  assert.ok(again.installCommand.length > 0, "no way to install the agent");
+  assert.notEqual(
+    again.installCommand,
+    first.installCommand,
+    "the same single-use token was handed out twice",
+  );
+  assert.equal((await listAllServers()).length, before);
+});
+
+test("a source that already answered is offered, not re-bootstrapped", async () => {
+  const id = await seedMigrationSource("192.0.2.70");
+  const res = await asAdmin(() =>
+    addServer({ name: "coolify-host", host: "192.0.2.70", importOnly: true }),
+  );
+  assert.equal(res.server.id, id);
+  // Re-minting a token on a TRUSTED agent arms a re-pin window that can silently
+  // replace its certificate. There is nothing to install here, so nothing is minted.
+  assert.equal(res.installCommand, "");
 });

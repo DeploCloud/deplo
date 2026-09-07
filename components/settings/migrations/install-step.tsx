@@ -244,6 +244,10 @@ export function InstallStep({
   onBack?: () => void;
 }) {
   const [failed, setFailed] = React.useState<Record<string, string>>({});
+  /** Machines Deplo already reaches, waiting for somebody to say "use that one". */
+  const [adoptable, setAdoptable] = React.useState<
+    Record<string, { serverId: string; name: string }>
+  >({});
   const [unreachable, setUnreachable] = React.useState<
     Record<string, Unreachable>
   >({});
@@ -300,6 +304,19 @@ export function InstallStep({
         delete next[m.sourceId];
         return next;
       });
+      // No command means Deplo already reaches that address - its own server, or a
+      // source whose agent answered on an earlier pass. Offered, never adopted for
+      // somebody: reading a production server's disks is their call.
+      if (!res.data.installCommand) {
+        setAdoptable((prev) => ({
+          ...prev,
+          [m.sourceId]: {
+            serverId: res.data!.server.id,
+            name: res.data!.server.name,
+          },
+        }));
+        return;
+      }
       setPending((prev) => ({
         ...prev,
         [m.sourceId]: {
@@ -531,6 +548,29 @@ export function InstallStep({
   const checkAgain = (sourceId: string, p: PendingMachine) =>
     runBusy(sourceId, () => probe(sourceId, p));
 
+  /**
+   * Take a machine Deplo already reaches as this source's machine. The address is
+   * remembered against it, so the next pass matches the row instead of asking again.
+   */
+  const adopt = (m: PlanServer, hit: { serverId: string; name: string }) =>
+    runBusy(m.sourceId, async () => {
+      const address = (draft[m.sourceId] ?? "").trim() || m.ipAddress || "";
+      const res = await gqlAction<
+        { setMigrationMachineAddress: string | null },
+        string | null
+      >(
+        CHANGE_ADDRESS,
+        { url: sourceUrl, sourceId: m.sourceId, id: hit.serverId, address },
+        (d) => d.setMigrationMachineAddress,
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      if (res.data) toast.warning(res.data);
+      onResolved(m.sourceId, hit.serverId, hit.name);
+    });
+
   /** Register a machine Deplo could not register itself, at a typed address. */
   const registerManually = (m: PlanServer) =>
     runBusy(m.sourceId, async () => {
@@ -600,6 +640,10 @@ export function InstallStep({
                         Change address
                       </button>
                     )}
+                  </span>
+                ) : adoptable[m.sourceId] ? (
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    Already reachable
                   </span>
                 ) : error ? (
                   <span className="flex min-w-0 items-start gap-1.5 text-xs text-destructive">
@@ -710,27 +754,53 @@ export function InstallStep({
                 )}
 
               {/**
-               * Never registered: no address to derive, or `addServer` refused one.
+               * Nothing to install here - the machine is already one of Deplo's.
                */}
-              {!p && !m.deploServerOnline && error && (
+              {!p && !m.deploServerOnline && adoptable[m.sourceId] && (
                 <div className="space-y-2">
-                  {canAddServers ? (
-                    <AddressForm
-                      value={draft[m.sourceId] ?? ""}
-                      onChange={(v) =>
-                        setDraft((prev) => ({ ...prev, [m.sourceId]: v }))
-                      }
-                      onSubmit={() => void registerManually(m)}
-                      submitLabel="Register"
-                      working={working}
-                    />
-                  ) : (
-                    <p className="text-xs text-warning">
-                      Ask an instance admin to add it.
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Deplo already reaches this machine as{" "}
+                    {adoptable[m.sourceId].name}. Nothing to install.
+                  </p>
+                  <Button
+                    type="button"
+                    disabled={working}
+                    onClick={() => void adopt(m, adoptable[m.sourceId])}
+                  >
+                    {working ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      `Use ${adoptable[m.sourceId].name}`
+                    )}
+                  </Button>
                 </div>
               )}
+
+              {/**
+               * Never registered: no address to derive, or `addServer` refused one.
+               */}
+              {!p &&
+                !m.deploServerOnline &&
+                !adoptable[m.sourceId] &&
+                error && (
+                  <div className="space-y-2">
+                    {canAddServers ? (
+                      <AddressForm
+                        value={draft[m.sourceId] ?? ""}
+                        onChange={(v) =>
+                          setDraft((prev) => ({ ...prev, [m.sourceId]: v }))
+                        }
+                        onSubmit={() => void registerManually(m)}
+                        submitLabel="Register"
+                        working={working}
+                      />
+                    ) : (
+                      <p className="text-xs text-warning">
+                        Ask an instance admin to add it.
+                      </p>
+                    )}
+                  </div>
+                )}
             </div>
           );
         })}

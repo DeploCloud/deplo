@@ -352,7 +352,16 @@ export async function addServer(
   const { fingerprint, insecure } = await controlPlaneCert(baseUrl);
 
   const importOnly = input.importOnly ?? false;
-  if (importOnly) await assertImportHostIsNew(host);
+  if (importOnly) {
+    const reached = await existingImportSource(host);
+    // A machine Deplo already reaches needs no second row: an agent that has
+    // called home needs no install at all, and a source whose agent never
+    // answered is the last attempt's leftover, so it gets its command back.
+    if (reached)
+      return reached.agent || !reached.importOnly
+        ? { server: reached, installCommand: "" }
+        : reissueBootstrap(reached.id);
+  }
 
   // Default to instance-wide. Another team seeing it in its own Servers list would be
   // a leak of who is migrating what from where.
@@ -425,10 +434,11 @@ export async function addServer(
 }
 
 /**
- * Refuse to register a MIGRATION SOURCE that is a machine Deplo already stands on.
- * "Migration complete" would uninstall it.
+ * The server Deplo already has at a MIGRATION SOURCE's address, when there is one.
+ * A second row for the same machine strands the first, and "migration complete"
+ * would then uninstall the wrong agent.
  */
-async function assertImportHostIsNew(host: string): Promise<void> {
+async function existingImportSource(host: string): Promise<Server | null> {
   const self = deploHostSelfAddresses();
   if (isDeploHostServer({ ip: host, host }, self))
     throw new Error(
@@ -436,15 +446,12 @@ async function assertImportHostIsNew(host: string): Promise<void> {
         "the other platform's host, and the agent here is already installed.",
     );
   const a = host.trim().toLowerCase();
-  const clash = (await listAllServers()).find(
-    (s) =>
-      s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
+  return (
+    (await listAllServers()).find(
+      (s) =>
+        s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
+    ) ?? null
   );
-  if (clash)
-    throw new Error(
-      `${clash.name} is already registered at that address. Deplo can import ` +
-        "from a machine it already reaches - no second server is needed.",
-    );
 }
 
 /**
