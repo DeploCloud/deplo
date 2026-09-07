@@ -326,6 +326,19 @@ async function backupTargetInScope(
 function normalizeSchedule(schedule: string): string {
   const expr = (schedule || DEFAULT_SCHEDULE).trim();
   if (!isValidSchedule(expr)) throw new Error(invalidScheduleMessage(expr));
+  // A dump every minute of a big volume pins the host's disk and the whole
+  // instance's backup scheduler behind it: at most every 15 minutes.
+  const minute = expr.split(/\s+/)[0];
+  const step = /^\*\/(\d+)$/.exec(minute);
+  if (
+    minute === "*" ||
+    minute.includes("-") ||
+    (step && Number(step[1]) < 15) ||
+    minute.split(",").length > 4
+  )
+    throw new Error(
+      'A backup can run at most every 15 minutes - pick specific minutes, e.g. "0,30 * * * *".',
+    );
   return expr;
 }
 

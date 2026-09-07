@@ -64,7 +64,7 @@ export async function listActivity(
   limit = 20,
   filter: ActivityFilter = {},
 ): Promise<Activity[]> {
-  return queryActivity(limit, filter);
+  return queryActivity(Math.min(Math.max(1, limit), 200), filter);
 }
 
 /**

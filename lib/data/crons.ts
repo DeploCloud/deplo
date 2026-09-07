@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "@/lib/request-cache";
-import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, type SQL, count } from "drizzle-orm";
 
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db/client";
@@ -776,6 +776,8 @@ export async function setCronEnabled(
   );
 }
 
+const MAX_JOBS_PER_TARGET = 20;
+
 export async function createCronJob(
   targetKind: CronTargetKind,
   targetId: string,
@@ -800,6 +802,18 @@ export async function createCronJob(
   const patch = buildPatch(input);
   await assertRunAsAllowed(gated.app, patch.user);
   const env = input.env ? validateEnv(input.env) : [];
+  const [{ n: existing }] = await getDb()
+    .select({ n: count() })
+    .from(cronJobsTable)
+    .where(
+      targetKind === "app"
+        ? eq(cronJobsTable.appId, targetId)
+        : eq(cronJobsTable.databaseId, targetId),
+    );
+  if (Number(existing) >= MAX_JOBS_PER_TARGET)
+    throw new Error(
+      `At most ${MAX_JOBS_PER_TARGET} cron jobs per app or database.`,
+    );
   const now = nowIso();
   const id = newId("cron");
 

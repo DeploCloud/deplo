@@ -247,6 +247,8 @@ async function uniqueEnvSlug(projectId: string, name: string): Promise<string> {
 }
 
 /** Add a `custom` environment to a container (appended last). */
+const MAX_ENVIRONMENTS_PER_PROJECT = 10;
+
 export async function createEnvironment(
   projectId: string,
   name: string,
@@ -262,6 +264,12 @@ export async function createEnvironment(
     .select({ position: environmentsTable.position })
     .from(environmentsTable)
     .where(eq(environmentsTable.projectId, projectId));
+  // Every Environment is a Docker network on a shared host (ADR-0028), and a
+  // host's pool of them is small.
+  if (existing.length >= MAX_ENVIRONMENTS_PER_PROJECT)
+    throw new Error(
+      `A project can have at most ${MAX_ENVIRONMENTS_PER_PROJECT} environments.`,
+    );
   const position = existing.reduce((m, r) => Math.max(m, r.position + 1), 0);
   const now = nowIso();
   const env: typeof environmentsTable.$inferInsert = {

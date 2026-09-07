@@ -2,7 +2,7 @@ import "server-only";
 
 // https://deplo.build/docs/concepts/what-happens-on-a-deploy
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql, count } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -92,8 +92,10 @@ async function pickNext(
       id: deploymentsTable.id,
       appId: deploymentsTable.appId,
       deployKey: deploymentsTable.deployKey,
+      teamId: appsTable.teamId,
     })
     .from(deploymentsTable)
+    .innerJoin(appsTable, eq(appsTable.id, deploymentsTable.appId))
     .where(and(eq(laneKey, serverId), eq(deploymentsTable.status, "queued")))
     .orderBy(
       asc(
@@ -102,12 +104,32 @@ async function pickNext(
       asc(deploymentsTable.createdAt),
       asc(deploymentsTable.seq),
     );
+  // A shared host is shared: the team with the fewest builds already running on
+  // this lane goes first, so one team's hundred redeploys cannot park another's
+  // single one behind them.
+  const running = new Map<string, number>();
+  for (const r of await getDb()
+    .select({ teamId: appsTable.teamId, n: count() })
+    .from(deploymentsTable)
+    .innerJoin(appsTable, eq(appsTable.id, deploymentsTable.appId))
+    .where(and(eq(laneKey, serverId), eq(deploymentsTable.status, "building")))
+    .groupBy(appsTable.teamId))
+    running.set(r.teamId, Number(r.n));
+  let best: (typeof rows)[number] | null = null;
   for (const r of rows) {
     // A legacy row with no key falls back to the app id, which is what the
     // exclusion used to be - never an empty string, which every row would share.
     const key = r.deployKey || r.appId;
-    if (!busyKeys.has(key)) return { id: r.id, appId: r.appId, key };
+    if (busyKeys.has(key)) continue;
+    if (!best || (running.get(r.teamId) ?? 0) < (running.get(best.teamId) ?? 0))
+      best = r;
   }
+  if (best)
+    return {
+      id: best.id,
+      appId: best.appId,
+      key: best.deployKey || best.appId,
+    };
   return null;
 }
 

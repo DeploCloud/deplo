@@ -1073,3 +1073,31 @@ test("downloading an APP archive is a reveal: restore_backups alone is refused",
     /reveal secret values/i,
   );
 });
+
+test("a backup schedule fires at most every 15 minutes", async () => {
+  await asUser1(async () => {
+    for (const schedule of ["* * * * *", "*/5 * * * *", "0-30 * * * *"])
+      await assert.rejects(
+        () =>
+          createBackup({
+            name: "busy",
+            targetKind: "database",
+            databaseId: "db_1",
+            destinationId: "s3_1",
+            schedule,
+            retentionCount: 7,
+          }),
+        /at most every 15 minutes/,
+        schedule,
+      );
+    const ok = await createBackup({
+      name: "half-hourly",
+      targetKind: "database",
+      databaseId: "db_1",
+      destinationId: "s3_1",
+      schedule: "0,30 * * * *",
+      retentionCount: 7,
+    });
+    assert.equal(ok.schedule, "0,30 * * * *");
+  });
+});

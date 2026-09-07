@@ -54,6 +54,8 @@ function armIdleReaper(s: LogsSession) {
 // without a cap each open() pins a backing (and its gRPC client) for good.
 const MAX_SESSIONS = 64;
 const MAX_SESSIONS_PER_APP = 8;
+// One person cannot hold the whole instance ceiling.
+const MAX_SESSIONS_PER_USER = 16;
 
 function evict(s: LogsSession) {
   s.onExit?.();
@@ -66,6 +68,7 @@ function enforceSessionCaps(appId: string, userId: string) {
   const mine = [...sessions.values()].filter((s) => s.userId === userId);
   const forApp = mine.filter((s) => s.appId === appId);
   if (forApp.length >= MAX_SESSIONS_PER_APP) evict(forApp[0]);
+  else if (mine.length >= MAX_SESSIONS_PER_USER) evict(mine[0]);
   if (sessions.size >= MAX_SESSIONS) {
     if (mine[0]) evict(mine[0]);
     else

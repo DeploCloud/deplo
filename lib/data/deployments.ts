@@ -146,7 +146,8 @@ export async function listDeployments(filter?: {
     .from(deploymentsTable)
     .where(inArray(deploymentsTable.appId, appIds))
     .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq));
-  const rows = await (filter?.limit != null ? base.limit(filter.limit) : base);
+  // A page, never the whole history: every row can carry its own log.
+  const rows = await base.limit(Math.min(filter?.limit ?? 200, 1000));
 
   // Resolve owning-server NAMES for the "Server" column / filter.
   const serverIds = [

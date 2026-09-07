@@ -21,16 +21,19 @@ afterEach(() => {
 });
 
 test("the per-app cap and the global cap only ever evict the same user's sessions", () => {
-  // User A fills the instance: 8 apps × 8 streams = the global ceiling.
+  // Four people at their own ceiling fill the instance: 4 × 16 = the global cap.
   const mine: string[] = [];
-  for (let app = 0; app < 8; app++)
-    for (let i = 0; i < 8; i++)
-      mine.push(open(`app_${app}`, "user_a", "c", handle()).id);
+  for (const user of ["user_a", "user_b", "user_c", "user_d"])
+    for (let app = 0; app < 4; app++)
+      for (let i = 0; i < 4; i++) {
+        const id = open(`app_${app}`, user, "c", handle()).id;
+        if (user === "user_a") mine.push(id);
+      }
   assert.equal(__allSessionIdsForTest().length, 64);
 
-  // User B is refused rather than evicting one of A's.
+  // A fifth person is refused rather than evicting one of theirs.
   assert.throws(
-    () => open("app_9", "user_b", "c", handle()),
+    () => open("app_9", "user_e", "c", handle()),
     /Too many live sessions/,
   );
   assert.equal(__allSessionIdsForTest().length, 64);
@@ -42,4 +45,14 @@ test("the per-app cap and the global cap only ever evict the same user's session
   assert.equal(left.length, 64);
   assert.ok(left.includes(fresh.id));
   assert.ok(!left.includes(mine[0]));
+});
+
+test("one person holds at most 16 live sessions, whatever the apps", () => {
+  for (let app = 0; app < 4; app++)
+    for (let i = 0; i < 4; i++) open(`app_${app}`, "user_a", "c", handle());
+  assert.equal(__allSessionIdsForTest().length, 16);
+  const seventeenth = open("app_9", "user_a", "c", handle());
+  const ids = __allSessionIdsForTest();
+  assert.equal(ids.length, 16, "the oldest of A's own made room");
+  assert.ok(ids.includes(seventeenth.id));
 });

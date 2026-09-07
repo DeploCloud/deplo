@@ -595,3 +595,18 @@ test("running as root on an app that reaches the server takes the host grant", a
   // The grant holder (an owner is an instance admin here) may.
   await asOwner(() => crons.updateCronJob(job.id, { user: "root" }));
 });
+
+test("an app holds at most 20 cron jobs", async () => {
+  await asOwner(async () => {
+    for (let i = 0; i < 20; i++)
+      await crons.createCronJob("app", "prj_1", {
+        ...validJob,
+        name: `job ${i}`,
+      });
+    await assert.rejects(
+      () =>
+        crons.createCronJob("app", "prj_1", { ...validJob, name: "one more" }),
+      /At most 20 cron jobs/,
+    );
+  });
+});

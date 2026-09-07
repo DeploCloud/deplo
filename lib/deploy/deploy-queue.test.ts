@@ -17,7 +17,12 @@ import {
   deployments as deploymentsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
-import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
+import {
+  seedIdentity,
+  TEAM_A,
+  USER_1,
+  TEAM_B,
+} from "../data/identity-test-helpers";
 import {
   seedServer,
   seedApp,
@@ -523,4 +528,54 @@ test("deploy_concurrency is clamped to at least 1", async () => {
   assert.deepEqual(started, ["c1"], "0 clamped to 1 - serialized, not stalled");
   await finish("c1");
   await waitFor(() => started.length === 2, "drains after finish");
+});
+
+test("a lane is shared: the team with nothing running goes before a team's second build", async () => {
+  const { runner, started, finish } = makeFakeRunner();
+  __setRunnerForTest(runner);
+  await seedServer(db, SRV_A);
+  await setConcurrency(SRV_A, 2);
+  await seedApp(db, { id: "svc_a1", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_a2", serverId: SRV_A, status: "queued" });
+  await seedApp(db, {
+    id: "svc_b",
+    teamId: TEAM_B,
+    serverId: SRV_A,
+    status: "queued",
+  });
+  // Team A queued two builds before team B queued one.
+  await seedDeployment(db, {
+    id: "d_a1",
+    appId: "svc_a1",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  await seedDeployment(db, {
+    id: "d_a2",
+    appId: "svc_a2",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:02.000Z",
+  });
+  await seedDeployment(db, {
+    id: "d_b",
+    appId: "svc_b",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:03.000Z",
+  });
+  enqueueDeployment({ depId: "d_a1", serverId: SRV_A, appId: "svc_a1" });
+  enqueueDeployment({ depId: "d_a2", serverId: SRV_A, appId: "svc_a2" });
+  enqueueDeployment({ depId: "d_b", serverId: SRV_A, appId: "svc_b" });
+  await waitFor(() => started.length === 2, "two slots filled");
+  await settle();
+  assert.deepEqual(
+    started,
+    ["d_a1", "d_b"],
+    "the second slot went to the team with nothing running",
+  );
+  await finish("d_a1");
+  await waitFor(() => started.length === 3, "the third build started");
+  assert.deepEqual(started, ["d_a1", "d_b", "d_a2"]);
 });

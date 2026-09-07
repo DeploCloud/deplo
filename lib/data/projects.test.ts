@@ -442,3 +442,16 @@ test("createApp rejects another team's environment", async () => {
     "nothing was created for the foreign placements",
   );
 });
+
+test("a project holds at most 10 environments", async () => {
+  await asOwner(async () => {
+    const p = await createProject("Crowded");
+    // The project is born with its default environments; fill to the cap.
+    const born = (await listEnvironmentsForProject(p.id)).length;
+    for (let i = born; i < 10; i++) await createEnvironment(p.id, `env ${i}`);
+    await assert.rejects(
+      () => createEnvironment(p.id, "one more"),
+      /at most 10 environments/,
+    );
+  });
+});
