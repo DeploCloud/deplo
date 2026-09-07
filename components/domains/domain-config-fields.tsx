@@ -1,13 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  CornerDownRight,
-  Lock,
-  Route,
-  Signpost,
-  Waypoints,
-} from "lucide-react";
+import { Lock, Route, Signpost, Waypoints } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -217,89 +211,6 @@ export function advancedSummary(
   const count = parseMiddlewares(state.middlewares).length;
   if (count) parts.push(count === 1 ? "1 middleware" : `${count} middlewares`);
   return parts.join(" · ");
-}
-
-/**
- * The derived answer to "what will this domain actually do" - the public URL on
- * top, where the request lands underneath.
- */
-function RoutePreview({
-  hostname,
-  state,
-  isCompose,
-}: {
-  hostname?: string;
-  state: DomainConfigState;
-  isCompose: boolean;
-}) {
-  const host = hostname?.trim() ?? "";
-  // A proxied host is visited AT the proxy, which serves its HTTPS.
-  const scheme =
-    state.proxied || state.certProvider !== "none" ? "https" : "http";
-  const path = state.path.trim();
-  const urlPath = path.startsWith("/") && !path.includes("`") ? path : "";
-  const port = state.port.trim();
-  const service = state.service.trim();
-  const manualEntrypoint =
-    state.manualEntrypoint && state.certProvider !== "none";
-  const middlewares = parseMiddlewares(state.middlewares).length;
-  // The `www` pair, spelled out: the URL on top is always the hostname that SERVES
-  // the app, which, under `toCounterpart`, is the counterpart rather than the
-  // hostname being edited.
-  const counterpart = wwwCounterpart(host);
-  const paired = state.www !== "none" && counterpart != null;
-  const servedHost =
-    paired && state.www === "toCounterpart" ? counterpart! : host;
-  const redirectingHost = !paired
-    ? ""
-    : state.www === "toCounterpart"
-      ? host
-      : counterpart!;
-
-  const target = [
-    // Named only once chosen - "the selected service" while nothing is selected
-    // would be a sentence about a thing that isn't there.
-    ...(service ? [service] : []),
-    port
-      ? `port ${port}`
-      : isCompose
-        ? "port not set"
-        : "the app’s default port",
-  ].join(" · ");
-
-  return (
-    <div className="space-y-1 rounded-md bg-muted px-3 py-2">
-      <p className="font-mono text-xs break-all text-foreground">
-        {scheme}://
-        {servedHost || (
-          <span className="text-muted-foreground">your-domain.com</span>
-        )}
-        {urlPath}
-      </p>
-      <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-        <CornerDownRight className="mt-px size-3 shrink-0" aria-hidden />
-        <span className="min-w-0 break-words">
-          Forwards to {target}
-          {manualEntrypoint &&
-            ` on ${state.entrypoint === "web" ? "web (:80)" : "websecure (:443)"}`}
-          {middlewares > 0 &&
-            `, through ${middlewares} middleware${middlewares === 1 ? "" : "s"}`}
-        </span>
-      </p>
-      {paired && (
-        <p className="flex items-start gap-1.5 text-xs break-all text-muted-foreground">
-          <Signpost className="mt-px size-3 shrink-0" aria-hidden />
-          <span className="min-w-0 break-words">
-            <span className="font-mono">{redirectingHost}</span> answers a
-            permanent redirect (301) to{" "}
-            <span className="font-mono">
-              {scheme}://{servedHost}
-            </span>
-          </span>
-        </p>
-      )}
-    </div>
-  );
 }
 
 /**
@@ -542,8 +453,6 @@ export function DomainConfigFields({
           </Select>
         </div>
       </FieldGroup>
-
-      <RoutePreview hostname={hostname} state={state} isCompose={isCompose} />
 
       {/**
        * Expert territory: collapsed on every open, in Add AND in Edit, so the two dialogs
