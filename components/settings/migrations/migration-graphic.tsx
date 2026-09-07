@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { LOGO_PATH, MARK_VIEWBOX } from "@/components/logo";
+import { MARK_PATH, MARK_VIEWBOX } from "@/components/logo";
 import {
   markPaths,
   SOURCE_ART,
@@ -188,7 +188,7 @@ export function MigrationGraphic({
           viewBox={MARK_VIEWBOX}
           className="text-foreground"
         >
-          <path d={LOGO_PATH} fill="currentColor" />
+          <path d={MARK_PATH} fill="currentColor" />
         </svg>
       </Machine>
     </svg>

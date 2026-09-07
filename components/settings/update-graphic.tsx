@@ -1,4 +1,4 @@
-import { LOGO_PATH, MARK_VIEWBOX } from "@/components/logo";
+import { MARK_PATH, MARK_VIEWBOX } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
 /** The Updates mark: the releases behind this one, and the one it is running. */
@@ -44,7 +44,7 @@ export function UpdateGraphic({ className }: { className?: string }) {
         viewBox={MARK_VIEWBOX}
         className="text-muted-foreground"
       >
-        <path d={LOGO_PATH} fill="currentColor" />
+        <path d={MARK_PATH} fill="currentColor" />
       </svg>
       <g className="fill-border">
         <rect x="94" y="156" width="62" height="6" rx="3" />

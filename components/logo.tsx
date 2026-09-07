@@ -9,8 +9,15 @@ export const LOGO_PATH =
 
 /** Full artwork viewBox. */
 const FULL_VIEWBOX = "0 0 118 38";
-/** ViewBox cropped to the leading "d" glyph - the compact mark. */
-export const MARK_VIEWBOX = "0 3.38 24.5 25";
+/**
+ * The mark alone, traced from `public/logomark.svg`. Its own path, not the
+ * wordmark cropped: any crop tight enough to hide the "e" also clipped the "d".
+ */
+export const MARK_PATH =
+  "M6.54199 3.43555H13.7432C19.7299 3.43571 24.5828 8.28959 24.583 14.2764C24.5828 20.2632 19.73 25.116 13.7432 25.1162H2.90234V19.2139H13.2354C15.9625 19.2139 18.1737 17.0035 18.1738 14.2764C18.1736 11.5493 15.9625 9.33789 13.2354 9.33789H2.90234V6.54199H0V0H6.54199V3.43555Z";
+
+/** The mark's own viewBox. */
+export const MARK_VIEWBOX = "0 0 25 26";
 
 /** Deplo mark - the leading "d" glyph. Monochrome, theme-aware, square. */
 export function DeploMark({
@@ -30,7 +37,7 @@ export function DeploMark({
       className={cn("text-foreground", className)}
       aria-hidden="true"
     >
-      <path d={LOGO_PATH} fill="currentColor" />
+      <path d={MARK_PATH} fill="currentColor" />
     </svg>
   );
 }
@@ -44,7 +51,7 @@ export function deploMarkDataUri(): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 <rect width="100" height="100" rx="22" fill="#ffffff"/>
 <svg viewBox="${MARK_VIEWBOX}" x="24" y="24" width="52" height="52">
-<path d="${LOGO_PATH}" fill="#0a0a0a"/>
+<path d="${MARK_PATH}" fill="#0a0a0a"/>
 </svg>
 </svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
