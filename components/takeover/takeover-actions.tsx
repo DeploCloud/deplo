@@ -524,9 +524,9 @@ function Working({
 /** What to do when the cutover is taking longer than it should. */
 function SlowNote({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong p-3 text-left text-sm text-warning">
+    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong p-3 text-left text-sm leading-relaxed text-warning">
       <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-      <span className="min-w-0 text-muted-foreground">{children}</span>
+      <span className="min-w-0 text-foreground">{children}</span>
     </div>
   );
 }

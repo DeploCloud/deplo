@@ -1613,8 +1613,9 @@ export function MigrationWizard({
               {/* Centred, because the column under it is centred: a rail hugging
                 the left edge of a narrow centred column reads as misaligned
                 with the heading below it, not as an anchor. Choose is the
-                question before the sequence, so it carries no rail at all. */}
-              {step !== "choose" && (
+                question before the sequence, so it carries no rail at all - and
+                neither does the cutover, which IS the end of the road. */}
+              {step !== "choose" && !cuttingOver && (
                 <div className="flex justify-center">
                   <WizardStepper
                     steps={STEPS}
