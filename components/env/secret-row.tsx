@@ -22,8 +22,8 @@ export function SecretRow({
         <div>
           <p className="text-sm leading-none font-medium">Secret</p>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Hide the value in the UI after saving. It can never be read back or
-            edited.
+            Hides the value in the UI after saving so it can never be read back
+            or edited again.
           </p>
         </div>
       </div>

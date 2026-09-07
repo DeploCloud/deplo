@@ -477,7 +477,7 @@ function LooksLikeSecretBadge() {
         variant="outline"
         className="text-[10px] font-normal whitespace-nowrap"
       >
-        Looks like a secret
+        Secret?
       </Badge>
     </SimpleTooltip>
   );
