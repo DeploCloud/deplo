@@ -1885,6 +1885,7 @@ function ConnectStep({
         : `Continue with ${queue.length} ${copy.teamLabel}${queue.length === 1 ? "" : "s"}`;
   return (
     <StepShell
+      hero
       title={copy.connectTitle}
       lead="Nothing is written on either side until you have seen what would come over."
       // The takeover screen is the first thing a new instance shows, so its
@@ -2054,7 +2055,7 @@ function ConnectStep({
          * as that platform alone, so the second refusal is that platform's own words.
          */}
         {scanError && (
-          <div className="grid gap-3 rounded-lg border border-destructive/40 bg-destructive-wash p-3">
+          <div className="grid gap-3 rounded-lg border border-destructive/40 bg-destructive-wash p-3 leading-relaxed">
             <div className="flex items-start gap-2">
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
               <p className="min-w-0 text-sm text-muted-foreground">
@@ -2404,7 +2405,7 @@ function ReportCard({
       title="Your projects are on Deplo"
       lead="Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
     >
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap justify-center gap-1.5">
         <Badge variant="success">{report.created} created</Badge>
         {report.skipped > 0 && (
           <Badge variant="secondary">{report.skipped} already here</Badge>
@@ -2440,7 +2441,7 @@ function ReportCard({
       {/* The acknowledgement's other half: the button says "I understand", so
           this has to say what there is to understand. */}
       {needsAPerson > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm">
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 flex-1 text-muted-foreground">
             {needsAPerson === 1
@@ -2454,7 +2455,7 @@ function ReportCard({
       {/* Only a panel that lists its teams gets here - the operator is one key
           short of a team they have not thought about. */}
       {uncovered.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm">
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 flex-1 text-muted-foreground">
             Still on that panel: {uncovered.join(", ")}.

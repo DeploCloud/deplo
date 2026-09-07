@@ -354,6 +354,7 @@ export function ReviewStep({
 
   return (
     <StepShell
+      hero
       title="What comes over"
       docs={stepDocs(kind, "changes")}
       lead="Pick what to bring and where it lands. Nothing is deployed yet."
@@ -468,7 +469,7 @@ export function ReviewStep({
        * lists - and NOT behind a confirm dialog.
        */}
       {chosenNames.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm">
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 text-muted-foreground">
             <SimpleTooltip content={chosenNames.join(", ")}>
@@ -502,7 +503,7 @@ export function ReviewStep({
 /** One line about ports, in the warning colour the rest of this screen uses. */
 function PortsNotice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm text-warning">
+    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed text-warning">
       <TriangleAlert className="mt-0.5 size-4 shrink-0" />
       <span className="min-w-0 text-muted-foreground">{children}</span>
     </div>

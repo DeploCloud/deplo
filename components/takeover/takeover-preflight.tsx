@@ -13,7 +13,7 @@ export async function TakeoverPreflight() {
   if (pre.agentReady && !pre.diskTight) return null;
 
   return (
-    <div className="grid gap-2 rounded-lg border border-warning/40 bg-warning-wash p-3">
+    <div className="grid gap-2 rounded-lg border border-warning/40 bg-warning-wash p-3 leading-relaxed">
       {!pre.agentReady && (
         <Line
           icon={<PlugZap className="mt-0.5 size-4 shrink-0 text-destructive" />}

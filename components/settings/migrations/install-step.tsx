@@ -536,6 +536,7 @@ export function InstallStep({
 
   return (
     <StepShell
+      hero
       title={
         settled ? "Every machine is connected" : "Run one line on each machine"
       }

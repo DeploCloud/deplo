@@ -69,6 +69,7 @@ export function PeopleStep({
 
   return (
     <StepShell
+      hero
       title={`The people who were on ${copyFor(kind).name}`}
       docs={stepDocs(kind, "people")}
       lead="Everyone joins with a single-use link and arrives as a plain member, whatever they were over there. You can invite anyone else later from Members."
@@ -186,7 +187,7 @@ function PersonCard({
   panel: string;
 }) {
   return (
-    <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4">
+    <div className="flex h-full flex-col gap-3 rounded-lg border border-border bg-background p-4">
       <div className="flex w-full items-center gap-3">
         {/* Their real picture once they already have an account here; the
             neutral mark otherwise, with their name or the local part of their

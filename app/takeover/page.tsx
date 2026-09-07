@@ -76,10 +76,10 @@ export default async function TakeoverPage() {
 
   return (
     <Screen
+      // Only while the machine is still the other panel's. Once the ports have
+      // been asked for there is nothing here to back out of.
       footer={
-        (status.state === "pending" ||
-          status.state === "ready" ||
-          status.state === "failed") && (
+        (status.state === "pending" || status.state === "failed") && (
           <TakeoverCancel
             platformLabel={copy.name}
             tokenLabel={copy.tokenLabel}
@@ -142,7 +142,7 @@ function Screen({
       <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8">
         <div className="w-full max-w-xl space-y-6">{children}</div>
       </main>
-      {/* Clear of AuthChrome's own row of links, which is fixed to the foot. */}
+      {/* Clear of AuthChrome's own row of links, which sits at the page's foot. */}
       {footer && <footer className="relative z-10 px-4 pb-14">{footer}</footer>}
     </div>
   );
