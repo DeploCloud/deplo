@@ -8,6 +8,7 @@ import {
 import { decryptSecret } from "@/lib/crypto";
 import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { providerFor } from "@/lib/git/providers";
+import { readTextCapped } from "@/lib/http/body-cap";
 
 /**
  * Inbound push webhook for every git provider that is not GitHub. Sniffing headers
@@ -19,7 +20,8 @@ export async function POST(
   ctx: { params: Promise<{ token: string }> },
 ) {
   const { token } = await ctx.params;
-  const raw = await request.text();
+  const raw = await readTextCapped(request);
+  if (raw instanceof Response) return raw;
 
   const conn = (
     await getDb()

@@ -1,6 +1,7 @@
 import { toNextJsHandler } from "better-auth/next-js";
 import { getAuth } from "@/lib/auth/better-auth";
 import { rateLimit } from "@/lib/security";
+import { capRequestBody } from "@/lib/http/body-cap";
 
 /**
  * Better Auth endpoints (`/api/auth/*`). Active only when Postgres is
@@ -55,7 +56,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = getAuth();
   if (!auth) return notConfigured();
-  const refused = await registrationAllowed(request);
+  const capped = capRequestBody(request);
+  if (capped instanceof Response) return capped;
+  const refused = await registrationAllowed(capped);
   if (refused) return refused;
-  return toNextJsHandler(auth).POST(request);
+  return toNextJsHandler(auth).POST(capped);
 }

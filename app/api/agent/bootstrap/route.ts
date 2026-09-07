@@ -1,5 +1,6 @@
 import { completeBootstrap } from "@/lib/data/servers";
 import { signResponse, BootstrapError } from "@/lib/agent/bootstrap";
+import { capRequestBody } from "@/lib/http/body-cap";
 
 /**
  * The call-home BOOTSTRAP endpoint (PLAN Part B, P1-P4). The agent has already
@@ -14,7 +15,9 @@ export async function POST(request: Request) {
     advertisedHost?: unknown;
   };
   try {
-    body = (await request.json()) as typeof body;
+    const capped = capRequestBody(request);
+    if (capped instanceof Response) return capped;
+    body = (await capped.json()) as typeof body;
   } catch {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }

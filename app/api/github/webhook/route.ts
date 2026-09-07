@@ -10,6 +10,7 @@ import { findAppByAppId } from "@/lib/github/app";
 import { parsePushEvent } from "@/lib/deploy/git-webhook";
 import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
+import { readTextCapped } from "@/lib/http/body-cap";
 
 /**
  * Inbound GitHub App webhook. Verifies the HMAC signature against the receiving
@@ -17,7 +18,8 @@ import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
  * pushed repo + branch.
  */
 export async function POST(request: Request) {
-  const raw = await request.text();
+  const raw = await readTextCapped(request);
+  if (raw instanceof Response) return raw;
 
   const appId = Number(
     request.headers.get("x-github-hook-installation-target-id"),
