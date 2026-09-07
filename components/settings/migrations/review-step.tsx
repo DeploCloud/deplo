@@ -402,9 +402,6 @@ export function ReviewStep({
         // team lands is in sight while its list is ticked.
         <div className="space-y-4">
           {groups.map((g) => {
-            const own = g.plan.projects.flatMap((p) => importableOf(p));
-            const ownAll =
-              own.length > 0 && own.every((s) => chosen.has(s.sourceId));
             return (
               <section
                 key={g.key}
@@ -429,7 +426,7 @@ export function ReviewStep({
                     <Badge variant="secondary">New team</Badge>
                   )}
                   <Button
-                    variant="ghost"
+                    variant="secondary"
                     size="sm"
                     className="ml-auto"
                     onClick={onChangeTarget}
@@ -452,14 +449,6 @@ export function ReviewStep({
                     onPlacementsChange={setPlacements}
                     portConflicts={ports.conflicts}
                     showPorts={canExposePorts}
-                    allChosen={ownAll}
-                    onToggleAll={() => {
-                      const next = new Set(chosen);
-                      for (const s of own)
-                        if (ownAll) next.delete(s.sourceId);
-                        else next.add(s.sourceId);
-                      setChosen(next);
-                    }}
                   />
                 )}
               </section>

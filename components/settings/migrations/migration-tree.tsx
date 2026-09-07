@@ -13,7 +13,6 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -133,8 +132,6 @@ export function MigrationTree({
   onPlacementsChange,
   portConflicts,
   showPorts,
-  allChosen,
-  onToggleAll,
 }: {
   projects: PlanProject[];
   /** Source service ids. The leaves ARE the selection; parents are derived. */
@@ -150,9 +147,6 @@ export function MigrationTree({
   portConflicts: Record<string, PortConflict>;
   /** False without the publish-ports grant: no port comes over, so none is shown. */
   showPorts: boolean;
-  /** Every importable service is ticked, so the button offers the opposite. */
-  allChosen: boolean;
-  onToggleAll: () => void;
 }) {
   // Everything open on arrival: a migration is read top to bottom once, and a
   // tree that hides the thing you came to check is a tree you fight.
@@ -217,9 +211,7 @@ export function MigrationTree({
   // What the bulk controls display: the one value every row agrees on, or
   // nothing when they differ - so they double as the answer to "where is all of
   // this going" without counting down the list.
-  const runIds = all.map((x) => x.sourceId);
   const buildIds = all.filter((x) => x.buildsFromSource).map((x) => x.sourceId);
-  const commonRun = shared(runIds.map((id) => placements[id]?.serverId));
   const commonBuild = shared(
     buildIds.map((id) => placements[id]?.buildServerId),
   );
@@ -269,27 +261,6 @@ export function MigrationTree({
               </span>
             </SimpleTooltip>
           )}
-          <SimpleTooltip content="Put everything on this server">
-            <span className="inline-flex">
-              <RunSelect
-                servers={servers}
-                value={commonRun}
-                onChange={(v) => place(runIds, { serverId: v })}
-                placeholder="Place all on"
-                label="Place everything on"
-                className="h-9 w-44"
-              />
-            </span>
-          </SimpleTooltip>
-          {/* Default size, not `sm`: it sits beside an Input and two
-              SelectTriggers, all `h-9`, and `sm` would land it 4px short. */}
-          <Button
-            variant="outline"
-            onClick={onToggleAll}
-            disabled={all.length === 0}
-          >
-            {allChosen ? "Unselect all" : "Select all"}
-          </Button>
         </div>
       </div>
 

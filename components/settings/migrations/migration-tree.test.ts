@@ -151,8 +151,6 @@ function render(
         onPlacementsChange: () => {},
         portConflicts: opts.portConflicts ?? {},
         showPorts: opts.showPorts ?? true,
-        allChosen: false,
-        onToggleAll: () => {},
       }),
     ),
   );
@@ -306,26 +304,20 @@ test("a service Deplo never compiles gets a dash, not a picker", () => {
   assert.ok(html.includes(`id="imp-build-s-api"`), "a git app lost its picker");
 });
 
-test("the bulk control offers itself only when the rows disagree", () => {
-  // Rows that agree give it a value, and a Radix Select showing a value renders
-  // no placeholder - so the absence IS the assertion that it picked one up.
-  const agree = toolbar(render([]));
-  assert.equal(agree.includes("Place all on"), false);
-
-  const split = toolbar(
-    render([], {
-      placements: {
-        ...homePlacements(),
-        "s-api": { serverId: OTHER, buildServerId: null },
-      },
-    }),
-  );
-  assert.match(split, /Place all on/);
+test("the bulk row places nothing and selects nothing", () => {
+  // Where a service lands is a per-row answer, and so is whether it comes at
+  // all: a control that rewrites every row at once is not worth its width.
+  const html = render([]);
+  const row = toolbar(html);
+  assert.equal(row.includes("Place all on"), false);
+  assert.equal(row.includes("Select all"), false);
+  assert.equal(row.includes("Unselect all"), false);
+  // The rows still carry their own picker, which is where placing now lives.
+  assert.ok(html.includes(`id="imp-run-s-api"`), "a row lost its picker");
 });
 
-test("the bulk row carries the select-all, and the table head is gone", () => {
+test("the table head is gone", () => {
   const html = render([]);
-  assert.match(toolbar(html), /Select all/);
   // The header row that used to sit inside the table, with "Set all" down its
   // left and a caption over each picker, is not a column and is not there.
   assert.equal(html.includes("Set all"), false);
