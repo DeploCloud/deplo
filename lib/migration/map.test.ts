@@ -2812,24 +2812,62 @@ test("a repository behind a connection still says a credential is needed", () =>
     repository: "private",
     branch: "main",
   } as Parameters<typeof mapSource>[0]);
+  // GitHub clones through an App, not a connection, so it is the App the line asks for.
   assert.ok(
-    viaProvider.notes.some((n) => /Attach a git connection/.test(n)),
+    viaProvider.notes.some((n) => /Link a GitHub App/.test(n)),
     viaProvider.notes.join(" | "),
   );
   // And the panel saying so itself (Coolify keeps a bare `owner/repo` behind a
   // source) counts the same.
   const declared = mapSource({
     applicationId: "a2",
-    sourceType: "git",
+    sourceType: "gitea",
     buildType: "nixpacks",
     gitNeedsCredential: true,
-    customGitUrl: "https://github.com/acme/private.git",
+    customGitUrl: "https://git.acme.com/acme/private.git",
     customGitBranch: "main",
   } as Parameters<typeof mapSource>[0]);
   assert.ok(
     declared.notes.some((n) => /Attach a git connection/.test(n)),
     declared.notes.join(" | "),
   );
+});
+
+test("a repository behind a source keeps that provider, with no credential", () => {
+  // Coolify hands over `owner/repo` plus the source it sat behind, never the
+  // credential. Read as plain git it cloned anonymously and died on git's own
+  // "could not read Username"; as GitHub the app asks for an App instead.
+  const gh = mapSource({
+    applicationId: "a1",
+    sourceType: "github",
+    buildType: "nixpacks",
+    gitNeedsCredential: true,
+    customGitUrl: "https://github.com/IdraDev/creator_wars.git",
+    customGitBranch: "master",
+  } as Parameters<typeof mapSource>[0]);
+  assert.equal(gh.value.kind, "git");
+  assert.deepEqual(gh.value.kind === "git" ? gh.value.repo : null, {
+    provider: "github",
+    url: "https://github.com/IdraDev/creator_wars.git",
+    repo: "IdraDev/creator_wars",
+    branch: "master",
+    triggerType: "push",
+    watchPaths: [],
+    submodules: false,
+  });
+
+  // A self-hosted host is on the address the panel handed over, so it is taken as
+  // given rather than rebuilt from parts onto gitea.com.
+  const self = cloneTarget({
+    applicationId: "a2",
+    sourceType: "gitea",
+    buildType: "nixpacks",
+    customGitUrl: "https://git.acme.com/team/app.git",
+    customGitBranch: "main",
+  } as Parameters<typeof cloneTarget>[0]);
+  assert.equal(self?.provider, "gitea");
+  assert.equal(self?.url, "https://git.acme.com/team/app.git");
+  assert.equal(self?.repo, "team/app");
 });
 
 test("a rename carries a DBHOST-style reference with it", () => {

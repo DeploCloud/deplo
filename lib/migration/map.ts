@@ -1344,7 +1344,11 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
     /^(ssh:\/\/|[^/\s]+@[^/\s]+:)/.test(repo.url)
   )
     notes.push(
-      `${repo.repo} came from an account connected to {panel}, so no credential came with it. Attach a git connection if the repository is private - that also turns on auto-deploy.`,
+      `${repo.repo} came from an account connected to {panel}, so no credential came with it. ${
+        repo.provider === "github"
+          ? "Link a GitHub App under the app's Source settings"
+          : "Attach a git connection"
+      } if the repository is private - that also turns on auto-deploy.`,
     );
 
   return {
@@ -1381,13 +1385,14 @@ export function cloneTarget(
 
   switch (app.sourceType) {
     case "github": {
-      if (!a.owner || !a.repository) return null;
-      return {
-        provider: "github",
-        url: `https://github.com/${a.owner}/${a.repository}.git`,
-        repo: `${a.owner}/${a.repository}`,
-        branch: a.branch?.trim() || "main",
-      };
+      if (a.owner && a.repository)
+        return {
+          provider: "github",
+          url: `https://github.com/${a.owner}/${a.repository}.git`,
+          repo: `${a.owner}/${a.repository}`,
+          branch: a.branch?.trim() || "main",
+        };
+      break;
     }
     case "gitlab": {
       // `gitlabPathNamespace` is the FULL project path, not the namespace its name
@@ -1398,49 +1403,58 @@ export function cloneTarget(
       const path =
         a.gitlabPathNamespace?.trim() ||
         (owner && repository ? `${owner}/${repository}` : "");
-      if (!path) return null;
-      const origin = host(a.gitlab?.gitlabUrl, "https://gitlab.com");
-      return {
-        provider: "gitlab",
-        url: `${origin}/${path}.git`,
-        repo: path,
-        branch: a.gitlabBranch?.trim() || "main",
-      };
+      if (path) {
+        const origin = host(a.gitlab?.gitlabUrl, "https://gitlab.com");
+        return {
+          provider: "gitlab",
+          url: `${origin}/${path}.git`,
+          repo: path,
+          branch: a.gitlabBranch?.trim() || "main",
+        };
+      }
+      break;
     }
     case "gitea": {
-      if (!a.giteaOwner || !a.giteaRepository) return null;
-      const origin = host(a.gitea?.giteaUrl, "https://gitea.com");
-      return {
-        provider: "gitea",
-        url: `${origin}/${a.giteaOwner}/${a.giteaRepository}.git`,
-        repo: `${a.giteaOwner}/${a.giteaRepository}`,
-        branch: a.giteaBranch?.trim() || "main",
-      };
+      if (a.giteaOwner && a.giteaRepository) {
+        const origin = host(a.gitea?.giteaUrl, "https://gitea.com");
+        return {
+          provider: "gitea",
+          url: `${origin}/${a.giteaOwner}/${a.giteaRepository}.git`,
+          repo: `${a.giteaOwner}/${a.giteaRepository}`,
+          branch: a.giteaBranch?.trim() || "main",
+        };
+      }
+      break;
     }
     case "bitbucket": {
       const slug =
         a.bitbucketRepositorySlug?.trim() || a.bitbucketRepository?.trim();
-      if (!a.bitbucketOwner || !slug) return null;
-      return {
-        provider: "bitbucket",
-        url: `https://bitbucket.org/${a.bitbucketOwner}/${slug}.git`,
-        repo: `${a.bitbucketOwner}/${slug}`,
-        branch: a.bitbucketBranch?.trim() || "main",
-      };
+      if (a.bitbucketOwner && slug)
+        return {
+          provider: "bitbucket",
+          url: `https://bitbucket.org/${a.bitbucketOwner}/${slug}.git`,
+          repo: `${a.bitbucketOwner}/${slug}`,
+          branch: a.bitbucketBranch?.trim() || "main",
+        };
+      break;
     }
-    case "git": {
-      const url = a.customGitUrl?.trim();
-      if (!url) return null;
-      return {
-        provider: "git",
-        url,
-        repo: repoNameFromUrl(url),
-        branch: a.customGitBranch?.trim() || "main",
-      };
-    }
+    case "git":
+      break;
     default:
       return null;
   }
+
+  // A panel that NAMES the provider but hands over the finished address instead of
+  // its parts (Coolify keeps the host on the source and joins the two itself). Taken
+  // as given: rebuilding it from parts would lose a self-hosted host.
+  const url = a.customGitUrl?.trim();
+  if (!url) return null;
+  return {
+    provider: app.sourceType as GitRepo["provider"],
+    url,
+    repo: repoNameFromUrl(url),
+    branch: a.customGitBranch?.trim() || "main",
+  };
 }
 
 /** `owner/name` out of any clone URL, https or scp-style. */

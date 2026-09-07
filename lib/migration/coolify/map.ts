@@ -636,6 +636,17 @@ const SOURCE_HOSTS: Record<string, string> = {
   giteaapp: "https://gitea.com",
 };
 
+/** The providers a Coolify source can name; `git` when the address stands alone. */
+type GitOrigin = "git" | "github" | "gitlab" | "bitbucket" | "gitea";
+
+/** And which provider each of them authenticates with once Deplo has a credential. */
+const SOURCE_ORIGINS: Record<string, GitOrigin> = {
+  githubapp: "github",
+  gitlabapp: "gitlab",
+  bitbucketapp: "bitbucket",
+  giteaapp: "gitea",
+};
+
 /**
  * The clone URL for a Coolify application.
  *
@@ -648,13 +659,20 @@ const SOURCE_HOSTS: Record<string, string> = {
 export function coolifyGitUrl(row: CoolifyApplication): {
   url: string | null;
   assumed: boolean;
+  /** Which provider authenticates the clone. `git` when the address stands on its
+   *  own: a public repository clones here anonymously, exactly as it did there. */
+  origin: GitOrigin;
 } {
   const raw = row.git_repository?.trim() ?? "";
   const full = row.git_full_url?.trim() ?? "";
+  const named =
+    SOURCE_ORIGINS[
+      (row.source_type ?? "").split("\\").pop()?.toLowerCase() ?? ""
+    ];
   if (/^(https?|ssh|git):\/\//i.test(raw) || /^[^/]+@[^/]+:/.test(raw))
-    return { url: raw, assumed: false };
-  if (full) return { url: full, assumed: false };
-  if (!raw) return { url: null, assumed: false };
+    return { url: raw, assumed: false, origin: "git" };
+  if (full) return { url: full, assumed: false, origin: named ?? "git" };
+  if (!raw) return { url: null, assumed: false, origin: "git" };
 
   const declared = row.source?.html_url?.trim();
   const kind = (row.source_type ?? "").split("\\").pop()?.toLowerCase() ?? "";
@@ -663,6 +681,9 @@ export function coolifyGitUrl(row: CoolifyApplication): {
   return {
     url: `${(host ?? SOURCE_HOSTS.githubapp).replace(/\/+$/, "")}/${path}.git`,
     assumed: !host,
+    // No host to read means the URL above assumed github.com: say so here too, or
+    // the clone goes out anonymous against an address Deplo itself invented.
+    origin: named ?? (host ? "git" : "github"),
   };
 }
 
@@ -694,9 +715,9 @@ export interface CoolifyExtras {
 /**
  * One Coolify application → the shared application shape.
  *
- * Its git side always arrives as PLAIN git: Coolify hands over a clone URL and a
- * branch, never a provider connection Deplo could reuse, so pretending it is a
- * GitHub App connection would produce an app that cannot deploy.
+ * A repository that sat behind a connected source keeps that provider, with no
+ * credential: the app then ASKS for a GitHub App instead of failing the clone with
+ * git's own "could not read Username".
  */
 export function coolifyApplication(
   row: CoolifyApplication,
@@ -710,8 +731,8 @@ export function coolifyApplication(
           : ""
       }`
     : null;
-  const sourceType: SourceOrigin = isImage ? "docker" : "git";
   const git = coolifyGitUrl(row);
+  const sourceType: SourceOrigin = isImage ? "docker" : git.origin;
   const domains = parseCoolifyFqdns(row.fqdn, row.docker_compose_domains);
 
   return {
@@ -927,7 +948,9 @@ export function coolifyCompose(
       // repository a `build:` stack arrives with nothing to build from.
       ...(app.git_repository?.trim()
         ? {
-            sourceType: "git" as const,
+            // Like an application: the source it sat behind is what asks for a
+            // credential here, and plain git asks for none.
+            sourceType: coolifyGitUrl(app).origin,
             customGitUrl: coolifyGitUrl(app).url,
             customGitBranch: app.git_branch ?? null,
             composePath: app.docker_compose_location ?? null,

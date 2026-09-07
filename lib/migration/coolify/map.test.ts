@@ -490,7 +490,7 @@ const APP: CoolifyApplication = {
   start_command: "node server.js",
 };
 
-test("an application arrives as plain git, because that is what Coolify gives", () => {
+test("an application whose address stands on its own arrives as plain git", () => {
   const a = coolifyApplication(APP, {
     serverId: "srv-1",
     environmentId: "2",
@@ -773,9 +773,44 @@ test("a short repository is joined to the host its source lives on", () => {
   );
 });
 
+test("a repository behind a source keeps the provider it sat behind", () => {
+  // Coolify hands over `owner/repo` and the source, never the credential. Read as
+  // plain git the clone went out anonymous and died on "could not read Username";
+  // as GitHub the app asks for a GitHub App instead.
+  assert.equal(
+    coolifyApplication({
+      ...APP,
+      git_repository: "IdraDev/creator_wars",
+      git_branch: "master",
+      source_type: "App\\Models\\GithubApp",
+    }).sourceType,
+    "github",
+  );
+  assert.equal(
+    coolifyApplication({
+      ...APP,
+      git_repository: "team/app",
+      source_type: "App\\Models\\GiteaApp",
+      source: { html_url: "https://git.acme.com/" },
+    }).sourceType,
+    "gitea",
+  );
+  // A whole address clones here exactly as it cloned there: no credential is
+  // wanted, so naming a provider would only ask for one that was never needed.
+  assert.equal(coolifyApplication(APP).sourceType, "git");
+  assert.equal(
+    coolifyApplication({ ...APP, git_repository: "git@git.acme.com:t/a.git" })
+      .sourceType,
+    "git",
+  );
+});
+
 test("a repository with no source at all says github was assumed", () => {
   const a = coolifyApplication({ ...APP, git_repository: "acme/web" });
   assert.equal(a.customGitUrl, "https://github.com/acme/web.git");
+  // The provider follows the address that was just invented: leaving it plain git
+  // would send an anonymous clone at a host Deplo picked and report git's error.
+  assert.equal(a.sourceType, "github");
   assert.ok(
     a.platformNotes?.some((n) => n.includes("Change it under Source")),
     "the guess has to be said out loud",
