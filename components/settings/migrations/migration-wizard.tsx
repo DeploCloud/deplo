@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import {
   CircleStop,
   Loader2,
-  Plus,
   Repeat,
   ScrollText,
   Server as ServerIcon,
@@ -24,15 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { KindCard } from "@/components/shared/kind-card";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -41,6 +31,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { LeftoverDiskGraphic } from "@/components/takeover/leftover-disk-graphic";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
+import { TargetSelect } from "./target-select";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import {
   isDriven,
@@ -980,6 +971,17 @@ export function MigrationWizard({
     setApiKey("");
   }
 
+  /**
+   * Where one row lands, from either screen. The fleet is per-team, so the new
+   * team's is fetched here - without it the row pickers keep offering the old
+   * team's hosts until the run itself reloads them.
+   */
+  function retargetAt(i: number, target: TeamTarget) {
+    updateQueue(retarget(queueRef.current, i, target));
+    if (target.kind === "existing" && !fleetsRef.current[target.teamId])
+      void loadFleet(target.teamId);
+  }
+
   /** The list with one row changed, kept in step for the chain. */
   function updateQueue(next: QueuedTeam[]) {
     queueRef.current = next;
@@ -1302,6 +1304,7 @@ export function MigrationWizard({
         key: String(i),
         team: { name: q.name, avatarUrl: q.avatarUrl },
         landsIn: landingOf(q),
+        target: q.target,
         plan: p,
         servers: fleet.servers,
         buildServers: fleet.buildServers,
@@ -1714,9 +1717,7 @@ export function MigrationWizard({
                     targetTeams={targetTeams}
                     adding={adding}
                     onAdd={() => void identifyAndAdd()}
-                    onRetarget={(i, target) =>
-                      updateQueue(retarget(queueRef.current, i, target))
-                    }
+                    onRetarget={(i, target) => retargetAt(i, target)}
                     onRemove={(i) =>
                       updateQueue(queueRef.current.filter((_, j) => j !== i))
                     }
@@ -1795,7 +1796,10 @@ export function MigrationWizard({
                       placements={placements}
                       setPlacements={setPlacements}
                       canExposePorts={canExposePorts}
-                      onChangeTarget={() => setStep("connect")}
+                      targetTeams={targetTeams}
+                      onRetarget={(key, target) =>
+                        retargetAt(Number(key), target)
+                      }
                       onBack={() => setStep("install")}
                       starting={starting}
                       onStart={() => void startChain()}
@@ -2139,66 +2143,6 @@ function ConnectStep({
 }
 
 /** The value a Select carries for "a team made for it at Start". */
-const NEW_TEAM = "new";
-
-/**
- * Where one source team lands: a team that exists, or one named after it. The
- * namesake is the default (see `defaultTarget`); this is the way to say otherwise.
- */
-function TargetSelect({
-  value,
-  teams,
-  sourceName,
-  disabled,
-  onChange,
-}: {
-  value: TeamTarget;
-  teams: TargetTeam[];
-  /** What the new team would be called. */
-  sourceName: string;
-  disabled: boolean;
-  onChange: (target: TeamTarget) => void;
-}) {
-  return (
-    <Select
-      value={value.kind === "new" ? NEW_TEAM : value.teamId}
-      onValueChange={(v) =>
-        onChange(
-          v === NEW_TEAM ? { kind: "new" } : { kind: "existing", teamId: v },
-        )
-      }
-      disabled={disabled}
-    >
-      <SelectTrigger
-        className="w-[10rem]"
-        aria-label={`Where ${sourceName} lands`}
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {teams.length > 0 && (
-          <SelectGroup>
-            <SelectLabel>Existing teams</SelectLabel>
-            {teams.map((t) => (
-              <SelectItem key={t.id} value={t.id}>
-                <span className="flex items-center gap-2">
-                  <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="xs" />
-                  <span className="truncate">{t.name}</span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        )}
-        <SelectItem value={NEW_TEAM}>
-          <span className="flex items-center gap-2">
-            <Plus className="size-4 text-muted-foreground" />
-            <span className="truncate">New team</span>
-          </span>
-        </SelectItem>
-      </SelectContent>
-    </Select>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* The move, while it happens                                         */

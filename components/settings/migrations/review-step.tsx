@@ -10,13 +10,14 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { MigrationTree, type PortConflict } from "./migration-tree";
 import { StepShell } from "./step-shell";
+import { TargetSelect } from "./target-select";
+import type { TeamTarget } from "./queue";
 import { copyFor, type SourceKind, stepDocs } from "./sources";
 import {
   importableOf,
@@ -24,6 +25,7 @@ import {
   type Plan,
   type PortCheck,
   type ServerChoice,
+  type TargetTeam,
 } from "./types";
 
 const PORTS_IN_USE = /* GraphQL */ `
@@ -286,6 +288,8 @@ export interface ReviewGroup {
   key: string;
   team: { name: string; avatarUrl: string | null };
   landsIn: { name: string; avatarUrl: string | null; isNew: boolean };
+  /** Where it lands, editable right here rather than a step back. */
+  target: TeamTarget;
   plan: Plan;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
@@ -314,7 +318,8 @@ export function ReviewStep({
   placements,
   setPlacements,
   canExposePorts,
-  onChangeTarget,
+  targetTeams,
+  onRetarget,
   onBack,
   onStart,
   starting,
@@ -330,8 +335,9 @@ export function ReviewStep({
     React.SetStateAction<Record<string, Placement>>
   >;
   canExposePorts: boolean;
-  /** Where a team lands is decided on Connect; this is the way back to it. */
-  onChangeTarget: () => void;
+  /** The teams a source team may land in, besides one named after it. */
+  targetTeams: TargetTeam[];
+  onRetarget: (key: string, target: TeamTarget) => void;
   onBack: () => void;
   onStart: () => void;
   /** A start is already in flight from this tab. */
@@ -416,23 +422,17 @@ export function ReviewStep({
                   <span className="font-medium">{g.team.name}</span>
                   <span className="text-muted-foreground">on {panel}</span>
                   <ArrowRight className="size-3.5 text-muted-foreground" />
-                  <TeamAvatar
-                    name={g.landsIn.name}
-                    avatarUrl={g.landsIn.avatarUrl}
-                    size="sm"
-                  />
-                  <span className="font-medium">{g.landsIn.name}</span>
-                  {g.landsIn.isNew && (
-                    <Badge variant="secondary">New team</Badge>
-                  )}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="ml-auto"
-                    onClick={onChangeTarget}
-                  >
-                    Change
-                  </Button>
+                  {/* The picker IS the destination now, avatar and name and all,
+                      so a second mark beside it would name the same team twice. */}
+                  <span className="ml-auto">
+                    <TargetSelect
+                      value={g.target}
+                      teams={targetTeams}
+                      sourceName={g.team.name}
+                      disabled={false}
+                      onChange={(t) => onRetarget(g.key, t)}
+                    />
+                  </span>
                 </div>
                 {g.plan.projects.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
