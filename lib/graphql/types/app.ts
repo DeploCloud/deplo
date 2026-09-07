@@ -681,6 +681,14 @@ const RecognizedFrameworkRef = builder
           "it otherwise - what a new app's container port defaults to.",
         resolve: (f) => f.framework?.defaultPort ?? null,
       }),
+      staticOutput: t.string({
+        nullable: true,
+        description:
+          "The directory to SERVE, for a framework whose production artifact is " +
+          "a directory no builder serves (Gatsby, Eleventy, Docusaurus). Null " +
+          "when the framework runs a server of its own.",
+        resolve: (f) => f.framework?.staticOutput ?? null,
+      }),
       buildCommand: t.exposeString("buildCommand", {
         nullable: true,
         description:

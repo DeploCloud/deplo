@@ -307,6 +307,7 @@ export function NewAppWizard({
   // repository told us layered on.
   const [draftBuild, setDraftBuild] = React.useState(() => buildConfigFor());
   const [portTouched, setPortTouched] = React.useState(false);
+  const [outputTouched, setOutputTouched] = React.useState(false);
   const [commandsTouched, setCommandsTouched] = React.useState(false);
 
   const usesGit = source === "github" || source === "git";
@@ -356,16 +357,28 @@ export function NewAppWizard({
     if (framework && !portTouched && next.port !== framework.defaultPort) {
       next = { ...next, port: framework.defaultPort };
     }
+    // A framework that builds a directory and runs no server is SERVED, not started.
+    if (framework?.staticOutput && !outputTouched && !next.outputDirectory) {
+      next = { ...next, outputDirectory: framework.staticOutput };
+    }
     if (!commandsTouched && commands.buildCommand) {
       next = { ...next, buildCommand: commands.buildCommand };
     }
     return next;
-  }, [draftBuild, framework, portTouched, commands, commandsTouched]);
+  }, [
+    draftBuild,
+    framework,
+    portTouched,
+    outputTouched,
+    commands,
+    commandsTouched,
+  ]);
 
   const prefilledBuild = !commandsTouched ? commands.buildCommand : null;
 
   function onBuildChange(next: BuildConfig) {
     if (next.port !== build.port) setPortTouched(true);
+    if (next.outputDirectory !== build.outputDirectory) setOutputTouched(true);
     if (
       next.buildCommand !== build.buildCommand ||
       next.startCommand !== build.startCommand

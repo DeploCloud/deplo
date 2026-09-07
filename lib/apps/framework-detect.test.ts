@@ -242,6 +242,15 @@ test("the catalog itself stays coherent", () => {
     for (const file of framework.files) {
       assert.equal(file, file.toLowerCase(), `${framework.id} marker ${file}`);
     }
+    // A serve directory is relative to the build root: never absolute, never a climb.
+    if (framework.staticOutput !== undefined) {
+      assert.match(
+        framework.staticOutput,
+        /^[\w.][\w./-]*$/,
+        `${framework.id} has an unusable static output`,
+      );
+      assert.ok(!framework.staticOutput.includes(".."), framework.id);
+    }
     assert.equal(isFrameworkId(framework.id), true);
     assert.equal(frameworkById(framework.id)?.name, framework.name);
   }

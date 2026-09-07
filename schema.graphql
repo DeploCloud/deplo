@@ -4522,6 +4522,11 @@ type RecognizedFramework {
 
   """Display name, e.g. "Next.js"."""
   name: String
+
+  """
+  The directory to SERVE, for a framework whose production artifact is a directory no builder serves (Gatsby, Eleventy, Docusaurus). Null when the framework runs a server of its own.
+  """
+  staticOutput: String
 }
 
 """

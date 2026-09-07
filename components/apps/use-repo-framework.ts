@@ -15,6 +15,8 @@ export interface RecognizedFramework {
   id: string;
   name: string;
   defaultPort: number;
+  /** The directory to serve, when the framework builds one and runs no server. */
+  staticOutput: string | null;
 }
 
 /** What the repository says its own build command is. */
@@ -30,6 +32,7 @@ interface RepoRead {
   id: string | null;
   name: string | null;
   defaultPort: number | null;
+  staticOutput: string | null;
   buildCommand: string | null;
 }
 
@@ -88,7 +91,7 @@ export function useRepoFramework(input: RepoFrameworkInput): {
             installationId: $installationId
             buildMethod: $buildMethod
             rootDirectory: $rootDirectory
-          ) { id name defaultPort buildCommand }
+          ) { id name defaultPort staticOutput buildCommand }
         }`,
         { repo, url, branch, installationId, buildMethod, rootDirectory },
         controller.signal,
@@ -116,7 +119,12 @@ export function useRepoFramework(input: RepoFrameworkInput): {
   return {
     framework:
       read && read.id && read.name && read.defaultPort
-        ? { id: read.id, name: read.name, defaultPort: read.defaultPort }
+        ? {
+            id: read.id,
+            name: read.name,
+            defaultPort: read.defaultPort,
+            staticOutput: read.staticOutput,
+          }
         : null,
     commands: read ? { buildCommand: read.buildCommand } : NO_COMMANDS,
     detecting: Boolean(query) && current === null,

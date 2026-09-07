@@ -58,6 +58,12 @@ export interface FrameworkDefinition {
    * otherwise.
    */
   defaultPort: number;
+  /**
+   * For a framework whose production artifact is a DIRECTORY and that no builder
+   * serves: the directory to serve. Absent means the framework runs a server, or
+   * the builder already recognises it.
+   */
+  staticOutput?: string;
 }
 
 /**
@@ -125,6 +131,7 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     dependencies: ["@docusaurus/core"],
     files: ["docusaurus.config.js", "docusaurus.config.ts"],
     defaultPort: 3000,
+    staticOutput: "build",
   },
   {
     id: "gatsby",
@@ -133,6 +140,7 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     files: ["gatsby-config.js", "gatsby-config.mjs", "gatsby-config.ts"],
     // `gatsby serve` binds 9000, not the 8000 of `gatsby develop`.
     defaultPort: 9000,
+    staticOutput: "public",
   },
   {
     id: "angular",
@@ -189,6 +197,7 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     dependencies: ["@11ty/eleventy"],
     files: [".eleventy.js", "eleventy.config.js", "eleventy.config.mjs"],
     defaultPort: 8080,
+    staticOutput: "_site",
   },
   {
     // Vue CLI specifically.
