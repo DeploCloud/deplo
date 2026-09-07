@@ -1663,7 +1663,6 @@ export function MigrationWizard({
                 {!takenOver && step === "choose" && (
                   <ChooseStep
                     kind={kind}
-                    mode={mode}
                     onPick={(m) => {
                       setMode(m);
                       setStep(m === "clean" ? "takeover" : "connect");

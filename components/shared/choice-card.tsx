@@ -12,7 +12,7 @@ export function ChoiceCard({
   title,
   blurb,
   icon: Icon,
-  selected,
+  selected = false,
   disabled = false,
   disabledNote,
   multi = false,
@@ -22,7 +22,8 @@ export function ChoiceCard({
   title: string;
   blurb: string;
   icon: React.ComponentType<{ className?: string }>;
-  selected: boolean;
+  /** Absent on a card that ACTS: it moves on, so it holds nothing to show. */
+  selected?: boolean;
   disabled?: boolean;
   /** Shown instead of the blurb while disabled - say WHY, not that it is off. */
   disabledNote?: string;

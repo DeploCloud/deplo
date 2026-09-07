@@ -15,12 +15,10 @@ import type { TakeoverMode } from "./steps";
  */
 export function ChooseStep({
   kind,
-  mode,
   onPick,
 }: {
   /** The panel being replaced. Named on both cards, so it is never abstract. */
   kind: SourceKind | null;
-  mode: TakeoverMode | null;
   onPick: (mode: TakeoverMode) => void;
 }) {
   const panel = copyFor(kind).name;
@@ -37,7 +35,6 @@ export function ChooseStep({
           arrow
           title="Start clean"
           blurb={`${panel} and everything on it is deleted for good.`}
-          selected={mode === "clean"}
           onSelect={() => onPick("clean")}
         />
         <ChoiceCard
@@ -45,7 +42,6 @@ export function ChooseStep({
           arrow
           title="Bring your data over"
           blurb={`Your apps and databases move over, then ${panel} goes.`}
-          selected={mode === "migrate"}
           onSelect={() => onPick("migrate")}
         />
       </div>
