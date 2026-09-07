@@ -252,6 +252,8 @@ export async function ensureFileBinds(
   log: (level: "info" | "warn", text: string) => void,
 ): Promise<void> {
   for (const rel of rels) {
+    // The deploy writes the env-file itself, 0600, before `up`.
+    if (rel === ".env") continue;
     const state = await filesPathState(conn, slug, rel);
     if (state === "file") continue;
     if (state === "folder") {

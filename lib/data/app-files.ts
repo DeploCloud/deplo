@@ -41,13 +41,19 @@ export function normalizeRel(relPath: string): string {
   if (rel.split("/").some((seg) => seg === "..")) {
     throw new Error("Path traversal is not allowed");
   }
+  // `a/./b` and `.env/.` are `a/b` and `.env` on the host: judge what lands.
+  const clean = rel
+    .split("/")
+    .filter((seg) => seg !== "." && seg !== "")
+    .join("/");
+  if (clean === "") return "";
   // The stack's decrypted env-file lives at the root of this tree: reading it is
   // `reveal_secrets`, writing it is `manage_env`, and this editor is neither.
-  if (rel.replace(/^(\.\/)+/, "") === ".env")
+  if (clean === ".env")
     throw new Error(
       "The .env file is written by Deplo from the app's variables - edit those in Settings → Environment.",
     );
-  return rel;
+  return clean;
 }
 
 /** Confirm the project is in the caller's team; throws if not. Resolves the
