@@ -16,6 +16,7 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { MigrationGraphic } from "./migration-graphic";
 import { MigrationConsole } from "./migration-console";
+import { warnings } from "./steps";
 import type { ImportRun } from "./types";
 import { SOURCE_COPY, SourceMark } from "./sources";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -102,7 +103,7 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge variant="secondary">{r.created} created</Badge>
                     {r.manual > 0 && (
-                      <Badge variant="warning">{r.manual} need you</Badge>
+                      <Badge variant="warning">{warnings(r.manual)}</Badge>
                     )}
                     {r.failed > 0 && (
                       <Badge variant="destructive">{r.failed} failed</Badge>

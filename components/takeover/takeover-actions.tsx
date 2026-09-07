@@ -524,7 +524,7 @@ function Working({
 }) {
   return (
     // Three plain periods, never the ellipsis CHARACTER: the copy tests ban it.
-    <StepShell hero title={`${title} ...`} lead={body}>
+    <StepShell hero title={`${title}...`} lead={body}>
       {spinner && (
         <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
       )}

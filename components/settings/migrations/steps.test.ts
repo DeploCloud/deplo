@@ -5,6 +5,7 @@ import {
   reviewShows,
   stepReachable,
   stepsFor,
+  warnings,
   type StepId,
   type StepProgress,
   type TakeoverMode,
@@ -206,4 +207,11 @@ test("the report wins over the run that produced it", () => {
     reviewShows({ ...REVIEW, runId: "dimp_1", report: true }),
     "report",
   );
+});
+
+// One thing needing a person is still one warning, not "1 warnings".
+test("a single warning is not plural", () => {
+  assert.equal(warnings(1), "1 warning");
+  assert.equal(warnings(0), "0 warnings");
+  assert.equal(warnings(3), "3 warnings");
 });

@@ -115,3 +115,8 @@ export function reviewShows(at: {
   if (at.running || at.failure !== null || at.runId != null) return "moving";
   return at.plan ? "plan" : null;
 }
+
+/** How a run's `manual` count is named everywhere it is shown. */
+export function warnings(n: number): string {
+  return `${n} warning${n === 1 ? "" : "s"}`;
+}

@@ -49,7 +49,7 @@ export function StepShell({
         </h2>
         <p
           className={cn(
-            "mt-1 leading-relaxed text-balance text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground",
+            "mt-1 leading-loose text-balance text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground",
             // Narrower than the cards under it, so a centred lead breaks into even
             // lines instead of one long one and a stub.
             hero ? "mx-auto mt-2 max-w-md" : "max-w-prose",
