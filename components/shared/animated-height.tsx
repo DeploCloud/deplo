@@ -4,6 +4,9 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+/** Kept in step with the `duration-300` below. */
+const TRANSITION_MS = 300;
+
 /**
  * A dialog body that is the height of its CONTENT and eases between sizes, so a
  * form that swaps a branch (or a wizard that swaps a step) reads as the same
@@ -29,6 +32,9 @@ export function AnimatedHeight({
   const measured = React.useRef<number>(undefined);
   const [growing, setGrowing] = React.useState(false);
   const [scrolls, setScrolls] = React.useState(false);
+  const settle = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  React.useLayoutEffect(() => () => clearTimeout(settle.current), []);
 
   React.useLayoutEffect(() => {
     if (!el) return;
@@ -42,7 +48,14 @@ export function AnimatedHeight({
       measured.current = h;
       setHeight(h);
       setScrolls(scroll && h > window.innerHeight * 0.75);
-      if (!first) setGrowing(true);
+      if (first) return;
+      setGrowing(true);
+      // `transitionend` is the fast way out, but it never fires under reduced
+      // motion, and then the clip stayed on for good - 3px off every focus ring
+      // at the edges of every dialog and wizard step. This is the way out that
+      // does not depend on an animation having happened.
+      clearTimeout(settle.current);
+      settle.current = setTimeout(() => setGrowing(false), TRANSITION_MS + 50);
     });
     ro.observe(el);
     return () => ro.disconnect();
