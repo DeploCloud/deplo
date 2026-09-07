@@ -26,6 +26,8 @@ import { listNotificationChannels } from "./notifications";
 import { getTeam } from "./teams";
 import { listSharedVars } from "./shared-vars";
 import { getServer, listServers, getPrimaryServer } from "./servers";
+import { seedApp, seedServer } from "./app-graph-test-helpers";
+import { setPreviewEnvVar } from "./previews";
 
 /**
  * What a project-scoped API token is refused OUTRIGHT.
@@ -140,5 +142,16 @@ test("a token lists only itself, never its owner's other credentials", async () 
   await scoped(async () => {
     const mine = await listTokens();
     assert.ok(!mine.some((t) => t.id === other.token.id), "a sibling leaked");
+  });
+});
+
+test("a project-scoped token cannot touch an app outside its project, folder gate included", async () => {
+  await seedServer(db);
+  await seedApp(db, { id: "prj_outside" });
+  await scoped(async () => {
+    await assert.rejects(
+      () => setPreviewEnvVar("prj_outside", "NODE_OPTIONS", "--require /x"),
+      /App not found/,
+    );
   });
 });

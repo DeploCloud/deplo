@@ -342,9 +342,8 @@ export async function deleteTeam(teamId: string): Promise<void> {
         .from(installedPluginsTable)
         .where(eq(installedPluginsTable.teamId, ctx.teamId));
 
-      // One DELETE - the FK CASCADEs remove every team-scoped row.
-      await db.delete(teamsTable).where(eq(teamsTable.id, ctx.teamId));
-
+      // Read BEFORE the delete: the destination rows cascade with the team, and
+      // a sweep that reads them afterwards finds nothing to sweep.
       // Any host will do for a BUCKET (the agent just needs network + creds); a
       // store destination routes to its own server regardless. With no server at
       // all there is nothing to dial and the sweep is skipped.
@@ -376,6 +375,8 @@ export async function deleteTeam(teamId: string): Promise<void> {
           }),
         )
       ).filter((x): x is NonNullable<typeof x> => x !== null);
+      // One DELETE - the FK CASCADEs remove every team-scoped row.
+      await db.delete(teamsTable).where(eq(teamsTable.id, ctx.teamId));
 
       return {
         services,

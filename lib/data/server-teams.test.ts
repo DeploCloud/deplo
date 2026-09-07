@@ -13,7 +13,7 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { seedDatabase } from "./backup-test-helpers";
+import { seedDatabase, seedDestination } from "./backup-test-helpers";
 import {
   listServersForTeam,
   setServerTeams,
@@ -109,7 +109,7 @@ test("restricting is BLOCKED when an excluded team has a PROJECT on the server",
     asUser1(() =>
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
     ),
-    /apps or databases/,
+    /apps, databases or backup destinations/,
   );
   // The block left the access untouched (still all teams).
   assert.equal((await getServerById(SERVER_1))!.allTeams, true);
@@ -122,7 +122,7 @@ test("restricting is BLOCKED when an excluded team has a DATABASE on the server"
     asUser1(() =>
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
     ),
-    /apps or databases/,
+    /apps, databases or backup destinations/,
   );
 });
 
@@ -146,5 +146,25 @@ test("setServerTeams requires instance admin", async () => {
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
     ),
     /instance admin/i,
+  );
+});
+
+test("a team with a backup destination on the server cannot lose its access to it", async () => {
+  await seedDestination(db, {
+    id: "dest_b",
+    kind: "server",
+    serverId: SERVER_1,
+    teamId: TEAM_B,
+  });
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
+      ),
+    /backup destinations on this server/,
+  );
+  // Keeping that team keeps the server's runs going.
+  await asUser1(() =>
+    setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A, TEAM_B] }),
   );
 });

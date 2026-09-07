@@ -2,7 +2,16 @@ import "server-only";
 
 // https://deplo.build/docs/guides/roles-and-permissions
 
-import { and, asc, count, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notInArray,
+} from "drizzle-orm";
 
 import { getDb, type DbTx } from "../db/client";
 import {
@@ -37,6 +46,7 @@ import {
   ROLE_DEFAULTS,
   capabilitiesForRole,
   sameCapabilities,
+  NODE_GRANTABLE_CAPABILITIES,
 } from "../membership-shared";
 import { withView } from "./folder-access";
 import { appCapabilitiesForTeam, nodeCapabilitiesFor } from "./node-access";
@@ -738,6 +748,33 @@ async function syncMembersOfRole(
   scoped: boolean,
 ): Promise<number> {
   const caps = effectiveRoleCapabilities(authored, scoped);
+  // A holder who keeps their own set is narrowed with the role's reach all the
+  // same: the reach and the capabilities have to agree, whoever wrote the set.
+  if (scoped) {
+    const custom = await tx
+      .select({ id: membershipsTable.id })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.teamId, teamId),
+          eq(membershipsTable.roleId, roleId),
+          eq(membershipsTable.customCapabilities, true),
+        ),
+      );
+    if (custom.length > 0)
+      await tx.delete(membershipCapabilitiesTable).where(
+        and(
+          inArray(
+            membershipCapabilitiesTable.membershipId,
+            custom.map((m) => m.id),
+          ),
+          notInArray(
+            membershipCapabilitiesTable.capability,
+            NODE_GRANTABLE_CAPABILITIES,
+          ),
+        ),
+      );
+  }
   const members = await tx
     .select({ id: membershipsTable.id })
     .from(membershipsTable)

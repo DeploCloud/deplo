@@ -1117,12 +1117,21 @@ export async function setServerTeams(
           throw new Error("One or more selected teams no longer exist.");
       }
       // Block when a team with workloads on this server would lose its access.
+      // A backup destination on its disk counts: its runs keep writing here.
       const using = await teamsWithWorkloadsOnServer(id, tx);
-      const losing = using.filter((t) => !selected.has(t));
+      const storing = (
+        await tx
+          .selectDistinct({ teamId: destinationTable.teamId })
+          .from(destinationTable)
+          .where(eq(destinationTable.serverId, id))
+      ).map((r) => r.teamId);
+      const losing = [...new Set([...using, ...storing])].filter(
+        (t) => !selected.has(t),
+      );
       if (losing.length > 0) {
         const names = await teamNames(losing, tx);
         throw new Error(
-          `These teams still have apps or databases on this server: ${names.join(
+          `These teams still have apps, databases or backup destinations on this server: ${names.join(
             ", ",
           )}. Move or delete them before revoking the team's access.`,
         );

@@ -21,6 +21,7 @@ import { holdsManageTeam, nodeCapabilities, withView } from "./node-access";
 import { memberScopeFor } from "./node-scope";
 import { avatarResolver, avatarUrlFor } from "../avatar";
 import { type Capability } from "../types";
+import { inAppScope } from "../auth/request-context";
 
 /**
  * Per-folder authorization - the folder half of the node model in {@link
@@ -153,7 +154,12 @@ export async function requireFolderCapabilityForApp(
   appId: string,
   cap: Capability,
 ): Promise<void> {
-  if (!(await appExists(appId))) return; // the surrounding team scope owns existence
+  const placement = await appPlacement(appId);
+  if (!placement) return; // the surrounding team scope owns existence
+  // A narrowed API token reaches nothing outside its scope, whatever the node
+  // grants say - the same answer `appGate` gives.
+  if (!inAppScope({ id: appId, ...placement }))
+    throw new Error("App not found");
   const caps = await nodeCapabilities({ kind: "app", id: appId });
   // Invisible folder ⇒ the app inside it is off-limits; don't leak that the app
   // exists via a capability-specific message.
@@ -165,14 +171,16 @@ export async function requireFolderCapabilityForApp(
   }
 }
 
-/** True when the app row exists at all (existence is the caller's business). */
-async function appExists(appId: string): Promise<boolean> {
+/** Where the app is filed, or null when the row does not exist at all. */
+async function appPlacement(
+  appId: string,
+): Promise<{ folderId: string | null; projectId: string | null } | null> {
   const rows = await getDb()
-    .select({ id: appsTable.id })
+    .select({ folderId: appsTable.folderId, projectId: appsTable.projectId })
     .from(appsTable)
     .where(eq(appsTable.id, appId))
     .limit(1);
-  return rows.length > 0;
+  return rows[0] ?? null;
 }
 
 /** True if the caller is the folder's owner OR a super-user (admin/manage_team). */

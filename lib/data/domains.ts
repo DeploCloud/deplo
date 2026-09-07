@@ -321,10 +321,24 @@ export async function ensureAutoDomain(
     !!preferred &&
     (nipEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
   const preferredPath = normalizePath(opts.preferredPath);
-  const name =
-    preferredOk && !(await domainNameExists(preferred!, preferredPath))
-      ? preferred!
-      : await uniqueAutoDomainName(opts.slug, opts.ip);
+  let name: string;
+  if (preferredOk && !(await domainNameExists(preferred!, preferredPath))) {
+    // The same refusals a typed hostname gets: not the panel's own address, and
+    // not a name another team routes or holds as its preview zone.
+    assertNotPanelHost(preferred!);
+    const owner = (
+      await getDb()
+        .select({ teamId: appsTable.teamId })
+        .from(appsTable)
+        .where(eq(appsTable.id, appId))
+        .limit(1)
+    )[0];
+    if (owner)
+      await assertHostnameNotAnotherTeams(preferred!, owner.teamId, null);
+    name = preferred!;
+  } else {
+    name = await uniqueAutoDomainName(opts.slug, opts.ip);
+  }
   // The path only comes across with the host it belongs to.
   const pathPrefix = name === preferred ? preferredPath : "";
   // Our own generated nip.io hosts point at the server IP by construction, so they

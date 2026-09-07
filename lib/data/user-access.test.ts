@@ -16,7 +16,7 @@ import {
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
-import { listRoles, createRole } from "./roles";
+import { listRoles, createRole, updateRole } from "./roles";
 import { updateMember } from "./members";
 import {
   addUserToTeam,
@@ -683,4 +683,36 @@ test("a granular member holds nothing team-wide, with or without a set sent alon
       )
   )[0]!;
   assert.equal(row.granular, true, "the reach was not silently widened");
+});
+
+test("scoping a role narrows a holder who keeps their own set too", async () => {
+  const ops = await as(
+    FOUNDER,
+    () =>
+      createRole({
+        name: "Ops",
+        capabilities: ["view", "manage_members", "deploy_apps"],
+      }),
+    TEAM_A,
+  );
+  // DEV follows Ops with a set of their own (one more capability than the role).
+  await as(
+    FOUNDER,
+    () =>
+      setMemberAccess({
+        userId: DEV,
+        roleId: ops.id,
+        granular: false,
+        capabilities: ["view", "manage_members", "deploy_apps", "manage_env"],
+      }),
+    TEAM_A,
+  );
+  assert.ok((await capsOfDev()).includes("manage_members"));
+  // Scoping the role to one folder must take the team-wide half from DEV as well.
+  await as(
+    FOUNDER,
+    () => updateRole({ id: ops.id, name: "Ops", scope: { folderIds: [FLD] } }),
+    TEAM_A,
+  );
+  assert.deepEqual(await capsOfDev(), ["deploy_apps", "manage_env", "view"]);
 });

@@ -296,3 +296,21 @@ test("a preview base domain claims its zone against other teams' hostnames, both
     addDomain("prj_victim", "docs.preview.victim.example", {}),
   );
 });
+
+test("an auto domain a template prefers is refused under another team's preview zone", async () => {
+  await db
+    .update(appsTable)
+    .set({ previewBaseDomain: "preview.victim.example" })
+    .where(eq(appsTable.id, "prj_victim"));
+  await assert.rejects(
+    asAttacker(() =>
+      ensureAutoDomain("prj_attacker", {
+        slug: "attacker",
+        ip: HOST_IP,
+        preferred: "blog-pr-7.preview.victim.example",
+        defaultPort: 80,
+      }),
+    ),
+    /another team's preview domain/,
+  );
+});
