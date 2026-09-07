@@ -7,13 +7,13 @@ import { toast } from "sonner";
 
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
-import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DocsLink } from "@/components/ui/docs-link";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LeftoverDiskGraphic } from "@/components/takeover/leftover-disk-graphic";
+import { StepShell } from "@/components/settings/migrations/step-shell";
 import type { TakeoverMode } from "@/components/settings/migrations/steps";
 
 // https://deplo.build/docs/guides/take-over-your-vps
@@ -179,34 +179,32 @@ function TakeoverConfirm({
   }
 
   return (
-    <Card>
-      <CardHeader className="items-center text-center">
-        <LeftoverDiskGraphic className="mb-4 w-56" />
-        <CardTitle>
-          {clean ? `Delete ${platformLabel}` : "Take over the machine"}
-        </CardTitle>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {clean
-            ? `Deplo takes ports 80 and 443, then ${platformLabel} and everything it runs here is deleted.`
-            : `Deplo takes ports 80 and 443 from ${platformLabel}, inherits its certificates, and takes it off this machine for good.`}
-        </p>
-        {error !== null && (
-          <div className="mt-4 flex w-full items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-wash-strong p-3 text-left text-sm">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
-            <div className="min-w-0">
-              <p className="font-medium">
-                The ports were put back. {platformLabel} is running again.
-              </p>
-              {error && (
-                <p className="mt-1 break-words text-muted-foreground">
-                  {error}
-                </p>
-              )}
-            </div>
+    <StepShell
+      hero
+      title={clean ? `Delete ${platformLabel}` : "Take over the machine"}
+      lead={
+        clean
+          ? `Deplo takes ports 80 and 443, then ${platformLabel} and everything it runs here is deleted.`
+          : `Deplo takes ports 80 and 443 from ${platformLabel}, inherits its certificates, and takes it off this machine for good.`
+      }
+    >
+      {error !== null && (
+        <div className="flex w-full items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-wash-strong p-3 text-left text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <div className="min-w-0">
+            <p className="font-medium">
+              The ports were put back. {platformLabel} is running again.
+            </p>
+            {error && (
+              <p className="mt-1 break-words text-muted-foreground">{error}</p>
+            )}
           </div>
-        )}
-      </CardHeader>
-      <CardFooter className="justify-end border-t border-border pt-6">
+        </div>
+      )}
+
+      {/* The one thing left to do on this screen, so it sits under the middle
+          of it rather than in a footer's corner. */}
+      <div className="flex justify-center">
         {error !== null ? (
           <Button onClick={retry} disabled={retrying}>
             {retrying && <Loader2 className="animate-spin" />}
@@ -293,8 +291,8 @@ function TakeoverConfirm({
             }}
           />
         )}
-      </CardFooter>
-    </Card>
+      </div>
+    </StepShell>
   );
 }
 

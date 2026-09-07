@@ -39,6 +39,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { AnimatedHeight } from "@/components/shared/animated-height";
+import { LeftoverDiskGraphic } from "@/components/takeover/leftover-disk-graphic";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import {
@@ -1582,11 +1583,18 @@ export function MigrationWizard({
         />
       ) : (
         <div className="mx-auto flex w-full flex-col items-center gap-8">
-          <MigrationGraphic
-            state={pose}
-            kind={kind}
-            className="h-auto w-full max-w-xl"
-          />
+          {/* The step that ASKS for the machine is about what is left on the
+              disk, not about the cable: it takes the disk's own picture. */}
+          {step === "takeover" &&
+          (takeover?.state === "pending" || takeover?.state === "failed") ? (
+            <LeftoverDiskGraphic className="w-full max-w-xl" />
+          ) : (
+            <MigrationGraphic
+              state={pose}
+              kind={kind}
+              className="h-auto w-full max-w-xl"
+            />
+          )}
 
           {/**
            * One width for every step, and it is the narrow one: a wizard is read top to
