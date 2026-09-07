@@ -427,8 +427,9 @@ export function ReviewStep({
                   <span className="font-medium">{g.team.name}</span>
                   <span className="text-muted-foreground">on {panel}</span>
                   <ArrowRight className="size-3.5 text-muted-foreground" />
-                  {/* The picker IS the destination now, avatar and name and all,
-                      so a second mark beside it would name the same team twice. */}
+                  {/* Named on both sides of the arrow. Not "on Deplo": this IS
+                      Deplo, and the half that needs saying is the other one. */}
+                  <span className="font-medium">{g.landsIn.name}</span>
                   {/* A team being MADE gets its picture chosen here; one that
                       already exists keeps its own. */}
                   {g.target.kind === "new" && (
