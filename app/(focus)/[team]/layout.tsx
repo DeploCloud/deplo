@@ -51,7 +51,7 @@ export default async function FocusLayout(props: LayoutProps<"/[team]">) {
 
   return (
     <div className="relative min-h-dvh">
-      <div className="deplo-graph-bg pointer-events-none absolute inset-0 opacity-[0.5]" />
+      <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
       {/* The shell isn't here to mount it, and an unrecorded entry makes the
           sidebar's back links land back ON the wizard. */}
       <NavigationHistoryTracker />
