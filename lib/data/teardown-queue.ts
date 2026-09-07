@@ -349,7 +349,11 @@ export async function teardownOrQueue(entry: TeardownEntry): Promise<boolean> {
   return true;
 }
 
-async function dropTeardown(
+/**
+ * Forget a queued teardown of `deployKey` on `serverId`: called when that very
+ * stack is brought up there again on purpose, or the retry would destroy it.
+ */
+export async function dropTeardown(
   serverId: string,
   deployKey: string,
 ): Promise<void> {

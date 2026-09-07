@@ -23,6 +23,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { createApp } from "./apps";
+import { dropTeardown } from "./teardown-queue";
 
 /**
  * A slug whose stack still awaits teardown on a host is not free: a new app of any
@@ -129,4 +130,19 @@ test("a config file's path stays inside the app's files and is never the env-fil
     rows.map((r) => r.filePath),
     ["conf/nginx.conf"],
   );
+});
+
+test("a queued teardown of a key is dropped when that stack lands on the host again", async () => {
+  await db.insert(pendingTeardownsTable).values({
+    id: "ptd_stale",
+    serverId: SERVER_1,
+    deployKey: "shop",
+    projectLabel: "prj_shop",
+    label: "shop",
+    teamId: TEAM_A,
+    nextAttemptAt: T0,
+    createdAt: T0,
+  });
+  await dropTeardown(SERVER_1, "shop");
+  assert.equal((await db.select().from(pendingTeardownsTable)).length, 0);
 });

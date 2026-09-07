@@ -152,6 +152,7 @@ import type {
 } from "../types";
 import { mountOptions, parseMountPropagation } from "../apps/volume-model";
 import { publicBranchHead } from "../github/app";
+import { dropTeardown } from "../data/teardown-queue";
 
 /**
  * Statuses a reroute must not bring up: stopped on purpose, or mid-deploy. Every
@@ -1671,6 +1672,9 @@ async function tryAgent(opts: {
       );
       return { outcome: "failed", commitSha: "" };
     }
+    // A teardown of this key queued on this host (a move that failed and rolled
+    // back) must not fire on the stack about to be brought up here on purpose.
+    await dropTeardown(opts.serverId, opts.project.deployKey);
     // Say which neighbours this stack is about to stop resolving, BEFORE the
     // container tries and prints a DNS error nobody can act on. A warning, never a
     // refusal: the match is a heuristic and a false positive must not stop a deploy.
@@ -2631,7 +2635,11 @@ async function deployComposeStackViaAgent(
     composeYaml: stackYaml,
     network: deployNetwork(project, opts.preview ? deployKey : null),
     env,
-    plan: { kind: "compose", mounts: project.mounts ?? [] },
+    // A fork's code is a stranger's: it gets no config file of the app's either.
+    plan: {
+      kind: "compose",
+      mounts: opts.preview?.isFork ? [] : (project.mounts ?? []),
+    },
     // several images on the agent before any service reports running.
     readyTimeoutMs: 90_000,
     forceRecreate: opts.forceRecreate,

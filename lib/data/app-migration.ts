@@ -30,7 +30,7 @@ import {
   assertSafeVolumeNames,
 } from "./project-backup-descriptor";
 import { getServerById } from "./servers";
-import { teardownOrQueue } from "./teardown-queue";
+import { dropTeardown, teardownOrQueue } from "./teardown-queue";
 import {
   destroyStackOn,
   filesDirHasContent,
@@ -384,6 +384,9 @@ async function relocate(
   serverId: string,
   status: "active" | "error",
 ): Promise<void> {
+  // An earlier attempt that failed queued a teardown of this stack on the
+  // destination: now that it lives there, that teardown would destroy it.
+  await dropTeardown(serverId, app.slug);
   const [leaving, arriving] = await Promise.all([
     getServerById(app.serverId),
     getServerById(serverId),
