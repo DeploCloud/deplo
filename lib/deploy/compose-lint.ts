@@ -2075,3 +2075,66 @@ function sortDiags(diags: LintDiagnostic[]): LintDiagnostic[] {
 function severityRank(s: LintSeverity): number {
   return s === "error" ? 0 : s === "warning" ? 1 : 2;
 }
+
+/** The most compose text an app may carry, and the most nodes it may expand to. */
+export const MAX_COMPOSE_BYTES = 256 * 1024;
+const MAX_COMPOSE_NODES = 20_000;
+
+/**
+ * Refuse a compose file that is too big to keep, or that expands past reason: a
+ * few nested YAML aliases turn 400 bytes into gigabytes when the renderer dumps
+ * the document with every alias resolved, and that dump runs on the event loop.
+ */
+const tooManyEntries = () =>
+  new Error(
+    "The compose file expands to too many entries - unroll its YAML anchors.",
+  );
+
+export function assertComposeWithinLimits(composeYaml: string): void {
+  if (Buffer.byteLength(composeYaml, "utf8") > MAX_COMPOSE_BYTES)
+    throw new Error("The compose file is too large (256 KiB max).");
+  let doc: unknown;
+  try {
+    doc = yaml.load(composeYaml);
+  } catch (e) {
+    if (/alias count/i.test(String(e))) throw tooManyEntries();
+    return; // unparseable never expands; the linter says why it is wrong
+  }
+  let nodes = 0;
+  const walk = (v: unknown): void => {
+    if (++nodes > MAX_COMPOSE_NODES) throw tooManyEntries();
+    if (Array.isArray(v)) for (const x of v) walk(x);
+    else if (v && typeof v === "object")
+      for (const x of Object.values(v as Record<string, unknown>)) walk(x);
+  };
+  walk(doc);
+}
+
+/**
+ * Whether any service carries an `environment:` VALUE inline - `KEY=value` in the
+ * list form, or a non-empty value in the map form. A bare `KEY` (a pass-through
+ * the deploy fills from the env-file) is not a value.
+ */
+export function composeHasInlineEnvValues(composeYaml: string): boolean {
+  let doc: ComposeDocShape | null;
+  try {
+    doc = yaml.load(composeYaml) as ComposeDocShape | null;
+  } catch {
+    return false;
+  }
+  for (const svc of Object.values(doc?.services ?? {})) {
+    const env = (svc as { environment?: unknown } | null)?.environment;
+    if (Array.isArray(env)) {
+      if (env.some((e) => typeof e === "string" && e.includes("=")))
+        return true;
+    } else if (env && typeof env === "object") {
+      if (
+        Object.values(env as Record<string, unknown>).some(
+          (v) => v != null && String(v) !== "",
+        )
+      )
+        return true;
+    }
+  }
+  return false;
+}

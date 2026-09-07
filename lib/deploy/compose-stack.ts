@@ -734,6 +734,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
     ...deploLabels(trackingId, deployKey),
     ...(trackingId === appId ? [] : [`deplo.app=${appId}`]),
   ];
+  // Off by default on EVERY service; the routing pass below turns it on for
+  // the routed ones. An image's own `traefik.*` labels ride into the container
+  // otherwise, and Traefik reads the container.
+  const containerLabels = [...tracking, "traefik.enable=false"];
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
       assertNetworkModeIsNotANetwork(serviceName, (svc as App).network_mode);
@@ -746,7 +750,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
       // `traefik.*` label before Deplo stamps its own, so a hand-written router
       // rule can't claim another team's hostname on the shared network.
       stripTraefikLabels(svc as App);
-      mergeLabels(svc as App, tracking);
+      mergeLabels(svc as App, containerLabels);
       // Built images get the same tracking as IMAGE labels (+ the service name)
       // so the cleanup's count-based retention can see and rank them.
       mergeBuildLabels(svc as App, serviceName, tracking);

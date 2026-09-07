@@ -1155,7 +1155,7 @@ services:
   );
   assert.deepEqual(
     labelsOf(doc.services.agent).filter((l) => l.startsWith("traefik.")),
-    [],
+    ["traefik.enable=false"],
   );
   // The rest of the stack is routed exactly as before.
   assert.ok((doc.services.web.networks as string[]).includes("deplo"));
@@ -1182,7 +1182,7 @@ services:
     labelsOf(doc.services.homeassistant).filter((l) =>
       l.startsWith("traefik."),
     ),
-    [],
+    ["traefik.enable=false"],
   );
 });
 
@@ -1767,4 +1767,21 @@ test("an unclaimed name still joins, so nothing is held back for nothing", () =>
   );
   assert.deepEqual(doc.services.web.networks, ["deplo"]);
   assert.deepEqual(doc.services.cache.networks, ["deplo"]);
+});
+
+test("every service starts out invisible to Traefik; only a routed one is switched on", () => {
+  const doc = buildDoc(`
+services:
+  web:
+    image: nginx
+  worker:
+    image: alpine
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.evil.rule=Host(\`victim.com\`)
+`);
+  assert.ok(labelsOf(doc.services.web).includes("traefik.enable=true"));
+  const worker = labelsOf(doc.services.worker);
+  assert.ok(worker.includes("traefik.enable=false"), worker.join(" "));
+  assert.ok(!worker.some((l) => l.includes("victim.com")), worker.join(" "));
 });

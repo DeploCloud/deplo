@@ -49,6 +49,7 @@ import {
   interpolatedHostnameMessage,
   isReservedSharedName,
   reservedNameMessage,
+  assertComposeWithinLimits,
 } from "../deploy/compose-lint";
 import { hostPortClaimed } from "./host-ports";
 import { appOwnVolumeNames } from "./project-backup-descriptor";
@@ -901,6 +902,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // So does anything else that takes a service out of its sandbox (`privileged`,
   // `cap_add`, `devices`, `pid: host`, …): they reach the host WITHOUT naming a
   // path, so the bind-mount check alone let the same grant be walked around.
+  if (input.compose != null) assertComposeWithinLimits(input.compose);
   const reach = input.compose != null ? composeHostReach(input.compose) : [];
   if (reach.length > 0) await requireMountHostVolumes(reach.join(", "));
   // A service that would claim one of Deplo's own DNS names on the shared
@@ -1090,10 +1092,13 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   }
 
   if (input.mounts)
-    input.mounts = input.mounts.map((m) => ({
-      ...m,
-      filePath: cleanMountPath(m.filePath),
-    }));
+    input.mounts = input.mounts.map((m) => {
+      if (Buffer.byteLength(m.content ?? "", "utf8") > MAX_MOUNT_BYTES)
+        throw new Error(
+          `${m.filePath} is too large for a config file (1 MiB max)`,
+        );
+      return { ...m, filePath: cleanMountPath(m.filePath) };
+    });
 
   // An "upload" project has no archive at creation (it is uploaded from the
   // Settings page afterward, which triggers its own deploy via the upload route).
@@ -1401,6 +1406,8 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
  * A config file's path inside the app's Files dir: relative, no `..`, no control
  * characters, and never the stack's own env-file, which the deploy writes there.
  */
+const MAX_MOUNT_BYTES = 1024 * 1024;
+
 function cleanMountPath(raw: string): string {
   const rel = raw
     .trim()
@@ -1705,6 +1712,7 @@ export async function updateAppSource(
   // Saving compose YAML that bind-mounts a host path requires the host grant,
   // and so does asking for host privileges (`privileged`, `cap_add`, `devices`,
   // `pid: host`, …), which reach the host without naming a path at all.
+  if (input.compose != null) assertComposeWithinLimits(input.compose);
   const editReach =
     input.compose != null ? composeHostReach(input.compose) : [];
   if (editReach.length > 0) await requireMountHostVolumes(editReach.join(", "));
