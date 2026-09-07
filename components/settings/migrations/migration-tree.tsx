@@ -674,8 +674,8 @@ function RunSelect({
       <SelectContent>
         {servers.map((s) => (
           <SelectItem key={s.id} value={s.id}>
-            <span className="flex items-center gap-2">
-              {s.name}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{s.name}</span>
               <ServerRoleHint isDeploHost={s.isDeploHost} />
             </span>
           </SelectItem>
@@ -719,8 +719,8 @@ function BuildSelect({
         <SelectSeparator />
         {servers.map((s) => (
           <SelectItem key={s.id} value={s.id}>
-            <span className="flex items-center gap-2">
-              {s.name}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{s.name}</span>
               <ServerRoleHint isDeploHost={s.isDeploHost} />
               {s.buildOnly && (
                 <span data-hint className="text-xs text-muted-foreground">

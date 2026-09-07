@@ -201,7 +201,7 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
         <ul className="space-y-2 text-sm">
           {sources.map((s) => (
             <li key={s.id}>
-              <p className="font-medium">{s.name}</p>
+              <p className="truncate font-medium">{s.name}</p>
               {/* The host's own words, verbatim: whether this is worth retrying
                   or the machine is simply gone is not something Deplo can tell
                   the reader, and the sentence usually can. */}

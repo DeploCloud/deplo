@@ -153,7 +153,7 @@ function TeamPeople({
     <section className="space-y-3 rounded-lg border border-border bg-background p-3">
       <div className="flex items-center gap-2 text-sm">
         <TeamAvatar name={g.team.name} avatarUrl={g.team.avatarUrl} size="sm" />
-        <span className="font-medium">{g.team.name}</span>
+        <span className="min-w-0 truncate font-medium">{g.team.name}</span>
       </div>
       {body}
     </section>

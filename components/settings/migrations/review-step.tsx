@@ -424,12 +424,16 @@ export function ReviewStep({
                     avatarUrl={g.team.avatarUrl}
                     size="sm"
                   />
-                  <span className="font-medium">{g.team.name}</span>
+                  <span className="max-w-56 truncate font-medium">
+                    {g.team.name}
+                  </span>
                   <span className="text-muted-foreground">on {panel}</span>
                   <ArrowRight className="size-3.5 text-muted-foreground" />
                   {/* Named on both sides of the arrow. Not "on Deplo": this IS
                       Deplo, and the half that needs saying is the other one. */}
-                  <span className="font-medium">{g.landsIn.name}</span>
+                  <span className="max-w-56 truncate font-medium">
+                    {g.landsIn.name}
+                  </span>
                   {/* A team being MADE gets its picture chosen here; one that
                       already exists keeps its own. */}
                   {g.target.kind === "new" && (
