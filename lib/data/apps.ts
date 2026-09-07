@@ -2743,7 +2743,12 @@ export async function previewRepoFramework(input: {
 }): Promise<RepoBuildHints> {
   await requireCapability("create_apps");
   if (!supportsFrameworkDetection(input.buildMethod))
-    return { framework: null, buildCommand: null };
+    return {
+      framework: null,
+      staticOutput: null,
+      startCommand: null,
+      buildCommand: null,
+    };
 
   let installationId: string | null = null;
   if (input.installationId) {

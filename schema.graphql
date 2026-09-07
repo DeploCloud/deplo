@@ -4524,7 +4524,12 @@ type RecognizedFramework {
   name: String
 
   """
-  The directory to SERVE, for a framework whose production artifact is a directory no builder serves (Gatsby, Eleventy, Docusaurus). Null when the framework runs a server of its own.
+  The FRAMEWORK's own production start, for one no builder derives a start for (SvelteKit on adapter-node, AdonisJS). Never the repo's `start` script, which is as often its dev server.
+  """
+  startCommand: String
+
+  """
+  The directory to SERVE, for a framework whose production artifact is a directory no builder serves (Gatsby, Eleventy, Docusaurus, and an Angular workspace, whose path carries its project's name).
   """
   staticOutput: String
 }

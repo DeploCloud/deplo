@@ -206,6 +206,7 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     dependencies: ["@vue/cli-service"],
     files: ["vue.config.js"],
     defaultPort: 8080,
+    staticOutput: "dist",
   },
   {
     id: "preact",

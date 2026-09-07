@@ -19,12 +19,14 @@ export interface RecognizedFramework {
   staticOutput: string | null;
 }
 
-/** What the repository says its own build command is. */
+/** The repo's own build command, and the framework's own start where a builder
+ * derives none. */
 export interface RepoCommands {
   buildCommand: string | null;
+  startCommand: string | null;
 }
 
-const NO_COMMANDS: RepoCommands = { buildCommand: null };
+const NO_COMMANDS: RepoCommands = { buildCommand: null, startCommand: null };
 
 /** The wire shape: every field can be null - a Go repo has commands and no
  *  framework, an empty one has neither. */
@@ -33,6 +35,7 @@ interface RepoRead {
   name: string | null;
   defaultPort: number | null;
   staticOutput: string | null;
+  startCommand: string | null;
   buildCommand: string | null;
 }
 
@@ -91,7 +94,7 @@ export function useRepoFramework(input: RepoFrameworkInput): {
             installationId: $installationId
             buildMethod: $buildMethod
             rootDirectory: $rootDirectory
-          ) { id name defaultPort staticOutput buildCommand }
+          ) { id name defaultPort staticOutput startCommand buildCommand }
         }`,
         { repo, url, branch, installationId, buildMethod, rootDirectory },
         controller.signal,
@@ -126,7 +129,9 @@ export function useRepoFramework(input: RepoFrameworkInput): {
             staticOutput: read.staticOutput,
           }
         : null,
-    commands: read ? { buildCommand: read.buildCommand } : NO_COMMANDS,
+    commands: read
+      ? { buildCommand: read.buildCommand, startCommand: read.startCommand }
+      : NO_COMMANDS,
     detecting: Boolean(query) && current === null,
   };
 }

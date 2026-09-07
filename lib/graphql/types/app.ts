@@ -650,6 +650,8 @@ const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
 /** What one read of a repository yields the new-app wizard. */
 interface RecognizedFrameworkDTO {
   framework: FrameworkDefinition | null;
+  staticOutput: string | null;
+  startCommand: string | null;
   buildCommand: string | null;
 }
 
@@ -681,13 +683,19 @@ const RecognizedFrameworkRef = builder
           "it otherwise - what a new app's container port defaults to.",
         resolve: (f) => f.framework?.defaultPort ?? null,
       }),
-      staticOutput: t.string({
+      staticOutput: t.exposeString("staticOutput", {
         nullable: true,
         description:
           "The directory to SERVE, for a framework whose production artifact is " +
-          "a directory no builder serves (Gatsby, Eleventy, Docusaurus). Null " +
-          "when the framework runs a server of its own.",
-        resolve: (f) => f.framework?.staticOutput ?? null,
+          "a directory no builder serves (Gatsby, Eleventy, Docusaurus, and an " +
+          "Angular workspace, whose path carries its project's name).",
+      }),
+      startCommand: t.exposeString("startCommand", {
+        nullable: true,
+        description:
+          "The FRAMEWORK's own production start, for one no builder derives a " +
+          "start for (SvelteKit on adapter-node, AdonisJS). Never the repo's " +
+          "`start` script, which is as often its dev server.",
       }),
       buildCommand: t.exposeString("buildCommand", {
         nullable: true,
@@ -869,7 +877,12 @@ builder.queryFields((t) => ({
       });
       const framework = frameworkById(hints.framework);
       if (!framework && !hints.buildCommand) return null;
-      return { framework, buildCommand: hints.buildCommand };
+      return {
+        framework,
+        staticOutput: hints.staticOutput,
+        startCommand: hints.startCommand,
+        buildCommand: hints.buildCommand,
+      };
     },
   }),
   deployments: t.field({

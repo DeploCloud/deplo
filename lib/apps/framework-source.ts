@@ -11,11 +11,15 @@ import { providerFor, readProviderText } from "../git/providers";
 import { normalizeRootRel, resolveBuildDir } from "../deploy/source";
 import { isGithubRepo } from "./favicon-shared";
 import {
+  frameworkById,
   supportsFrameworkDetection,
   type FrameworkId,
 } from "./framework-catalog";
 import {
+  angularOutputDir,
+  declaredDependencies,
   detectCommands,
+  frameworkDefaults,
   detectFramework,
   parsePackageManifest,
   rootFileNames,
@@ -42,16 +46,37 @@ const MAX_MANIFEST_BYTES = 1_000_000;
  */
 export interface RepoBuildHints extends DetectedCommands {
   framework: FrameworkId | null;
+  /** The directory to SERVE, when the framework builds one and runs no server. */
+  staticOutput: string | null;
+  /** The framework's own production start, when no builder derives one. */
+  startCommand: string | null;
 }
 
-const NO_HINTS: RepoBuildHints = { framework: null, buildCommand: null };
+const NO_HINTS: RepoBuildHints = {
+  framework: null,
+  staticOutput: null,
+  startCommand: null,
+  buildCommand: null,
+};
 
 function hintsFor(
   files: readonly string[],
   manifest: PackageManifest | null,
+  angularJson?: string | null,
 ): RepoBuildHints {
+  const framework = detectFramework(files, manifest);
+  const derived = frameworkDefaults(framework, declaredDependencies(manifest));
   return {
-    framework: detectFramework(files, manifest),
+    framework,
+    staticOutput:
+      framework === "angular"
+        ? angularJson
+          ? angularOutputDir(angularJson)
+          : null
+        : (derived.staticOutput ??
+          frameworkById(framework)?.staticOutput ??
+          null),
+    startCommand: derived.startCommand,
     ...detectCommands(files, manifest),
   };
 }
@@ -90,22 +115,20 @@ export async function detectRepoFramework(
   );
   if (files.length === 0) return NO_HINTS;
 
-  const manifestPath =
-    rootRel && rootRel !== "." ? `${rootRel}/package.json` : "package.json";
-  const manifestEntry = tree.find(
-    (entry) => entry.path.toLowerCase() === manifestPath.toLowerCase(),
-  );
+  const blobAt = async (name: string): Promise<string | null> => {
+    const path = rootRel && rootRel !== "." ? `${rootRel}/${name}` : name;
+    const entry = tree.find((e) => e.path.toLowerCase() === path.toLowerCase());
+    if (!entry || entry.size > MAX_MANIFEST_BYTES) return null;
+    const bytes = await fetchRepoBlob(fullName, entry.sha, installationId);
+    return bytes ? bytes.toString("utf8") : null;
+  };
 
-  let manifest: PackageManifest | null = null;
-  if (manifestEntry && manifestEntry.size <= MAX_MANIFEST_BYTES) {
-    const bytes = await fetchRepoBlob(
-      fullName,
-      manifestEntry.sha,
-      installationId,
-    );
-    if (bytes) manifest = parsePackageManifest(bytes.toString("utf8"));
-  }
-  return hintsFor(files, manifest);
+  const manifestText = await blobAt("package.json");
+  const manifest = manifestText ? parsePackageManifest(manifestText) : null;
+  const angularJson = files.includes("angular.json")
+    ? await blobAt("angular.json")
+    : null;
+  return hintsFor(files, manifest, angularJson);
 }
 
 /**
@@ -129,20 +152,23 @@ async function detectViaConnection(
   const files = rootFileNames(paths, rootRel);
   if (files.length === 0) return NO_HINTS;
 
-  let manifest: PackageManifest | null = null;
-  if (files.includes("package.json")) {
-    const manifestPath =
-      rootRel && rootRel !== "." ? `${rootRel}/package.json` : "package.json";
-    const text = await readProviderText(
+  const textAt = (name: string) =>
+    readProviderText(
       api,
       cred,
-      repo.repo,
+      repo.repo!,
       ref,
-      manifestPath,
+      rootRel && rootRel !== "." ? `${rootRel}/${name}` : name,
     ).catch(() => null);
-    if (text) manifest = parsePackageManifest(text);
-  }
-  return hintsFor(files, manifest);
+
+  const manifestText = files.includes("package.json")
+    ? await textAt("package.json")
+    : null;
+  const manifest = manifestText ? parsePackageManifest(manifestText) : null;
+  const angularJson = files.includes("angular.json")
+    ? await textAt("angular.json")
+    : null;
+  return hintsFor(files, manifest, angularJson);
 }
 
 /**

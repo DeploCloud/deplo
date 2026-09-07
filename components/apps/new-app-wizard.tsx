@@ -361,8 +361,12 @@ export function NewAppWizard({
     if (framework?.staticOutput && !outputTouched && !next.outputDirectory) {
       next = { ...next, outputDirectory: framework.staticOutput };
     }
-    if (!commandsTouched && commands.buildCommand) {
-      next = { ...next, buildCommand: commands.buildCommand };
+    if (!commandsTouched && (commands.buildCommand || commands.startCommand)) {
+      next = {
+        ...next,
+        buildCommand: commands.buildCommand ?? next.buildCommand,
+        startCommand: commands.startCommand ?? next.startCommand,
+      };
     }
     return next;
   }, [
@@ -375,6 +379,7 @@ export function NewAppWizard({
   ]);
 
   const prefilledBuild = !commandsTouched ? commands.buildCommand : null;
+  const prefilledStart = !commandsTouched ? commands.startCommand : null;
 
   function onBuildChange(next: BuildConfig) {
     if (next.port !== build.port) setPortTouched(true);
@@ -1086,7 +1091,7 @@ export function NewAppWizard({
               info="Run to start the container. Leave it empty and the builder works it out."
               value={build.startCommand ?? ""}
               onChange={(v) => onBuildChange({ ...build, startCommand: v })}
-              detected={null}
+              detected={prefilledStart}
               placeholder="Detected at build time"
             />
 

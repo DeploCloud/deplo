@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  angularOutputDir,
   declaredDependencies,
+  frameworkDefaults,
   detectCommands,
   detectFramework,
   packageManagerFrom,
@@ -217,6 +219,99 @@ test("a user's correction outranks detection, and only when it's set", () => {
   );
   assert.equal(
     effectiveFramework({ framework: null, frameworkOverride: null }),
+    null,
+  );
+});
+
+test("a framework gets a start only where no builder derives one", () => {
+  const none = new Set<string>();
+  // SvelteKit's answer is its ADAPTER's: a node server, or a directory to serve.
+  assert.deepEqual(
+    frameworkDefaults("sveltekit", new Set(["@sveltejs/adapter-node"])),
+    {
+      staticOutput: null,
+      startCommand: "node build",
+    },
+  );
+  assert.deepEqual(
+    frameworkDefaults("sveltekit", new Set(["@sveltejs/adapter-static"])),
+    {
+      staticOutput: "build",
+      startCommand: null,
+    },
+  );
+  // adapter-auto is the one a builder already handles.
+  assert.deepEqual(
+    frameworkDefaults("sveltekit", new Set(["@sveltejs/adapter-auto"])),
+    {
+      staticOutput: null,
+      startCommand: null,
+    },
+  );
+  assert.equal(
+    frameworkDefaults("adonisjs", none).startCommand,
+    "node build/bin/server.js",
+  );
+  // Everything a builder handles keeps both halves null.
+  for (const id of ["nextjs", "vite", "express", "astro", null] as const) {
+    assert.deepEqual(frameworkDefaults(id, none), {
+      staticOutput: null,
+      startCommand: null,
+    });
+  }
+});
+
+test("an Angular workspace's output directory carries its project name", () => {
+  const modern = JSON.stringify({
+    projects: {
+      shop: { targets: { build: { builder: "@angular/build:application" } } },
+    },
+  });
+  assert.equal(angularOutputDir(modern), "dist/shop/browser");
+
+  // Pre-17 spelling: `architect`, a browser builder, an explicit outputPath.
+  const legacy = JSON.stringify({
+    projects: {
+      shop: {
+        architect: {
+          build: {
+            builder: "@angular-devkit/build-angular:browser",
+            options: { outputPath: "dist/web" },
+          },
+        },
+      },
+    },
+  });
+  assert.equal(angularOutputDir(legacy), "dist/web");
+
+  // `outputPath` as an object, and defaultProject choosing between two.
+  const pair = JSON.stringify({
+    defaultProject: "b",
+    projects: {
+      a: { targets: { build: { builder: "@angular/build:application" } } },
+      b: {
+        targets: {
+          build: {
+            builder: "@angular/build:application",
+            options: { outputPath: { base: "out" } },
+          },
+        },
+      },
+    },
+  });
+  assert.equal(angularOutputDir(pair), "out/browser");
+
+  // Junk, and a path that climbs, are both "no answer" rather than a bad one.
+  assert.equal(angularOutputDir("not json"), null);
+  assert.equal(angularOutputDir("{}"), null);
+  assert.equal(
+    angularOutputDir(
+      JSON.stringify({
+        projects: {
+          a: { targets: { build: { options: { outputPath: "../x" } } } },
+        },
+      }),
+    ),
     null,
   );
 });

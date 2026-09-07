@@ -137,6 +137,82 @@ function runScript(
 }
 
 /**
+ * What a framework needs that no builder supplies, when the answer lives in the
+ * app's DEPENDENCIES rather than in the catalog. Both halves stay null for every
+ * framework a builder already handles.
+ */
+export function frameworkDefaults(
+  framework: FrameworkId | null,
+  deps: ReadonlySet<string>,
+): { staticOutput: string | null; startCommand: string | null } {
+  // A SvelteKit build is whatever its adapter emits, and a builder only handles
+  // adapter-auto: node with adapter-node, a directory with adapter-static.
+  if (framework === "sveltekit") {
+    if (deps.has("@sveltejs/adapter-static"))
+      return { staticOutput: "build", startCommand: null };
+    if (deps.has("@sveltejs/adapter-node"))
+      return { staticOutput: null, startCommand: "node build" };
+  }
+  // `node ace build` emits a whole app under build/, so the repo's own
+  // `node bin/server.js` only runs from inside it.
+  if (framework === "adonisjs")
+    return { staticOutput: null, startCommand: "node build/bin/server.js" };
+  return { staticOutput: null, startCommand: null };
+}
+
+/**
+ * The directory an Angular workspace builds into, read from its `angular.json`.
+ * Its own reader because the path carries the PROJECT's name, so no fixed catalog
+ * value can stand in for it.
+ */
+export function angularOutputDir(text: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const root = parsed as {
+    defaultProject?: string;
+    projects?: Record<string, unknown>;
+  } | null;
+  const projects = root?.projects;
+  if (!projects || typeof projects !== "object") return null;
+
+  const names = Object.keys(projects);
+  const name = root?.defaultProject
+    ? names.find((n) => n === root.defaultProject)
+    : names[0];
+  if (!name) return null;
+
+  const project = projects[name] as {
+    architect?: Record<string, BuildTarget>;
+    targets?: Record<string, BuildTarget>;
+  };
+  // `architect` is the pre-17 spelling of `targets`; both still ship.
+  const build = project?.targets?.build ?? project?.architect?.build;
+  if (!build) return null;
+
+  const options = build.options ?? {};
+  const outputPath =
+    typeof options.outputPath === "string"
+      ? options.outputPath
+      : typeof options.outputPath?.base === "string"
+        ? options.outputPath.base
+        : `dist/${name}`;
+  // The application builder splits its output into browser/ and server/.
+  const application =
+    typeof build.builder === "string" && build.builder.endsWith(":application");
+  const dir = application ? `${outputPath}/browser` : outputPath;
+  return /^[\w.][\w./-]*$/.test(dir) && !dir.includes("..") ? dir : null;
+}
+
+interface BuildTarget {
+  builder?: string;
+  options?: { outputPath?: string | { base?: string }; browser?: string };
+}
+
+/**
  * Name the framework backing a build root, or null when nothing in the registry
  * matches (not a JavaScript app, or a repo with no manifest at all - a Go or
  * Python service builds perfectly well through the same builders, it just has no
