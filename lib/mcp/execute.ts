@@ -15,6 +15,7 @@ import { maxDepthRule } from "@escape.tech/graphql-armor-max-depth";
 import { maxAliasesRule } from "@escape.tech/graphql-armor-max-aliases";
 import { costLimitRule } from "@escape.tech/graphql-armor-cost-limit";
 import { schema } from "../graphql/schema";
+import { safeMessage } from "../graphql/mask-error";
 import { runWithIdentity } from "../auth/request-context";
 import type { GraphQLContext } from "../graphql/context";
 
@@ -68,7 +69,10 @@ export async function runGraphql(
   const value = await (ctx.identity
     ? runWithIdentity(ctx.identity, run)
     : run());
-  const error = value.errors?.[0]?.message;
+  // The same mask /api/graphql applies: a raw driver error carries the SQL and
+  // its bound values, and a transport error the host it dialled.
+  const first = value.errors?.[0];
+  const error = first ? safeMessage(first) : undefined;
   return { data: value.data ?? null, error };
 }
 

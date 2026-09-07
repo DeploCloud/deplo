@@ -213,3 +213,17 @@ test("an unknown field is a refusal, not a silently empty answer", () => {
   // reads to a model as "that field is empty" rather than "you misspelled it".
   assert.match(refusal(`query X { apps { naem } }`), /Cannot query field/);
 });
+
+test("a driver error reaches the model masked, exactly as it reaches /api/graphql", async () => {
+  const ctx = await contextFor(["view"]);
+  // A NUL byte in a bound parameter is refused by Postgres itself, so the error
+  // is the driver's - the kind whose message carries the SQL and its values.
+  const res = await runGraphql(
+    'query { app(slug: "a\u0000b") { id } }',
+    {},
+    ctx,
+  );
+  assert.ok(res.error, "the failure is reported");
+  assert.doesNotMatch(res.error!, /Failed query|select |params/i);
+  assert.equal(res.error, "Something went wrong");
+});

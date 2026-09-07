@@ -10,6 +10,7 @@ import type { GraphQLContext } from "../graphql/context";
 import type { McpSettings } from "../data/mcp-settings";
 import { MCP_TOOLS, type McpToolDef } from "./tools";
 import { runGraphql } from "./execute";
+import { safeMessage } from "../graphql/mask-error";
 
 /**
  * Builds the MCP server for ONE request. The authoritative refusal happens inside
@@ -213,7 +214,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
               : data,
           );
         } catch (e) {
-          return failure(e instanceof Error ? e.message : String(e));
+          return failure(safeMessage(e));
         }
       },
     );
