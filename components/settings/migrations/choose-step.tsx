@@ -36,7 +36,7 @@ export function ChooseStep({
           icon={Trash2}
           arrow
           title="Start clean"
-          blurb={`${panel} and everything on it is deleted: apps, data, teams. Nothing can be brought back.`}
+          blurb={`${panel} and everything on it is deleted for good.`}
           selected={mode === "clean"}
           onSelect={() => onPick("clean")}
         />
@@ -44,7 +44,7 @@ export function ChooseStep({
           icon={ArrowRightLeft}
           arrow
           title="Bring your data over"
-          blurb={`Your apps, databases and their data move to Deplo. ${panel} comes off the machine once they are here.`}
+          blurb={`Your apps and databases move over, then ${panel} goes.`}
           selected={mode === "migrate"}
           onSelect={() => onPick("migrate")}
         />
