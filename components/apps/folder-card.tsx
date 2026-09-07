@@ -563,7 +563,7 @@ export function FolderCard({
             <Folder className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
-            <span className="truncate font-medium">{shownName}</span>
+            <span className="block truncate font-medium">{shownName}</span>
             <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
           </div>
         </div>
@@ -590,7 +590,7 @@ export function FolderCard({
               <Folder className="size-4.5" />
             </div>
             <div className="min-w-0">
-              <span className="truncate font-medium">{shownName}</span>
+              <span className="block truncate font-medium">{shownName}</span>
               <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
             </div>
           </div>
