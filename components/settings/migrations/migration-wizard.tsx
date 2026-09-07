@@ -1627,7 +1627,12 @@ export function MigrationWizard({
             <MigrationGraphic
               state={pose}
               kind={kind}
-              className="h-auto w-full max-w-xl"
+              // The takeover screen IS the page, so the drawing carries it. In
+              // Settings it sits inside a section that is not about it.
+              className={cn(
+                "h-auto w-full",
+                isTakeover ? "max-w-xl" : "max-w-md",
+              )}
             />
           )}
 
