@@ -4,6 +4,7 @@ import { opendir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { listRepoTree, fetchRepoBlob } from "../github/app";
+import { listGithubInstallations } from "../data/github";
 import { githubFullName } from "../github/repo-id";
 import { readGitCredential } from "../data/git-connections";
 import { providerFor, readProviderText } from "../git/providers";
@@ -73,10 +74,12 @@ export async function detectRepoFramework(
   const fullName = githubFullName(repo);
   if (!fullName) return NO_HINTS;
 
+  const installationId =
+    repo.installationId ?? (await activeTeamInstallationId());
   const tree = await listRepoTree(
     fullName,
     repo.branch?.trim() || "HEAD",
-    repo.installationId ?? null,
+    installationId,
   );
   if (tree.length === 0) return NO_HINTS;
 
@@ -98,7 +101,7 @@ export async function detectRepoFramework(
     const bytes = await fetchRepoBlob(
       fullName,
       manifestEntry.sha,
-      repo.installationId ?? null,
+      installationId,
     );
     if (bytes) manifest = parsePackageManifest(bytes.toString("utf8"));
   }
@@ -140,6 +143,19 @@ async function detectViaConnection(
     if (text) manifest = parsePackageManifest(text);
   }
   return hintsFor(files, manifest);
+}
+
+/**
+ * A GitHub App installation of the ACTIVE TEAM, for a repo the caller named no
+ * installation for. Unauthenticated GitHub is 60 requests an HOUR for the whole
+ * instance, so without this recognition silently reads nothing on a busy day; an
+ * installation token reads any PUBLIC repo too, at 5000.
+ */
+async function activeTeamInstallationId(): Promise<string | null> {
+  // Never another team's: its token would also open that team's PRIVATE repos.
+  return listGithubInstallations()
+    .then((rows) => rows[0]?.id ?? null)
+    .catch(() => null);
 }
 
 /** Entries scanned in one directory before we stop. The build root of a real app
