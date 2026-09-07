@@ -435,6 +435,8 @@ async function adoptMigrationSources(
   addresses: Set<string>,
 ): Promise<void> {
   if (addresses.size === 0) return;
+  // LEFT join: a source whose team was deleted has no team row at all, and is
+  // the one most in need of a home - its agent is still on the machine.
   const rows = await getDb()
     .select({
       id: serversTable.id,
@@ -443,19 +445,27 @@ async function adoptMigrationSources(
       teamId: serverTeamsTable.teamId,
     })
     .from(serversTable)
-    .innerJoin(serverTeamsTable, eq(serverTeamsTable.serverId, serversTable.id))
+    .leftJoin(serverTeamsTable, eq(serverTeamsTable.serverId, serversTable.id))
     .where(
       and(
         eq(serversTable.importOnly, true),
         isNull(serversTable.uninstallNextAt),
-        ne(serverTeamsTable.teamId, teamId),
       ),
     );
   const admin = await isInstanceAdmin();
   let moved = 0;
   for (const r of rows) {
+    if (r.teamId === teamId) continue;
     const at = [r.ip, r.host].map((a) => a?.trim().toLowerCase() ?? "");
     if (!at.some((a) => a && addresses.has(a))) continue;
+    if (r.teamId === null) {
+      await getDb()
+        .insert(serverTeamsTable)
+        .values({ serverId: r.id, teamId })
+        .onConflictDoNothing();
+      moved++;
+      continue;
+    }
     if (!admin && !(await holdsTeamWideCapability(r.teamId, "create_projects")))
       continue;
     if (await activeMigrationForTeam(r.teamId)) continue;
@@ -763,11 +773,17 @@ export async function scanMigrationSource(
   // machine Deplo already stands on, and refused itself. A source is the
   // migration's, not a team's, so this scan claims the ones at this panel's
   // addresses - the same rule (and the same right) as handing them over.
+  // The remembered addresses too: behind a proxy the panel's own machine is
+  // known only by the IP somebody typed for it.
   if (!opts.newTeam)
     await adoptMigrationSources(
       teamId,
       new Set(
-        [new URL(c.baseUrl).hostname, ...servers.map((s) => s.ipAddress)]
+        [
+          new URL(c.baseUrl).hostname,
+          ...servers.map((s) => s.ipAddress),
+          ...(await rememberedAddresses(teamId, c.baseUrl)).values(),
+        ]
           .map((a) => a?.trim().toLowerCase() ?? "")
           .filter(Boolean),
       ),

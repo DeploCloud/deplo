@@ -236,8 +236,9 @@ export function InstallStep({
     React.SetStateAction<Record<string, PendingMachine>>
   >;
   /**
-   * Which machines have been through `addServer` already, so revisiting this step
-   * never registers one twice.
+   * Which machines have a registration IN FLIGHT, so a re-render never starts a
+   * second one. Cleared when it lands: what happened then is in `pending` or in
+   * this step's own state, and a machine with neither is fair to try again.
    */
   attempted: React.RefObject<Set<string>>;
   /** One machine just came online: it now maps to this Deplo server, dialed
@@ -423,10 +424,26 @@ export function InstallStep({
         // `machines`, which re-runs this effect and cancels the old one, and a machine
         // claimed by a run that then stops would never be registered by anybody.
         if (cancelled) return;
-        if (m.deploServerOnline || attempted.current.has(m.sourceId)) continue;
-        attempted.current.add(m.sourceId);
+        const id = m.sourceId;
+        // Left alone while something is in flight or already said: a stale
+        // "attempted" with nothing to show for it was a row on "Registering" for
+        // ever after a Back and a second scan.
+        if (
+          m.deploServerOnline ||
+          attempted.current.has(id) ||
+          pending[id] ||
+          failed[id] ||
+          adoptable[id] ||
+          unreachable[id]
+        )
+          continue;
+        attempted.current.add(id);
         if (m.deploServerId) {
-          await reclaimMachine(m);
+          try {
+            await reclaimMachine(m);
+          } finally {
+            attempted.current.delete(id);
+          }
           continue;
         }
         // A Cloudflare address is known to be the proxy, so registering there would
@@ -435,9 +452,10 @@ export function InstallStep({
         // attempted all the same, so the effect does not re-raise this on every
         // render while somebody is typing into it.
         if (!m.ipAddress || m.cloudflare) {
+          attempted.current.delete(id);
           setFailed((p) => ({
             ...p,
-            [m.sourceId]: m.cloudflare
+            [id]: m.cloudflare
               ? CLOUDFLARE_ADDRESS_NOTICE
               : "Deplo could not work out that machine's address.",
           }));
@@ -446,7 +464,11 @@ export function InstallStep({
         // One at a time rather than all at once: a failure has to be able to name the
         // machine it happened on, and two hosts registering in parallel produce two toasts
         // nobody can tell apart.
-        await registerMachine(m, m.ipAddress);
+        try {
+          await registerMachine(m, m.ipAddress);
+        } finally {
+          attempted.current.delete(id);
+        }
       }
     })().catch((e: unknown) => {
       // A row left on "Registering" with nothing to say is the one dead end a
@@ -463,7 +485,17 @@ export function InstallStep({
     return () => {
       cancelled = true;
     };
-  }, [machines, canAddServers, attempted, registerMachine, reclaimMachine]);
+  }, [
+    machines,
+    canAddServers,
+    attempted,
+    registerMachine,
+    reclaimMachine,
+    pending,
+    failed,
+    adoptable,
+    unreachable,
+  ]);
 
   // ---- probe until the agent answers US ------------------------------
   /**
@@ -625,6 +657,16 @@ export function InstallStep({
       const address = (draft[m.sourceId] ?? "").trim();
       if (!address) return;
       attempted.current.add(m.sourceId);
+      try {
+        await registerAt(m, address);
+      } finally {
+        attempted.current.delete(m.sourceId);
+      }
+    });
+
+  /** The manual registration itself - see `registerManually`. */
+  const registerAt = async (m: PlanServer, address: string) => {
+    {
       const twin = twinAt(machines, m.sourceId, address);
       if (twin?.deploServerOnline && twin.deploServerId) {
         await claim(m.sourceId, address, {
@@ -652,7 +694,8 @@ export function InstallStep({
         return;
       }
       await registerMachine(m, address);
-    });
+    }
+  };
 
   // ---- and then move on ---------------------------------------------
   // Only when it BECOMES settled here: a person who came back to this step

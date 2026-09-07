@@ -3686,3 +3686,29 @@ test("an address one team typed for a machine is known to the next team", async 
     "the panel's machine is where it was, whoever asks",
   );
 });
+
+test("a source whose team was deleted is adopted by the next migration from that panel", async () => {
+  // Deleting the team cascades its server grant away and leaves the agent on
+  // the machine: the next scan used to see nothing there, offer to register,
+  // take the reused row on the client only, and be refused at Start.
+  const { serverTeams } = await import("../db/schema/control-plane");
+  const added = await asOwner(() =>
+    addServer({
+      name: "coolify-host",
+      host: "203.0.113.99",
+      importOnly: true,
+    }),
+  );
+  await db.delete(serverTeams).where(eq(serverTeams.serverId, added.server.id));
+  // The panel is behind a proxy: the machine is known only by the IP somebody
+  // once typed for it.
+  await asOwner(() =>
+    rememberMigrationMachineAddress(URL_BASE, "", "203.0.113.99"),
+  );
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
+  assert.equal(
+    plan.servers.find((s) => s.sourceId === "")?.deploServerId,
+    added.server.id,
+    "the orphan is this team's source again",
+  );
+});
