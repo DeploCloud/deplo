@@ -545,7 +545,7 @@ export function InstallStep({
           : "Sign in to each machine as root and paste its line. Deplo needs its agent there to read your data, and takes it back off when the migration is done."
       }
     >
-      <div className="divide-y divide-border/60 rounded-lg border border-border">
+      <div className="divide-y divide-border/60 rounded-lg border border-border bg-background">
         {machines.map((m) => {
           const p = pending[m.sourceId];
           const error = failed[m.sourceId];

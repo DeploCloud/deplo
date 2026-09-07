@@ -403,7 +403,7 @@ export function ReviewStep({
             return (
               <section
                 key={g.key}
-                className="space-y-3 rounded-lg border border-border p-3"
+                className="space-y-3 rounded-lg border border-border bg-background p-3"
               >
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <TeamAvatar

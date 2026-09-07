@@ -1963,7 +1963,7 @@ function ConnectStep({
         {queue.length > 0 && (
           <div>
             <p className="text-sm font-medium">Teams to bring over</p>
-            <ul className="mt-1 divide-y divide-border rounded-lg border border-border">
+            <ul className="mt-1 divide-y divide-border rounded-lg border border-border bg-background">
               {queue.map((q, i) => (
                 <li
                   key={`${q.sourceTeamId ?? ""}-${i}`}
@@ -2209,6 +2209,7 @@ function MovingPanel({
   if (!running && !undoing)
     return (
       <StepShell
+        hero
         title="The migration could not start"
         lead={failure ?? "Deplo could not start the migration."}
       >
@@ -2222,6 +2223,7 @@ function MovingPanel({
 
   return (
     <StepShell
+      hero
       title={
         undoing
           ? "Undoing the migration"
@@ -2392,6 +2394,7 @@ function ReportCard({
 
   return (
     <StepShell
+      hero
       title="Your projects are on Deplo"
       lead="Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
     >
@@ -2408,7 +2411,7 @@ function ReportCard({
         )}
       </div>
       {teams && teams.length > 1 && (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <ul className="divide-y divide-border rounded-lg border border-border bg-background">
           {teams.map((t) => (
             <li
               key={t.name}
