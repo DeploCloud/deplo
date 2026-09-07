@@ -1700,6 +1700,9 @@ export function MigrationWizard({
                       updateQueue(queueRef.current.filter((_, j) => j !== i))
                     }
                     onSubmit={submitConnect}
+                    onBack={
+                      reach("choose") ? () => setStep("choose") : undefined
+                    }
                   />
                 )}
 
@@ -1714,6 +1717,7 @@ export function MigrationWizard({
                     attempted={attemptedMachines}
                     onResolved={machineResolved}
                     onDone={goToReview}
+                    onBack={() => setStep("connect")}
                   />
                 )}
 
@@ -1799,6 +1803,9 @@ export function MigrationWizard({
                     finalUrl={takeover.finalUrl}
                     error={takeover.error}
                     dataLoss={takeover.dataLoss}
+                    onBack={
+                      reach("choose") ? () => setStep("choose") : undefined
+                    }
                   />
                 )}
               </div>
@@ -1844,6 +1851,7 @@ function ConnectStep({
   onRetarget,
   onRemove,
   onSubmit,
+  onBack,
 }: {
   url: string;
   setUrl: (v: string) => void;
@@ -1868,6 +1876,8 @@ function ConnectStep({
   onRetarget: (i: number, target: TeamTarget) => void;
   onRemove: (i: number) => void;
   onSubmit: (e: React.FormEvent) => void;
+  /** Back to the choice, while it is still only a choice. */
+  onBack?: () => void;
 }) {
   const copy = copyFor(kind);
   const busy = scanning || adding;
@@ -2085,7 +2095,12 @@ function ConnectStep({
           </div>
         )}
 
-        <div className="flex justify-end">
+        <div className={cn("flex", onBack ? "justify-between" : "justify-end")}>
+          {onBack && (
+            <Button type="button" variant="outline" onClick={onBack}>
+              Back
+            </Button>
+          )}
           <Button
             type="submit"
             disabled={
@@ -2280,9 +2295,14 @@ function MovingPanel({
         <ElapsedLine startedAt={startedAt} progress={progress} now={now} />
       </div>
 
-      {/* Both at the end of the row, Stop first: it is the one somebody is
-          reaching for while they watch this, and the log is the afterthought. */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      {/* The two ends of the row: Stop is what somebody reaches for while they
+          watch this, the log is the afterthought and sits away from it. */}
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-2",
+          onStop && !undoing ? "justify-between" : "justify-end",
+        )}
+      >
         {onStop && !undoing && (
           // A confirm, because Stop is destructive now and says so: it is the
           // only button on this screen, and pressing it throws away everything

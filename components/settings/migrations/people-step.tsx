@@ -88,13 +88,15 @@ export function PeopleStep({
           kind={kind}
           inviting={inviting}
           named={several}
+          hoisted={groups.length === 1}
         />
       ))}
 
-      {/* One button, because there is nothing on this step to fill in: pressing
-          Continue without touching anything IS skipping it. A Skip beside a
-          Continue that does the same thing is two names for one action. */}
-      <div className="flex justify-end">
+      {/* No Skip: there is nothing here to fill in, so pressing Continue without
+          touching anything IS skipping it, and two names for one action is one
+          too many. With a single team its extra link shares this row. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {groups.length === 1 ? <ExtraLink group={groups[0]} /> : <span />}
         <Button onClick={onContinue}>Continue</Button>
       </div>
     </StepShell>
@@ -108,11 +110,14 @@ function TeamPeople({
   kind,
   inviting,
   named,
+  hoisted = false,
 }: {
   group: PeopleGroup;
   kind: SourceKind | null;
   inviting: boolean;
   named: boolean;
+  /** One team: its extra link sits in the step's footer instead. */
+  hoisted?: boolean;
 }) {
   const byEmail = new Map((g.invites ?? []).map((i) => [i.email, i]));
   const body = (
@@ -140,24 +145,7 @@ function TeamPeople({
         </div>
       )}
 
-      {/* For whoever was not on that panel at all. Secondary, and below: it is the
-          exception, and the cards above are the errand. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={g.onMintLink} disabled={g.minting}>
-          {g.minting ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Link2 className="size-4" />
-          )}
-          {g.inviteLink ? "Create another link" : "Create an extra invite link"}
-        </Button>
-        {g.inviteLink && (
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Input readOnly value={g.inviteLink} className="min-w-0 flex-1" />
-            <CopyButton value={g.inviteLink} />
-          </div>
-        )}
-      </div>
+      {!hoisted && <ExtraLink group={g} />}
     </>
   );
   if (!named) return body;
@@ -243,6 +231,28 @@ function PersonCard({
           <p className="text-xs text-muted-foreground">No link for this one.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The link for whoever was not on that panel at all. */
+function ExtraLink({ group: g }: { group: PeopleGroup }) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <Button variant="outline" onClick={g.onMintLink} disabled={g.minting}>
+        {g.minting ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Link2 className="size-4" />
+        )}
+        {g.inviteLink ? "Create another link" : "Create an extra invite link"}
+      </Button>
+      {g.inviteLink && (
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Input readOnly value={g.inviteLink} className="min-w-0 flex-1" />
+          <CopyButton value={g.inviteLink} />
+        </div>
+      )}
     </div>
   );
 }

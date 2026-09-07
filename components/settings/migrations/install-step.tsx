@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import { CommandLine } from "@/components/shared/code-block";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -208,6 +209,7 @@ export function InstallStep({
   attempted,
   onResolved,
   onDone,
+  onBack,
 }: {
   /** Which panel these machines belong to. */
   kind: SourceKind | null;
@@ -230,6 +232,8 @@ export function InstallStep({
   onResolved: (sourceId: string, serverId: string, serverName: string) => void;
   /** Every machine is ours. Carry on to the review. */
   onDone: () => void;
+  /** Back to Connect: nothing here has been written yet. */
+  onBack?: () => void;
 }) {
   const [failed, setFailed] = React.useState<Record<string, string>>({});
   const [unreachable, setUnreachable] = React.useState<
@@ -722,7 +726,12 @@ export function InstallStep({
           above), so it says how: a second migration from the same panel finds
           every machine already answering and used to end here with no way out. */}
       {settled && (
-        <div className="flex justify-end">
+        <div className={cn("flex", onBack ? "justify-between" : "justify-end")}>
+          {onBack && (
+            <Button variant="outline" onClick={onBack}>
+              Back
+            </Button>
+          )}
           <Button onClick={onDone}>Continue</Button>
         </div>
       )}
