@@ -455,6 +455,37 @@ test("a fork is refused outright while the app reaches the server", async () => 
   assert.ok(own.previewId);
 });
 
+test("a fork is refused while the compose hands values out inline", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", forkPolicy: "allow" });
+  await db
+    .update(appsTable)
+    .set({
+      compose:
+        "services:\n  web:\n    image: nginx\n    environment:\n      - SECRET=hunter2\n",
+    })
+    .where(eq(appsTable.id, "prj_1"));
+  const res = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, isFork: true, headRepo: "mallory/blog" },
+    { actor: "mallory" },
+  );
+  assert.deepEqual(res.refusal, { kind: "fork-inline-env" });
+  // Bare pass-throughs are not values: the same stack without them is fine.
+  await db
+    .update(appsTable)
+    .set({
+      compose:
+        "services:\n  web:\n    image: nginx\n    environment:\n      - SECRET\n",
+    })
+    .where(eq(appsTable.id, "prj_1"));
+  const ok = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, isFork: true, headRepo: "mallory/blog" },
+    { actor: "mallory" },
+  );
+  assert.equal(ok.refusal, undefined);
+});
+
 test("fork policy `deny` records nothing at all", async () => {
   await seedPreviewApp("prj_1", { slug: "blog", forkPolicy: "deny" });
   const res = await openOrSyncPreview(

@@ -36,6 +36,7 @@ import { previewDeployKey } from "./deploy-key";
 import { syncPreviewComment } from "./preview-comment";
 import { previewHost, rehostNip, resolveServerIp } from "./domains";
 import { mapLimit } from "../utils";
+import { composeHasInlineEnvValues } from "./compose-lint";
 
 /**
  * The lifecycle of a **pull request preview** - open, sync, close, tear down.
@@ -63,6 +64,7 @@ export type PreviewRefusal =
   | { kind: "not-github" }
   | { kind: "fork-denied" }
   | { kind: "fork-host-reach" }
+  | { kind: "fork-inline-env" }
   | { kind: "awaiting-approval" }
   | { kind: "evicted"; max: number };
 
@@ -73,6 +75,8 @@ export function refusalMessage(r: PreviewRefusal): string {
       return "Pull request previews are off for this app.";
     case "not-github":
       return "Pull request previews need an app deployed from a GitHub repository.";
+    case "fork-inline-env":
+      return "A fork can't be previewed while this app's compose file carries environment values inline. Move them to the app's variables.";
     case "fork-host-reach":
       return "A fork can't be previewed while this app reaches the server (a Bind of a server folder, or a privileged compose setting).";
     case "fork-denied":
@@ -169,12 +173,10 @@ export async function openOrSyncPreview(
     }
     // A stranger's code with the app's host reach (a Bind, a privileged compose)
     // would run on the server with it: refused whatever the policy or approval.
-    if (pr.isFork && (await appReachesHost(appId))) {
-      return {
-        previewId: existing?.id ?? null,
-        deploymentId: null,
-        refusal: { kind: "fork-host-reach" },
-      };
+    if (pr.isFork) {
+      const refusal = await forkRefusal(appId);
+      if (refusal)
+        return { previewId: existing?.id ?? null, deploymentId: null, refusal };
     }
     // Per COMMIT, not per pull request.
     const approved =
@@ -384,6 +386,23 @@ export async function appReachesHost(appId: string): Promise<boolean> {
   return binds.length > 0;
 }
 
+/**
+ * Why a FORK of this app may not be previewed right now, or null: a stranger's
+ * code must not run with the app's host reach, nor with values the compose file
+ * hands every container inline (ADR-0017 §7).
+ */
+async function forkRefusal(appId: string): Promise<PreviewRefusal | null> {
+  if (await appReachesHost(appId)) return { kind: "fork-host-reach" };
+  const [app] = await getDb()
+    .select({ compose: appsTable.compose })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  if (app?.compose && composeHasInlineEnvValues(app.compose))
+    return { kind: "fork-inline-env" };
+  return null;
+}
+
 async function startPreviewDeployment(
   p: typeof appPreviewsTable.$inferSelect,
   opts: {
@@ -395,8 +414,10 @@ async function startPreviewDeployment(
   const previewId = p.id;
   try {
     // Every manual path (Redeploy, Approve) lands here too.
-    if (p.isFork && (await appReachesHost(p.appId)))
-      throw new Error(refusalMessage({ kind: "fork-host-reach" }));
+    if (p.isFork) {
+      const refusal = await forkRefusal(p.appId);
+      if (refusal) throw new Error(refusalMessage(refusal));
+    }
     return await startDeployment(p.appId, {
       environment: "preview",
       creator: opts.actor,
