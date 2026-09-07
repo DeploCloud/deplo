@@ -23,6 +23,7 @@ import { TakeoverCancel } from "@/components/takeover/takeover-actions";
 import { TakeoverPreflight } from "@/components/takeover/takeover-preflight";
 import { SOURCE_COPY } from "@/components/settings/migrations/sources";
 import { DeploLogo } from "@/components/logo";
+import { AuthChrome } from "@/components/auth/auth-chrome";
 
 export const metadata = { title: "Take over this machine" };
 
@@ -74,7 +75,18 @@ export default async function TakeoverPage() {
   const dataLoss = finished && admin ? await takeoverDataLoss() : [];
 
   return (
-    <Screen>
+    <Screen
+      footer={
+        (status.state === "pending" ||
+          status.state === "ready" ||
+          status.state === "failed") && (
+          <TakeoverCancel
+            platformLabel={copy.name}
+            tokenLabel={copy.tokenLabel}
+          />
+        )
+      }
+    >
       {/* The wizard watches the run it started itself, in whichever team it
           lands, so this screen needs no shell around it to see it. */}
       <MigrationWizard
@@ -104,30 +116,34 @@ export default async function TakeoverPage() {
         // step is the only one with anything left in it.
         startOnTakeover={finished != null && resumable == null}
       />
-      {(status.state === "pending" ||
-        status.state === "ready" ||
-        status.state === "failed") && (
-        <TakeoverCancel
-          platformLabel={copy.name}
-          tokenLabel={copy.tokenLabel}
-        />
-      )}
     </Screen>
   );
 }
 
 /** The mark and nothing else: until the ports have moved there is no dashboard
  *  behind this screen to offer a way back to. */
-function Screen({ children }: { children: React.ReactNode }) {
+function Screen({
+  children,
+  footer,
+}: {
+  children: React.ReactNode;
+  /** The way back out, at the foot of the page rather than under the wizard. */
+  footer?: React.ReactNode;
+}) {
   return (
     <div className="relative flex min-h-dvh flex-col">
-      <div className="deplo-graph-bg pointer-events-none absolute inset-0 opacity-[0.5]" />
+      <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
+      {/* The same furniture every signed-out screen carries: theme, and the
+          three links at the foot. */}
+      <AuthChrome />
       <header className="relative z-10 px-6 py-5">
         <DeploLogo />
       </header>
-      <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-16">
+      <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8">
         <div className="w-full max-w-xl space-y-6">{children}</div>
       </main>
+      {/* Clear of AuthChrome's own row of links, which is fixed to the foot. */}
+      {footer && <footer className="relative z-10 px-4 pb-14">{footer}</footer>}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ export function ChoiceCard({
   disabled = false,
   disabledNote,
   multi = false,
+  arrow = false,
   onSelect,
 }: {
   title: string;
@@ -26,22 +27,26 @@ export function ChoiceCard({
   /** Shown instead of the blurb while disabled - say WHY, not that it is off. */
   disabledNote?: string;
   multi?: boolean;
+  /** The card IS the answer: picking it moves on, so it points instead of ticking. */
+  arrow?: boolean;
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
-      role={multi ? "checkbox" : "radio"}
-      aria-checked={selected}
+      // With an arrow the card is an action, not a choice held on screen: it
+      // moves on, so there is no checked state to announce.
+      role={arrow ? undefined : multi ? "checkbox" : "radio"}
+      aria-checked={arrow ? undefined : selected}
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+        "group flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         selected
           ? "border-primary bg-primary-wash ring-1 ring-primary/60"
-          : "border-border hover:border-foreground/20 hover:bg-surface",
+          : "border-border bg-background hover:border-foreground/20 hover:bg-surface",
       )}
     >
       <span
@@ -60,7 +65,11 @@ export function ChoiceCard({
           {disabled && disabledNote ? disabledNote : blurb}
         </span>
       </span>
-      <CheckMark selected={selected} className="mt-0.5" />
+      {arrow ? (
+        <ArrowRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-foreground motion-reduce:transition-none" />
+      ) : (
+        <CheckMark selected={selected} className="mt-0.5" />
+      )}
     </button>
   );
 }

@@ -452,13 +452,13 @@ export function TakeoverCancel({
     );
 
   return (
-    <p className="text-center text-sm text-muted-foreground">
+    <p className="text-center text-xs text-muted-foreground">
       Changed your mind?{" "}
       <ConfirmAction
         trigger={
           <Button
             variant="link"
-            className="h-auto p-0 text-sm text-destructive"
+            className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
           >
             Cancel and remove Deplo
           </Button>

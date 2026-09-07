@@ -38,6 +38,7 @@ import { TeamAvatar } from "@/components/shared/user-avatar";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import {
@@ -1584,7 +1585,7 @@ export function MigrationWizard({
           <MigrationGraphic
             state={pose}
             kind={kind}
-            className="h-auto w-full max-w-md"
+            className="h-auto w-full max-w-xl"
           />
 
           {/**
@@ -1592,192 +1593,202 @@ export function MigrationWizard({
            * bottom, and a 48rem measure under a centred picture reads as a page rather than a
            * sequence.
            */}
-          <div className="w-full max-w-xl min-w-0 space-y-6">
-            {/* Centred, because the column under it is centred: a rail hugging
+          <div className="w-full max-w-xl min-w-0">
+            {/* One step is taller than the next, and a page that jumps between
+                them reads as a new screen rather than the same one moving on. */}
+            <AnimatedHeight scroll={false} className="space-y-6">
+              {/* Centred, because the column under it is centred: a rail hugging
                 the left edge of a narrow centred column reads as misaligned
-                with the heading below it, not as an anchor. */}
-            <div className="flex justify-center">
-              <WizardStepper
-                steps={STEPS}
-                current={takenOver ? "review" : step}
-                // `stepReachable` is the only answer, and both the rail and the
-                // bodies below ask it: a gate one of them does not honour is a
-                // suggestion.
-                reachable={reach}
-                onSelect={(s) => {
-                  if (!reach(s)) return;
-                  setStep(s);
-                }}
-              />
-            </div>
+                with the heading below it, not as an anchor. Choose is the
+                question before the sequence, so it carries no rail at all. */}
+              {step !== "choose" && (
+                <div className="flex justify-center">
+                  <WizardStepper
+                    steps={STEPS}
+                    compact
+                    current={takenOver ? "review" : step}
+                    // `stepReachable` is the only answer, and both the rail and the
+                    // bodies below ask it: a gate one of them does not honour is a
+                    // suggestion.
+                    reachable={reach}
+                    onSelect={(s) => {
+                      if (!reach(s)) return;
+                      setStep(s);
+                    }}
+                  />
+                </div>
+              )}
 
-            {/* Nothing is being copied on a clean takeover, so the room for a
+              {/* Nothing is being copied on a clean takeover, so the room for a
                 second copy of every volume is not a question. */}
-            {mode !== "clean" && preflight}
+              {mode !== "clean" && preflight}
 
-            <div>
-              {!takenOver && step === "choose" && (
-                <ChooseStep
-                  kind={kind}
-                  mode={mode}
-                  onSelect={setMode}
-                  onContinue={() =>
-                    setStep(mode === "clean" ? "takeover" : "connect")
-                  }
-                />
-              )}
-
-              {/* One panel, one run, whoever is looking: the person who started
-                  it, the same person after a reload, the teammate who walked in
-                  on it. The step they left is the step they get, Stop and all. */}
-              {resumed && (
-                <MovingPanel
-                  isTakeover={isTakeover}
-                  kind={kind}
-                  progress={
-                    feed
-                      ? {
-                          done: feed.doneSteps,
-                          total: feed.totalSteps,
-                          current: feed.stepLabel ?? lastStep(feed.lastPath),
-                        }
-                      : NO_PROGRESS
-                  }
-                  startedAt={feed ? Date.parse(feed.startedAt) : null}
-                  heartbeatAt={feed?.heartbeatAt ?? null}
-                  failure={failure}
-                  running={resumed}
-                  undoing={undoing}
-                  onShowLog={() => setLogOpen(true)}
-                  onStop={() => void stopRun(feed?.id ?? "")}
-                  onBack={resetToStart}
-                />
-              )}
-
-              {!takenOver && step === "connect" && (
-                <ConnectStep
-                  url={url}
-                  setUrl={setUrl}
-                  apiKey={apiKey}
-                  setApiKey={setApiKey}
-                  sameMachineHost={sameMachineHost}
-                  takeover={prefill != null}
-                  scanning={scanning}
-                  kind={kind}
-                  forcedKind={forcedKind}
-                  setForcedKind={setForcedKind}
-                  scanError={scanError}
-                  queue={queue}
-                  targetTeams={targetTeams}
-                  adding={adding}
-                  onAdd={() => void identifyAndAdd()}
-                  onRetarget={(i, target) =>
-                    updateQueue(retarget(queueRef.current, i, target))
-                  }
-                  onRemove={(i) =>
-                    updateQueue(queueRef.current.filter((_, j) => j !== i))
-                  }
-                  onSubmit={submitConnect}
-                />
-              )}
-
-              {!takenOver && step === "install" && plan && (
-                <InstallStep
-                  kind={kind}
-                  sourceUrl={plan.sourceUrl}
-                  machines={plan.servers}
-                  canAddServers={isInstanceAdmin}
-                  pending={pendingMachines}
-                  setPending={setPendingMachines}
-                  attempted={attemptedMachines}
-                  onResolved={machineResolved}
-                  onDone={goToReview}
-                />
-              )}
-
-              {/* The report IS Review finished, so it comes first: a run that
-                  landed must not be paintable as a plan to start again. */}
-              {!takenOver &&
-                step === "review" &&
-                showing === "report" &&
-                report && (
-                  <ReportCard
-                    report={teamReports.length > 0 ? totals : report}
-                    teams={teamReports.length > 1 ? teamReports : null}
-                    uncovered={uncovered}
-                    onAddTeam={() => setStep("connect")}
-                    onShowLog={() => setLogOpen(true)}
-                    onContinue={acknowledgeReport}
-                    isInstanceAdmin={isInstanceAdmin}
-                    sourcesTeamId={sourcesTeam.current}
+              <div>
+                {!takenOver && step === "choose" && (
+                  <ChooseStep
+                    kind={kind}
+                    mode={mode}
+                    onPick={(m) => {
+                      setMode(m);
+                      setStep(m === "clean" ? "takeover" : "connect");
+                    }}
                   />
                 )}
 
-              {!takenOver &&
-                step === "review" &&
-                showing !== "report" &&
-                (moving ? (
+                {/* One panel, one run, whoever is looking: the person who started
+                  it, the same person after a reload, the teammate who walked in
+                  on it. The step they left is the step they get, Stop and all. */}
+                {resumed && (
                   <MovingPanel
                     isTakeover={isTakeover}
                     kind={kind}
-                    progress={NO_PROGRESS}
-                    startedAt={null}
-                    // The start call is in flight in THIS tab: there is no run
-                    // yet, so there is no heartbeat to be missing. Once there IS
-                    // one the feed has not shown, nothing is moving yet either.
-                    heartbeatAt={awaitingRun ? null : new Date().toISOString()}
+                    progress={
+                      feed
+                        ? {
+                            done: feed.doneSteps,
+                            total: feed.totalSteps,
+                            current: feed.stepLabel ?? lastStep(feed.lastPath),
+                          }
+                        : NO_PROGRESS
+                    }
+                    startedAt={feed ? Date.parse(feed.startedAt) : null}
+                    heartbeatAt={feed?.heartbeatAt ?? null}
                     failure={failure}
-                    // A run this tab holds but cannot see yet is still a run: the
-                    // plan must not come back under it.
-                    running={running || awaitingRun}
-                    undoing={false}
+                    running={resumed}
+                    undoing={undoing}
                     onShowLog={() => setLogOpen(true)}
-                    // Stop is there the moment a run id exists; before that the
-                    // `startMigration` call is in flight and there is nothing to stop.
-                    onStop={runId ? () => void stopRun(runId) : undefined}
-                    onBack={() => setFailure(null)}
+                    onStop={() => void stopRun(feed?.id ?? "")}
+                    onBack={resetToStart}
                   />
-                ) : showing === "plan" && reviewGroups.length > 0 ? (
-                  <ReviewStep
+                )}
+
+                {!takenOver && step === "connect" && (
+                  <ConnectStep
+                    url={url}
+                    setUrl={setUrl}
+                    apiKey={apiKey}
+                    setApiKey={setApiKey}
+                    sameMachineHost={sameMachineHost}
+                    takeover={prefill != null}
+                    scanning={scanning}
                     kind={kind}
-                    groups={reviewGroups}
-                    chosen={chosen}
-                    setChosen={setChosen}
-                    placements={placements}
-                    setPlacements={setPlacements}
-                    canExposePorts={canExposePorts}
-                    onChangeTarget={() => setStep("connect")}
-                    onBack={() => setStep("install")}
-                    onStart={() => void runTeam(0)}
+                    forcedKind={forcedKind}
+                    setForcedKind={setForcedKind}
+                    scanError={scanError}
+                    queue={queue}
+                    targetTeams={targetTeams}
+                    adding={adding}
+                    onAdd={() => void identifyAndAdd()}
+                    onRetarget={(i, target) =>
+                      updateQueue(retarget(queueRef.current, i, target))
+                    }
+                    onRemove={(i) =>
+                      updateQueue(queueRef.current.filter((_, j) => j !== i))
+                    }
+                    onSubmit={submitConnect}
                   />
-                ) : null)}
+                )}
 
-              {!takenOver && step === "people" && (
-                <PeopleStep
-                  kind={kind}
-                  groups={peopleGroups}
-                  inviting={inviting}
-                  onContinue={() => setStep(isTakeover ? "takeover" : "done")}
-                />
-              )}
+                {!takenOver && step === "install" && plan && (
+                  <InstallStep
+                    kind={kind}
+                    sourceUrl={plan.sourceUrl}
+                    machines={plan.servers}
+                    canAddServers={isInstanceAdmin}
+                    pending={pendingMachines}
+                    setPending={setPendingMachines}
+                    attempted={attemptedMachines}
+                    onResolved={machineResolved}
+                    onDone={goToReview}
+                  />
+                )}
 
-              {/* The rail is what keeps a person out of here until there is
+                {/* The report IS Review finished, so it comes first: a run that
+                  landed must not be paintable as a plan to start again. */}
+                {!takenOver &&
+                  step === "review" &&
+                  showing === "report" &&
+                  report && (
+                    <ReportCard
+                      report={teamReports.length > 0 ? totals : report}
+                      teams={teamReports.length > 1 ? teamReports : null}
+                      uncovered={uncovered}
+                      onAddTeam={() => setStep("connect")}
+                      onShowLog={() => setLogOpen(true)}
+                      onContinue={acknowledgeReport}
+                      isInstanceAdmin={isInstanceAdmin}
+                      sourcesTeamId={sourcesTeam.current}
+                    />
+                  )}
+
+                {!takenOver &&
+                  step === "review" &&
+                  showing !== "report" &&
+                  (moving ? (
+                    <MovingPanel
+                      isTakeover={isTakeover}
+                      kind={kind}
+                      progress={NO_PROGRESS}
+                      startedAt={null}
+                      // The start call is in flight in THIS tab: there is no run
+                      // yet, so there is no heartbeat to be missing. Once there IS
+                      // one the feed has not shown, nothing is moving yet either.
+                      heartbeatAt={
+                        awaitingRun ? null : new Date().toISOString()
+                      }
+                      failure={failure}
+                      // A run this tab holds but cannot see yet is still a run: the
+                      // plan must not come back under it.
+                      running={running || awaitingRun}
+                      undoing={false}
+                      onShowLog={() => setLogOpen(true)}
+                      // Stop is there the moment a run id exists; before that the
+                      // `startMigration` call is in flight and there is nothing to stop.
+                      onStop={runId ? () => void stopRun(runId) : undefined}
+                      onBack={() => setFailure(null)}
+                    />
+                  ) : showing === "plan" && reviewGroups.length > 0 ? (
+                    <ReviewStep
+                      kind={kind}
+                      groups={reviewGroups}
+                      chosen={chosen}
+                      setChosen={setChosen}
+                      placements={placements}
+                      setPlacements={setPlacements}
+                      canExposePorts={canExposePorts}
+                      onChangeTarget={() => setStep("connect")}
+                      onBack={() => setStep("install")}
+                      onStart={() => void runTeam(0)}
+                    />
+                  ) : null)}
+
+                {!takenOver && step === "people" && (
+                  <PeopleStep
+                    kind={kind}
+                    groups={peopleGroups}
+                    inviting={inviting}
+                    onContinue={() => setStep(isTakeover ? "takeover" : "done")}
+                  />
+                )}
+
+                {/* The rail is what keeps a person out of here until there is
                   something to take over for; the step itself only ever asks. */}
-              {!takenOver && step === "takeover" && takeover && mode && (
-                <TakeoverStep
-                  platformLabel={takeover.platformLabel}
-                  mode={mode}
-                  state={takeover.state}
-                  // The run this tab drove wins: the page's own read of it is a
-                  // refresh away, and the ports must not be asked for with a
-                  // null the server can only answer "no such migration" to.
-                  finishedRunId={adoptedId ?? runId ?? takeover.finishedRunId}
-                  finalUrl={takeover.finalUrl}
-                  error={takeover.error}
-                  dataLoss={takeover.dataLoss}
-                />
-              )}
-            </div>
+                {!takenOver && step === "takeover" && takeover && mode && (
+                  <TakeoverStep
+                    platformLabel={takeover.platformLabel}
+                    mode={mode}
+                    state={takeover.state}
+                    // The run this tab drove wins: the page's own read of it is a
+                    // refresh away, and the ports must not be asked for with a
+                    // null the server can only answer "no such migration" to.
+                    finishedRunId={adoptedId ?? runId ?? takeover.finishedRunId}
+                    finalUrl={takeover.finalUrl}
+                    error={takeover.error}
+                    dataLoss={takeover.dataLoss}
+                  />
+                )}
+              </div>
+            </AnimatedHeight>
           </div>
         </div>
       )}
@@ -2107,7 +2118,7 @@ function TargetSelect({
       disabled={disabled}
     >
       <SelectTrigger
-        className="w-[13rem]"
+        className="w-[10rem]"
         aria-label={`Where ${sourceName} lands`}
       >
         <SelectValue />

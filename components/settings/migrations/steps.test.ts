@@ -33,9 +33,8 @@ test("People is an instance admin's step", () => {
 });
 
 // Taking the ports is the LAST thing a person does, and Done is what follows it.
-test("a takeover chooses first and takes over last", () => {
+test("Choose is the question before the rail, and Take over is last", () => {
   assert.deepEqual(ids(true, true), [
-    "choose",
     "connect",
     "install",
     "review",
@@ -44,11 +43,11 @@ test("a takeover chooses first and takes over last", () => {
     "done",
   ]);
   assert.deepEqual(ids(false, true).slice(-2), ["takeover", "done"]);
-  assert.equal(ids(false, true)[0], "choose");
+  assert.ok(!ids(true, true).includes("choose"));
 });
 
 test("a clean takeover has nothing to connect to", () => {
-  assert.deepEqual(ids(true, true, "clean"), ["choose", "takeover", "done"]);
+  assert.deepEqual(ids(true, true, "clean"), ["takeover", "done"]);
 });
 
 test("nothing has been chosen yet, so the rail shows the migration", () => {

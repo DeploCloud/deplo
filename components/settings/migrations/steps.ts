@@ -17,10 +17,12 @@ const STEP_LABEL: Record<StepId, string> = {
 };
 
 /**
- * The steps. `choose` and `takeover` exist only on the screen that is replacing
- * another panel; `people` only for an instance admin, because both of its actions
- * are instance-admin gated and the step would otherwise be a page of nothing.
- * A clean takeover skips the middle: there is nothing to read and nothing to place.
+ * The steps. `choose` is the question BEFORE the sequence - which of the two
+ * takeovers this is - so it carries no number and never enters the rail.
+ * `takeover` exists only on the screen replacing another panel; `people` only for
+ * an instance admin, because both of its actions are instance-admin gated and the
+ * step would otherwise be a page of nothing. A clean takeover skips the middle:
+ * there is nothing to read and nothing to place.
  */
 export function stepsFor(
   canInvite: boolean,
@@ -36,8 +38,8 @@ export function stepsFor(
   const ids: StepId[] = !canTakeOver
     ? [...middle, "done"]
     : mode === "clean"
-      ? ["choose", "takeover", "done"]
-      : ["choose", ...middle, "takeover", "done"];
+      ? ["takeover", "done"]
+      : [...middle, "takeover", "done"];
   return ids.map((id) => ({ id, label: STEP_LABEL[id] }));
 }
 
