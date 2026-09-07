@@ -15,6 +15,7 @@ test("the account surface Deplo drives itself is shut", () => {
     "/sign-in/social",
     "/sign-up/email",
     "/change-password",
+    "/verify-password",
     "/set-password",
     "/change-email",
     "/update-user",

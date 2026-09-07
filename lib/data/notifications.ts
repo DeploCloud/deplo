@@ -39,6 +39,7 @@ import type {
   NotificationChannelInput,
   NotificationChannelInstance,
 } from "../types";
+import { requirePersonalSession } from "../auth/request-context";
 
 /**
  * Notification channels: N configured destinations per team, any kind repeatable,
@@ -540,6 +541,7 @@ export async function getWebPushPublicKey(): Promise<string> {
 export async function subscribeWebPush(
   sub: PushSubscriptionInput,
 ): Promise<void> {
+  requirePersonalSession("push notifications");
   const user = await assertUser();
   const teamId = await requireActiveTeamId();
   if (!sub.endpoint || !sub.p256dh || !sub.auth)
@@ -579,6 +581,7 @@ async function assertRoomForOneMoreDevice(
 
 /** Opt this browser back out. Scoped to the caller's own row. */
 export async function unsubscribeWebPush(endpoint: string): Promise<void> {
+  requirePersonalSession("push notifications");
   const user = await assertUser();
   const teamId = await requireActiveTeamId();
   await deletePushSubscription(teamId, user.id, endpoint);

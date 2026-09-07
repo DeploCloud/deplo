@@ -10,7 +10,10 @@ import {
   instanceSettings,
   users as usersTable,
 } from "../db/schema/control-plane";
-import { account as accountTable } from "../db/schema/auth";
+import {
+  account as accountTable,
+  session as sessionTable,
+} from "../db/schema/auth";
 import { verifyPassword } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -312,4 +315,22 @@ test("viewerIsInstanceOwner reflects the crown, not the admin flag", async () =>
   assert.equal(await asUser(OWNER, viewerIsInstanceOwner), true);
   assert.equal(await asUser(ADMIN, viewerIsInstanceOwner), false);
   assert.equal(await asUser(PLAIN, viewerIsInstanceOwner), false);
+});
+
+test("suspending an account ends its sessions, not only its next sign-in", async () => {
+  await seedOwnedInstance();
+  await db.insert(sessionTable).values({
+    id: "ses_admin",
+    userId: ADMIN,
+    token: "tok_admin_session",
+    expiresAt: new Date(Date.now() + 86_400_000),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  await asUser(OWNER, () => updateUserAdmin(edit(ADMIN, { suspended: true })));
+  const left = await db
+    .select({ id: sessionTable.id })
+    .from(sessionTable)
+    .where(eq(sessionTable.userId, ADMIN));
+  assert.equal(left.length, 0);
 });

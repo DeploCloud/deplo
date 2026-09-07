@@ -24,6 +24,7 @@ import type { Capability } from "../types";
 import { createToken, tokensReaching, type TokenScopeInput } from "./tokens";
 import { recordActivity } from "./activity";
 import { listMyTeams } from "./teams";
+import { requirePersonalSession } from "../auth/request-context";
 
 /**
  * Connecting an AI client over OAuth. That is ADR-0021 §2's "there is no second
@@ -233,6 +234,8 @@ export interface AuthorizeMcpClientInput extends TokenScopeInput {
 export async function mintMcpConnection(
   input: AuthorizeMcpClientInput,
 ): Promise<{ tokenId: string }> {
+  // A consent is a person's act; a token must not re-mint (and so revoke) one.
+  requirePersonalSession("connecting an AI client");
   const { id: userId } = await assertUser();
   const teamId = await requireActiveTeamId();
   // A narrowed token must not be able to mint a whole-team connection.

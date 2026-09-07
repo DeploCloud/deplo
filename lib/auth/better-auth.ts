@@ -90,6 +90,8 @@ const DEPLO_OWNED_AUTH_PATHS = [
   "/sign-in/",
   "/sign-up/",
   "/change-password",
+  // A password oracle for any live session; Deplo verifies passwords itself.
+  "/verify-password",
   "/set-password",
   "/change-email",
   "/update-user",

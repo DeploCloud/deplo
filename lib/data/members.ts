@@ -1211,6 +1211,9 @@ export async function updateUserAdmin(input: {
   // An admin password reset also revokes the target's outstanding sessions: they no
   // longer control the credential, so any live cookie of theirs must die.
   if (newPassword) await revokeAllSessions(input.userId);
+  // A suspended account's live sessions would otherwise keep refreshing until
+  // the day the suspension is lifted, and be live again that minute.
+  if (input.suspended) await revokeAllSessions(input.userId);
 
   const target = (
     await getDb()

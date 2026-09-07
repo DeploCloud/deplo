@@ -48,6 +48,14 @@ export async function stepUpPassword(password: string) {
 export async function stepUpCode(code: string) {
   const value = code.trim();
   if (!value) throw new Error("Enter a code from your authenticator app");
+  // Budgeted HERE, so no caller can offer an unbounded oracle on a six-digit code.
+  const user = await assertUser();
+  const limit = await rateLimit(`2fa-code:${user.id}`, {
+    limit: 10,
+    windowMs: 15 * 60_000,
+  });
+  if (!limit.ok)
+    throw new Error(`Too many attempts. Try again in ${limit.retryAfterSec}s.`);
   const res = await verifyTwoFactorCode(
     value,
     /^\d{6}$/.test(value) ? "totp" : "backup",
