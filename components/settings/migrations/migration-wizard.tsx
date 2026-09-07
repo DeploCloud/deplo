@@ -1377,7 +1377,12 @@ export function MigrationWizard({
    * A machine's agent just came up: it is now one of ours.
    */
   const machineResolved = React.useCallback(
-    (sourceId: string, serverId: string, serverName: string) => {
+    (
+      sourceId: string,
+      serverId: string,
+      serverName: string,
+      address?: string,
+    ) => {
       setPlan((prev) =>
         prev
           ? {
@@ -1386,6 +1391,7 @@ export function MigrationWizard({
                 m.sourceId === sourceId
                   ? {
                       ...m,
+                      ipAddress: address || m.ipAddress,
                       deploServerId: serverId,
                       deploServerName: serverName,
                       deploServerOnline: true,

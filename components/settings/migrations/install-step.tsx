@@ -18,6 +18,7 @@ import { StepShell } from "./step-shell";
 import type { SourceKind } from "./sources";
 import { AGENT_PORT_NOTICE } from "@/lib/agent-reachability";
 import type { PlanServer } from "./types";
+import { twinAt } from "./machines";
 
 /**
  * Getting Deplo's agent onto the machines behind that Dokploy. For a long time the
@@ -30,6 +31,7 @@ const ADD_SERVER = /* GraphQL */ `
       server {
         id
         name
+        role
       }
       installCommand
     }
@@ -136,6 +138,8 @@ export interface PendingMachine {
   serverId: string;
   name: string;
   installCommand: string;
+  /** Where it was registered - the typed IP, not the panel's name. */
+  address: string;
 }
 
 /**
@@ -236,8 +240,14 @@ export function InstallStep({
    * never registers one twice.
    */
   attempted: React.RefObject<Set<string>>;
-  /** One machine just came online: it now maps to this Deplo server. */
-  onResolved: (sourceId: string, serverId: string, serverName: string) => void;
+  /** One machine just came online: it now maps to this Deplo server, dialed
+   *  at `address` when one was typed. */
+  onResolved: (
+    sourceId: string,
+    serverId: string,
+    serverName: string,
+    address?: string,
+  ) => void;
   /** Every machine is ours. Carry on to the review. */
   onDone: () => void;
   /** Back to Connect: nothing here has been written yet. */
@@ -256,6 +266,35 @@ export function InstallStep({
   /** Machines whose address somebody has opened for editing by hand. */
   const [editing, setEditing] = React.useState<Record<string, boolean>>({});
 
+  /**
+   * Take a server Deplo already reaches as this source's machine, and REMEMBER
+   * the address against it so the next pass matches the row instead of asking.
+   */
+  const claim = React.useCallback(
+    async (
+      sourceId: string,
+      address: string,
+      hit: { serverId: string; name: string },
+    ) => {
+      const res = await gqlAction<
+        { setMigrationMachineAddress: string | null },
+        string | null
+      >(
+        CHANGE_ADDRESS,
+        { url: sourceUrl, sourceId, id: hit.serverId, address },
+        (d) => d.setMigrationMachineAddress,
+      );
+      if (!res.ok) {
+        attempted.current.delete(sourceId);
+        setFailed((p) => ({ ...p, [sourceId]: res.error }));
+        return;
+      }
+      if (res.data) toast.warning(res.data);
+      onResolved(sourceId, hit.serverId, hit.name, address);
+    },
+    [sourceUrl, attempted, onResolved],
+  );
+
   // Having a row is not being connected: a first attempt that failed leaves one
   // behind at the same address, and taking it for a machine Deplo can read is what
   // made the retry skip this step and die in the data phase.
@@ -270,11 +309,14 @@ export function InstallStep({
       const res = await gqlAction<
         {
           addServer: {
-            server: { id: string; name: string };
+            server: { id: string; name: string; role: string };
             installCommand: string;
           };
         },
-        { server: { id: string; name: string }; installCommand: string }
+        {
+          server: { id: string; name: string; role: string };
+          installCommand: string;
+        }
       >(
         ADD_SERVER,
         {
@@ -304,17 +346,19 @@ export function InstallStep({
         delete next[m.sourceId];
         return next;
       });
-      // No command means Deplo already reaches that address - its own server, or a
-      // source whose agent answered on an earlier pass. Offered, never adopted for
-      // somebody: reading a production server's disks is their call.
+      // No command means Deplo already reaches that address. A migration source
+      // is nobody's production server, so it is taken as this machine; a fleet
+      // server is offered, never adopted for somebody.
       if (!res.data.installCommand) {
-        setAdoptable((prev) => ({
-          ...prev,
-          [m.sourceId]: {
-            serverId: res.data!.server.id,
-            name: res.data!.server.name,
-          },
-        }));
+        const hit = {
+          serverId: res.data.server.id,
+          name: res.data.server.name,
+        };
+        if (res.data.server.role === "import") {
+          await claim(m.sourceId, address, hit);
+          return;
+        }
+        setAdoptable((prev) => ({ ...prev, [m.sourceId]: hit }));
         return;
       }
       setPending((prev) => ({
@@ -323,10 +367,11 @@ export function InstallStep({
           serverId: res.data!.server.id,
           name: res.data!.server.name,
           installCommand: res.data!.installCommand,
+          address,
         },
       }));
     },
-    [attempted, setPending, kind],
+    [attempted, setPending, kind, claim],
   );
 
   /**
@@ -361,6 +406,7 @@ export function InstallStep({
           serverId: res.data!.server.id,
           name: res.data!.server.name,
           installCommand: res.data!.installCommand,
+          address: m.ipAddress ?? "",
         },
       }));
     },
@@ -402,7 +448,18 @@ export function InstallStep({
         // nobody can tell apart.
         await registerMachine(m, m.ipAddress);
       }
-    })();
+    })().catch((e: unknown) => {
+      // A row left on "Registering" with nothing to say is the one dead end a
+      // person cannot get out of.
+      for (const m of machines)
+        if (!m.deploServerOnline && attempted.current.has(m.sourceId)) {
+          attempted.current.delete(m.sourceId);
+          setFailed((p) => ({
+            ...p,
+            [m.sourceId]: e instanceof Error ? e.message : String(e),
+          }));
+        }
+    });
     return () => {
       cancelled = true;
     };
@@ -464,7 +521,7 @@ export function InstallStep({
           delete next[sourceId];
           return next;
         });
-        onResolved(sourceId, p.serverId, p.name);
+        onResolved(sourceId, p.serverId, p.name, p.address);
         return;
       }
       setUnreachable((prev) => ({
@@ -548,35 +605,52 @@ export function InstallStep({
   const checkAgain = (sourceId: string, p: PendingMachine) =>
     runBusy(sourceId, () => probe(sourceId, p));
 
-  /**
-   * Take a machine Deplo already reaches as this source's machine. The address is
-   * remembered against it, so the next pass matches the row instead of asking again.
-   */
+  /** Take a fleet server Deplo already reaches as this source's machine. */
   const adopt = (m: PlanServer, hit: { serverId: string; name: string }) =>
-    runBusy(m.sourceId, async () => {
-      const address = (draft[m.sourceId] ?? "").trim() || m.ipAddress || "";
-      const res = await gqlAction<
-        { setMigrationMachineAddress: string | null },
-        string | null
-      >(
-        CHANGE_ADDRESS,
-        { url: sourceUrl, sourceId: m.sourceId, id: hit.serverId, address },
-        (d) => d.setMigrationMachineAddress,
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      if (res.data) toast.warning(res.data);
-      onResolved(m.sourceId, hit.serverId, hit.name);
-    });
+    runBusy(m.sourceId, () =>
+      claim(
+        m.sourceId,
+        (draft[m.sourceId] ?? "").trim() || m.ipAddress || "",
+        hit,
+      ),
+    );
 
-  /** Register a machine Deplo could not register itself, at a typed address. */
+  /**
+   * Register a machine Deplo could not register itself, at a typed address. An
+   * address another machine of the list sits at IS that machine, so this row joins
+   * that one rather than registering it twice (which re-minted its command).
+   */
   const registerManually = (m: PlanServer) =>
     runBusy(m.sourceId, async () => {
       const address = (draft[m.sourceId] ?? "").trim();
       if (!address) return;
       attempted.current.add(m.sourceId);
+      const twin = twinAt(machines, m.sourceId, address);
+      if (twin?.deploServerOnline && twin.deploServerId) {
+        await claim(m.sourceId, address, {
+          serverId: twin.deploServerId,
+          name: twin.deploServerName ?? twin.name,
+        });
+        return;
+      }
+      const shared = twin ? pending[twin.sourceId] : undefined;
+      if (shared) {
+        // Remembered now, so the next pass matches this row too; the row has no
+        // agent yet, so nothing is dialed.
+        await gqlAction(CHANGE_ADDRESS, {
+          url: sourceUrl,
+          sourceId: m.sourceId,
+          id: shared.serverId,
+          address,
+        });
+        setFailed((p) => {
+          const next = { ...p };
+          delete next[m.sourceId];
+          return next;
+        });
+        setPending((prev) => ({ ...prev, [m.sourceId]: shared }));
+        return;
+      }
       await registerMachine(m, address);
     });
 
@@ -614,9 +688,9 @@ export function InstallStep({
                 <div className="flex min-w-0 items-center gap-2">
                   <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
                   <span className="truncate text-sm font-medium">{m.name}</span>
-                  {m.ipAddress && (
+                  {(p?.address || m.ipAddress) && (
                     <span className="truncate text-xs text-muted-foreground">
-                      {m.ipAddress}
+                      {p?.address || m.ipAddress}
                     </span>
                   )}
                 </div>
@@ -745,6 +819,7 @@ export function InstallStep({
                           serverId: m.deploServerId!,
                           name: m.deploServerName ?? m.name,
                           installCommand: "",
+                          address: m.ipAddress ?? "",
                         })
                       }
                       submitLabel="Save"

@@ -36,6 +36,7 @@ import {
   __resetMigrationFetchForTest,
   __setMigrationFetchForTest,
 } from "../migration/transport";
+import { __resetCoolifyIndexForTest } from "../migration/coolify/adapter";
 import { __resetCoolifyRateLimitForTest } from "../migration/coolify/client";
 import { decryptSecret } from "../crypto";
 import {
@@ -338,11 +339,22 @@ test("an engine Deplo does not have is refused by name, not forgotten", async ()
 });
 
 test("the panel's own host is the machine the wizard offers first", async () => {
+  // Nothing of this team runs on the remote server, so it is not a machine to
+  // install on: the wizard would only have held the step for it.
   const plan = await asOwner(() => scanMigrationSource(CONNECT));
-  assert.equal(plan.servers[0].sourceId, "");
-  // The remote one keeps its uuid, so a service on it can be placed separately.
   assert.deepEqual(
     plan.servers.map((s) => s.sourceId),
+    [""],
+  );
+  // With a resource on it, the remote one keeps its uuid, so a service there
+  // can be placed separately.
+  fixtures["servers/srv-eu/resources"] = fixtures[
+    "servers/srv-local/resources"
+  ].splice(0, 1);
+  __resetCoolifyIndexForTest();
+  const both = await asOwner(() => scanMigrationSource(CONNECT));
+  assert.deepEqual(
+    both.servers.map((s) => s.sourceId),
     ["", "srv-eu"],
   );
 });

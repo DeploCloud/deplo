@@ -129,7 +129,10 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
   await client.assertReadable();
   await client.listProjects();
   // And the MACHINES, which is the half the panel answering says nothing about.
-  await assertMigrationMachinesReady(c);
+  await assertMigrationMachinesReady(
+    c,
+    input.targets.map((t) => t.serviceId),
+  );
 
   const runId = await beginMigration({
     url: input.url,

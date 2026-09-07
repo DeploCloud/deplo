@@ -18,7 +18,10 @@ import { decryptSecret } from "../crypto";
 import { loadSharedVarsForApp } from "./shared-vars";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import { markDataCopyFailed } from "./data-copy";
-import { recopySourceFor } from "./migration-data";
+import {
+  recopySourceFor,
+  assertMigrationMachinesReady,
+} from "./migration-data";
 import { startMigrationRun } from "./migration-runner";
 import {
   appMounts as appMountsTable,
@@ -75,6 +78,7 @@ import {
   __setDnsLookupForTest,
   __resetDnsLookupForTest,
   setMigrationMachineAddress,
+  rememberMigrationMachineAddress,
   drainMigrationSourceUninstalls,
   finishMigration,
   handOverMigrationSources,
@@ -3604,5 +3608,76 @@ test("an instance admin moves the machines their page registered", async () => {
   assert.deepEqual(
     grants.rows.map((r) => r.team_id),
     [TEAM_B],
+  );
+});
+
+test("a machine nothing importable lives on is not a machine to install on", async () => {
+  // Coolify lists the same box twice (its own host and a "remote" at the same
+  // IP), and a team whose resources all sit on the listed one was held at the
+  // Install step by the panel's own host - behind Cloudflare, with no address.
+  const api = { ...(APPLICATIONS["dok-app-api"] as object), serverId: null };
+  __setMigrationFetchForTest(
+    routingFetch({ applications: { "dok-app-api": api } }),
+  );
+  const plan = await asOwner(() => scanMigrationSource(CONNECT));
+  assert.deepEqual(
+    plan.servers.map((s) => s.name),
+    ["The Dokploy host"],
+    "eu-1 holds nothing of this team",
+  );
+});
+
+test("a run needs the machines of ITS services to answer, not every machine", async () => {
+  const credential = {
+    kind: "dokploy" as const,
+    baseUrl: URL_BASE,
+    apiKey: CONNECT.apiKey,
+  };
+  // The panel's own host is a source with an agent that answers; eu-1 has none.
+  await seedSource("dokploy-host", new URL(URL_BASE).hostname, true);
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        hello: async () => ({ contractVersion: 1, capabilities: [] }),
+        close: () => {},
+      }) as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >,
+  );
+  try {
+    // blink-web lives on the panel's host: that one answers, so it starts.
+    await asOwner(() =>
+      assertMigrationMachinesReady(credential, ["dok-app-web"]),
+    );
+    // blink-api lives on eu-1, where there is no agent.
+    await assert.rejects(
+      () =>
+        asOwner(() =>
+          assertMigrationMachinesReady(credential, ["dok-app-api"]),
+        ),
+      /eu-1 has no agent/,
+    );
+  } finally {
+    __setAgentConnectorForTest();
+  }
+});
+
+test("an address one team typed for a machine is known to the next team", async () => {
+  await asOwner(() =>
+    rememberMigrationMachineAddress(URL_BASE, "", "203.0.113.99"),
+  );
+  await db.execute(
+    `insert into memberships (id, user_id, team_id, role, created_at) values ('mem_u1_b', '${USER_1}', '${TEAM_B}', 'owner', now())`,
+  );
+  await db.execute(
+    `insert into membership_capabilities (membership_id, capability) select 'mem_u1_b', capability from membership_capabilities where membership_id = 'mem_${USER_1}'`,
+  );
+  const plan = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    scanMigrationSource(CONNECT),
+  );
+  assert.equal(
+    plan.servers.find((s) => s.sourceId === "")?.ipAddress,
+    "203.0.113.99",
+    "the panel's machine is where it was, whoever asks",
   );
 });

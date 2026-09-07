@@ -1031,13 +1031,26 @@ export async function scanMigrationSource(
       for (const svc of env.services)
         svc.notes = svc.notes.map((n) => withPanel(n, panel));
 
+  // Only the machines something importable lives on: with a Coolify team whose
+  // resources all sit on a listed server, the panel's own host (behind a proxy,
+  // with no address to install at) held the Install step for nothing.
+  const used = new Set(
+    planned.flatMap((p) =>
+      p.environments.flatMap((e) =>
+        e.services.filter((s) => s.targetKind).map((s) => s.sourceServerId),
+      ),
+    ),
+  );
   return {
     platform: c.kind,
     sourceUrl: c.baseUrl,
     orgName: sourceTeam.name,
     otherTeams,
     projects: planned,
-    servers: await planMachines(c, teamId, servers, { probe: true }),
+    servers: await planMachines(c, teamId, servers, {
+      probe: true,
+      only: used,
+    }),
     members: await planMembers(c, teamId),
   };
 }
@@ -1172,6 +1185,8 @@ async function hostnamesOwnedElsewhere(
 export async function migrationMachines(
   c: SourceCredential,
   teamId: string,
+  /** Only these machines (source ids) - see `planMachines`. */
+  only?: Set<string>,
 ): Promise<PlanServer[]> {
   return planMachines(
     c,
@@ -1179,11 +1194,39 @@ export async function migrationMachines(
     await sourceClient(c)
       .listServers()
       .catch(() => []),
+    { only },
   );
 }
 
 /**
+ * The machines (source ids, `""` for the panel's own host) these services run
+ * on - the only agents a run needs.
+ */
+export async function machinesHolding(
+  c: SourceCredential,
+  serviceIds: Iterable<string>,
+): Promise<Set<string>> {
+  const wanted = new Set(serviceIds);
+  const stubs: SourceService[] = [];
+  for (const p of await sourceClient(c).listProjects())
+    for (const env of p.environments ?? [])
+      for (const svc of servicesOf(env))
+        if (wanted.has(svc.id)) stubs.push(svc);
+  const out = new Set<string>();
+  // The detail row, not the tree: `project.all` carries no server, so every
+  // service on a second host reads as the panel's own there.
+  await mapLimit(stubs, 5, async (svc) => {
+    const detail = await sourceClient(c)
+      .getService(svc.kind, svc.id)
+      .catch(() => null);
+    out.add(detail?.serverId?.trim() || svc.serverId);
+  });
+  return out;
+}
+
+/**
  * The addresses somebody has already corrected for this Dokploy, by machine.
+ * Read across teams: the machine is where it is whoever imports from it.
  */
 async function rememberedAddresses(
   teamId: string,
@@ -1191,17 +1234,21 @@ async function rememberedAddresses(
 ): Promise<Map<string, string>> {
   const rows = await getDb()
     .select({
+      teamId: sourceAddressesTable.teamId,
       sourceId: sourceAddressesTable.sourceId,
       address: sourceAddressesTable.address,
     })
     .from(sourceAddressesTable)
-    .where(
-      and(
-        eq(sourceAddressesTable.teamId, teamId),
-        eq(sourceAddressesTable.sourceUrl, sourceUrl),
-      ),
-    );
-  return new Map(rows.map((r) => [r.sourceId, r.address]));
+    .where(eq(sourceAddressesTable.sourceUrl, sourceUrl))
+    .orderBy(desc(sourceAddressesTable.updatedAt));
+  const out = new Map<string, string>();
+  // Newest first, this team's own answer before anybody else's.
+  for (const r of [
+    ...rows.filter((r) => r.teamId === teamId),
+    ...rows.filter((r) => r.teamId !== teamId),
+  ])
+    if (!out.has(r.sourceId)) out.set(r.sourceId, r.address);
+  return out;
 }
 
 /**
@@ -1317,9 +1364,14 @@ async function planMachines(
   c: SourceCredential,
   teamId: string,
   servers: { serverId: string; name: string; ipAddress?: string | null }[],
-  /** Dial the agents whose reachability nothing has ever measured. The wizard's
-   *  readiness needs it; a caller that only wants the id mapping does not. */
-  opts: { probe?: boolean } = {},
+  opts: {
+    /** Dial the agents whose reachability nothing has ever measured. The wizard's
+     *  readiness needs it; a caller that only wants the id mapping does not. */
+    probe?: boolean;
+    /** Keep only these machines (source ids). A panel behind a proxy is not a
+     *  machine to install on when nothing of this team runs there. */
+    only?: Set<string>;
+  } = {},
 ): Promise<PlanServer[]> {
   // Migration sources stay in this list on purpose: matching a machine to the
   // agent that can read its disks is the ONE lookup they exist for, and a second
@@ -1385,7 +1437,7 @@ async function planMachines(
   const rows = [
     machine("", `The ${sourceClient(c).displayName} host`, ownAddress),
     ...servers.map((s) => machine(s.serverId, s.name, s.ipAddress ?? null)),
-  ];
+  ].filter((m) => !opts.only || opts.only.has(m.sourceId));
 
   // The row is MATCHED either way - that is what stops a second attempt
   // registering the same address twice - but only an agent that ANSWERS means the

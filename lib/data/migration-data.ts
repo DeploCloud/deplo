@@ -69,6 +69,7 @@ import {
   assertImportGate,
   credentialFor,
   migrationMachines,
+  machinesHolding,
   ownRun,
   refreshCounts,
   type ConnectInput,
@@ -871,9 +872,15 @@ async function recordStoppedForCopy(
  */
 export async function assertMigrationMachinesReady(
   c: SourceCredential,
+  /** The services this run moves: only THEIR machines have to answer. */
+  serviceIds: Iterable<string>,
 ): Promise<void> {
   const teamId = await requireActiveTeamId();
-  const machines = await migrationMachines(c, teamId);
+  const machines = await migrationMachines(
+    c,
+    teamId,
+    await machinesHolding(c, serviceIds),
+  );
   const notReady: string[] = [];
   for (const m of machines) {
     const name = m.name || m.ipAddress || "the panel's own host";
