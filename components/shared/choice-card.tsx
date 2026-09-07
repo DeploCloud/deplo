@@ -4,8 +4,6 @@ import * as React from "react";
 import { ArrowRight, Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { veilProps } from "@/components/templates/veil";
-import type { LogoAccent } from "@/lib/templates/logo-color";
 
 /**
  * One option as a big, clickable card - icon, title, one-line blurb, tick.
@@ -19,7 +17,6 @@ export function ChoiceCard({
   disabledNote,
   multi = false,
   arrow = false,
-  veil,
   onSelect,
 }: {
   title: string;
@@ -32,13 +29,8 @@ export function ChoiceCard({
   multi?: boolean;
   /** The card IS the answer: picking it moves on, so it points instead of ticking. */
   arrow?: boolean;
-  /** A wash in the card's own hue, the grammar the store and the agent grid use. */
-  veil?: LogoAccent;
   onSelect: () => void;
 }) {
-  // A card that ACTS wears its wash: there is no chosen state to save it for,
-  // and the arrow is what answers the pointer.
-  const wash = veilProps(veil, arrow || selected ? "on" : "hover");
   return (
     <button
       type="button"
@@ -48,19 +40,13 @@ export function ChoiceCard({
       aria-checked={arrow ? undefined : selected}
       disabled={disabled}
       onClick={onSelect}
-      style={wash.style}
       className={cn(
         "group flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         selected
           ? "border-primary bg-primary-wash ring-1 ring-primary/60"
-          : cn(
-              "border-border bg-background hover:border-foreground/20",
-              // The wash IS the hover, so a second surface change would muddy it.
-              !veil && "hover:bg-surface",
-            ),
-        wash.className,
+          : "border-border hover:border-foreground/20 hover:bg-surface",
       )}
     >
       <span

@@ -35,7 +35,6 @@ export function ChooseStep({
         <ChoiceCard
           icon={Trash2}
           arrow
-          veil={{ hue: 26 }}
           title="Start clean"
           blurb={`${panel} and everything on it is deleted for good.`}
           selected={mode === "clean"}
@@ -44,7 +43,6 @@ export function ChooseStep({
         <ChoiceCard
           icon={ArrowRightLeft}
           arrow
-          veil={{ hue: 294 }}
           title="Bring your data over"
           blurb={`Your apps and databases move over, then ${panel} goes.`}
           selected={mode === "migrate"}
