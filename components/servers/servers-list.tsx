@@ -12,7 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { titleClass } from "@/components/shared/page-header";
 import {
   Select,
   SelectContent,
@@ -38,9 +37,7 @@ export type ServerListItem = {
 };
 
 /**
- * The fleet, searchable and filtered by what each server is for. Migration
- * sources stay in their own section: they are another platform's machines,
- * borrowed for one import.
+ * The fleet, searchable and filtered by what each server is for.
  */
 export function ServersList({ items }: { items: ServerListItem[] }) {
   const [query, setQuery] = React.useState("");
@@ -51,8 +48,6 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
   const shown = items.filter(
     (i) => (use === "all" || i.use === use) && (!q || i.search.includes(q)),
   );
-  const fleet = shown.filter((i) => i.use !== "import");
-  const sources = shown.filter((i) => i.use === "import");
 
   return (
     <div className="space-y-4">
@@ -75,7 +70,7 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All servers</SelectItem>
-                {SERVER_USE_IDS.map((id) => (
+                {SERVER_USE_IDS.filter((id) => id !== "import").map((id) => (
                   <SelectItem key={id} value={id}>
                     {SERVER_USES[id].label}
                   </SelectItem>
@@ -93,20 +88,7 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
           description="No server matches the current search and filter."
         />
       ) : (
-        <>
-          {fleet.length > 0 && <ServerGroup items={fleet} view={view} />}
-          {sources.length > 0 && (
-            <div>
-              <h2 className={titleClass.section}>Migration sources</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Only used to import from another platform.
-              </p>
-              <div className="mt-3">
-                <ServerGroup items={sources} view={view} />
-              </div>
-            </div>
-          )}
-        </>
+        <ServerGroup items={shown} view={view} />
       )}
     </div>
   );

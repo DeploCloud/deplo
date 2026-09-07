@@ -49,7 +49,6 @@ import {
   type ServerHealthState,
 } from "./server-health-provider";
 import { CheckStatusButton, RefreshFleetButton } from "./check-status-button";
-import { UninstallAgentMenu } from "./uninstall-agent-menu";
 
 export const metadata = { title: "Servers" };
 
@@ -215,30 +214,17 @@ function ServerCard({
               included), so the management page applies to all of them. The card
               stays a summary: everything you can DO to a server lives on its own
               page, where each action has room to say what it interrupts. */}
-          {/* A migration source has no management page - there is nothing to manage
-              on a machine we do not run - so its card carries the one action it
-              has instead of the fleet's two. */}
           <div className="ml-auto flex items-center gap-1">
-            {server.importOnly ? (
-              <UninstallAgentMenu
-                serverId={server.id}
-                serverName={serverLabel(server)}
-                provisioned={Boolean(server.agent?.certFingerprint)}
-              />
-            ) : (
-              <>
-                <CheckStatusButton
-                  serverId={server.id}
-                  serverName={serverLabel(server)}
-                />
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/settings/servers/${server.id}`}>
-                    <Settings2 className="size-4" />
-                    Manage
-                  </Link>
-                </Button>
-              </>
-            )}
+            <CheckStatusButton
+              serverId={server.id}
+              serverName={serverLabel(server)}
+            />
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/settings/servers/${server.id}`}>
+                <Settings2 className="size-4" />
+                Manage
+              </Link>
+            </Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
@@ -352,26 +338,16 @@ function ServerListRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          {server.importOnly ? (
-            <UninstallAgentMenu
-              serverId={server.id}
-              serverName={serverLabel(server)}
-              provisioned={Boolean(server.agent?.certFingerprint)}
-            />
-          ) : (
-            <>
-              <CheckStatusButton
-                serverId={server.id}
-                serverName={serverLabel(server)}
-              />
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/settings/servers/${server.id}`}>
-                  <Settings2 className="size-4" />
-                  Manage
-                </Link>
-              </Button>
-            </>
-          )}
+          <CheckStatusButton
+            serverId={server.id}
+            serverName={serverLabel(server)}
+          />
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/settings/servers/${server.id}`}>
+              <Settings2 className="size-4" />
+              Manage
+            </Link>
+          </Button>
         </div>
       </TableCell>
     </TableRow>
@@ -394,7 +370,9 @@ export default async function ServersPage(
     (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
 
   const [serversRaw, serverTeamIds, teamsRaw] = await Promise.all([
-    listAllServers(),
+    // A migration source is another platform's machine, borrowed for one
+    // import: the wizard that borrowed it is where it is seen and let go.
+    listAllServers().then((all) => all.filter((s) => !s.importOnly)),
     listAllServerTeamIds(),
     // The team list feeds the per-server "Team access" editor. Read it via the
     // instance-admin variant so it matches this page's admin-only gate - the
