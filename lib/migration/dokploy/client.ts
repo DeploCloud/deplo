@@ -395,17 +395,12 @@ interface DokployOrganization {
 export async function activeOrganization(c: SourceCredential): Promise<{
   id: string | null;
   name: string | null;
-  avatarUrl: string | null;
 }> {
   try {
     const org = await get<DokployOrganization | null>(c, "organization.active");
-    return {
-      id: org?.id?.trim() || null,
-      name: org?.name?.trim() || null,
-      avatarUrl: org?.logo?.trim() || null,
-    };
+    return { id: org?.id?.trim() || null, name: org?.name?.trim() || null };
   } catch {
-    return { id: null, name: null, avatarUrl: null };
+    return { id: null, name: null };
   }
 }
 

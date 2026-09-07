@@ -482,11 +482,6 @@ test("the token's own team is named, and the others cannot be", async (t) => {
   serve(t, { "/api/v1/team": { id: 4, name: "Acme Corp" } });
 
   const src = coolifyClient(cred);
-  // A Coolify team has no picture in the model at all, so there is never one.
-  assert.deepEqual(await src.sourceTeam(), {
-    id: "4",
-    name: "Acme Corp",
-    avatarUrl: null,
-  });
+  assert.deepEqual(await src.sourceTeam(), { id: "4", name: "Acme Corp" });
   assert.equal(await src.otherTeams(), null);
 });

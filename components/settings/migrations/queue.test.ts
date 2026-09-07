@@ -15,7 +15,6 @@ const team = (over: Partial<SourceTeam> = {}): SourceTeam => ({
   platform: "coolify",
   teamId: "1",
   teamName: "Acme Corp",
-  teamAvatarUrl: null,
   otherTeams: null,
   ...over,
 });
@@ -38,7 +37,7 @@ test("a token becomes a team on the list", () => {
       apiKey: "tok-a",
       sourceTeamId: "1",
       name: "Acme Corp",
-      avatarUrl: null,
+      image: null,
       target: { kind: "new" },
       status: "waiting",
     },
@@ -76,12 +75,12 @@ test("a row can be pointed somewhere else, and the rest stay put", () => {
   assert.equal(next[1]?.apiKey, "tok-b");
 });
 
-// The row draws the panel's own picture for that team, so it has to survive the
-// trip from `identifyMigrationSource` onto the list.
-test("the team's picture rides onto its row", () => {
-  const logo = "data:image/webp;base64,AAAA";
-  const q = added([], team({ teamAvatarUrl: logo }), "tok-a");
-  assert.equal(q[0]?.avatarUrl, logo);
+// Only one of the two panels keeps a team picture, so a list carrying it would
+// read differently depending on where a row came from. A new team starts on its
+// initials and the operator picks from there.
+test("a row starts with no picture of its own", () => {
+  const q = added([], team(), "tok-a");
+  assert.equal(q[0]?.image, null);
 });
 
 // Two tokens of ONE team would import that team twice.

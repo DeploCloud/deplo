@@ -467,12 +467,9 @@ test("a key names its own organization and the ones it does not cover", async (t
   });
 
   const src = dokployClient(cred);
-  // Its picture comes over too: the wizard draws it on that team's row.
-  assert.deepEqual(await src.sourceTeam(), {
-    id: "org_1",
-    name: "Idra Arts",
-    avatarUrl: "data:image/webp;base64,AAAA",
-  });
+  // The id and the name, and nothing else: the picture Dokploy keeps is not
+  // read, because Coolify has none and one list must not read two ways.
+  assert.deepEqual(await src.sourceTeam(), { id: "org_1", name: "Idra Arts" });
   assert.deepEqual(await src.otherTeams(), ["Acme", "org_3"]);
 });
 
@@ -486,11 +483,7 @@ test("a Dokploy that will not list its organizations says so", async (t) => {
   );
 
   const src = dokployClient(cred);
-  assert.deepEqual(await src.sourceTeam(), {
-    id: null,
-    name: null,
-    avatarUrl: null,
-  });
+  assert.deepEqual(await src.sourceTeam(), { id: null, name: null });
   assert.equal(await src.otherTeams(), null);
 });
 

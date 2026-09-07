@@ -683,7 +683,6 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
       return {
         id: t?.id != null ? String(t.id) : null,
         name: t?.name?.trim() || null,
-        avatarUrl: null,
       };
     },
     // `/v1/teams` is filtered down to the token's own team, so the others are not

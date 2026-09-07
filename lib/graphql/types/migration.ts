@@ -214,11 +214,6 @@ const MigrationPlanRef = builder
         description:
           "The team or organization this token reads. A token belongs to one, so importing a second one means a second token.",
       }),
-      orgAvatarUrl: t.exposeString("orgAvatarUrl", {
-        nullable: true,
-        description:
-          "That team's own picture on the panel, so the wizard draws it rather than a generic mark. Null when the panel keeps none - a Coolify team has no picture at all.",
-      }),
       otherTeams: t.exposeStringList("otherTeams", {
         nullable: true,
         description:
@@ -246,11 +241,6 @@ const SourceIdentityRef = builder
           "The team's own id over there, which is how two tokens of ONE team are told apart from two tokens of two teams. Null when the panel would not say.",
       }),
       teamName: t.exposeString("teamName", { nullable: true }),
-      teamAvatarUrl: t.exposeString("teamAvatarUrl", {
-        nullable: true,
-        description:
-          "That team's own picture on the panel, so the wizard draws it rather than a generic mark. Null when the panel keeps none - a Coolify team has no picture at all.",
-      }),
       otherTeams: t.exposeStringList("otherTeams", {
         nullable: true,
         description:

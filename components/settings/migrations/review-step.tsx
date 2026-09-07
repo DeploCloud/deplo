@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { MigrationTree, type PortConflict } from "./migration-tree";
 import { StepShell } from "./step-shell";
 import { TargetSelect } from "./target-select";
+import { TeamImagePicker } from "./team-image-picker";
 import type { TeamTarget } from "./queue";
 import { copyFor, type SourceKind, stepDocs } from "./sources";
 import {
@@ -290,6 +291,8 @@ export interface ReviewGroup {
   landsIn: { name: string; avatarUrl: string | null; isNew: boolean };
   /** Where it lands, editable right here rather than a step back. */
   target: TeamTarget;
+  /** The picture a new team is created with. Null is its initials. */
+  image: string | null;
   plan: Plan;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
@@ -320,6 +323,7 @@ export function ReviewStep({
   canExposePorts,
   targetTeams,
   onRetarget,
+  onSetImage,
   onBack,
   onStart,
   starting,
@@ -338,6 +342,7 @@ export function ReviewStep({
   /** The teams a source team may land in, besides one named after it. */
   targetTeams: TargetTeam[];
   onRetarget: (key: string, target: TeamTarget) => void;
+  onSetImage: (key: string, image: string | null) => void;
   onBack: () => void;
   onStart: () => void;
   /** A start is already in flight from this tab. */
@@ -424,6 +429,15 @@ export function ReviewStep({
                   <ArrowRight className="size-3.5 text-muted-foreground" />
                   {/* The picker IS the destination now, avatar and name and all,
                       so a second mark beside it would name the same team twice. */}
+                  {/* A team being MADE gets its picture chosen here; one that
+                      already exists keeps its own. */}
+                  {g.target.kind === "new" && (
+                    <TeamImagePicker
+                      name={g.team.name}
+                      image={g.image}
+                      onChange={(image) => onSetImage(g.key, image)}
+                    />
+                  )}
                   <span className="ml-auto">
                     <TargetSelect
                       value={g.target}

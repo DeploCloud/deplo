@@ -16,7 +16,6 @@ import {
 
 import { gqlAction } from "@/lib/graphql-client";
 import { TEAM_HEADER } from "@/lib/team-path";
-import { isValidTeamAvatarValue } from "@/lib/apps/avatar-shared";
 import { docsUrl } from "@/lib/docs";
 import { formatBuildDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,6 +31,7 @@ import { AnimatedHeight } from "@/components/shared/animated-height";
 import { LeftoverDiskGraphic } from "@/components/takeover/leftover-disk-graphic";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { TargetSelect } from "./target-select";
+import { TeamImagePicker } from "./team-image-picker";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import {
   isDriven,
@@ -165,7 +165,6 @@ const IDENTIFY = /* GraphQL */ `
       platform
       teamId
       teamName
-      teamAvatarUrl
       otherTeams
     }
   }
@@ -181,7 +180,6 @@ const SCAN = /* GraphQL */ `
       platform
       sourceUrl
       orgName
-      orgAvatarUrl
       otherTeams
       servers {
         sourceId
@@ -982,6 +980,13 @@ export function MigrationWizard({
       void loadFleet(target.teamId);
   }
 
+  /** The picture the team this row makes will be created with. */
+  function setTeamImage(i: number, image: string | null) {
+    updateQueue(
+      queueRef.current.map((e, j) => (j === i ? { ...e, image } : e)),
+    );
+  }
+
   /** The list with one row changed, kept in step for the chain. */
   function updateQueue(next: QueuedTeam[]) {
     queueRef.current = next;
@@ -1045,10 +1050,9 @@ export function MigrationWizard({
         CREATE_TEAM,
         {
           name: team.name,
-          image:
-            team.avatarUrl && isValidTeamAvatarValue(team.avatarUrl)
-              ? team.avatarUrl
-              : null,
+          // Null is the initials, which is what a team starts with unless
+          // somebody chose otherwise on Connect or Review.
+          image: team.image,
         },
         (d) => d.createTeam.id,
       );
@@ -1291,7 +1295,7 @@ export function MigrationWizard({
         : undefined;
     return home
       ? { name: home.name, avatarUrl: home.avatarUrl, isNew: false }
-      : { name: q.name, avatarUrl: q.avatarUrl, isNew: true };
+      : { name: q.name, avatarUrl: q.image, isNew: true };
   }
 
   /** Where each team of the list lands, as the Review names it. */
@@ -1302,9 +1306,10 @@ export function MigrationWizard({
     return [
       {
         key: String(i),
-        team: { name: q.name, avatarUrl: q.avatarUrl },
+        team: { name: q.name, avatarUrl: null },
         landsIn: landingOf(q),
         target: q.target,
+        image: q.image,
         plan: p,
         servers: fleet.servers,
         buildServers: fleet.buildServers,
@@ -1318,7 +1323,7 @@ export function MigrationWizard({
     return [
       {
         key: String(i),
-        team: { name: q.name, avatarUrl: q.avatarUrl },
+        team: { name: q.name, avatarUrl: null },
         people: p.members.filter((m) => !m.inTeam),
         invites: teamInvites[i] ?? null,
         canInvite: true,
@@ -1333,7 +1338,7 @@ export function MigrationWizard({
   /** Every team's landing, for the one report at the end. */
   const teamReports = queue.flatMap((q, i) =>
     teamRuns[i]
-      ? [{ name: q.name, avatarUrl: q.avatarUrl, report: teamRuns[i].report }]
+      ? [{ name: q.name, avatarUrl: null, report: teamRuns[i].report }]
       : [],
   );
   const totals = teamReports.reduce(
@@ -1718,6 +1723,7 @@ export function MigrationWizard({
                     adding={adding}
                     onAdd={() => void identifyAndAdd()}
                     onRetarget={(i, target) => retargetAt(i, target)}
+                    onSetImage={(i, image) => setTeamImage(i, image)}
                     onRemove={(i) =>
                       updateQueue(queueRef.current.filter((_, j) => j !== i))
                     }
@@ -1800,6 +1806,9 @@ export function MigrationWizard({
                       onRetarget={(key, target) =>
                         retargetAt(Number(key), target)
                       }
+                      onSetImage={(key, image) =>
+                        setTeamImage(Number(key), image)
+                      }
                       onBack={() => setStep("install")}
                       starting={starting}
                       onStart={() => void startChain()}
@@ -1875,6 +1884,7 @@ function ConnectStep({
   adding,
   onAdd,
   onRetarget,
+  onSetImage,
   onRemove,
   onSubmit,
   onBack,
@@ -1900,6 +1910,8 @@ function ConnectStep({
   adding: boolean;
   onAdd: () => void;
   onRetarget: (i: number, target: TeamTarget) => void;
+  /** The picture the new team is created with. */
+  onSetImage: (i: number, image: string | null) => void;
   onRemove: (i: number) => void;
   onSubmit: (e: React.FormEvent) => void;
   /** Back to the choice, while it is still only a choice. */
@@ -2012,14 +2024,22 @@ function ConnectStep({
                   key={`${q.sourceTeamId ?? ""}-${i}`}
                   className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"
                 >
-                  {/* The panel's own picture for it, and the team's monogram
-                      when it keeps none - the same renderer every other team
-                      list in the product uses. */}
-                  <TeamAvatar
-                    name={q.name || copy.teamLabel}
-                    avatarUrl={q.avatarUrl}
-                    size="sm"
-                  />
+                  {/* A team being MADE gets its picture chosen here; one that
+                      already exists keeps its own, so there is nothing to pick. */}
+                  {q.target.kind === "new" && q.status === "waiting" ? (
+                    <TeamImagePicker
+                      name={q.name || copy.teamLabel}
+                      image={q.image}
+                      disabled={busy}
+                      onChange={(image) => onSetImage(i, image)}
+                    />
+                  ) : (
+                    <TeamAvatar
+                      name={q.name || copy.teamLabel}
+                      avatarUrl={null}
+                      size="sm"
+                    />
+                  )}
                   <span className="min-w-0 flex-1 truncate">
                     {q.name || `An unnamed ${copy.teamLabel}`}
                   </span>
