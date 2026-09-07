@@ -4,7 +4,7 @@ import {
   takeoverStatus,
   type TakeoverState,
 } from "@/lib/data/takeover";
-import { capRequestBody } from "@/lib/http/body-cap";
+import { readTextCapped } from "@/lib/http/body-cap";
 
 /**
  * The installer's end of a takeover. It runs on the host, holds
@@ -42,10 +42,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
 
   let body: { state?: unknown; error?: unknown };
+  const raw = await readTextCapped(request);
+  if (raw instanceof Response) return raw;
   try {
-    const capped = capRequestBody(request);
-    if (capped instanceof Response) return capped;
-    body = (await capped.json()) as typeof body;
+    body = JSON.parse(raw) as typeof body;
   } catch {
     return Response.json({ error: "invalid JSON body" }, { status: 400 });
   }

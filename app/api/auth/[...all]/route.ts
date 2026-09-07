@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = getAuth();
   if (!auth) return notConfigured();
-  const capped = capRequestBody(request);
+  const capped = await capRequestBody(request);
   if (capped instanceof Response) return capped;
   const refused = await registrationAllowed(capped);
   if (refused) return refused;

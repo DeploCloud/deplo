@@ -11,9 +11,9 @@ export const runtime = "nodejs";
 // The schema reads cookies / the bearer header per request, never prerender.
 export const dynamic = "force-dynamic";
 
-function handler(request: Request): Response | Promise<Response> {
+async function handler(request: Request): Promise<Response> {
   // Nobody is authenticated yet when the body is read: bound it.
-  const capped = capRequestBody(request);
+  const capped = await capRequestBody(request);
   if (capped instanceof Response) return capped;
   // One memo per request for the identity reads every resolver repeats; see
   // lib/request-cache.ts. yoga.ts turns it off again for mutations.
