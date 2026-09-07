@@ -100,19 +100,18 @@ export function packageManagerFrom(
 /** The commands a repository declares for itself, or null where it declares none. */
 export interface DetectedCommands {
   buildCommand: string | null;
-  startCommand: string | null;
 }
 
-const NO_COMMANDS: DetectedCommands = {
-  buildCommand: null,
-  startCommand: null,
-};
+const NO_COMMANDS: DetectedCommands = { buildCommand: null };
 
 /**
- * The build and start commands a repository declares in its OWN `package.json`,
- * spelled for its own package manager. Never invented from the framework: a null
- * means the repo said nothing and the builder decides.
+ * The build command a repository declares in its OWN `package.json`, spelled for
+ * its own package manager. Never invented from the framework: null means the repo
+ * said nothing and the builder decides.
  */
+// No start command on purpose: a repo's `start` is as often the DEV server
+// (`gatsby develop`, `ng serve`, `docusaurus start`) as the production one, and
+// as an override it switches OFF the builder's own static-site deploy.
 export function detectCommands(
   rootFiles: readonly string[],
   manifest: PackageManifest | null | undefined,
@@ -121,12 +120,8 @@ export function detectCommands(
   if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) {
     return NO_COMMANDS;
   }
-  const manager = packageManagerFrom(rootFiles);
   return {
-    buildCommand: runScript(manager, scripts, "build"),
-    startCommand:
-      runScript(manager, scripts, "start") ??
-      runScript(manager, scripts, "serve"),
+    buildCommand: runScript(packageManagerFrom(rootFiles), scripts, "build"),
   };
 }
 

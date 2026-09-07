@@ -263,54 +263,59 @@ test("the package manager comes from the lockfile at the build root", () => {
   assert.equal(packageManagerFrom(["PNPM-LOCK.YAML"]), "pnpm");
 });
 
-test("commands come from the repo's own scripts, spelled for its manager", () => {
+test("the build command comes from the repo's own script, spelled for its manager", () => {
   const manifest = parsePackageManifest(
     JSON.stringify({ scripts: { build: "next build", start: "next start" } }),
   );
   assert.deepEqual(detectCommands(["pnpm-lock.yaml"], manifest), {
     buildCommand: "pnpm run build",
-    startCommand: "pnpm run start",
   });
   // yarn is the one that takes the script name bare.
   assert.deepEqual(detectCommands(["yarn.lock"], manifest), {
     buildCommand: "yarn build",
-    startCommand: "yarn start",
   });
 });
 
-test("`serve` stands in for a missing `start`", () => {
-  const manifest = parsePackageManifest(
-    JSON.stringify({ scripts: { serve: "vite preview" } }),
-  );
-  assert.deepEqual(detectCommands([], manifest), {
-    buildCommand: null,
-    startCommand: "npm run serve",
-  });
+test("a start script is never promoted to the app's start command", () => {
+  // The real shapes that made this a bug: each of these `start` scripts runs a
+  // DEV server, and as an override it turns off the builder's static deploy.
+  for (const start of [
+    "gatsby develop",
+    "ng serve",
+    "docusaurus start",
+    "vite",
+  ]) {
+    const manifest = parsePackageManifest(
+      JSON.stringify({
+        scripts: { build: "x build", start, serve: "x serve" },
+      }),
+    );
+    assert.deepEqual(detectCommands([], manifest), {
+      buildCommand: "npm run build",
+    });
+  }
 });
 
 test("a repo that declares nothing gets no command invented for it", () => {
   // A Go service, a manifest with no scripts, an empty script body, and a
   // scripts block that isn't an object at all - all four say the same thing:
   // nothing, so the builder decides.
-  assert.deepEqual(detectCommands(["go.mod"], null), {
-    buildCommand: null,
-    startCommand: null,
-  });
+  assert.deepEqual(detectCommands(["go.mod"], null), { buildCommand: null });
   assert.deepEqual(
     detectCommands([], parsePackageManifest('{"dependencies":{"next":"15"}}')),
-    { buildCommand: null, startCommand: null },
+    { buildCommand: null },
   );
   assert.deepEqual(
     detectCommands([], parsePackageManifest('{"scripts":{"build":"   "}}')),
-    { buildCommand: null, startCommand: null },
+    { buildCommand: null },
   );
   assert.deepEqual(
     detectCommands([], parsePackageManifest('{"scripts":["build"]}')),
-    { buildCommand: null, startCommand: null },
+    { buildCommand: null },
   );
   // A non-string body is user JSON, not a command.
   assert.deepEqual(
     detectCommands([], parsePackageManifest('{"scripts":{"build":42}}')),
-    { buildCommand: null, startCommand: null },
+    { buildCommand: null },
   );
 });

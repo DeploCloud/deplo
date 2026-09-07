@@ -349,25 +349,20 @@ export function NewAppWizard({
   });
 
   // The port follows the recognised framework's own server instead of a
-  // hardcoded 3000, and the commands follow the repo's package.json - until the
-  // user edits either, after which what they typed wins.
+  // hardcoded 3000, and the build command follows the repo's package.json - until
+  // the user edits either, after which what they typed wins.
   const build = React.useMemo(() => {
     let next = draftBuild;
     if (framework && !portTouched && next.port !== framework.defaultPort) {
       next = { ...next, port: framework.defaultPort };
     }
-    if (!commandsTouched && (commands.buildCommand || commands.startCommand)) {
-      next = {
-        ...next,
-        buildCommand: commands.buildCommand ?? next.buildCommand,
-        startCommand: commands.startCommand ?? next.startCommand,
-      };
+    if (!commandsTouched && commands.buildCommand) {
+      next = { ...next, buildCommand: commands.buildCommand };
     }
     return next;
   }, [draftBuild, framework, portTouched, commands, commandsTouched]);
 
   const prefilledBuild = !commandsTouched ? commands.buildCommand : null;
-  const prefilledStart = !commandsTouched ? commands.startCommand : null;
 
   function onBuildChange(next: BuildConfig) {
     if (next.port !== build.port) setPortTouched(true);
@@ -1078,7 +1073,7 @@ export function NewAppWizard({
               info="Run to start the container. Leave it empty and the builder works it out."
               value={build.startCommand ?? ""}
               onChange={(v) => onBuildChange({ ...build, startCommand: v })}
-              detected={prefilledStart}
+              detected={null}
               placeholder="Detected at build time"
             />
 

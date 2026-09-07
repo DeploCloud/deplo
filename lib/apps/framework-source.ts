@@ -36,18 +36,14 @@ const MAX_MANIFEST_BYTES = 1_000_000;
 
 /**
  * What one read of a repository's build root yields: the framework backing it,
- * plus the commands the repository declares for ITSELF. Both are best-effort and
- * both can be null.
+ * plus the build command it declares for ITSELF. Both are best-effort and both
+ * can be null.
  */
 export interface RepoBuildHints extends DetectedCommands {
   framework: FrameworkId | null;
 }
 
-const NO_HINTS: RepoBuildHints = {
-  framework: null,
-  buildCommand: null,
-  startCommand: null,
-};
+const NO_HINTS: RepoBuildHints = { framework: null, buildCommand: null };
 
 function hintsFor(
   files: readonly string[],

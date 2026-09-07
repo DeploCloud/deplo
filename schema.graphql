@@ -4218,7 +4218,7 @@ type Query {
   destinationTestReport(id: String!): S3TestReport
 
   """
-  Read a GitHub repository before an app exists for it - the framework and the commands the new-app wizard prefills while you pick a repo. Null when there is nothing to read at all: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or one with neither a framework nor a script. Reads only; the app's first deploy re-derives and stores the framework.
+  Read a GitHub repository before an app exists for it - the framework and the build command the new-app wizard prefills while you pick a repo. Null when there is nothing to read at all: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or one with neither a framework nor a script. Reads only; the app's first deploy re-derives and stores the framework.
   """
   detectRepoFramework(
     """Branch to read; empty ⇒ the repository's default branch."""
@@ -4502,7 +4502,7 @@ type Query {
 }
 
 """
-What Deplo read in a repository before an app exists for it: the JavaScript framework backing it, and the build/start commands the repository declares for ITSELF in its package.json. A command is never invented from the framework - null means the repo said nothing and the builder decides.
+What Deplo read in a repository before an app exists for it: the JavaScript framework backing it, and the build command the repository declares for ITSELF in its package.json. Never invented from the framework - null means the repo said nothing and the builder decides.
 """
 type RecognizedFramework {
   """
@@ -4522,11 +4522,6 @@ type RecognizedFramework {
 
   """Display name, e.g. "Next.js"."""
   name: String
-
-  """
-  The repository's own start script (falling back to `serve`), spelled the same way.
-  """
-  startCommand: String
 }
 
 """

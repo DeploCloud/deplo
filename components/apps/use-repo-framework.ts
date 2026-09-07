@@ -8,8 +8,7 @@ import type { BuildMethod } from "@/lib/types";
 /**
  * Live reading of a repository the user is still choosing - the new-app wizard's
  * "we already know what this is" moment, before any app row exists to carry the
- * answer. Two independent halves: the framework, and the commands the repo
- * declares for itself.
+ * answer. Two independent halves: the framework, and the repo's own build command.
  */
 
 export interface RecognizedFramework {
@@ -18,13 +17,12 @@ export interface RecognizedFramework {
   defaultPort: number;
 }
 
-/** What the repository says its own build and start commands are. */
+/** What the repository says its own build command is. */
 export interface RepoCommands {
   buildCommand: string | null;
-  startCommand: string | null;
 }
 
-const NO_COMMANDS: RepoCommands = { buildCommand: null, startCommand: null };
+const NO_COMMANDS: RepoCommands = { buildCommand: null };
 
 /** The wire shape: every field can be null - a Go repo has commands and no
  *  framework, an empty one has neither. */
@@ -33,7 +31,6 @@ interface RepoRead {
   name: string | null;
   defaultPort: number | null;
   buildCommand: string | null;
-  startCommand: string | null;
 }
 
 /** How long the inputs must hold still before a request goes out. Long enough
@@ -91,7 +88,7 @@ export function useRepoFramework(input: RepoFrameworkInput): {
             installationId: $installationId
             buildMethod: $buildMethod
             rootDirectory: $rootDirectory
-          ) { id name defaultPort buildCommand startCommand }
+          ) { id name defaultPort buildCommand }
         }`,
         { repo, url, branch, installationId, buildMethod, rootDirectory },
         controller.signal,
@@ -121,9 +118,7 @@ export function useRepoFramework(input: RepoFrameworkInput): {
       read && read.id && read.name && read.defaultPort
         ? { id: read.id, name: read.name, defaultPort: read.defaultPort }
         : null,
-    commands: read
-      ? { buildCommand: read.buildCommand, startCommand: read.startCommand }
-      : NO_COMMANDS,
+    commands: read ? { buildCommand: read.buildCommand } : NO_COMMANDS,
     detecting: Boolean(query) && current === null,
   };
 }

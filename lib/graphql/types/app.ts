@@ -651,7 +651,6 @@ const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
 interface RecognizedFrameworkDTO {
   framework: FrameworkDefinition | null;
   buildCommand: string | null;
-  startCommand: string | null;
 }
 
 const RecognizedFrameworkRef = builder
@@ -659,10 +658,9 @@ const RecognizedFrameworkRef = builder
   .implement({
     description:
       "What Deplo read in a repository before an app exists for it: the " +
-      "JavaScript framework backing it, and the build/start commands the " +
-      "repository declares for ITSELF in its package.json. A command is never " +
-      "invented from the framework - null means the repo said nothing and the " +
-      "builder decides.",
+      "JavaScript framework backing it, and the build command the repository " +
+      "declares for ITSELF in its package.json. Never invented from the " +
+      "framework - null means the repo said nothing and the builder decides.",
     fields: (t) => ({
       id: t.string({
         nullable: true,
@@ -688,12 +686,6 @@ const RecognizedFrameworkRef = builder
         description:
           "The repository's own build script, spelled for its lockfile's " +
           'package manager (e.g. "pnpm run build").',
-      }),
-      startCommand: t.exposeString("startCommand", {
-        nullable: true,
-        description:
-          "The repository's own start script (falling back to `serve`), spelled " +
-          "the same way.",
       }),
     }),
   });
@@ -823,7 +815,7 @@ builder.queryFields((t) => ({
     authScopes: { capability: "create_apps" },
     description:
       "Read a GitHub repository before an app exists for it - the framework " +
-      "and the commands the new-app wizard prefills while you pick a repo. " +
+      "and the build command the new-app wizard prefills while you pick a repo. " +
       "Null when there is nothing to read at all: a build method other than " +
       "Nixpacks / Railpack (the only ones this applies to), a repository Deplo " +
       "can't read, or one with neither a framework nor a script. Reads only; " +
@@ -868,12 +860,8 @@ builder.queryFields((t) => ({
         rootDirectory: args.rootDirectory,
       });
       const framework = frameworkById(hints.framework);
-      if (!framework && !hints.buildCommand && !hints.startCommand) return null;
-      return {
-        framework,
-        buildCommand: hints.buildCommand,
-        startCommand: hints.startCommand,
-      };
+      if (!framework && !hints.buildCommand) return null;
+      return { framework, buildCommand: hints.buildCommand };
     },
   }),
   deployments: t.field({
