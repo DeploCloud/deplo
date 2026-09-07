@@ -30,6 +30,9 @@ export function StepShell({
     <div
       className={cn(
         "flex flex-col items-stretch gap-5",
+        // A greeting needs air under it: at the step gap the cards read as part
+        // of the sentence rather than the answer to it.
+        hero && "gap-10",
         stagger && "deplo-stagger",
       )}
     >
