@@ -2249,7 +2249,9 @@ function MovingPanel({
             : "Deplo has not started this migration yet. It starts on its own within a minute or two. Stop it if you would rather start again."
       }
     >
-      <div className="space-y-2">
+      {/* Centred under a centred heading: the two lines under the bar say where
+          the run is, and a left edge of their own would read as a new column. */}
+      <div className="space-y-2 text-center">
         {/* The bar alone stalls for minutes on a big volume - same fill, no
             movement, and it reads as hung. The sweep and the spinner are the
             two things on screen still saying the work is going. */}
