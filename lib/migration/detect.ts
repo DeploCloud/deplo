@@ -50,16 +50,17 @@ export async function detectMigrationSource(
     ? ["coolify", "dokploy"]
     : ["dokploy", "coolify"];
 
-  const refused: string[] = [];
+  const refused: { name: string; said: string }[] = [];
   for (const kind of order) {
     try {
       await PROBE[kind]({ kind, baseUrl, apiKey });
       return kind;
     } catch (e) {
       if (e instanceof PanelUnreachableError) throw e;
-      refused.push(
-        `${kind === "coolify" ? "Coolify" : "Dokploy"}: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      refused.push({
+        name: kind === "coolify" ? "Coolify" : "Dokploy",
+        said: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
@@ -67,13 +68,16 @@ export async function detectMigrationSource(
   // reverse proxy can answer 200 there, so it never decides which product it is.
   const answered = await panelFromHealth(baseUrl);
   const name = answered === "coolify" ? "Coolify" : "Dokploy";
-  const said = refused.find((r) => r.startsWith(`${name}: `));
+  const said = refused.find((r) => r.name === name);
   if (answered && said)
     throw new PanelNotIdentifiedError(
-      `That is a ${name} panel, and it refused the token. ${said.slice(`${name}: `.length)}`,
+      `That is a ${name} panel, and it refused the token. ${said.said}`,
     );
 
+  // The first line is the whole message; what each probe got is a LOG, and the
+  // wizard puts it behind View logs rather than in the warning.
+  const log = refused.map((r) => `${r.name} check: ${r.said}`).join("\n");
   throw new PanelNotIdentifiedError(
-    `Deplo could not read ${baseUrl} as a Dokploy or a Coolify panel. ${refused.join(" ")}`,
+    `Deplo could not read ${baseUrl} as a Dokploy or a Coolify panel.\n${log}`,
   );
 }

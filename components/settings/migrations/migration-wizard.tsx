@@ -20,6 +20,14 @@ import { docsUrl } from "@/lib/docs";
 import { formatBuildDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { CodeBlock } from "@/components/shared/code-block";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { KindCard } from "@/components/shared/kind-card";
@@ -1874,6 +1882,34 @@ export function MigrationWizard({
 /* Step 1 - connect                                                   */
 /* ------------------------------------------------------------------ */
 
+/** What each probe answered, out of the warning and behind one link. */
+function ScanErrorLog({ log }: { log: string }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="justify-self-start text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        onClick={() => setOpen(true)}
+      >
+        View logs
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>What each panel answered</DialogTitle>
+            <DialogDescription>
+              Deplo asks both products in turn. Neither one recognised this
+              address.
+            </DialogDescription>
+          </DialogHeader>
+          <CodeBlock code={log} />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function ConnectStep({
   url,
   setUrl,
@@ -1925,6 +1961,9 @@ function ConnectStep({
   onBack?: () => void;
 }) {
   const copy = copyFor(kind);
+  // One sentence in the warning; what each probe actually got is a log.
+  const [scanHeadline, ...scanLines] = (scanError ?? "").split("\n");
+  const scanLog = scanLines.join("\n\n");
   const busy = scanning || adding;
   /**
    * One button, and it does the one thing left to do: put the typed token on the
@@ -2121,9 +2160,10 @@ function ConnectStep({
           <div className="grid gap-3 rounded-lg border border-destructive/40 bg-destructive-wash p-3 leading-relaxed">
             <div className="flex items-start gap-2">
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
-              <p className="min-w-0 text-sm text-muted-foreground">
-                {scanError}
-              </p>
+              <div className="grid min-w-0 gap-1">
+                <p className="text-sm text-muted-foreground">{scanHeadline}</p>
+                {scanLog && <ScanErrorLog log={scanLog} />}
+              </div>
             </div>
             {/* The installer already said which panel this is on a takeover. */}
             <div hidden={takeover}>

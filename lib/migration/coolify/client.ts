@@ -8,6 +8,7 @@
 import type { SourceCredential } from "../source";
 import {
   REQUEST_TIMEOUT_MS,
+  panelSaid,
   refuseRedirect,
   sendRequest,
   type PanelIdentity,
@@ -328,7 +329,7 @@ export class CoolifyHttpError extends Error {
 
 /** Coolify's 4xx bodies are `{"message": "..."}` and mostly already actionable. */
 function refusalMessage(status: number, body: string): string {
-  let said = body.trim().slice(0, 300);
+  let said = panelSaid(body);
   try {
     const parsed = JSON.parse(body) as { message?: unknown };
     if (typeof parsed.message === "string") said = parsed.message.trim();

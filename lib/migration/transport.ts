@@ -128,6 +128,33 @@ export class PanelUnreachableError extends Error {
 }
 
 /**
+ * A 5xx spoken by whatever sits IN FRONT of the panel. Nothing is answering behind
+ * it, so this is unreachable rather than a refusal - and the body is the proxy's
+ * own page, never the panel's words. Cloudflare's 52x are all in here.
+ */
+const GATEWAY_STATUS = new Set([
+  502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527,
+]);
+
+function refuseGateway(res: Response, baseUrl: string): void {
+  if (!GATEWAY_STATUS.has(res.status)) return;
+  const front = res.headers.get("cf-ray") ? "Cloudflare" : "A proxy";
+  throw new PanelUnreachableError(
+    `${front} answered for ${hostOf(baseUrl) || baseUrl}, but nothing is running behind it (${res.status}). Check the panel is up, or point Deplo at its own address.`,
+  );
+}
+
+/**
+ * What the PANEL said, capped - or nothing. An html page is some other server's
+ * words (a proxy, a front page, a 404 from whatever else lives at that address),
+ * and quoting three hundred characters of it at somebody helps nobody.
+ */
+export function panelSaid(body: string): string {
+  const said = body.trim();
+  return said.startsWith("<") ? "" : said.slice(0, 300);
+}
+
+/**
  * A failure the next attempt may not hit. Kept narrow on purpose: a wrong address
  * (DNS, nothing listening) or a certificate this machine will not trust has to
  * fail on the Connect screen, not three attempts later.
@@ -175,13 +202,16 @@ export async function sendRequest(
     try {
       // A retry needs its OWN deadline: `AbortSignal.timeout` fires once and stays
       // aborted, so reusing the caller's would abort the second attempt instantly.
-      return await doFetch(
+      const res = await doFetch(
         url,
         attempt === 0
           ? init
           : { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
       );
+      refuseGateway(res, baseUrl);
+      return res;
     } catch (e) {
+      if (e instanceof PanelUnreachableError) throw e;
       last = e;
       if (attempt >= RETRY_DELAYS_MS.length || !isTransient(e)) break;
       await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));

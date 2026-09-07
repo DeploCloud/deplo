@@ -5,6 +5,7 @@
 import type { SourceCredential } from "../source";
 import {
   REQUEST_TIMEOUT_MS,
+  panelSaid,
   refuseRedirect,
   sendRequest,
   type PanelIdentity,
@@ -57,7 +58,7 @@ async function requestFailed(
   procedure: string,
   c: SourceCredential,
 ): Promise<Error> {
-  const detail = (await res.text().catch(() => "")).slice(0, 300).trim();
+  const detail = panelSaid(await res.text().catch(() => ""));
   if (
     res.status === 429 ||
     (res.status === 401 && accepted.has(acceptedKey(c)))

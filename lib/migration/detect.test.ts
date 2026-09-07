@@ -83,6 +83,28 @@ test("a machine that does not answer is asked exactly once", async (t) => {
   assert.equal(calls, 1);
 });
 
+test("Cloudflare's 521 stops the detection instead of quoting its page", async (t) => {
+  // The address is proxied whatever runs behind it, so a 52x is the PROXY talking:
+  // one sentence, and the second guess is never tried (it would answer the same).
+  reset(t);
+  const seen: string[] = [];
+  __setMigrationFetchForTest(async (url) => {
+    seen.push(url);
+    return new Response(
+      JSON.stringify({ title: "Error 521: Web server is down" }),
+      { status: 521, headers: { "cf-ray": "8f0b2c1d9e00-FRA" } },
+    );
+  });
+  await assert.rejects(detectMigrationSource(BASE, DOKPLOY_KEY), (e: Error) => {
+    assert.equal(e.name, "PanelUnreachableError");
+    assert.match(e.message, /Cloudflare answered for panel\.test/);
+    assert.match(e.message, /nothing is running behind it \(521\)/);
+    assert.doesNotMatch(e.message, /Error 521: Web server is down/);
+    return true;
+  });
+  assert.equal(seen.length, 1, "the other platform is never tried");
+});
+
 test("both refusing names both refusals", async (t) => {
   reset(t);
   __setMigrationFetchForTest(
@@ -95,9 +117,15 @@ test("both refusing names both refusals", async (t) => {
       ),
   );
   await assert.rejects(detectMigrationSource(BASE, DOKPLOY_KEY), (e: Error) => {
-    assert.match(e.message, /could not read https:\/\/panel\.test/);
-    assert.match(e.message, /Coolify:/);
-    assert.match(e.message, /Dokploy:/);
+    // One sentence, then a log: the wizard shows the first line and puts the
+    // rest behind View logs.
+    const [headline, ...log] = e.message.split("\n");
+    assert.match(headline, /^Deplo could not read https:\/\/panel\.test/);
+    assert.doesNotMatch(headline, /request failed|refused/);
+    assert.deepEqual(
+      log.map((l) => l.split(" check: ")[0]),
+      ["Dokploy", "Coolify"],
+    );
     return true;
   });
 });
