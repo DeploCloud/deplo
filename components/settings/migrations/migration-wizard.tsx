@@ -66,6 +66,7 @@ import {
   reviewShows,
   stepReachable,
   stepsFor,
+  warnings,
   type StepId,
   type TakeoverMode,
 } from "./steps";
@@ -644,6 +645,14 @@ export function MigrationWizard({
   /** The `startMigration` call is in flight. It is over in about a second,
    *  and from then on the run is the server's and the live feed is the truth. */
   const [running, setRunning] = React.useState(false);
+  /**
+   * A start pressed in THIS tab. The chain is several round trips long before
+   * `startMigration` is even sent, so a second press in that window starts a
+   * second migration and the server answers "already has a migration running".
+   * The ref is the guard - two clicks in one tick both read the state as false.
+   */
+  const startingRef = React.useRef(false);
+  const [starting, setStarting] = React.useState(false);
   /** A Stop is in flight: the server is taking the migration back out. It ends
    *  when the run leaves the live feed, which drops the wizard back to step one. */
   const [undoing, setUndoing] = React.useState(false);
@@ -993,6 +1002,19 @@ export function MigrationWizard({
         .flatMap(importableOf)
         .some((s) => chosenRef.current.has(s.sourceId))
     );
+  }
+
+  /** The one door into the chain, and it only opens once. */
+  async function startChain() {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
+    try {
+      await runTeam(0);
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
   }
 
   async function runTeam(i: number) {
@@ -1776,7 +1798,8 @@ export function MigrationWizard({
                       canExposePorts={canExposePorts}
                       onChangeTarget={() => setStep("connect")}
                       onBack={() => setStep("install")}
-                      onStart={() => void runTeam(0)}
+                      starting={starting}
+                      onStart={() => void startChain()}
                     />
                   ) : null)}
 
@@ -2417,8 +2440,6 @@ function ReportCard({
   /** The team the source machines are granted to, where a leftover would be. */
   sourcesTeamId: string;
 }) {
-  const needsAPerson = report.failed + report.manual;
-
   return (
     <StepShell
       hero
@@ -2431,7 +2452,7 @@ function ReportCard({
           <Badge variant="secondary">{report.skipped} already here</Badge>
         )}
         {report.manual > 0 && (
-          <Badge variant="warning">{report.manual} need you</Badge>
+          <Badge variant="warning">{warnings(report.manual)}</Badge>
         )}
         {report.failed > 0 && (
           <Badge variant="destructive">{report.failed} failed</Badge>
@@ -2450,26 +2471,12 @@ function ReportCard({
               </span>
               <span className="text-muted-foreground">
                 {t.report.created} created
-                {t.report.manual > 0 ? `, ${t.report.manual} need you` : ""}
+                {t.report.manual > 0 ? `, ${warnings(t.report.manual)}` : ""}
                 {t.report.failed > 0 ? `, ${t.report.failed} failed` : ""}
               </span>
             </li>
           ))}
         </ul>
-      )}
-
-      {/* The acknowledgement's other half: the button says "I understand", so
-          this has to say what there is to understand. */}
-      {needsAPerson > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
-          <p className="min-w-0 flex-1 text-muted-foreground">
-            {needsAPerson === 1
-              ? "One thing needs you."
-              : `${needsAPerson} things need you.`}{" "}
-            The log says which, and why.
-          </p>
-        </div>
       )}
 
       {/* Only a panel that lists its teams gets here - the operator is one key
@@ -2491,9 +2498,7 @@ function ReportCard({
           <ScrollText className="size-4" />
           Show log
         </Button>
-        <Button onClick={onContinue}>
-          {needsAPerson > 0 ? "I understand, continue" : "Continue"}
-        </Button>
+        <Button onClick={onContinue}>Continue</Button>
       </div>
 
       {/* Only ever shown when an agent really is still out there: finishing the

@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   ArrowRight,
   Layers,
+  Loader2,
   Server as ServerIcon,
   TriangleAlert,
 } from "lucide-react";
@@ -316,6 +317,7 @@ export function ReviewStep({
   onChangeTarget,
   onBack,
   onStart,
+  starting,
 }: {
   /** Which panel the plan was read from. */
   kind: SourceKind | null;
@@ -332,6 +334,8 @@ export function ReviewStep({
   onChangeTarget: () => void;
   onBack: () => void;
   onStart: () => void;
+  /** A start is already in flight from this tab. */
+  starting: boolean;
 }) {
   const all = React.useMemo(() => mergedPlan(groups), [groups]);
   const servers = React.useMemo(() => everyServer(groups), [groups]);
@@ -489,8 +493,14 @@ export function ReviewStep({
         </Button>
         <Button
           onClick={onStart}
-          disabled={chosen.size === 0 || servers.length === 0 || ports.blocked}
+          disabled={
+            starting ||
+            chosen.size === 0 ||
+            servers.length === 0 ||
+            ports.blocked
+          }
         >
+          {starting && <Loader2 className="size-4 animate-spin" />}
           {groups.length > 1
             ? `Migrate ${groups.length} teams`
             : "Start migration"}
