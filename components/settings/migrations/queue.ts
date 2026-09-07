@@ -123,3 +123,26 @@ export function uncoveredTeams(
 export function teamsAfter(queue: QueuedTeam[], at: number): number {
   return Math.max(0, queue.length - at - 1);
 }
+
+/**
+ * Every run one walk of the list produced, in the order they ran, plus the one
+ * still on screen. The report's numbers are the whole queue's, so the log it
+ * opens has to be the whole queue's too.
+ */
+export function runsOfQueue(
+  done: Record<number, { runId: string; teamId: string }>,
+  current: { id: string; teamId: string } | null,
+): { id: string; teamId: string }[] {
+  const out: { id: string; teamId: string }[] = [];
+  const seen = new Set<string>();
+  for (const i of Object.keys(done)
+    .map(Number)
+    .sort((a, b) => a - b)) {
+    const r = done[i];
+    if (!r || seen.has(r.runId)) continue;
+    seen.add(r.runId);
+    out.push({ id: r.runId, teamId: r.teamId });
+  }
+  if (current && !seen.has(current.id)) out.push(current);
+  return out;
+}

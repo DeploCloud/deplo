@@ -58,7 +58,7 @@ import {
 import { RemoveMigrationSources } from "./remove-sources";
 import { ReviewStep, type ReviewGroup } from "./review-step";
 import { PeopleStep, type PeopleGroup } from "./people-step";
-import { MigrationConsole } from "./migration-console";
+import { MigrationConsole, type ConsoleRun } from "./migration-console";
 import { StepShell } from "./step-shell";
 import { ChooseStep } from "./choose-step";
 import {
@@ -76,6 +76,7 @@ import {
 import {
   addTeam,
   retarget,
+  runsOfQueue,
   teamsAfter,
   uncoveredTeams,
   type QueuedTeam,
@@ -1524,6 +1525,23 @@ export function MigrationWizard({
             ? "install"
             : "connect";
 
+  /**
+   * Every run this session has produced, in the order they ran. The badges count
+   * the whole queue, so the log has to be the whole queue too - it used to open
+   * on the last team's run alone and disagree with the numbers above it.
+   */
+  const currentRunId = adoptedId ?? runId ?? feed?.id ?? null;
+  const consoleRuns: ConsoleRun[] = React.useMemo(
+    () =>
+      runsOfQueue(
+        teamRuns,
+        currentRunId
+          ? { id: currentRunId, teamId: targetTeamId ?? teamId }
+          : null,
+      ),
+    [teamRuns, currentRunId, targetTeamId, teamId],
+  );
+
   /** A run somebody started, driven from here or merely watched. */
   const inFlight = running || takenOver || awaitingRun;
 
@@ -1622,7 +1640,7 @@ export function MigrationWizard({
         <DoneStep
           kind={kind}
           panelUrl={takeover?.finalUrl ?? null}
-          onShowLog={(adoptedId ?? runId) ? () => setLogOpen(true) : null}
+          onShowLog={consoleRuns.length > 0 ? () => setLogOpen(true) : null}
           onAgain={
             isTakeover
               ? null
@@ -1880,8 +1898,7 @@ export function MigrationWizard({
        * Line by line, while it happens.
        */}
       <MigrationConsole
-        runId={adoptedId ?? runId ?? feed?.id ?? null}
-        teamId={targetTeamId ?? teamId}
+        runs={consoleRuns}
         open={logOpen}
         onOpenChange={setLogOpen}
         live={feed != null}

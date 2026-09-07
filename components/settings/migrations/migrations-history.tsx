@@ -130,8 +130,7 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
       </div>
 
       <MigrationConsole
-        runId={open?.id ?? null}
-        teamId={open?.teamId}
+        runs={open ? [{ id: open.id, teamId: open.teamId }] : []}
         open={open !== null}
         onOpenChange={(o) => !o && setOpen(null)}
         // A run still moving is watchable from here too - History is just

@@ -138,57 +138,73 @@ function clock(at: string | null | undefined): string {
     : d.toLocaleTimeString(undefined, { hour12: false });
 }
 
+/** One run to read, and the team it landed in when that is not the page's. */
+export interface ConsoleRun {
+  id: string;
+  teamId?: string;
+}
+
 export function MigrationConsole({
-  runId,
-  teamId,
+  runs,
   open,
   onOpenChange,
   live,
 }: {
-  runId: string | null;
-  /** The team the run landed in, when it is not the page's. */
-  teamId?: string;
+  /** Every run the log covers, in the order they ran. One panel brought over as
+   *  several teams is several runs, and the badges above count them all. */
+  runs: ConsoleRun[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Keep polling. False once the run is over: the list cannot change again. */
   live: boolean;
 }) {
-  // Stamped with the run it came from, so re-opening the dialog on a DIFFERENT run
-  // never paints the previous one's lines while this one's are on the way - and
+  // The list as one string, so re-opening the dialog on a DIFFERENT set never
+  // paints the previous one's lines while this one's are on the way - and
   // `undefined` (nothing read yet) stays distinct from `null` (the server says there
   // is no such run), which the empty state below tells apart.
+  const key = runs.map((r) => `${r.id}@${r.teamId ?? ""}`).join(",");
+  // One array identity per distinct list, so the poll below restarts when the
+  // runs change and not every time the wizard re-renders around it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const list = React.useMemo(() => runs, [key]);
   const [fetched, setFetched] = React.useState<{
-    runId: string;
-    log: RunLog | null;
+    key: string;
+    logs: (RunLog | null)[];
   } | null>(null);
-  const log = fetched?.runId === runId ? fetched.log : undefined;
+  const logs = fetched?.key === key ? fetched.logs : undefined;
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [levels, setLevels] = React.useState<string[]>([]);
   const [follow, setFollow] = React.useState(true);
+  /** The one still moving, if any: what the header says it is doing. */
+  const running = logs?.find((l) => l?.status === "running") ?? null;
   // Whether lines are still arriving, by the freshest answer rather than the
   // prop, which is only what was true when the dialog opened.
-  const streaming = log ? log.status === "running" : live;
+  const streaming = logs ? running != null : live;
   const bottom = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    if (!open || !runId) return;
+    if (!open || key === "") return;
     let alive = true;
     let timer: ReturnType<typeof setInterval> | null = null;
     const read = async () => {
       try {
-        const d = await gql<{ migrationRun: RunLog | null }>(
-          RUN_LOG,
-          { id: runId },
-          undefined,
-          teamId ? { teamId } : undefined,
+        const got = await Promise.all(
+          list.map((r) =>
+            gql<{ migrationRun: RunLog | null }>(
+              RUN_LOG,
+              { id: r.id },
+              undefined,
+              r.teamId ? { teamId: r.teamId } : undefined,
+            ).then((d) => d.migrationRun),
+          ),
         );
         if (!alive) return;
         setError(null);
-        setFetched({ runId, log: d.migrationRun });
+        setFetched({ key, logs: got });
         // `live` was the answer when this opened. A run that ends while it is
         // still open stops the poll with it, rather than asking forever.
-        if (timer && d.migrationRun && d.migrationRun.status !== "running") {
+        if (timer && !got.some((l) => l?.status === "running")) {
           clearInterval(timer);
           timer = null;
         }
@@ -202,12 +218,17 @@ export function MigrationConsole({
       alive = false;
       if (timer) clearInterval(timer);
     };
-  }, [open, runId, teamId, live]);
+  }, [open, key, list, live]);
 
   // Its own memo: a fresh `[]` on every render would re-run the filter below on
   // every render too, which on a four-hundred-line log while polling is the
-  // difference between a console and a stutter.
-  const items = React.useMemo(() => log?.items ?? [], [log]);
+  // difference between a console and a stutter. Run by run rather than by
+  // timestamp: the teams went one after the other, and each run's own order is
+  // the one the server wrote.
+  const items = React.useMemo(
+    () => (logs ?? []).flatMap((l) => l?.items ?? []),
+    [logs],
+  );
   // The SEARCH pass on its own: the menu's counts have to say how many rows
   // picking an outcome would leave, which means every other filter applied and
   // that one not.
@@ -281,9 +302,10 @@ export function MigrationConsole({
         <DialogHeader>
           <DialogTitle>Migration log</DialogTitle>
           <DialogDescription>
-            {log?.status === "running"
-              ? `${log.phase === "data" ? "Copying data" : "Importing"}${log.stepLabel ? `: ${log.stepLabel}` : ""}`
-              : (log?.error ?? "Every line this migration wrote.")}
+            {running
+              ? `${running.phase === "data" ? "Copying data" : "Importing"}${running.stepLabel ? `: ${running.stepLabel}` : ""}`
+              : (logs?.find((l) => l?.error)?.error ??
+                "Every line this migration wrote.")}
           </DialogDescription>
         </DialogHeader>
 
@@ -335,7 +357,7 @@ export function MigrationConsole({
             <p className="p-3 text-muted-foreground">
               {/* A run that is gone is a row somebody deleted out from under
                   this list; saying so beats an empty console. */}
-              {log === null
+              {logs?.every((l) => l === null)
                 ? "That migration is no longer here."
                 : items.length === 0
                   ? "Nothing yet."

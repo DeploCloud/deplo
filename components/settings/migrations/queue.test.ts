@@ -5,6 +5,7 @@ import {
   addTeam,
   defaultTarget,
   retarget,
+  runsOfQueue,
   teamsAfter,
   uncoveredTeams,
   type QueuedTeam,
@@ -126,4 +127,29 @@ test("the teams still behind this one are counted", () => {
   assert.equal(teamsAfter(q, 2), 0);
   assert.equal(teamsAfter(q, 9), 0);
   assert.equal(teamsAfter([], 0), 0);
+});
+
+// The report adds every team's numbers up, so the log it opens has to hold every
+// team's run - showing the last one alone is what made the two disagree.
+test("the log covers every run of the walk", () => {
+  const done = {
+    1: { runId: "run-b", teamId: "team-b" },
+    0: { runId: "run-a", teamId: "team-a" },
+  };
+  assert.deepEqual(runsOfQueue(done, null), [
+    { id: "run-a", teamId: "team-a" },
+    { id: "run-b", teamId: "team-b" },
+  ]);
+  // The run on screen is one of those two once it has landed, and one more
+  // while it is still moving.
+  assert.deepEqual(runsOfQueue(done, { id: "run-b", teamId: "team-b" }), [
+    { id: "run-a", teamId: "team-a" },
+    { id: "run-b", teamId: "team-b" },
+  ]);
+  assert.deepEqual(runsOfQueue(done, { id: "run-c", teamId: "team-c" }), [
+    { id: "run-a", teamId: "team-a" },
+    { id: "run-b", teamId: "team-b" },
+    { id: "run-c", teamId: "team-c" },
+  ]);
+  assert.deepEqual(runsOfQueue({}, null), []);
 });
