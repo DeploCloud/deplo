@@ -19,13 +19,15 @@ export function usesDefaultNodeMajor(
 }
 
 /**
- * Build a full {@link BuildConfig} from optional overrides.
+ * Build a full {@link BuildConfig} from optional overrides. The default builder is
+ * Railpack: Nixpacks serves a built static site only for Vite, so Angular, Astro,
+ * CRA and React Router SPAs had no production serve at all under it.
  */
 export function buildConfigFor(
   overrides: Partial<BuildConfig> = {},
 ): BuildConfig {
   return {
-    buildMethod: overrides.buildMethod ?? "nixpacks",
+    buildMethod: overrides.buildMethod ?? "railpack",
     methodSettings: {
       dockerfilePath: "Dockerfile",
       dockerContextPath: ".",
@@ -93,7 +95,12 @@ export function normalizeBuildConfig(build: BuildConfig): BuildConfig {
   }
 
   if (normalized.buildMethod && normalized.methodSettings) return normalized;
-  const seeded = buildConfigFor(normalized);
+  // A config written before build methods existed built on Nixpacks, so that is what
+  // it keeps - the Railpack default is for a NEW app, never a silent switch.
+  const seeded = buildConfigFor({
+    ...normalized,
+    buildMethod: normalized.buildMethod ?? "nixpacks",
+  });
   return {
     ...seeded,
     methodSettings: { ...seeded.methodSettings, ...normalized.methodSettings },

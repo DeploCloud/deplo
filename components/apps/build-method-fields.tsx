@@ -41,16 +41,16 @@ interface MethodMeta {
 /** The selectable build methods, in the order shown in the picker. */
 export const BUILD_METHODS: MethodMeta[] = [
   {
-    id: "nixpacks",
-    name: "Nixpacks",
-    icon: Boxes,
-    blurb: "Zero-config builder that detects and builds your app.",
-  },
-  {
     id: "railpack",
     name: "Railpack",
     icon: Layers,
-    blurb: "BuildKit-based builder. Auto-detects your stack.",
+    blurb: "Zero-config builder that detects and builds your app.",
+  },
+  {
+    id: "nixpacks",
+    name: "Nixpacks",
+    icon: Boxes,
+    blurb: "The older zero-config builder. Serves fewer static sites.",
   },
   {
     id: "dockerfile",

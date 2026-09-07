@@ -624,7 +624,7 @@ export interface BuildMethodSettings {
 }
 
 export interface BuildConfig {
-  /** Which builder turns the repo into an image. Defaults to "nixpacks". */
+  /** Which builder turns the repo into an image. Defaults to "railpack". */
   buildMethod: BuildMethod;
   /** Settings scoped to the active build method (see BuildMethodSettings). */
   methodSettings: BuildMethodSettings;
