@@ -24,7 +24,6 @@ type AnyStatus =
   | "running"
   // Live container states, derived from the agent (lib/apps/display-status.ts).
   | "restarting"
-  | "degraded"
   | "unhealthy"
   | "down"
   // An app that has never been deployed at all (lib/apps/display-status.ts).
@@ -64,8 +63,6 @@ const COLORS: Record<string, string> = {
   // dying and being started again. Amber + a pulse, like every other "something
   // is happening" state - the red is saved for the deploy that failed outright.
   restarting: "bg-[var(--warning)]",
-  // Part of a compose stack is up, part is not.
-  degraded: "bg-[var(--warning)]",
   // Running, and failing its own healthcheck. Up is not the same as working.
   unhealthy: "bg-[var(--warning)]",
   // A server whose agent answers but whose host is degraded (Docker unreachable):
@@ -126,7 +123,6 @@ const VARIANTS: Record<
   cloudflare: "warning",
   warning: "warning",
   restarting: "warning",
-  degraded: "warning",
   unhealthy: "warning",
   error: "destructive",
   failed: "destructive",

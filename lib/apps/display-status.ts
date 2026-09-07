@@ -6,7 +6,7 @@ import type { AppStatus } from "@/lib/types";
  * direction: - DOWNWARD (here, live, never persisted).
  */
 export type DisplayStatus =
-  AppStatus | "restarting" | "degraded" | "unhealthy" | "down" | "not_deployed";
+  AppStatus | "restarting" | "unhealthy" | "down" | "not_deployed";
 
 /** The slice of {@link import("@/lib/data/console").AppRuntime} the fold needs. */
 export interface RuntimeSnapshot {
@@ -46,12 +46,8 @@ export function displayStatus(
   // Nothing of the app is up: neither a container that is running, nor one that
   // could be. (An app whose containers are all missing lands here too.)
   if (runtime.running === 0) return "down";
-  // Part of the app is up and part is not, including a service whose container
-  // is missing entirely, which the running/total counts alone cannot see.
-  if (runtime.running < runtime.total || runtime.missing.length > 0)
-    return "degraded";
-  // Everything is up, and something is failing its own healthcheck. Running is
-  // not the same as working, and the app should not read green for this.
+  // Something that is up is failing its own healthcheck. Running is not the same
+  // as working, and the app should not read green for this.
   if (runtime.unhealthy > 0) return "unhealthy";
   return "active";
 }

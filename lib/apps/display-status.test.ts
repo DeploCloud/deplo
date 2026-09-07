@@ -43,10 +43,10 @@ test("the stack vanished from the host: not-running", () => {
   );
 });
 
-test("half a compose stack up: degraded", () => {
+test("half a compose stack up is still Online", () => {
   assert.equal(
     displayStatus("active", runtime({ total: 3, running: 2 })),
-    "degraded",
+    "active",
   );
 });
 
@@ -57,16 +57,13 @@ test("a restarting container in a stack outranks the healthy sidecars", () => {
   );
 });
 
-test("a stack whose main container is GONE is degraded, not Online", () => {
-  // The trap: every container that still exists is running (the sidecars), and
-  // the broken one was removed, so it cannot be counted as not-running. Only the
-  // declared-vs-present comparison catches it.
+test("a stack whose main container is GONE still reads Online", () => {
   assert.equal(
     displayStatus(
       "active",
       runtime({ total: 2, running: 2, missing: ["activepieces"] }),
     ),
-    "degraded",
+    "active",
   );
 });
 

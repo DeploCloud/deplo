@@ -1215,7 +1215,7 @@ test("telemetrySaysRunning: what counts as proof an App is up", () => {
       c({ state: "exited", running: false }),
     ]),
     true,
-    "a partially-up stack is still up - `displayStatus` is what calls that degraded",
+    "a partially-up stack is still up",
   );
 
   // An agent too old to send `state` leaves it "" (proto3 default) rather than

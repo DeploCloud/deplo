@@ -15,9 +15,7 @@ export function databaseDisplayStatus(
   // Only "running" is a claim about the host worth refuting; provisioning /
   // stopped / error are control-plane facts the host can't contradict.
   if (status !== "running") return status;
-  // Reuse the app fold by translating running → active. A single-container
-  // database can't be "degraded" (that's a multi-service stack), so a stopped
-  // or missing container folds to "down".
+  // Reuse the app fold by translating running → active.
   const folded = displayStatus("active", runtime);
   switch (folded) {
     case "active":
@@ -26,7 +24,6 @@ export function databaseDisplayStatus(
       return "restarting";
     case "unhealthy":
       return "unhealthy";
-    case "degraded":
     case "down":
       return "down";
     default:

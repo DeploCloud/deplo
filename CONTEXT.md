@@ -272,7 +272,7 @@ values: **queued**, **building**, **active**, **error**, **stopping**, **idle**.
 with. What the UI shows is never the raw column - two folds sit on top of it, split **by
 direction**. **Downward** is live and never persisted: `displayStatus`
 ([`lib/apps/display-status.ts`](../lib/apps/display-status.ts)) folds an `active` App with a
-live runtime probe into **restarting** / **degraded** / **unhealthy** / **down**, because
+live runtime probe into **restarting** / **unhealthy** / **down**, because
 `active` is the only value that is a claim _about the host_ and so the only one worth
 contradicting. **Upward** is persisted and belongs to the telemetry stream:
 ([`lib/data/app-status-reconcile.ts`](../lib/data/app-status-reconcile.ts)) clears a stale

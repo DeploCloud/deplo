@@ -61,10 +61,6 @@ function detailFor(runtime: AppRuntimeView | null): string | null {
     return "This app is deployed, but it has no container on its server at all.";
   if (runtime.running === 0)
     return "This app is deployed, but no container is running on the host. The Logs tab shows its last output.";
-  if (runtime.missing.length > 0)
-    return `The rest of this stack is up, but ${runtime.missing.join(", ")} has no container on the host at all.`;
-  if (runtime.running < runtime.total)
-    return `Only ${runtime.running} of ${runtime.total} containers in this stack are running.`;
   if (runtime.unhealthy > 0) {
     const sick = runtime.containers
       .filter((c) => c.health === "unhealthy")
@@ -93,8 +89,8 @@ export function AppStatusDot({ status }: { status: AppStatus }) {
 
 /**
  * The same live app status as {@link AppStatusDot}, but as a LABELLED badge
- * ("Online" / "Restarting" / "Degraded" / "Not running" / "Stopped" / "Not
- * deployed" / "Building" / "Error") for the app header, so the container's
+ * ("Online" / "Restarting" / "Not running" / "Stopped" / "Not deployed" /
+ * "Building" / "Error") for the app header, so the container's
  */
 export function AppStatusBadge({ status }: { status: AppStatus }) {
   const { status: shown, detail } = useDisplayStatus(status);
