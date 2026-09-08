@@ -41,8 +41,11 @@ export function AnimatedHeight({
     // An observer, not a one-shot read: the body also grows WITHIN a branch - a
     // warning appearing, an Advanced section opening, a validation line, and
     // those deserve the same easing.
-    const ro = new ResizeObserver(() => {
-      const h = el.getBoundingClientRect().height;
+    const ro = new ResizeObserver(([entry]) => {
+      // borderBoxSize, not getBoundingClientRect: the dialog opens with a
+      // `zoom-in-95` TRANSFORM, so the first measurement read 95% of the real
+      // height and nothing ever re-fired to correct it.
+      const h = entry.borderBoxSize?.[0]?.blockSize ?? el.offsetHeight;
       if (measured.current === h) return;
       const first = measured.current === undefined;
       measured.current = h;
