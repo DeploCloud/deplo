@@ -144,11 +144,6 @@ export function GithubRepoPicker({
   const [installationId, setInstallationId] = React.useState(() =>
     pickerInstallationId(initial, installations),
   );
-  // An app that carries a repo but no App to reach it through.
-  const unlinkedRepo = Boolean(
-    initial && !installationId && installations.length > 0,
-  );
-
   const activeInstallation =
     installations.find((i) => i.id === installationId) ?? null;
   const hasInstallations = installations.length > 0;
@@ -284,17 +279,6 @@ export function GithubRepoPicker({
           )}
         </div>
       </div>
-
-      {unlinkedRepo && initial && (
-        <p className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">
-            {initial.fullName}
-          </span>{" "}
-          is not connected to a GitHub App here, so Deplo clones it anonymously
-          and pushes cannot deploy it. Choose the App that can reach it, pick
-          the repository, then Save.
-        </p>
-      )}
 
       {!hasInstallations ? (
         <ConnectPanel onUsePublicUrl={onUsePublicUrl} />
