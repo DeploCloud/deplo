@@ -169,6 +169,18 @@ test("Done is the machine changing hands, not the report", () => {
   );
 });
 
+// One screen says "You're on Deplo", and it is the last one: Review does not
+// reopen on a report that has moved off it.
+test("off a takeover the report leaves Review behind", () => {
+  const at = { plan: true, machinesReady: true, reportDone: true };
+  assert.equal(
+    stepReachable("review", { ...NOTHING, ...at, isTakeover: false }),
+    false,
+  );
+  // A takeover still reads it there, before the ports move.
+  assert.ok(stepReachable("review", { ...NOTHING, ...at, mode: "migrate" }));
+});
+
 test("the choice is gone once a run exists", () => {
   assert.equal(
     stepReachable("choose", { ...NOTHING, mode: "migrate", runId: "dimp_1" }),

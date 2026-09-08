@@ -1096,12 +1096,29 @@ export function MigrationWizard({
   const runTeamRef = React.useRef(runTeam);
   runTeamRef.current = runTeam;
 
+  /**
+   * Where a landed run is read. The report IS the last step off a takeover -
+   * "You're on Deplo" says what came over - with People in front of it when
+   * there is a list to hand links out of; a reload has none, and an empty step
+   * is exactly the screen this merge was meant to remove. A takeover reads the
+   * report in Review, because its own last step is the machine changing hands.
+   */
+  const afterRun = React.useCallback(
+    (): StepId =>
+      isTakeover
+        ? "review"
+        : isInstanceAdmin && queueRef.current.length > 0
+          ? "people"
+          : "done",
+    [isTakeover, isInstanceAdmin],
+  );
+
   /** What the last run of the chain did - the report, once the list is walked. */
   const lastLanded = React.useRef<RunReport | null>(null);
   function showLastReport() {
     if (!lastLanded.current) return;
     setReport(lastLanded.current);
-    setStep("review");
+    setStep(afterRun());
   }
 
   /**
@@ -1222,10 +1239,8 @@ export function MigrationWizard({
           void runTeamRef.current(after);
           return;
         }
-        // The step does NOT move: the report IS this step's finished state, and
-        // the way on is the person acknowledging it (see `acknowledgeReport`).
         setReport(landed);
-        setStep("review");
+        setStep(afterRun());
         return;
       }
       // Stopped or failed - and either way the server has already taken it back
@@ -1238,7 +1253,7 @@ export function MigrationWizard({
         toast.success("The migration was stopped. Its report is under History");
       resetToStart();
     },
-    [resetToStart],
+    [resetToStart, afterRun],
   );
 
   /**
@@ -1411,9 +1426,9 @@ export function MigrationWizard({
   const goToReview = React.useCallback(() => setStep("review"), []);
 
   /**
-   * Leaving the report, which is the only door out of Review once a run has
-   * landed. Errors do not hold it shut - they are named and acknowledged - but
-   * nothing skips it, because it is where "what did not come across" is said.
+   * Leaving the report, which is the only door out of Review on a takeover.
+   * Errors do not hold it shut - they are named and acknowledged - but nothing
+   * skips it, because it is where "what did not come across" is said.
    */
   function acknowledgeReport() {
     void closeReport();
@@ -1646,6 +1661,14 @@ export function MigrationWizard({
         <DoneStep
           kind={kind}
           panelUrl={takeover?.finalUrl ?? null}
+          // The takeover read its report in Review, one step before the ports
+          // moved; every other migration reads it here.
+          report={isTakeover ? null : teamReports.length > 0 ? totals : report}
+          teams={teamReports.length > 1 ? teamReports : null}
+          uncovered={uncovered}
+          onAddTeam={() => setStep("connect")}
+          isInstanceAdmin={isInstanceAdmin}
+          sourcesTeamId={sourcesTeam.current}
           onShowLog={consoleRuns.length > 0 ? () => setLogOpen(true) : null}
           onAgain={
             isTakeover
@@ -1657,9 +1680,11 @@ export function MigrationWizard({
                   });
                 }
           }
+          // Leaving is what closes the report: until the dismiss lands the page
+          // opens on this run every time.
           onFinish={() => {
             if (takeover) return window.location.assign(takeover.finalUrl);
-            router.push("/");
+            void closeReport().then(() => router.push("/"));
           }}
         />
       ) : (
@@ -1801,8 +1826,10 @@ export function MigrationWizard({
                 )}
 
                 {/* The report IS Review finished, so it comes first: a run that
-                  landed must not be paintable as a plan to start again. */}
+                  landed must not be paintable as a plan to start again. Only a
+                  takeover reads it here - see `afterRun`. */}
                 {!takenOver &&
+                  isTakeover &&
                   step === "review" &&
                   showing === "report" &&
                   report && (
@@ -2457,19 +2484,14 @@ function ElapsedLine({
 /* ------------------------------------------------------------------ */
 
 /**
- * What Review turns into once the run is over: what came across, what did not,
- * and the one way on. Nothing skips it - it is where "a person has to look at
- * this" gets said, and an error is acknowledged rather than a dead end.
+ * What came across and what did not - read on the last step, and on a takeover
+ * in Review, which has to say it before the machine changes hands.
  */
-function ReportCard({
+function ReportBody({
   report,
   teams = null,
   uncovered,
   onAddTeam,
-  onShowLog,
-  onContinue,
-  isInstanceAdmin,
-  sourcesTeamId,
 }: {
   report: RunReport;
   /** Several teams landed in one go: each one's numbers, under its name. Then
@@ -2480,20 +2502,9 @@ function ReportCard({
    *  them, which is Dokploy alone. */
   uncovered: string[];
   onAddTeam: () => void;
-  /** The wizard's own console - the same one the panel opened while it ran. */
-  onShowLog: () => void;
-  onContinue: () => void;
-  /** Uninstalling an agent is instance-admin, like every server action. */
-  isInstanceAdmin: boolean;
-  /** The team the source machines are granted to, where a leftover would be. */
-  sourcesTeamId: string;
 }) {
   return (
-    <StepShell
-      hero
-      title="Your projects are on Deplo"
-      lead="Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
-    >
+    <>
       <div className="flex flex-wrap justify-center gap-1.5">
         <Badge variant="success">{report.created} created</Badge>
         {report.skipped > 0 && (
@@ -2540,7 +2551,45 @@ function ReportCard({
           </Button>
         </div>
       )}
+    </>
+  );
+}
 
+/**
+ * Review's finished state on a takeover: what landed, before the step that
+ * takes the ports. Nothing skips it - an error is acknowledged here rather than
+ * being a dead end. Off a takeover the report is the last step itself.
+ */
+function ReportCard({
+  report,
+  teams,
+  uncovered,
+  onAddTeam,
+  onShowLog,
+  onContinue,
+  isInstanceAdmin,
+  sourcesTeamId,
+}: React.ComponentProps<typeof ReportBody> & {
+  /** The wizard's own console - the same one the panel opened while it ran. */
+  onShowLog: () => void;
+  onContinue: () => void;
+  /** Uninstalling an agent is instance-admin, like every server action. */
+  isInstanceAdmin: boolean;
+  /** The team the source machines are granted to, where a leftover would be. */
+  sourcesTeamId: string;
+}) {
+  return (
+    <StepShell
+      hero
+      title="Your projects are on Deplo"
+      lead="Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
+    >
+      <ReportBody
+        report={report}
+        teams={teams}
+        uncovered={uncovered}
+        onAddTeam={onAddTeam}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Button variant="outline" onClick={onShowLog}>
           <ScrollText className="size-4" />
@@ -2566,19 +2615,33 @@ const REDIRECT_MS = 3000;
 
 /**
  * The end, in the same stacked shape as every other step - and the only one with
- * no question under the drawing, just what happened and the way out.
+ * no question under the drawing, just what happened and the way out. Off a
+ * takeover it is also where the run's report is read: one screen saying you are
+ * on Deplo and what came over, never two.
  */
 function DoneStep({
   kind,
   panelUrl,
+  report,
+  teams,
+  uncovered,
+  onAddTeam,
+  isInstanceAdmin,
+  sourcesTeamId,
   onShowLog,
   onAgain,
   onFinish,
-}: {
+}: Omit<React.ComponentProps<typeof ReportBody>, "report"> & {
   /** Which panel this came from, for the drawing's label. */
   kind: SourceKind | null;
   /** Where the dashboard answers now, on a takeover. Null off one. */
   panelUrl: string | null;
+  /** What the run did. Null on a takeover, which read it back in Review. */
+  report: RunReport | null;
+  /** Uninstalling an agent is instance-admin, like every server action. */
+  isInstanceAdmin: boolean;
+  /** The team the source machines are granted to, where a leftover would be. */
+  sourcesTeamId: string;
   /** The wizard's own console. Null when nothing ran - a clean takeover. */
   onShowLog: (() => void) | null;
   /** Close the report and hand back an empty wizard. Null on a takeover: the
@@ -2620,6 +2683,14 @@ function DoneStep({
               : "Nothing is deployed yet. Open an app, check it over, and press Deploy when you want the traffic."
           }
         >
+          {report && (
+            <ReportBody
+              report={report}
+              teams={teams}
+              uncovered={uncovered}
+              onAddTeam={onAddTeam}
+            />
+          )}
           <div className="flex w-full flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               {onShowLog && (
@@ -2639,6 +2710,13 @@ function DoneStep({
               {panelUrl ? "Open Deplo" : "Finish"}
             </Button>
           </div>
+
+          {/* Only ever shown when an agent really is still out there: finishing
+              the run uninstalls them, so this is the line for the one that would
+              not go quietly. */}
+          {report && isInstanceAdmin && (
+            <RemoveMigrationSources teamId={sourcesTeamId} />
+          )}
         </StepShell>
       </div>
     </div>

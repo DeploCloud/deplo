@@ -80,8 +80,10 @@ export function stepReachable(s: StepId, at: StepProgress): boolean {
       return at.mode !== "clean";
     case "install":
       return at.plan;
+    // Off a takeover the report is read on the LAST step, so Review closes
+    // behind the run that produced it rather than reopening on an empty screen.
     case "review":
-      return at.plan && at.machinesReady;
+      return at.plan && at.machinesReady && (at.isTakeover || !at.reportDone);
     // The members live in the scan, so a reload with no plan has nobody to show.
     case "people":
       return at.reportDone && at.plan;
