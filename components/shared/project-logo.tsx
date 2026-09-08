@@ -26,11 +26,7 @@ export function AppLogo({
     <LogoImage
       src={logo}
       size={size}
-      className={cn(
-        tone && "tpl-logo",
-        plateClass(tone ? { tone } : undefined),
-        className,
-      )}
+      className={cn(plateClass(tone ? { tone } : undefined), className)}
       fallback={<Box style={{ width: size * 0.5, height: size * 0.5 }} />}
     />
   );
