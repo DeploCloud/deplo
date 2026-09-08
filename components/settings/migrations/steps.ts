@@ -119,7 +119,9 @@ export function reviewShows(at: {
   return at.plan ? "plan" : null;
 }
 
-/** How a run's `manual` count is named everywhere it is shown. */
-export function warnings(n: number): string {
-  return `${n} warning${n === 1 ? "" : "s"}`;
+/** How a run's `manual` count is named everywhere it is shown. Not "warnings":
+ *  the item landed, it is a leftover for a person, and the console's own row
+ *  for it says the same. */
+export function needsYou(n: number): string {
+  return `${n} need${n === 1 ? "s" : ""} you`;
 }

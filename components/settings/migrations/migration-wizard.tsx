@@ -62,10 +62,10 @@ import { MigrationConsole, type ConsoleRun } from "./migration-console";
 import { StepShell } from "./step-shell";
 import { ChooseStep } from "./choose-step";
 import {
+  needsYou,
   reviewShows,
   stepReachable,
   stepsFor,
-  warnings,
   type StepId,
   type TakeoverMode,
 } from "./steps";
@@ -2643,7 +2643,7 @@ function ReportBody({
           <Badge variant="secondary">{report.skipped} already here</Badge>
         )}
         {report.manual > 0 && (
-          <Badge variant="warning">{warnings(report.manual)}</Badge>
+          <Badge variant="warning">{needsYou(report.manual)}</Badge>
         )}
         {report.failed > 0 && (
           <Badge variant="destructive">{report.failed} failed</Badge>
@@ -2662,7 +2662,7 @@ function ReportBody({
               </span>
               <span className="text-muted-foreground">
                 {t.report.created} created
-                {t.report.manual > 0 ? `, ${warnings(t.report.manual)}` : ""}
+                {t.report.manual > 0 ? `, ${needsYou(t.report.manual)}` : ""}
                 {t.report.failed > 0 ? `, ${t.report.failed} failed` : ""}
               </span>
             </li>

@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  needsYou,
   reviewShows,
   stepReachable,
   stepsFor,
-  warnings,
   type StepId,
   type StepProgress,
   type TakeoverMode,
@@ -233,9 +233,9 @@ test("the report wins over the run that produced it", () => {
   );
 });
 
-// One thing needing a person is still one warning, not "1 warnings".
-test("a single warning is not plural", () => {
-  assert.equal(warnings(1), "1 warning");
-  assert.equal(warnings(0), "0 warnings");
-  assert.equal(warnings(3), "3 warnings");
+// One thing needing a person reads "1 needs you", not "1 need you".
+test("a single item needing a person is not plural", () => {
+  assert.equal(needsYou(1), "1 needs you");
+  assert.equal(needsYou(0), "0 need you");
+  assert.equal(needsYou(3), "3 need you");
 });
