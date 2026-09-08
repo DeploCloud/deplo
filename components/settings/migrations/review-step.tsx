@@ -416,88 +416,93 @@ export function ReviewStep({
           description={`That ${panel} has no projects, or the token cannot see them.`}
         />
       ) : (
-        // One section per team, each under the name it has over there and the
-        // team it lands in here - so two lists never read as one, and where a
-        // team lands is in sight while its list is ticked.
-        <div className="space-y-4">
-          {groups.map((g) => {
-            return (
-              <section
-                key={g.key}
-                className="space-y-3 rounded-lg border border-border bg-background p-3"
-              >
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <TeamAvatar
-                    name={g.team.name}
-                    avatarUrl={g.team.avatarUrl}
-                    size="sm"
-                  />
-                  <span className="max-w-56 truncate font-medium">
-                    {g.team.name}
-                  </span>
-                  <span className="text-muted-foreground">on {panel}</span>
-                  <ArrowRight className="size-3.5 text-muted-foreground" />
-                  {/* Named on both sides of the arrow. Not "on Deplo": this IS
-                      Deplo, and the half that needs saying is the other one. */}
-                  <span className="max-w-56 truncate font-medium">
-                    {g.landsIn.name}
-                  </span>
-                  {/* A team being MADE gets its picture chosen here; one that
-                      already exists keeps its own. */}
-                  {g.target.kind === "new" && (
-                    <TeamImagePicker
+        // Everything the review decides goes inert the moment Start is pressed:
+        // the teams are being made and the panel read again, so a tick, a host
+        // or a port changed now is a change nothing honours.
+        <fieldset disabled={starting} className="contents">
+          {/* One section per team, each under the name it has over there and the
+              team it lands in here - so two lists never read as one, and where a
+              team lands is in sight while its list is ticked. */}
+          <div className="space-y-4">
+            {groups.map((g) => {
+              return (
+                <section
+                  key={g.key}
+                  className="space-y-3 rounded-lg border border-border bg-background p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <TeamAvatar
                       name={g.team.name}
-                      image={g.image}
-                      onChange={(image) => onSetImage(g.key, image)}
-                      disabled={starting}
+                      avatarUrl={g.team.avatarUrl}
+                      size="sm"
                     />
-                  )}
-                  <span className="ml-auto flex items-center gap-2">
-                    {/* The panel is being read again under the new landing:
-                        "already here" is an answer about a team. */}
-                    {g.rescanning && (
-                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    <span className="max-w-56 truncate font-medium">
+                      {g.team.name}
+                    </span>
+                    <span className="text-muted-foreground">on {panel}</span>
+                    <ArrowRight className="size-3.5 text-muted-foreground" />
+                    {/* Named on both sides of the arrow. Not "on Deplo": this IS
+                      Deplo, and the half that needs saying is the other one. */}
+                    <span className="max-w-56 truncate font-medium">
+                      {g.landsIn.name}
+                    </span>
+                    {/* A team being MADE gets its picture chosen here; one that
+                      already exists keeps its own. */}
+                    {g.target.kind === "new" && (
+                      <TeamImagePicker
+                        name={g.team.name}
+                        image={g.image}
+                        onChange={(image) => onSetImage(g.key, image)}
+                        disabled={starting}
+                      />
                     )}
-                    {/* Locked the moment Start is pressed: the teams are being
+                    <span className="ml-auto flex items-center gap-2">
+                      {/* The panel is being read again under the new landing:
+                        "already here" is an answer about a team. */}
+                      {g.rescanning && (
+                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                      )}
+                      {/* Locked the moment Start is pressed: the teams are being
                         made and the panel is being read again, and a landing
                         changed now would be a landing nothing honours. */}
-                    <TargetSelect
-                      value={g.target}
-                      teams={targetTeams}
-                      sourceName={g.team.name}
-                      disabled={starting || g.rescanning === true}
-                      onChange={(t) => onRetarget(g.key, t)}
-                    />
-                  </span>
-                </div>
-                {/* Nothing under it is ticked, so this team is not a turn: said
+                      <TargetSelect
+                        value={g.target}
+                        teams={targetTeams}
+                        sourceName={g.team.name}
+                        disabled={starting || g.rescanning === true}
+                        onChange={(t) => onRetarget(g.key, t)}
+                      />
+                    </span>
+                  </div>
+                  {/* Nothing under it is ticked, so this team is not a turn: said
                     here, because the button counts the ones that will run. */}
-                {!picked(g) && g.plan.projects.length > 0 && (
-                  <p className="text-sm text-warning">
-                    Nothing is ticked here, so this team is skipped.
-                  </p>
-                )}
-                {g.plan.projects.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Nothing to bring over from this team.
-                  </p>
-                ) : (
-                  <MigrationTree
-                    projects={g.plan.projects}
-                    chosen={chosen}
-                    onChange={setChosen}
-                    servers={g.servers}
-                    buildServers={g.buildServers}
-                    placements={placements}
-                    onPlacementsChange={setPlacements}
-                    portConflicts={ports.conflicts}
-                    showPorts={canExposePorts}
-                  />
-                )}
-              </section>
-            );
-          })}
-        </div>
+                  {!picked(g) && g.plan.projects.length > 0 && (
+                    <p className="text-sm text-warning">
+                      Nothing is ticked here, so this team is skipped.
+                    </p>
+                  )}
+                  {g.plan.projects.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nothing to bring over from this team.
+                    </p>
+                  ) : (
+                    <MigrationTree
+                      projects={g.plan.projects}
+                      chosen={chosen}
+                      onChange={setChosen}
+                      servers={g.servers}
+                      buildServers={g.buildServers}
+                      placements={placements}
+                      onPlacementsChange={setPlacements}
+                      portConflicts={ports.conflicts}
+                      showPorts={canExposePorts}
+                    />
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        </fieldset>
       )}
 
       {/**
@@ -520,7 +525,9 @@ export function ReviewStep({
       )}
 
       <div className="flex justify-between">
-        <Button variant="outline" onClick={onBack}>
+        {/* The rail already refuses every step but Review while a start is in
+            flight; this button set the step itself, straight past that gate. */}
+        <Button variant="outline" onClick={onBack} disabled={starting}>
           Back
         </Button>
         <Button
