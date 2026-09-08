@@ -80,7 +80,7 @@ export function WelcomeCelebration({
           <DialogHeader className="items-center text-center">
             <DeploLogo className="mb-3 text-3xl" />
             <DialogTitle>Your Deplo is ready.</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-balance">
               Your account and team are ready. Deploy your first app whenever
               you like.
             </DialogDescription>
