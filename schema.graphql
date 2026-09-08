@@ -3921,6 +3921,11 @@ type Mutation {
   """
   verifyTwoFactorLogin(code: String!, recoveryCode: Boolean): AuthPayload
 
+  """
+  Mark the first-run welcome as shown, so it opens exactly once in an instance's life. Stamped on the singleton settings row rather than in the browser, because the wizard's `?welcome=1` is lost on a reload and a second browser would otherwise replay the celebration. Only the instance owner writes it; anybody else is a no-op, and so is a second call.
+  """
+  welcomeSeen: Boolean
+
   """Write the file a File storage entry points at. Answers its path."""
   writeAppFile(appId: String!, content: String!, path: String!): String
 }

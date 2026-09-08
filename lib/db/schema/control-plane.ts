@@ -2668,6 +2668,11 @@ export const instanceSettings = pgTable("instance_settings", {
    * installer that its port is not reachable and another way in is needed.
    */
   takeoverSeenExternalAt: isoTimestamptz("takeover_seen_external_at"),
+  /**
+   * When the first-run welcome was shown to the instance owner. NULL ⇒ nobody has
+   * seen it yet, so their next visit to the Overview opens it.
+   */
+  welcomeSeenAt: isoTimestamptz("welcome_seen_at"),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 

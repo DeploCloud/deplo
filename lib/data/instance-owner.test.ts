@@ -24,8 +24,10 @@ import {
 import { updateUserAdmin } from "./members";
 import {
   instanceOwnerUserId,
+  markWelcomeSeen,
   transferInstanceOwner,
   viewerIsInstanceOwner,
+  welcomePending,
 } from "./instance-owner";
 
 /**
@@ -333,4 +335,21 @@ test("suspending an account ends its sessions, not only its next sign-in", async
     .from(sessionTable)
     .where(eq(sessionTable.userId, ADMIN));
   assert.equal(left.length, 0);
+});
+
+/* ------------------------------------------------------------------ */
+/* The first-run welcome                                               */
+/* ------------------------------------------------------------------ */
+
+test("the welcome is owed to the owner once, and to nobody else", async () => {
+  await seedOwnedInstance();
+  assert.equal(await asUser(ADMIN, welcomePending), false);
+  assert.equal(await asUser(OWNER, welcomePending), true);
+
+  assert.equal(await asUser(ADMIN, markWelcomeSeen), false);
+  assert.equal(await asUser(OWNER, welcomePending), true);
+
+  assert.equal(await asUser(OWNER, markWelcomeSeen), true);
+  assert.equal(await asUser(OWNER, markWelcomeSeen), false);
+  assert.equal(await asUser(OWNER, welcomePending), false);
 });

@@ -17,6 +17,7 @@ import {
   type PanelDns,
   type PanelHttps,
 } from "@/lib/data/instance-settings";
+import { markWelcomeSeen } from "@/lib/data/instance-owner";
 
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
@@ -246,6 +247,13 @@ builder.mutationFields((t) => ({
       "Point every manageable server's certificates at this account email, where Let's Encrypt sends expiry and revocation notices. Each host's proxy is recreated to pick it up, one host at a time, so routing there is interrupted for a few seconds; certificates already issued keep working. Servers Deplo cannot manage are skipped and reported as skipped, never counted as done.",
     args: { email: t.arg.string({ required: true }) },
     resolve: (_r, { email }) => setCertificateEmail(email),
+  }),
+  welcomeSeen: t.field({
+    type: "Boolean",
+    authScopes: { loggedIn: true },
+    description:
+      "Mark the first-run welcome as shown, so it opens exactly once in an instance's life. Stamped on the singleton settings row rather than in the browser, because the wizard's `?welcome=1` is lost on a reload and a second browser would otherwise replay the celebration. Only the instance owner writes it; anybody else is a no-op, and so is a second call.",
+    resolve: () => markWelcomeSeen(),
   }),
   retryNetworkIsolation: t.field({
     type: "Boolean",

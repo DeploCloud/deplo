@@ -1114,6 +1114,13 @@
       "when": 1788634017080,
       "tag": "0158_migration_session_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1788634018080,
+      "tag": "0159_welcome_seen",
+      "breakpoints": true
     }
   ]
 }

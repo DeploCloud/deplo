@@ -55,6 +55,44 @@ export async function viewerIsInstanceOwner(): Promise<boolean> {
 }
 
 /**
+ * Whether the first-run welcome is still owed: the viewer owns this instance and
+ * nobody has opened it yet. The wizard's `?welcome=1` does not survive a reload,
+ * so the stamp decides, not the URL.
+ */
+export async function welcomePending(): Promise<boolean> {
+  const user = await getCurrentUser();
+  if (!user) return false;
+  const row = (
+    await getDb()
+      .select({
+        ownerUserId: instanceSettings.ownerUserId,
+        welcomeSeenAt: instanceSettings.welcomeSeenAt,
+      })
+      .from(instanceSettings)
+      .where(eq(instanceSettings.id, SETTINGS_ID))
+      .limit(1)
+  )[0];
+  return row?.ownerUserId === user.id && !row.welcomeSeenAt;
+}
+
+/** Stamp the welcome as shown. Idempotent - the first caller wins. */
+export async function markWelcomeSeen(): Promise<boolean> {
+  const user = await assertUser();
+  const done = await getDb()
+    .update(instanceSettings)
+    .set({ welcomeSeenAt: nowIso(), updatedAt: nowIso() })
+    .where(
+      and(
+        eq(instanceSettings.id, SETTINGS_ID),
+        eq(instanceSettings.ownerUserId, user.id),
+        isNull(instanceSettings.welcomeSeenAt),
+      ),
+    )
+    .returning({ id: instanceSettings.id });
+  return done.length > 0;
+}
+
+/**
  * Claim the instance for `userId` at first-run setup. Called INSIDE the setup
  * transaction, so an instance is never briefly unowned.
  */

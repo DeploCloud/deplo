@@ -36,6 +36,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { WelcomeCelebration } from "@/components/shared/welcome-celebration";
 import { NetworkSweepNotice } from "@/components/shared/network-sweep-notice";
 import { networkSweepFailures } from "@/lib/deploy/network-migration";
+import { welcomePending } from "@/lib/data/instance-owner";
 import {
   ActivityTimeline,
   toActivityItem,
@@ -76,6 +77,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     canCreateFolder,
     canCreateProject,
     canMoveApps,
+    firstRun,
   ] = await Promise.all([
     listApps(),
     listFolders(),
@@ -101,6 +103,9 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     // hand out on a single corner of the fleet - so this asks the wider "anywhere"
     // question.
     hasCapabilityAnywhere("move_apps"),
+    // The welcome opens once per instance: the wizard's `?welcome=1` is lost on a
+    // reload, so the owner's first Overview shows it even without the flag.
+    welcomePending(),
   ]);
   const activityDatabases = teamWideReach ? await listDatabases() : [];
   // How many stacks stayed on the old shared network. 0 on every instance that
@@ -259,7 +264,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <WelcomeCelebration
-        show={welcome === "1"}
+        show={welcome === "1" || firstRun}
         takeoverOf={takenOverFrom?.slice(0, 40) || null}
       />
       {/* Drop a code archive anywhere here and it opens the wizard on Upload

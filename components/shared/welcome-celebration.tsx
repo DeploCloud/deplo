@@ -18,14 +18,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { docsUrl } from "@/lib/docs";
+import { gqlAction } from "@/lib/graphql-client";
 import { DISCORD_URL } from "@/lib/links";
 
 const SHOW_MS = 4000;
 
+const SEEN = /* GraphQL */ `
+  mutation WelcomeSeen {
+    welcomeSeen
+  }
+`;
+
 /**
- * The end of first-run setup: the wizard lands here with `?welcome=1`, which is
- * stripped on arrival so a reload is a plain panel. A takeover lands here too,
- * naming the panel it replaced in `?takeover=`, which becomes one toast.
+ * The end of first-run setup: the wizard lands here with `?welcome=1`, and the
+ * owner's first Overview opens it even without one. Showing it stamps the
+ * instance, so it happens exactly once. A takeover names the panel it replaced.
  */
 export function WelcomeCelebration({
   show,
@@ -48,6 +55,11 @@ export function WelcomeCelebration({
     url.searchParams.delete("welcome");
     url.searchParams.delete("takeover");
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    void gqlAction<{ welcomeSeen: boolean }, boolean>(
+      SEEN,
+      {},
+      (d) => d.welcomeSeen,
+    );
     if (takeoverOf)
       toast.success(
         `Deplo has taken over this machine. ${takeoverOf} is gone.`,
