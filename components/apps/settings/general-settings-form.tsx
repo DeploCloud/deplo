@@ -34,11 +34,15 @@ export function GeneralSettingsForm({
   appId,
   name: initialName,
   logo: initialLogo,
+  logoTone: initialTone,
   detectable = false,
 }: {
   appId: string;
   name: string;
   logo: string | null;
+  /** The plate a template's logo wears. Any logo the user sets replaces it with
+   *  nothing, here and on the server. */
+  logoTone?: "dark" | "light" | null;
   /** Whether the app has scannable source files (a GitHub repo or an
    * uploaded archive) - gates the "Detect from source" button. */
   detectable?: boolean;
@@ -49,6 +53,7 @@ export function GeneralSettingsForm({
   // /templates path). `null` ⇒ no logo (generic icon). The picker reads a file
   // and converts it to a data-URI before saving, so nothing is fetched remotely.
   const [logo, setLogo] = React.useState<string | null>(initialLogo);
+  const [tone, setTone] = React.useState(initialTone ?? null);
   const [picked, setPicked] = React.useState<File | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
   const [pending, startTransition] = React.useTransition();
@@ -81,6 +86,7 @@ export function GeneralSettingsForm({
   function saveLogo(next: string | null) {
     const previous = logo;
     setLogo(next);
+    setTone(null);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $logo: String) { updateAppLogo(id: $id, logo: $logo) { id } }`,
@@ -137,6 +143,7 @@ export function GeneralSettingsForm({
       );
       if (res.ok) {
         setLogo(res.data?.logo ?? null);
+        setTone(null);
         router.refresh();
         toast.success("Logo detected");
       } else toast.error(res.error);
@@ -153,7 +160,7 @@ export function GeneralSettingsForm({
               Logo
             </FieldLabel>
             <div className="flex flex-wrap items-center gap-4">
-              <AppLogo logo={logo} size={48} />
+              <AppLogo logo={logo} tone={tone} size={48} />
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"

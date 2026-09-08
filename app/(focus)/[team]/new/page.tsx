@@ -20,7 +20,12 @@ import {
   placementHref,
   templatesHref,
 } from "@/lib/overview-links";
-import { getTemplateVariant, templateLogoDataUri } from "@/templates/catalog";
+import {
+  getTemplateVariant,
+  templateAssetUrl,
+  templateLogoDataUri,
+} from "@/templates/catalog";
+import { templateAccent } from "@/lib/templates/logo-color";
 import type { DeploySource } from "@/lib/types";
 
 export const metadata = { title: "New App" };
@@ -140,6 +145,12 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const logo = template
     ? await templateLogoDataUri(template.variant.logo)
     : null;
+  const veil = template
+    ? await templateAccent(
+        template.slug,
+        template.variant.logo ? templateAssetUrl(template.variant.logo) : null,
+      )
+    : undefined;
 
   const [
     servers,
@@ -185,6 +196,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
                     : undefined,
                 description: template.variant.shortDescription,
                 logo,
+                veil,
                 compose: blueprint?.compose ?? "",
                 env: blueprint?.env ?? [],
                 expose: blueprint?.expose ?? null,

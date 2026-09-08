@@ -284,6 +284,11 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
       resolve: (p) => p.buildFallback,
     }),
     logo: t.exposeString("logo", { nullable: true }),
+    logoTone: t.exposeString("logoTone", {
+      nullable: true,
+      description:
+        'The plate this app\'s icon needs to stay visible: "dark" for a mark drawn only in black, "light" for one drawn only in white. Set only when the logo came from a template - an uploaded or detected one is drawn exactly as it is.',
+    }),
     dataCopyError: t.exposeString("dataCopyError", {
       description:
         "Why this app's data did not arrive, when a migration tried to copy it and could not. Empty for every app that was never migrated and every copy that worked. While it is set, deploying and starting this app are refused - its volumes are empty or half written - and `deployWithoutMigratedData` is how someone accepts that and unblocks it.",
@@ -556,6 +561,11 @@ const CreateAppInputType = builder.inputType("CreateAppInput", {
     repo: t.field({ type: GitRepoInput, required: false }),
     dockerImage: t.string({ required: false }),
     logo: t.string({ required: false }),
+    logoFromTemplate: t.boolean({
+      required: false,
+      description:
+        "The logo above is a template's own. Deplo reads it once for the plate that keeps a monochrome mark visible on both themes.",
+    }),
     compose: t.string({ required: false }),
     serverId: t.string({ required: false }),
     buildServerId: t.string({
@@ -950,6 +960,7 @@ builder.mutationFields((t) => ({
         repo: input.repo ? repoInputToGitRepo(input.repo) : null,
         dockerImage: input.dockerImage ?? null,
         logo: input.logo ?? null,
+        logoFromTemplate: input.logoFromTemplate ?? false,
         compose: input.compose ?? null,
         serverId: input.serverId ?? undefined,
         buildServerId: input.buildServerId ?? null,

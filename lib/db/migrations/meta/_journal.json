@@ -1121,6 +1121,13 @@
       "when": 1788634018080,
       "tag": "0159_welcome_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1788900599806,
+      "tag": "0160_app_logo_tone",
+      "breakpoints": true
     }
   ]
 }

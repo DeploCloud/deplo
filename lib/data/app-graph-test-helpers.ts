@@ -122,6 +122,7 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     buildServerId: opts.buildServerId ?? null,
     buildFallback: opts.buildFallback ?? true,
     logo: null,
+    logoTone: null,
     frameworkOverride: null,
     framework: null,
     source: opts.source ?? "github",

@@ -140,6 +140,7 @@ import {
 import { withKeyedLock } from "./keyed-mutex";
 import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue } from "../apps/logo-shared";
+import { logoToneFromDataUri } from "../apps/logo-tone";
 import { detectAppFavicon } from "../apps/favicon-detect";
 import { faviconSourceKind } from "../apps/favicon-shared";
 import { getTemplateBlueprint } from "../templates-blueprint";
@@ -573,6 +574,9 @@ export interface CreateAppInput {
   dockerImage?: string | null;
   /** Display logo (URL/path), defaulted from a template's logo on deploy. */
   logo?: string | null;
+  /** The logo above is a template's own, not the caller's: it earns the plate
+   *  that keeps a monochrome mark visible on both themes. */
+  logoFromTemplate?: boolean;
   compose?: string | null;
   /** Initial variables. `type` omitted is `plain`: nothing is typed secret on
    *  the caller's behalf, because a secret can never be edited afterwards. */
@@ -1106,6 +1110,8 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // of queued; everything else starts queued and deploys below.
   const isUpload = input.source === "upload";
 
+  const logo = input.logo && isValidLogoValue(input.logo) ? input.logo : null;
+
   const project: App = {
     id: newId("prj"),
     name: input.name.trim(),
@@ -1131,7 +1137,9 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     buildFallback: true,
     // Defaulted from a template's logo (a /templates path); ignore anything that
     // isn't a valid inline logo so a crafted create payload can't store a URL.
-    logo: input.logo && isValidLogoValue(input.logo) ? input.logo : null,
+    logo,
+    // Only a template's logo gets read for a plate; the user's own is drawn as it is.
+    logoTone: input.logoFromTemplate ? await logoToneFromDataUri(logo) : null,
     // Recognised from the app's own source by its FIRST deploy (which starts
     // below for every source but "upload"), not guessed at creation: the repo
     // read belongs on the deploy path, where it already happens for the logo.
@@ -1451,6 +1459,7 @@ export async function createAppFromTemplate(
     source: "compose",
     repo: null,
     logo,
+    logoFromTemplate: true,
     compose: blueprint.compose,
     env: blueprint.env,
     autoDeploy: false,
@@ -2621,7 +2630,8 @@ export async function updateAppLogo(
   // logo actually differs (a team-scoped conditional UPDATE … RETURNING).
   const updated = await getDb()
     .update(appsTable)
-    .set({ logo: next, updatedAt: nowIso() })
+    // The plate belongs to a template's logo. This one is the user's.
+    .set({ logo: next, logoTone: null, updatedAt: nowIso() })
     .where(
       and(
         eq(appsTable.id, id),
@@ -2706,7 +2716,7 @@ export async function redetectAppLogo(id: string): Promise<string> {
   }
   await getDb()
     .update(appsTable)
-    .set({ logo, updatedAt: nowIso() })
+    .set({ logo, logoTone: null, updatedAt: nowIso() })
     .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
   await recordActivity("app", `Detected app logo from source`, user.name, id);
   publishAppChanged(id);

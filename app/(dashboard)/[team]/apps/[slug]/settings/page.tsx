@@ -28,6 +28,7 @@ export default async function AppGeneralSettingsPage(
           appId={project.id}
           name={project.name}
           logo={project.logo}
+          logoTone={project.logoTone}
           detectable={detectable}
         />
       </CapabilityFieldset>

@@ -6,7 +6,6 @@ import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import {
   GitBranch,
-  Container,
   FileText,
   Server as ServerIcon,
   Pencil,
@@ -60,6 +59,8 @@ import {
 } from "@/components/apps/wizard/wizard-card";
 import { SourceMark, SourceTiles } from "@/components/apps/wizard/source-tiles";
 import { templatesHref } from "@/lib/overview-links";
+import { LogoTile } from "@/components/templates/logo-tile";
+import type { LogoAccent } from "@/lib/templates/logo-color";
 import { ComposeDialog } from "@/components/apps/wizard/compose-dialog";
 import {
   EnvDraftDialog,
@@ -130,6 +131,9 @@ export interface WizardTemplate {
   variantName?: string;
   description: string;
   logo: string | null;
+  /** What the logo's pixels said: the hue to wash its tile in, the plate it
+   *  needs to be visible. Read server-side, same as the template store's. */
+  veil?: LogoAccent;
   compose: string;
   env: { key: string; value: string }[];
   /** Which compose service + port Traefik exposes for this template (first). */
@@ -561,6 +565,7 @@ export function NewAppWizard({
       // Seed the app's display logo from the template so a deployed
       // template carries its icon; editable later from app settings.
       logo: isTemplate ? template!.logo : null,
+      logoFromTemplate: isTemplate,
       compose: useCompose ? compose : null,
       env: filledEnv.length
         ? filledEnv.map((e) => ({
@@ -1008,18 +1013,13 @@ export function NewAppWizard({
 
             {isTemplate && (
               <div className="flex items-center gap-4 rounded-lg border border-border p-3">
-                <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border p-2">
-                  {template!.logo ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={template!.logo}
-                      alt={templateTitle(template!)}
-                      className="size-full object-contain"
-                    />
-                  ) : (
-                    <Container className="size-6 text-foreground" />
-                  )}
-                </div>
+                <LogoTile
+                  src={template!.logo}
+                  accent={template!.veil}
+                  size={48}
+                  logoSize={32}
+                  className="rounded-lg"
+                />
                 <p className="min-w-0 flex-1 text-sm text-muted-foreground">
                   Deplo provisions the stack and exposes it through Traefik.{" "}
                   <DocsLink topic="deploy.fromTemplate" />

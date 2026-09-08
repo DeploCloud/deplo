@@ -80,7 +80,11 @@ export default async function AppLayout(
                     href={`/apps/${slug}/settings`}
                     label="General settings"
                   >
-                    <AppLogo logo={project.logo} size={44} />
+                    <AppLogo
+                      logo={project.logo}
+                      tone={project.logoTone}
+                      size={44}
+                    />
                   </LogoEditLink>
                   <div>
                     <div className="flex items-center gap-2">

@@ -762,6 +762,9 @@ export const apps = pgTable(
     // and then the app's own server, saying so in the deploy log.
     buildFallback: boolean("build_fallback").notNull().default(true),
     logo: text("logo"),
+    // The plate the logo needs to stay visible ("dark" / "light"), read from its
+    // pixels. Written only for a template's logo: NULL means "the user's own".
+    logoTone: text("logo_tone"),
     // The JavaScript framework Deplo recognised in this app's own source ("nextjs",
     // "astro", …; see lib/apps/framework-catalog.ts), or NULL when none was found / the
     // build method isn't one of the auto-detecting builders.

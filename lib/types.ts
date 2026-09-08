@@ -866,6 +866,12 @@ export interface App {
    */
   logo: string | null;
   /**
+   * The plate {@link logo} needs to stay visible on both themes, read from its
+   * own pixels. Set only when the logo came from a template; a manual upload or
+   * a detected favicon leaves it null and is drawn exactly as it is.
+   */
+  logoTone: "dark" | "light" | null;
+  /**
    * The JavaScript framework Deplo recognised in this app's own source - a {@link
    * FrameworkId} from `lib/apps/framework-catalog.ts` ("nextjs", "astro", …), or
    * null when none was found or the build method isn't one of the auto-detecting

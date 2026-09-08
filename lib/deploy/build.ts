@@ -610,7 +610,7 @@ async function setLogoIfUnset(
   if (!logo) return;
   const updated = await getDb()
     .update(appsTable)
-    .set({ logo, updatedAt: nowIso() })
+    .set({ logo, logoTone: null, updatedAt: nowIso() })
     .where(and(eq(appsTable.id, appId), sql`${appsTable.logo} is null`))
     .returning({ id: appsTable.id });
   if (updated.length > 0) publishAppChanged(appId);

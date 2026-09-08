@@ -3,17 +3,22 @@
 import * as React from "react";
 import { Box } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { plateClass } from "@/components/templates/veil";
 
 /**
  * An app's display avatar: its custom logo when one is set (defaulted from a
- * template on deploy, editable in settings), otherwise a generic glyph.
+ * template on deploy, editable in settings), otherwise a generic glyph. `tone`
+ * is the plate a template's monochrome mark needs to be visible on both themes;
+ * an uploaded or detected logo carries none and is drawn exactly as it is.
  */
 export function AppLogo({
   logo,
+  tone,
   size = 36,
   className,
 }: {
   logo: string | null;
+  tone?: "dark" | "light" | null;
   size?: number;
   className?: string;
 }) {
@@ -21,7 +26,11 @@ export function AppLogo({
     <LogoImage
       src={logo}
       size={size}
-      className={className}
+      className={cn(
+        tone && "tpl-logo",
+        plateClass(tone ? { tone } : undefined),
+        className,
+      )}
       fallback={<Box style={{ width: size * 0.5, height: size * 0.5 }} />}
     />
   );

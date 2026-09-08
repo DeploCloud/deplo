@@ -618,7 +618,7 @@ export function AppCard({
       <Card className="group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20">
         {overlayLink}
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
-          <AppLogo logo={project.logo} size={36} />
+          <AppLogo logo={project.logo} tone={project.logoTone} size={36} />
           <div className="min-w-0 flex-1">
             <span className="block truncate font-medium">{project.name}</span>
             {/* Same subtitle slot the app's own header uses: the live URL when
@@ -670,7 +670,7 @@ export function AppCard({
         <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <AppLogo logo={project.logo} size={36} />
+              <AppLogo logo={project.logo} tone={project.logoTone} size={36} />
               <div className="min-w-0 flex-1">
                 <span className="block truncate font-medium">
                   {project.name}

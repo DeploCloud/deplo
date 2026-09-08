@@ -213,6 +213,11 @@ type App {
   id: ID
   latestDeployment: Deployment
   logo: String
+
+  """
+  The plate this app's icon needs to stay visible: "dark" for a mark drawn only in black, "light" for one drawn only in white. Set only when the logo came from a template - an uploaded or detected one is drawn exactly as it is.
+  """
+  logoTone: String
   name: String
 
   """
@@ -990,6 +995,11 @@ input CreateAppInput {
   extraDomains: [ExtraDomainInput!]
   folderId: String
   logo: String
+
+  """
+  The logo above is a template's own. Deplo reads it once for the plate that keeps a monochrome mark visible on both themes.
+  """
+  logoFromTemplate: Boolean
   mounts: [MountInput!]
   name: String!
   projectId: String

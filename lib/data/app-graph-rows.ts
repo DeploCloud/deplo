@@ -175,6 +175,9 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     buildServerId: row.buildServerId ?? null,
     buildFallback: row.buildFallback ?? true,
     logo: row.logo,
+    // Only the two the plate CSS knows: anything else reads as no plate.
+    logoTone:
+      row.logoTone === "dark" || row.logoTone === "light" ? row.logoTone : null,
     // Derived, and read back defensively: an id this binary's catalog doesn't
     // know (a row written by a newer Deplo) reads as "no framework" rather than
     // leaking an unrenderable value into the UI.
@@ -468,6 +471,7 @@ export function appToRow(p: App): AppInsert {
     buildServerId: p.buildServerId ?? null,
     buildFallback: p.buildFallback ?? true,
     logo: p.logo ?? null,
+    logoTone: p.logoTone ?? null,
     framework: p.framework ?? null,
     frameworkOverride: p.frameworkOverride ?? null,
     source: p.source,
