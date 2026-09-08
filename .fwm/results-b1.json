@@ -1,0 +1,84 @@
+{
+  "vite": {
+    "expected": "vite",
+    "detectedByWizard": "vite",
+    "wizardPort": 4173,
+    "sentStart": null,
+    "storedFramework": "vite",
+    "deploy": "ready",
+    "url": "http://fwm-vite-theoretical-mollusk-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 464,
+      "snippet": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scal"
+    },
+    "pass": true
+  },
+  "eleventy": {
+    "expected": "eleventy",
+    "detectedByWizard": "eleventy",
+    "wizardPort": 8080,
+    "sentStart": null,
+    "storedFramework": "eleventy",
+    "deploy": "ready",
+    "url": "http://fwm-eleventy-vital-hippopotamus-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 8361,
+      "snippet": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"> <title>Eleventy Base Blog v9</title> <meta name=\"descript"
+    },
+    "pass": true
+  },
+  "angular": {
+    "expected": "angular",
+    "detectedByWizard": "angular",
+    "wizardPort": 4200,
+    "sentStart": null,
+    "storedFramework": "angular",
+    "deploy": "error",
+    "url": "http://fwm-angular-distinguished-peafowl-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "why": "not ready"
+    },
+    "pass": false
+  },
+  "docusaurus": {
+    "expected": "docusaurus",
+    "detectedByWizard": "docusaurus",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "storedFramework": "docusaurus",
+    "deploy": "ready",
+    "url": "http://fwm-docusaurus-related-lamprey-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "status": 502,
+      "servesSource": false,
+      "len": 11,
+      "snippet": "Bad Gateway"
+    },
+    "pass": false
+  },
+  "gatsby": {
+    "expected": "gatsby",
+    "detectedByWizard": "gatsby",
+    "wizardPort": 9000,
+    "sentStart": null,
+    "storedFramework": "gatsby",
+    "deploy": "ready",
+    "url": "http://fwm-gatsby-legitimate-whitefish-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "status": 502,
+      "servesSource": false,
+      "len": 11,
+      "snippet": "Bad Gateway"
+    },
+    "pass": false
+  }
+}

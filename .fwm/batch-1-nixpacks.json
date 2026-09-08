@@ -1,0 +1,30 @@
+[
+  {
+    "key": "vite",
+    "slug": "proof-vite",
+    "id": "prj_4b1cb1ed0124299d",
+    "detect": {
+      "id": "vite",
+      "name": "Vite",
+      "defaultPort": 4173,
+      "buildCommand": "npm run build",
+      "startCommand": null
+    },
+    "sent": {
+      "buildMethod": "nixpacks",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 4173
+    }
+  }
+]

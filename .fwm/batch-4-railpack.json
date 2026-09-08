@@ -1,0 +1,147 @@
+[
+  {
+    "key": "nestjs",
+    "slug": "fwm-nestjs",
+    "id": "prj_a22e6b409baddd33",
+    "detect": {
+      "id": "nestjs",
+      "name": "NestJS",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "adonisjs",
+    "slug": "fwm-adonisjs",
+    "id": "prj_834a34c370799436",
+    "detect": {
+      "id": "adonisjs",
+      "name": "AdonisJS",
+      "defaultPort": 3333,
+      "staticOutput": null,
+      "startCommand": "node build/bin/server.js",
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": "node build/bin/server.js",
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 3333
+    }
+  },
+  {
+    "key": "express",
+    "slug": "fwm-express",
+    "id": "prj_427ce59c4d00f3d7",
+    "detect": {
+      "id": "express",
+      "name": "Express",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": null
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": null,
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "fastify",
+    "slug": "fwm-fastify",
+    "id": "prj_8788f76eb30f93ad",
+    "detect": {
+      "id": "fastify",
+      "name": "Fastify",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": null
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": null,
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./fastify",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "koa",
+    "slug": "fwm-koa",
+    "id": "prj_06df5c3a7b599a35",
+    "detect": {
+      "id": "koa",
+      "name": "Koa",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": null
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": null,
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./koa",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  }
+]

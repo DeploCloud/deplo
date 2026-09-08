@@ -1,0 +1,60 @@
+[
+  {
+    "key": "qwik",
+    "slug": "fwm-qwik",
+    "id": "prj_bbca3efbbebf63c2",
+    "detect": {
+      "id": "qwik",
+      "name": "Qwik",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./qwik",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "adonisjs",
+    "slug": "fwm-adonisjs",
+    "id": "prj_3a7259d6e6aaa2eb",
+    "detect": {
+      "id": "adonisjs",
+      "name": "AdonisJS",
+      "defaultPort": 3333,
+      "staticOutput": null,
+      "startCommand": "node build/bin/server.js",
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": "node build/bin/server.js",
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 3333
+    }
+  }
+]

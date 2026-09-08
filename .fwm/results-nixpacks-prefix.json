@@ -1,0 +1,78 @@
+{
+  "vite": {
+    "expected": "vite",
+    "detectedByWizard": "vite",
+    "wizardPort": 4173,
+    "sentStart": null,
+    "storedFramework": "vite",
+    "deploy": "ready",
+    "url": "http://vite-1-rainy-kingfisher-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "status": 200,
+      "servesSource": true,
+      "len": 363,
+      "snippet": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scal"
+    },
+    "pass": false
+  },
+  "gatsby": {
+    "expected": "gatsby",
+    "detectedByWizard": "gatsby",
+    "wizardPort": 9000,
+    "sentStart": null,
+    "storedFramework": "gatsby",
+    "deploy": "error",
+    "url": "http://gatsby-exceptional-sailfish-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "why": "not ready"
+    },
+    "pass": false
+  },
+  "docusaurus": {
+    "expected": "docusaurus",
+    "detectedByWizard": "docusaurus",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "storedFramework": null,
+    "deploy": "error",
+    "url": "http://docusaurus-deaf-kangaroo-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "why": "not ready"
+    },
+    "pass": false
+  },
+  "angular": {
+    "expected": "angular",
+    "detectedByWizard": "angular",
+    "wizardPort": 4200,
+    "sentStart": null,
+    "storedFramework": "angular",
+    "deploy": "error",
+    "url": "http://angular-condemned-impala-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "why": "not ready"
+    },
+    "pass": false
+  },
+  "eleventy": {
+    "expected": "eleventy",
+    "detectedByWizard": null,
+    "wizardPort": null,
+    "sentStart": null,
+    "storedFramework": null,
+    "deploy": "ready",
+    "url": "http://eleventy-basic-limpet-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "status": 502,
+      "servesSource": false,
+      "len": 11,
+      "snippet": "Bad Gateway"
+    },
+    "pass": false
+  }
+}

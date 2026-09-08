@@ -1,0 +1,452 @@
+{
+  "eleventy": {
+    "expected": "eleventy",
+    "detectedByWizard": "eleventy",
+    "wizardPort": 8080,
+    "sentStart": null,
+    "sentOutput": "_site",
+    "storedFramework": "eleventy",
+    "deploy": "ready",
+    "url": "http://fwm-eleventy-eastern-silverfish-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 8378,
+      "snippet": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"> <title>Eleventy Base Blog v9</title> <meta name=\"descript"
+    },
+    "pass": true
+  },
+  "vite": {
+    "expected": "vite",
+    "detectedByWizard": "vite",
+    "wizardPort": 4173,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "vite",
+    "deploy": "ready",
+    "url": "http://fwm-vite-flexible-termite-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 464,
+      "snippet": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scal"
+    },
+    "pass": true
+  },
+  "angular": {
+    "expected": "angular",
+    "detectedByWizard": "angular",
+    "wizardPort": 4200,
+    "sentStart": null,
+    "sentOutput": "dist/angular/browser",
+    "storedFramework": "angular",
+    "deploy": "ready",
+    "url": "http://fwm-angular-favourable-crane-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 421,
+      "snippet": "<!doctype html> <html lang=\"en\" data-beasties-container> <head> <meta charset=\"utf-8\"> <title>Angular</title> <base href=\"/\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1"
+    },
+    "pass": true
+  },
+  "docusaurus": {
+    "expected": "docusaurus",
+    "detectedByWizard": "docusaurus",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": "build",
+    "storedFramework": "docusaurus",
+    "deploy": "ready",
+    "url": "http://fwm-docusaurus-unaware-lemur-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 20000,
+      "snippet": "<!doctype html><html lang=en dir=ltr class=\"plugin-pages plugin-id-default\" data-has-hydrated=false><head><meta charset=UTF-8><meta name=generator content=\"Docusaurus v3.10.2\"><title data-rh=true>Hell"
+    },
+    "pass": true
+  },
+  "gatsby": {
+    "expected": "gatsby",
+    "detectedByWizard": "gatsby",
+    "wizardPort": 9000,
+    "sentStart": null,
+    "sentOutput": "public",
+    "storedFramework": "gatsby",
+    "deploy": "ready",
+    "url": "http://fwm-gatsby-cute-heron-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 18937,
+      "snippet": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta http-equiv=\"x-ua-compatible\" content=\"ie=edge\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\"/"
+    },
+    "pass": true
+  },
+  "astro": {
+    "expected": "astro",
+    "detectedByWizard": "astro",
+    "wizardPort": 4321,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "astro",
+    "deploy": "ready",
+    "url": "http://fwm-astro-long-alligator-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 9851,
+      "snippet": "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta name=\"viewport\" content=\"width=device-width\"><meta name=\"generator\" content=\""
+    },
+    "pass": true
+  },
+  "sveltekit": {
+    "expected": "sveltekit",
+    "detectedByWizard": "sveltekit",
+    "wizardPort": 3000,
+    "sentStart": "node build",
+    "sentOutput": null,
+    "storedFramework": "sveltekit",
+    "deploy": "ready",
+    "url": "http://fwm-sveltekit-embarrassing-hummingbird-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 3185,
+      "snippet": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /> <meta name=\"text-scale\" content=\"scale\" /> <!--12qhfyh-"
+    },
+    "pass": true
+  },
+  "nextjs": {
+    "expected": "nextjs",
+    "detectedByWizard": "nextjs",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "nextjs",
+    "deploy": "ready",
+    "url": "http://fwm-nextjs-ripe-junglefowl-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 10357,
+      "snippet": "<!DOCTYPE html><html lang=\"en\" class=\"geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-wid"
+    },
+    "pass": true
+  },
+  "remix": {
+    "expected": "remix",
+    "detectedByWizard": "remix",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "remix",
+    "deploy": "ready",
+    "url": "http://fwm-remix-rapid-xerinae-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 8546,
+      "snippet": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><title>New Remix App</title><meta name=\"description\" content=\"Welcome t"
+    },
+    "pass": true
+  },
+  "nuxt": {
+    "expected": "nuxt",
+    "detectedByWizard": "nuxt",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "nuxt",
+    "deploy": "ready",
+    "url": "http://fwm-nuxt-agreed-dove-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 20000,
+      "snippet": "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Welcome to Nuxt!</title><script type=\"importmap\">{\"imports\":{\"#entry\":\"/_nux"
+    },
+    "pass": true
+  },
+  "preact": {
+    "expected": "preact",
+    "detectedByWizard": "preact",
+    "wizardPort": 4173,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "preact",
+    "deploy": "ready",
+    "url": "http://fwm-preact-external-owl-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 211,
+      "snippet": "<!doctype html> <html><head><meta charset=\"utf-8\" /><title>Preact matrix app</title> <script type=\"module\" crossorigin src=\"/assets/index-DgWk1aWI.js\"></script> </head> <body><div id=\"app\"></div></bo"
+    },
+    "pass": true
+  },
+  "svelte": {
+    "expected": "svelte",
+    "detectedByWizard": "svelte",
+    "wizardPort": 4173,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "svelte",
+    "deploy": "ready",
+    "url": "http://fwm-svelte-controversial-mollusk-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 455,
+      "snippet": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-s"
+    },
+    "pass": true
+  },
+  "solid": {
+    "expected": "solid",
+    "detectedByWizard": "solid",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "solid",
+    "deploy": "ready",
+    "url": "http://fwm-solid-striped-viper-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 1910,
+      "snippet": "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"icon\" href=\"/favicon.ico\"><script>window._$HY||(e=>{let t=e=>e"
+    },
+    "pass": true
+  },
+  "react-router": {
+    "expected": "react-router",
+    "detectedByWizard": "react-router",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "react-router",
+    "deploy": "ready",
+    "url": "http://fwm-react-router-tasty-pony-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 7048,
+      "snippet": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"preload\" as=\"image\" href=\"/assets/logo-light-CVbx2LBR.svg\"/>"
+    },
+    "pass": true
+  },
+  "qwik": {
+    "expected": "qwik",
+    "detectedByWizard": "qwik",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "qwik",
+    "deploy": "ready",
+    "url": "http://fwm-qwik-limited-marmoset-9487cf1e.nip.io",
+    "http": {
+      "ok": false,
+      "status": 502,
+      "servesSource": false,
+      "len": 11,
+      "snippet": "Bad Gateway"
+    },
+    "pass": false
+  },
+  "koa": {
+    "expected": "koa",
+    "detectedByWizard": "koa",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "koa",
+    "deploy": "ready",
+    "url": "http://fwm-koa-subtle-chicken-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 15,
+      "snippet": "<h1>koa ok</h1>"
+    },
+    "pass": true
+  },
+  "fastify": {
+    "expected": "fastify",
+    "detectedByWizard": "fastify",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "fastify",
+    "deploy": "ready",
+    "url": "http://fwm-fastify-happy-lark-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 19,
+      "snippet": "<h1>fastify ok</h1>"
+    },
+    "pass": true
+  },
+  "express": {
+    "expected": "express",
+    "detectedByWizard": "express",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "express",
+    "deploy": "ready",
+    "url": "http://fwm-express-blonde-landfowl-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 9109,
+      "snippet": "<!DOCTYPE html> <html> <head> <title>Node.js Getting Started on Heroku</title> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <link rel=\"stylesheet\" type=\"text/css\" href=\"/"
+    },
+    "pass": true
+  },
+  "adonisjs": {
+    "expected": "adonisjs",
+    "detectedByWizard": "adonisjs",
+    "wizardPort": 3333,
+    "sentStart": "node build/bin/server.js",
+    "sentOutput": null,
+    "storedFramework": "adonisjs",
+    "deploy": "ready",
+    "url": "http://fwm-adonisjs-envious-anglerfish-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 20000,
+      "snippet": "<!DOCTYPE html> <html> <head> <meta charset=\"utf-8\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /> <title> AdonisJS - A fully featured web framework for "
+    },
+    "pass": true
+  },
+  "nestjs": {
+    "expected": "nestjs",
+    "detectedByWizard": "nestjs",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "nestjs",
+    "deploy": "ready",
+    "url": "http://fwm-nestjs-impressed-flyingfish-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 12,
+      "snippet": "Hello World!"
+    },
+    "pass": true
+  },
+  "node": {
+    "expected": "node",
+    "detectedByWizard": "node",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "node",
+    "deploy": "ready",
+    "url": "http://fwm-node-rural-crab-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 16,
+      "snippet": "<h1>node ok</h1>"
+    },
+    "pass": true
+  },
+  "hono": {
+    "expected": "hono",
+    "detectedByWizard": "hono",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "hono",
+    "deploy": "ready",
+    "url": "http://fwm-hono-loyal-canidae-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 11,
+      "snippet": "Hello Hono!"
+    },
+    "pass": true
+  },
+  "vue": {
+    "expected": "vue",
+    "detectedByWizard": "vue",
+    "wizardPort": 8080,
+    "sentStart": null,
+    "sentOutput": "dist",
+    "storedFramework": "vue",
+    "deploy": "ready",
+    "url": "http://fwm-vue-loose-bedbug-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 254,
+      "snippet": "<!doctype html><html><head><meta charset=\"utf-8\"/><title>Vue CLI matrix app</title><script defer=\"defer\" src=\"/js/chunk-vendors.effd235d.js\"></script><script defer=\"defer\" src=\"/js/app.ea02ac1d.js\"></"
+    },
+    "pass": true
+  },
+  "cra": {
+    "expected": "cra",
+    "detectedByWizard": "cra",
+    "wizardPort": 3000,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "cra",
+    "deploy": "ready",
+    "url": "http://fwm-cra-conservation-quelea-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 192,
+      "snippet": "<!doctype html><html><head><meta charset=\"utf-8\"/><title>CRA matrix app</title><script defer=\"defer\" src=\"/static/js/main.51e27e45.js\"></script></head><body><div id=\"root\"></div></body></html>"
+    },
+    "pass": true
+  },
+  "strapi": {
+    "expected": "strapi",
+    "detectedByWizard": "strapi",
+    "wizardPort": 1337,
+    "sentStart": null,
+    "sentOutput": null,
+    "storedFramework": "strapi",
+    "deploy": "ready",
+    "url": "http://fwm-strapi-intelligent-swan-9487cf1e.nip.io",
+    "http": {
+      "ok": true,
+      "status": 200,
+      "servesSource": false,
+      "len": 1058,
+      "snippet": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"/><meta name=\"robots\" content=\"noindex\"/><meta name=\""
+    },
+    "pass": true
+  }
+}

@@ -1,0 +1,147 @@
+[
+  {
+    "key": "react-router",
+    "slug": "fwm-react-router",
+    "id": "prj_7c1281e71c402b1d",
+    "detect": {
+      "id": "react-router",
+      "name": "React Router",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./default",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "qwik",
+    "slug": "fwm-qwik",
+    "id": "prj_2e76652441de6308",
+    "detect": {
+      "id": "qwik",
+      "name": "Qwik",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./qwik",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "solid",
+    "slug": "fwm-solid",
+    "id": "prj_f93e7768f38d76dc",
+    "detect": {
+      "id": "solid",
+      "name": "SolidStart",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "pnpm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "pnpm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./solid-start-v2/basic",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "svelte",
+    "slug": "fwm-svelte",
+    "id": "prj_430ac1b16cc16bca",
+    "detect": {
+      "id": "svelte",
+      "name": "Svelte",
+      "defaultPort": 4173,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./svelte",
+      "runtimeVersion": "",
+      "port": 4173
+    }
+  },
+  {
+    "key": "preact",
+    "slug": "fwm-preact",
+    "id": "prj_8e5423625b2f4d0f",
+    "detect": {
+      "id": "preact",
+      "name": "Preact",
+      "defaultPort": 4173,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./preact",
+      "runtimeVersion": "",
+      "port": 4173
+    }
+  }
+]

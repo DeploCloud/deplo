@@ -1,0 +1,147 @@
+[
+  {
+    "key": "cra",
+    "slug": "fwm-cra",
+    "id": "prj_96f426b93692afb1",
+    "detect": {
+      "id": "cra",
+      "name": "Create React App",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./cra",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "vue",
+    "slug": "fwm-vue",
+    "id": "prj_09ada52c14cf37d4",
+    "detect": {
+      "id": "vue",
+      "name": "Vue",
+      "defaultPort": 8080,
+      "staticOutput": "dist",
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": "dist",
+      "startCommand": null,
+      "rootDir": "./vue",
+      "runtimeVersion": "",
+      "port": 8080
+    }
+  },
+  {
+    "key": "hono",
+    "slug": "fwm-hono",
+    "id": "prj_5e6f9544b886ea2b",
+    "detect": {
+      "id": "hono",
+      "name": "Hono",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./templates/nodejs",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "node",
+    "slug": "fwm-node",
+    "id": "prj_68a9fb21ddcbcf18",
+    "detect": {
+      "id": "node",
+      "name": "Node.js",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": null
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": null,
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./node",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "strapi",
+    "slug": "fwm-strapi",
+    "id": "prj_7fda4213125efbe4",
+    "detect": {
+      "id": "strapi",
+      "name": "Strapi",
+      "defaultPort": 1337,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./strapi",
+      "runtimeVersion": "",
+      "port": 1337
+    }
+  }
+]

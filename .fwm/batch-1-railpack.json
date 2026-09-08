@@ -1,0 +1,147 @@
+[
+  {
+    "key": "vite",
+    "slug": "fwm-vite",
+    "id": "prj_e760213ccd873bf1",
+    "detect": {
+      "id": "vite",
+      "name": "Vite",
+      "defaultPort": 4173,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 4173
+    }
+  },
+  {
+    "key": "angular",
+    "slug": "fwm-angular",
+    "id": "prj_ea0c143e706b7c33",
+    "detect": {
+      "id": "angular",
+      "name": "Angular",
+      "defaultPort": 4200,
+      "staticOutput": "dist/angular/browser",
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": "dist/angular/browser",
+      "startCommand": null,
+      "rootDir": "./angular",
+      "runtimeVersion": "",
+      "port": 4200
+    }
+  },
+  {
+    "key": "gatsby",
+    "slug": "fwm-gatsby",
+    "id": "prj_501d762077ee7146",
+    "detect": {
+      "id": "gatsby",
+      "name": "Gatsby",
+      "defaultPort": 9000,
+      "staticOutput": "public",
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": "public",
+      "startCommand": null,
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 9000
+    }
+  },
+  {
+    "key": "docusaurus",
+    "slug": "fwm-docusaurus",
+    "id": "prj_494eb06218a8320a",
+    "detect": {
+      "id": "docusaurus",
+      "name": "Docusaurus",
+      "defaultPort": 3000,
+      "staticOutput": "build",
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": "build",
+      "startCommand": null,
+      "rootDir": "./docusaurus",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "eleventy",
+    "slug": "fwm-eleventy",
+    "id": "prj_7a4f4d51011f1d6b",
+    "detect": {
+      "id": "eleventy",
+      "name": "Eleventy",
+      "defaultPort": 8080,
+      "staticOutput": "_site",
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": "_site",
+      "startCommand": null,
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 8080
+    }
+  }
+]

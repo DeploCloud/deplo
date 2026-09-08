@@ -1,0 +1,147 @@
+[
+  {
+    "key": "nextjs",
+    "slug": "fwm-nextjs",
+    "id": "prj_75bf69f87fa2af16",
+    "detect": {
+      "id": "nextjs",
+      "name": "Next.js",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./nextjs",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "nuxt",
+    "slug": "fwm-nuxt",
+    "id": "prj_e6e09e0beada656d",
+    "detect": {
+      "id": "nuxt",
+      "name": "Nuxt",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "sveltekit",
+    "slug": "fwm-sveltekit",
+    "id": "prj_13040076dd0fab09",
+    "detect": {
+      "id": "sveltekit",
+      "name": "SvelteKit",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": "node build",
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": "node build",
+      "rootDir": "./sveltekit",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  },
+  {
+    "key": "astro",
+    "slug": "fwm-astro",
+    "id": "prj_b00429be70786123",
+    "detect": {
+      "id": "astro",
+      "name": "Astro",
+      "defaultPort": 4321,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./",
+      "runtimeVersion": "",
+      "port": 4321
+    }
+  },
+  {
+    "key": "remix",
+    "slug": "fwm-remix",
+    "id": "prj_b5369a89b0c9b08d",
+    "detect": {
+      "id": "remix",
+      "name": "Remix",
+      "defaultPort": 3000,
+      "staticOutput": null,
+      "startCommand": null,
+      "buildCommand": "npm run build"
+    },
+    "sent": {
+      "buildMethod": "railpack",
+      "settings": {
+        "dockerfilePath": "Dockerfile",
+        "dockerContextPath": ".",
+        "railpackVersion": "latest",
+        "staticSinglePageApp": false
+      },
+      "installCommand": null,
+      "buildCommand": "npm run build",
+      "outputDir": null,
+      "startCommand": null,
+      "rootDir": "./remix",
+      "runtimeVersion": "",
+      "port": 3000
+    }
+  }
+]

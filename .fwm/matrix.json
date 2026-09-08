@@ -1,0 +1,254 @@
+[
+  {
+    "key": "vite",
+    "fw": "vite",
+    "repo": "RoyRao2333/template-vite-react-ts-tailwind",
+    "branch": "main",
+    "root": "",
+    "batch": 1
+  },
+  {
+    "key": "angular",
+    "fw": "angular",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "angular",
+    "batch": 1
+  },
+  {
+    "key": "gatsby",
+    "fw": "gatsby",
+    "repo": "gatsbyjs/gatsby-starter-default",
+    "branch": "master",
+    "root": "",
+    "batch": 1
+  },
+  {
+    "key": "docusaurus",
+    "fw": "docusaurus",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "docusaurus",
+    "batch": 1
+  },
+  {
+    "key": "eleventy",
+    "fw": "eleventy",
+    "repo": "11ty/eleventy-base-blog",
+    "branch": "main",
+    "root": "",
+    "batch": 1
+  },
+  {
+    "key": "nextjs",
+    "fw": "nextjs",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "nextjs",
+    "batch": 2
+  },
+  {
+    "key": "nuxt",
+    "fw": "nuxt",
+    "repo": "nuxt/starter",
+    "branch": "v4",
+    "root": "",
+    "batch": 2
+  },
+  {
+    "key": "sveltekit",
+    "fw": "sveltekit",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "sveltekit",
+    "batch": 2
+  },
+  {
+    "key": "astro",
+    "fw": "astro",
+    "repo": "withastro/blog-tutorial-demo",
+    "branch": "complete",
+    "root": "",
+    "batch": 2
+  },
+  {
+    "key": "remix",
+    "fw": "remix",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "remix",
+    "batch": 2
+  },
+  {
+    "key": "react-router",
+    "fw": "react-router",
+    "repo": "remix-run/react-router-templates",
+    "branch": "main",
+    "root": "default",
+    "batch": 3
+  },
+  {
+    "key": "qwik",
+    "fw": "qwik",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "qwik",
+    "batch": 3
+  },
+  {
+    "key": "solid",
+    "fw": "solid",
+    "repo": "solidjs/templates",
+    "branch": "main",
+    "root": "solid-start-v2/basic",
+    "batch": 3
+  },
+  {
+    "key": "svelte",
+    "fw": "svelte",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "svelte",
+    "batch": 3
+  },
+  {
+    "key": "preact",
+    "fw": "preact",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "preact",
+    "batch": 3
+  },
+  {
+    "key": "nestjs",
+    "fw": "nestjs",
+    "repo": "nestjs/typescript-starter",
+    "branch": "master",
+    "root": "",
+    "batch": 4
+  },
+  {
+    "key": "adonisjs",
+    "fw": "adonisjs",
+    "repo": "adonisjs/web-starter-kit",
+    "branch": "main",
+    "root": "",
+    "batch": 4,
+    "env": [
+      {
+        "key": "APP_KEY",
+        "value": "5bvOUXF+IU6QOUUHoqkn+ocGtVn7TtDr"
+      },
+      {
+        "key": "HOST",
+        "value": "0.0.0.0"
+      },
+      {
+        "key": "LOG_LEVEL",
+        "value": "info"
+      },
+      {
+        "key": "SESSION_DRIVER",
+        "value": "cookie"
+      },
+      {
+        "key": "NODE_ENV",
+        "value": "production"
+      }
+    ]
+  },
+  {
+    "key": "express",
+    "fw": "express",
+    "repo": "heroku/node-js-getting-started",
+    "branch": "main",
+    "root": "",
+    "batch": 4
+  },
+  {
+    "key": "fastify",
+    "fw": "fastify",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "fastify",
+    "batch": 4
+  },
+  {
+    "key": "koa",
+    "fw": "koa",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "koa",
+    "batch": 4
+  },
+  {
+    "key": "cra",
+    "fw": "cra",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "cra",
+    "batch": 5
+  },
+  {
+    "key": "vue",
+    "fw": "vue",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "vue",
+    "batch": 5
+  },
+  {
+    "key": "hono",
+    "fw": "hono",
+    "repo": "honojs/starter",
+    "branch": "main",
+    "root": "templates/nodejs",
+    "batch": 5
+  },
+  {
+    "key": "node",
+    "fw": "node",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "node",
+    "batch": 5
+  },
+  {
+    "key": "strapi",
+    "fw": "strapi",
+    "repo": "IdraDev/deplo-fw-matrix",
+    "branch": "master",
+    "root": "strapi",
+    "batch": 5,
+    "env": [
+      {
+        "key": "APP_KEYS",
+        "value": "jI7TLLYvji5VsP434CYd8A==,25Qd9D3w/u+RfAxFLPyoWw=="
+      },
+      {
+        "key": "API_TOKEN_SALT",
+        "value": "NEKCqtUmV6hsfgjzTwkkNw=="
+      },
+      {
+        "key": "ADMIN_JWT_SECRET",
+        "value": "fW9NvTrv/8GGY/sYJt0WFw=="
+      },
+      {
+        "key": "TRANSFER_TOKEN_SALT",
+        "value": "I3KKuGUKEcOTvkT1M7JH8Q=="
+      },
+      {
+        "key": "ENCRYPTION_KEY",
+        "value": "4kXkcDC1AwtJTgYlgafHmQ=="
+      },
+      {
+        "key": "JWT_SECRET",
+        "value": "9JoKm+bmMz6F6MCmM/vkrQ=="
+      },
+      {
+        "key": "HOST",
+        "value": "0.0.0.0"
+      }
+    ]
+  }
+]
