@@ -7,18 +7,24 @@ import { RegisterWizard } from "./register-wizard";
 
 export const metadata = { title: "Register" };
 
-export default async function RegisterPage(props: {
-  params: Promise<{ token: string }>;
-}) {
+export default async function RegisterPage(
+  props: PageProps<"/register/[token]">,
+) {
   const { token } = await props.params;
   const info = await getRegistrationLinkInfo(token);
+  const sp = await props.searchParams;
 
   return (
     <div className="relative grid min-h-dvh place-items-center px-4 pt-10 pb-16">
       <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
       <div className="z-10 flex w-full justify-center">
         {info.valid ? (
-          <RegisterWizard token={token} mode={info.mode} teams={info.teams} />
+          <RegisterWizard
+            token={token}
+            mode={info.mode}
+            teams={info.teams}
+            prefill={{ name: one(sp.name, 80), email: one(sp.email, 254) }}
+          />
         ) : (
           // No intro in front of this one: a dead link should not cost two
           // seconds of animation before it says so. The chrome stays OUTSIDE the
@@ -45,4 +51,10 @@ export default async function RegisterPage(props: {
       </div>
     </div>
   );
+}
+
+/** A form default carried by the link (a migration fills these in), nothing the
+ *  server acts on - capped at what the field itself takes. */
+function one(v: string | string[] | undefined, max: number): string {
+  return typeof v === "string" ? v.trim().slice(0, max) : "";
 }

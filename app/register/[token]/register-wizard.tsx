@@ -61,6 +61,7 @@ export function RegisterWizard({
   token,
   mode,
   teams,
+  prefill,
 }: {
   token: string;
   /** How this link decides the team: own_team asks for a name; existing_teams
@@ -68,6 +69,8 @@ export function RegisterWizard({
   mode: "own_team" | "existing_teams";
   /** For existing_teams: the teams the registrant will join. */
   teams: { name: string; avatarUrl: string | null }[];
+  /** What the link already knows about them, empty when it says nothing. */
+  prefill: { name: string; email: string };
 }) {
   const router = useRouter();
   const ownTeam = mode === "own_team";
@@ -77,7 +80,10 @@ export function RegisterWizard({
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
-  const [account, setAccount] = React.useState(newAccountDraft);
+  const [account, setAccount] = React.useState(() => ({
+    ...newAccountDraft(),
+    ...prefill,
+  }));
   const [team, setTeam] = React.useState(EMPTY_TEAM);
 
   function submit() {

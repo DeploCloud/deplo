@@ -42,7 +42,10 @@ test("somebody on three teams is one card with three teams and one link", () => 
     ["Acme", "Labs", "Web"],
   );
   assert.deepEqual(linkGroups(merged[0]!), [
-    { link: "https://deplo.test/join/x9k", teams: ["Acme", "Labs", "Web"] },
+    {
+      link: "https://deplo.test/join/x9k?name=Ada+Lovelace&email=ada%40acme.test",
+      teams: ["Acme", "Labs", "Web"],
+    },
   ]);
   assert.deepEqual(teamsOf(merged), ["Acme", "Labs", "Web"]);
 });
@@ -85,8 +88,14 @@ test("a second link for one address stays a second block", () => {
     group("Labs", [person({ link: "https://deplo.test/join/two" })]),
   ]);
   assert.deepEqual(linkGroups(merged[0]!), [
-    { link: "https://deplo.test/join/one", teams: ["Acme"] },
-    { link: "https://deplo.test/join/two", teams: ["Labs"] },
+    {
+      link: "https://deplo.test/join/one?name=Ada+Lovelace&email=ada%40acme.test",
+      teams: ["Acme"],
+    },
+    {
+      link: "https://deplo.test/join/two?name=Ada+Lovelace&email=ada%40acme.test",
+      teams: ["Labs"],
+    },
   ]);
 });
 
@@ -136,9 +145,25 @@ test("the csv quotes a name with a comma and still lists whoever has no link", (
     linksCsv(merged),
     [
       "email,name,teams,link",
-      'ada@acme.test,"Lovelace, Ada",Acme;Labs,https://deplo.test/join/x9k',
+      'ada@acme.test,"Lovelace, Ada",Acme;Labs,https://deplo.test/join/x9k?name=Lovelace%2C+Ada&email=ada%40acme.test',
       "carl@acme.test,Carl,Acme,",
     ].join("\n"),
   );
-  assert.equal(linksTsv(merged), "ada@acme.test\thttps://deplo.test/join/x9k");
+  assert.equal(
+    linksTsv(merged),
+    "ada@acme.test\thttps://deplo.test/join/x9k?name=Lovelace%2C+Ada&email=ada%40acme.test",
+  );
+});
+
+test("the link a person is sent opens their form on their own name", () => {
+  const [ada] = mergePeople([group("Acme", [person()])]);
+  assert.equal(
+    linkGroups(ada!)[0]!.link,
+    "https://deplo.test/join/x9k?name=Ada+Lovelace&email=ada%40acme.test",
+  );
+  const [nameless] = mergePeople([group("Acme", [person({ name: "" })])]);
+  assert.equal(
+    linkGroups(nameless!)[0]!.link,
+    "https://deplo.test/join/x9k?email=ada%40acme.test",
+  );
 });

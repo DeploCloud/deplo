@@ -103,7 +103,18 @@ export function linkGroups(
   const by = new Map<string, string[]>();
   for (const l of p.landings)
     if (l.link) by.set(l.link, [...(by.get(l.link) ?? []), l.team]);
-  return [...by].map(([link, teams]) => ({ link, teams }));
+  return [...by].map(([link, teams]) => ({ link: prefilled(link, p), teams }));
+}
+
+/** The registration form opens on what the panel already knew about them, so
+ *  nobody retypes their own name. Query only - the link's authority is its
+ *  token, and both fields stay editable. */
+function prefilled(link: string, p: MergedPerson): string {
+  const q = new URLSearchParams();
+  if (p.name.trim()) q.set("name", p.name.trim());
+  if (p.email.trim()) q.set("email", p.email.trim());
+  const query = q.toString();
+  return query ? `${link}?${query}` : link;
 }
 
 /**
