@@ -1379,19 +1379,33 @@ export function MigrationWizard({
 
   /** One card per team of the walk, off the runs themselves - so the step is the
    *  same whether the tab that started them is this one or a reload. */
-  const peopleGroups: PeopleGroup[] = sessionRuns
-    .filter((r) => r.status === "done")
-    .map((r) => ({
-      key: r.id,
-      team: {
-        name: r.orgName || r.teamName || sourceLabel,
-        avatarUrl: r.teamAvatarUrl,
-      },
-      people: r.members,
-      inviteLink: teamLinks[r.id] ?? null,
-      minting: mintingFor === r.id,
-      onMintLink: () => void mintLinkFor(r),
-    }));
+  const landed = sessionRuns.filter((r) => r.status === "done");
+  const teamOf = (r: SessionRun) => r.orgName || r.teamName || sourceLabel;
+  /**
+   * Which teams one link joins. A person on two teams of the panel gets ONE link
+   * and appears on both cards; without this the two cards read as two links.
+   */
+  const teamsPerLink = new Map<string, string[]>();
+  for (const r of landed)
+    for (const m of r.members)
+      if (m.link)
+        teamsPerLink.set(m.link, [
+          ...(teamsPerLink.get(m.link) ?? []),
+          teamOf(r),
+        ]);
+  const peopleGroups: PeopleGroup[] = landed.map((r) => ({
+    key: r.id,
+    team: { name: teamOf(r), avatarUrl: r.teamAvatarUrl },
+    people: r.members.map((m) => ({
+      ...m,
+      alsoIn: (m.link ? (teamsPerLink.get(m.link) ?? []) : []).filter(
+        (n) => n !== teamOf(r),
+      ),
+    })),
+    inviteLink: teamLinks[r.id] ?? null,
+    minting: mintingFor === r.id,
+    onMintLink: () => void mintLinkFor(r),
+  }));
 
   /** Every team's landing, for the one report at the end. */
   const teamReports = sessionRuns

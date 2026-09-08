@@ -18,11 +18,14 @@ import type { Invite } from "./types";
  * the extra link for whoever was not there at all. A single migration is one
  * group; several teams at once are several, each under its own name.
  */
+/** One person on this team's card. `alsoIn` is the other teams their link joins. */
+export type Person = Invite & { alsoIn?: string[] };
+
 export interface PeopleGroup {
   key: string;
   team: { name: string; avatarUrl: string | null };
   /** Who the panel listed, and what the run did with each of them. */
-  people: Invite[];
+  people: Person[];
   inviteLink: string | null;
   minting: boolean;
   onMintLink: () => void;
@@ -135,7 +138,7 @@ function PersonCard({
   person,
   panel,
 }: {
-  person: Invite;
+  person: Person;
   /** The panel's name. Coolify hides a member's role, so the line goes with it. */
   panel: string;
 }) {
@@ -173,13 +176,22 @@ function PersonCard({
           above it - the same shape a member card uses for its badges. */}
       <div className="mt-auto border-t border-border pt-3">
         {person.link ? (
-          <div className="flex items-center gap-2">
-            <Input
-              readOnly
-              value={person.link}
-              className="h-8 min-w-0 flex-1"
-            />
-            <CopyButton value={person.link} />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Input
+                readOnly
+                value={person.link}
+                className="h-8 min-w-0 flex-1"
+              />
+              <CopyButton value={person.link} />
+            </div>
+            {/* They were on more than one team of that panel. One address is one
+                account here, so it is one link - and it joins them to all of them. */}
+            {person.alsoIn && person.alsoIn.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                The same link joins them to {person.alsoIn.join(", ")}.
+              </p>
+            )}
           </div>
         ) : (
           // No link means Deplo did something else with them - added them
