@@ -619,6 +619,9 @@ export function MigrationWizard({
   );
   /** The last refusal, kept on screen: its fix is in another browser tab. */
   const [scanError, setScanError] = React.useState<string | null>(null);
+  /** Teams this walk created, by their place on the list, so a start that was
+   *  refused after one was made does not make a second on the next press. */
+  const madeTeams = React.useRef<Record<number, string>>({});
 
   const [serverMap, setServerMap] = React.useState<Record<string, string>>({});
   /**
@@ -1104,6 +1107,7 @@ export function MigrationWizard({
     const team = queueRef.current[i]!;
     let home: string;
     if (team.target.kind === "existing") home = team.target.teamId;
+    else if (madeTeams.current[i]) home = madeTeams.current[i]!;
     else {
       // Named as it was over there, with its picture when the panel had one. A
       // panel that would not name its team still needs one HERE, so the address
@@ -1123,9 +1127,10 @@ export function MigrationWizard({
           made.ok ? "Deplo could not create the team." : made.error,
         );
       home = made.data;
-      updateQueue(
-        retarget(queueRef.current, i, { kind: "existing", teamId: home }),
-      );
+      // Remembered rather than written back onto the row: a second press must
+      // not make a second team, and the row still says what the person CHOSE -
+      // flipping it to "an existing team" read as if it had been there all along.
+      madeTeams.current[i] = home;
       // The page's list of teams has one more in it now.
       router.refresh();
     }
@@ -1601,8 +1606,9 @@ export function MigrationWizard({
       : [];
   }, [sessionRuns, currentRunId, targetTeamId, teamId]);
 
-  /** A run somebody started, driven from here or merely watched. */
-  const inFlight = running || takenOver || awaitingRun;
+  /** A run somebody started, driven from here or merely watched - `starting`
+   *  included, because the teams are being created and read before it exists. */
+  const inFlight = starting || running || takenOver || awaitingRun;
 
   /**
    * Where the source machines are granted now: the team of the last run of the

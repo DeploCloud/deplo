@@ -441,14 +441,18 @@ export function ReviewStep({
                       name={g.team.name}
                       image={g.image}
                       onChange={(image) => onSetImage(g.key, image)}
+                      disabled={starting}
                     />
                   )}
                   <span className="ml-auto">
+                    {/* Locked the moment Start is pressed: the teams are being
+                        made and the panel is being read again, and a landing
+                        changed now would be a landing nothing honours. */}
                     <TargetSelect
                       value={g.target}
                       teams={targetTeams}
                       sourceName={g.team.name}
-                      disabled={false}
+                      disabled={starting}
                       onChange={(t) => onRetarget(g.key, t)}
                     />
                   </span>
