@@ -84,6 +84,8 @@ import {
   handOverMigrationSources,
   identifyMigrationSource,
   importMigrationMembers,
+  listMigrationRunMembers,
+  migrationSessionRuns,
   listMigrationTargetTeams,
   sweepFinishedMigrationMarks,
   undoMigration,
@@ -1347,6 +1349,86 @@ test("an invited owner is told which panel they were owner on", async () => {
   const owner = invites.find((i) => i.email === "owner@acme.test")!;
   assert.match(owner.message ?? "", /Was owner on Dokploy/);
   assert.doesNotMatch(owner.message ?? "", /\{panel\}/);
+});
+
+// The bug this replaces: one person on two teams of the panel got a link per
+// team, each joining one team - and the second one could never be used, because
+// an address has one account here.
+test("somebody on two teams of the panel gets ONE link for both", async () => {
+  await inBothTeams("mem_1_b", USER_1, ["view", "create_projects"]);
+  const first = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const second = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    beginMigration({ url: URL_BASE, sessionId: first }),
+  );
+
+  const a = await asOwner(() =>
+    importMigrationMembers({ ...CONNECT, runId: first }),
+  );
+  const b = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    importMigrationMembers({ ...CONNECT, runId: second }),
+  );
+
+  const linkFor = (rows: typeof a, email: string): string | null =>
+    rows.find((i) => i.email === email)?.link ?? null;
+  assert.ok(linkFor(a, "owner@acme.test"));
+  assert.equal(
+    linkFor(a, "owner@acme.test"),
+    linkFor(b, "owner@acme.test"),
+    "the same person, the same link",
+  );
+  const links = await db.execute(
+    "select count(*)::int as n from registration_links",
+  );
+  assert.equal(links.rows[0].n, 2, "one link per person, not per team");
+  const joins = await db.execute(
+    "select count(*)::int as n from registration_link_teams",
+  );
+  assert.equal(joins.rows[0].n, 4, "each link joins both teams");
+});
+
+// The People step is opened long after the run, in another tab, with the panel's
+// token wiped: what it shows has to be what the run wrote down.
+test("the run records its people, and asking twice mints nothing new", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const first = await asOwner(() =>
+    importMigrationMembers({ ...CONNECT, runId }),
+  );
+  const again = await asOwner(() =>
+    importMigrationMembers({ ...CONNECT, runId }),
+  );
+  assert.deepEqual(
+    again.map((i) => i.link),
+    first.map((i) => i.link),
+  );
+  const links = await db.execute(
+    "select count(*)::int as n from registration_links",
+  );
+  assert.equal(links.rows[0].n, 2);
+
+  const recorded = await asOwner(() => listMigrationRunMembers(runId));
+  assert.deepEqual(recorded.map((m) => m.email).sort(), [
+    "dev@acme.test",
+    "owner@acme.test",
+  ]);
+  assert.ok(recorded.every((m) => m.link));
+});
+
+// One walk of the wizard, several teams: the screen is rebuilt from the runs.
+test("the session lists every team of one walk, with its people", async () => {
+  await inBothTeams("mem_1_b", USER_1, ["view", "create_projects"]);
+  const first = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const second = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    beginMigration({ url: URL_BASE, sessionId: first }),
+  );
+  await asOwner(() => importMigrationMembers({ ...CONNECT, runId: first }));
+
+  const runs = await asOwner(() => migrationSessionRuns(second));
+  assert.deepEqual(
+    runs.map((r) => r.id),
+    [first, second],
+  );
+  assert.equal(runs[0].members.length, 2);
+  assert.equal(runs[1].members.length, 0);
 });
 
 // The tree carries no server, so every service read as if it were on the panel's

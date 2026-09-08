@@ -84,9 +84,10 @@ export function stepReachable(s: StepId, at: StepProgress): boolean {
     // behind the run that produced it rather than reopening on an empty screen.
     case "review":
       return at.plan && at.machinesReady && (at.isTakeover || !at.reportDone);
-    // The members live in the scan, so a reload with no plan has nobody to show.
+    // The members live on the RUNS now, so a reload has them: the step opens on
+    // whatever the walk brought over, plan or no plan.
     case "people":
-      return at.reportDone && at.plan;
+      return at.reportDone;
     // Taking the ports stops that panel for good, so a team still queued comes
     // first. A clean takeover has nothing to wait for.
     case "takeover":

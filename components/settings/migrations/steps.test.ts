@@ -181,6 +181,18 @@ test("off a takeover the report leaves Review behind", () => {
   assert.ok(stepReachable("review", { ...NOTHING, ...at, mode: "migrate" }));
 });
 
+// The wizard was reloaded: the plan is gone with the tab, and the people are on
+// the runs. The step that hands out their links has to open all the same.
+test("People opens on a reload with no plan", () => {
+  assert.ok(
+    stepReachable("people", {
+      ...NOTHING,
+      isTakeover: false,
+      reportDone: true,
+    }),
+  );
+});
+
 test("the choice is gone once a run exists", () => {
   assert.equal(
     stepReachable("choose", { ...NOTHING, mode: "migrate", runId: "dimp_1" }),

@@ -2840,6 +2840,12 @@ export const migrationRuns = pgTable(
      * `runWithIdentity`, the same way the deploy hook and the MCP server do.
      */
     actorUserId: text("actor_user_id"),
+    /**
+     * The runs of ONE walk of the wizard, grouped: several teams of the same
+     * panel are several runs, and the id of the first is what says so. NULL on
+     * every run made before the queue moved out of the browser tab.
+     */
+    sessionId: text("session_id"),
   },
   (t) => [
     index("migration_runs_team_started_idx").on(
@@ -2847,6 +2853,40 @@ export const migrationRuns = pgTable(
       t.startedAt.desc(),
       t.seq.desc(),
     ),
+    index("migration_runs_session_idx").on(t.sessionId, t.seq),
+  ],
+);
+
+/**
+ * One person the panel listed on a team a run brought over, and what became of
+ * them here. Written by the run itself, so the People step still works when the
+ * tab that started it is long gone and the panel's token has been wiped.
+ */
+export const migrationRunMembers = pgTable(
+  "migration_run_members",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => migrationRuns.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    /** What they were over there, for the note that says to grant it here. */
+    sourceRole: text("source_role").notNull().default(""),
+    /** `'created'` | `'manual'` | `'skipped'` | `'failed'` - as the report reads it. */
+    outcome: text("outcome").notNull(),
+    message: text("message"),
+    /**
+     * The single-use link minted for them, when they had no account here. ONE per
+     * person per session: a second team of the same panel adds itself to this link
+     * rather than minting a second one, which is what used to create two accounts
+     * for one person.
+     */
+    linkId: text("link_id"),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("migration_run_members_run_email_uq").on(t.runId, t.email),
   ],
 );
 

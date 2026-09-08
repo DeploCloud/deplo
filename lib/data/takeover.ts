@@ -309,7 +309,11 @@ export async function requestTakeover(
       "That migration does not exist, so there is nothing to take the ports for.",
     );
   const [run] = await getDb()
-    .select({ status: runsTable.status, keepSources: runsTable.keepSources })
+    .select({
+      status: runsTable.status,
+      keepSources: runsTable.keepSources,
+      sessionId: runsTable.sessionId,
+    })
     .from(runsTable)
     .where(eq(runsTable.id, runId));
   if (!run)
@@ -323,7 +327,23 @@ export async function requestTakeover(
   // The cutover stops that panel and its containers for good, and nothing here
   // can start them again. A run that says another team is still owed is the one
   // fact Deplo has about it, and the operator has to overrule it on purpose.
-  if (run.keepSources && !opts.noOtherTeams)
+  // A team of the same walk that has not run yet is the fact; the flag is what
+  // says so for a run made before the queue was the control plane's.
+  const owed = run.sessionId
+    ? (
+        await getDb()
+          .select({ id: runsTable.id })
+          .from(runsTable)
+          .where(
+            and(
+              eq(runsTable.sessionId, run.sessionId),
+              inArray(runsTable.status, ["queued", "running"]),
+            ),
+          )
+          .limit(1)
+      ).length > 0
+    : run.keepSources;
+  if (owed && !opts.noOtherTeams)
     throw new Error(
       "That migration still has teams to bring over from the panel. Finish them first: taking the ports stops it for good, and a token reads one team.",
     );

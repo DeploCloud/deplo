@@ -101,6 +101,32 @@ export interface Invite {
   link: string | null;
   outcome: string;
   message: string | null;
+  /** What they were on the panel, when it says. */
+  sourceRole: string;
+  /** Whether that address already has an account here. */
+  hasAccount: boolean;
+  avatarUrl: string | null;
+}
+
+/**
+ * One team of a session: a walk of the wizard is one run per team of the panel,
+ * and the control plane starts each as the turn before it ends. This is what the
+ * screen is rebuilt from when the tab that began it is gone.
+ */
+export interface SessionRun {
+  id: string;
+  teamId: string;
+  teamName: string;
+  teamAvatarUrl: string | null;
+  orgName: string | null;
+  /** `queued` | `running` | `done` | `stopped` | `failed`. */
+  status: string;
+  created: number;
+  skipped: number;
+  failed: number;
+  manual: number;
+  error: string | null;
+  members: Invite[];
 }
 
 export interface ImportRun {

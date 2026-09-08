@@ -27,6 +27,7 @@ import {
   type ImportProjectResult,
   type ImportRunDTO,
   listMigrationRuns,
+  migrationSessionRuns,
   type PlanEnvironment,
   type PlanMember,
   type PlanProject,
@@ -282,8 +283,44 @@ const ImportItemRef = builder
     }),
   });
 
+const InviteRef = builder
+  .objectRef<MigrationInvite>("MigrationInvite")
+  .implement({
+    description:
+      "One person from the source team or organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.",
+    fields: (t) => ({
+      email: t.exposeString("email"),
+      name: t.exposeString("name"),
+      link: t.exposeString("link", {
+        nullable: true,
+        description:
+          "The single-use registration link to send them, or null when they were added directly.",
+      }),
+      outcome: t.field({
+        type: MigrationOutcomeEnum,
+        resolve: (i) => i.outcome as never,
+      }),
+      message: t.exposeString("message", { nullable: true }),
+      sourceRole: t.string({
+        description: "What they were on the panel, when it says.",
+        resolve: (i) => i.sourceRole ?? "",
+      }),
+      hasAccount: t.boolean({
+        description: "Whether that address already has an account here.",
+        resolve: (i) => i.hasAccount ?? false,
+      }),
+      avatarUrl: t.string({
+        nullable: true,
+        description: "Their picture, when they already have an account here.",
+        resolve: (i) => i.avatarUrl ?? null,
+      }),
+    }),
+  });
+
 const ImportRunRef = builder
-  .objectRef<ImportRunDTO & { items?: ImportItemDTO[] }>("MigrationRun")
+  .objectRef<
+    ImportRunDTO & { items?: ImportItemDTO[]; members?: MigrationInvite[] }
+  >("MigrationRun")
   .implement({
     description:
       "One import, kept after the tab that started it is gone. The API key is never stored.",
@@ -335,6 +372,23 @@ const ImportRunRef = builder
         description: "The report. Only loaded by the single-run query.",
         resolve: (r) => r.items ?? [],
       }),
+      teamId: t.exposeString("teamId", {
+        description: "The Deplo team this run landed in.",
+      }),
+      teamName: t.exposeString("teamName"),
+      teamSlug: t.exposeString("teamSlug"),
+      teamAvatarUrl: t.exposeString("teamAvatarUrl", { nullable: true }),
+      sessionId: t.exposeString("sessionId", {
+        nullable: true,
+        description:
+          "The runs of ONE walk of the wizard share this: several teams of the same panel are several runs, brought over one after another by the control plane. Null on runs made before the queue left the browser.",
+      }),
+      members: t.field({
+        type: [InviteRef],
+        description:
+          "The people the panel listed on this team, as the run recorded them - who was added, and who was handed a link. Only the session query loads them.",
+        resolve: (r) => ("members" in r ? (r.members ?? []) : []),
+      }),
     }),
   });
 
@@ -348,27 +402,6 @@ const ImportProjectResultRef = builder
       failed: t.exposeInt("failed"),
       manual: t.exposeInt("manual"),
       items: t.field({ type: [ImportItemRef], resolve: (r) => r.items }),
-    }),
-  });
-
-const InviteRef = builder
-  .objectRef<MigrationInvite>("MigrationInvite")
-  .implement({
-    description:
-      "One person from the source team or organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.",
-    fields: (t) => ({
-      email: t.exposeString("email"),
-      name: t.exposeString("name"),
-      link: t.exposeString("link", {
-        nullable: true,
-        description:
-          "The single-use registration link to send them, or null when they were added directly.",
-      }),
-      outcome: t.field({
-        type: MigrationOutcomeEnum,
-        resolve: (i) => i.outcome as never,
-      }),
-      message: t.exposeString("message", { nullable: true }),
     }),
   });
 
@@ -459,6 +492,30 @@ const RunTargetInput = builder.inputType("MigrationRunTargetInput", {
       description:
         "A database's host port. THREE values, and the difference matters: omitted keeps the source's own, `null` publishes nothing, a number publishes there.",
     }),
+  }),
+});
+
+/**
+ * One more team of the same panel, to bring over after the one being started.
+ * Written down at Start and walked by the control plane, so closing the tab no
+ * longer loses every team but the first.
+ */
+const QueuedTeamInputRef = builder.inputType("MigrationQueuedTeamInput", {
+  fields: (t) => ({
+    apiKey: t.string({
+      required: true,
+      description: "That team's own token - a key reads exactly one team.",
+    }),
+    orgName: t.string({ required: false }),
+    teamId: t.string({
+      required: false,
+      description:
+        "The Deplo team it lands in. Omit to have one created for it now, named by `newTeamName`.",
+    }),
+    newTeamName: t.string({ required: false }),
+    newTeamImage: t.string({ required: false }),
+    targets: t.field({ type: [RunTargetInput], required: true }),
+    servers: t.field({ type: [ServerChoiceInput], required: false }),
   }),
 });
 
@@ -575,6 +632,19 @@ builder.queryFields((t) => ({
     description: "One import with its full report.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => getMigrationRun(id),
+  }),
+  migrationSession: t.field({
+    type: [ImportRunRef],
+    authScopes: { instanceAdmin: true },
+    description:
+      "Every team of ONE walk of the wizard, oldest first, with the people each run brought over. A panel with three teams is three runs, started one after another by the control plane - this is what makes them one migration on screen again after the tab that began them is gone. A team still waiting its turn is in here with status `queued`.",
+    args: {
+      runId: t.arg.string({
+        required: true,
+        description: "Any run of the session.",
+      }),
+    },
+    resolve: (_r, { runId }) => migrationSessionRuns(runId),
   }),
 }));
 
@@ -817,10 +887,16 @@ builder.mutationFields((t) => ({
       keepSources: t.arg.boolean({
         required: false,
         description:
-          "Another team of the SAME panel is still to come, so this run must leave Deplo's agents on the source machines - the next team reads the same disks, and an uninstall scheduled here would race the install that follows it. The last run of a series leaves this false, and it is that one that clears them. It also holds the takeover: the ports cannot be taken while a run says more teams are owed.",
+          "Another team of the SAME panel is still to come, so this run must leave Deplo's agents on the source machines - the next team reads the same disks, and an uninstall scheduled here would race the install that follows it. The last run of a series leaves this false, and it is that one that clears them. It also holds the takeover: the ports cannot be taken while a run says more teams are owed. Ignored when `queued` is given: the queue itself says which run is the last.",
+      }),
+      queued: t.arg({
+        type: [QueuedTeamInputRef],
+        required: false,
+        description:
+          "The other teams of this panel, in the order they should be brought over. Each is written down with its own token, its own targets and the team it lands in, and the control plane starts each one as the turn before it ends - so the browser tab is not what walks the list any more. Every token is proved before anything is created, and a team that is to be made here is made now.",
       }),
     },
-    resolve: (_r, { input, orgName, targets, servers, keepSources }) =>
+    resolve: (_r, { input, orgName, targets, servers, keepSources, queued }) =>
       startMigrationRun({
         url: input.url,
         apiKey: input.apiKey,
@@ -837,6 +913,23 @@ builder.mutationFields((t) => ({
           exposedPortSet: t2.exposedPort !== undefined,
         })),
         servers: (servers ?? []).map((x) => ({ from: x.from, to: x.to })),
+        queued: (queued ?? []).map((q) => ({
+          apiKey: q.apiKey,
+          orgName: q.orgName ?? null,
+          teamId: q.teamId ?? null,
+          newTeamName: q.newTeamName ?? null,
+          newTeamImage: q.newTeamImage ?? null,
+          targets: q.targets.map((t2) => ({
+            projectId: t2.projectId,
+            projectName: t2.projectName,
+            serviceId: t2.serviceId,
+            serverId: t2.serverId ?? null,
+            buildServerId: t2.buildServerId ?? null,
+            exposedPort: t2.exposedPort,
+            exposedPortSet: t2.exposedPort !== undefined,
+          })),
+          servers: (q.servers ?? []).map((x) => ({ from: x.from, to: x.to })),
+        })),
       }),
   }),
   setMigrationMachineAddress: t.string({

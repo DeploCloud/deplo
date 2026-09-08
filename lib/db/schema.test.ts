@@ -109,6 +109,9 @@ const CONTROL_PLANE = [
   "migration_runs",
   "migration_run_db_hosts",
   "migration_run_items",
+  // Who the panel listed on the team a run brought over, and what became of each
+  // of them here: the People step is opened after the run's token is wiped.
+  "migration_run_members",
   // Where a machine of a given Dokploy is actually REACHED, remembered across
   // attempts.
   "migration_source_addresses",

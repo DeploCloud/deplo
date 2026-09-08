@@ -13,7 +13,10 @@ import { MIGRATION_HEARTBEAT_STALE_MS } from "../types";
 import { formatBytes } from "../utils";
 import { encryptSecret, decryptSecretOrThrow } from "../crypto";
 import { isMigrationPlatform, sourceClient } from "../migration/source";
-import type { MigrationPlatform } from "../migration/source";
+import type { MigrationPlatform, SourceCredential } from "../migration/source";
+import { normalizeSourceBaseUrl } from "../migration/transport";
+import { holdsTeamWideCapability } from "../membership";
+import { createTeam } from "./teams";
 import { runWithIdentity } from "../auth/request-context";
 import { acquireLease, releaseLease } from "../backups/lease";
 import { publishMigrationChanged } from "../graphql/pubsub";
@@ -22,10 +25,14 @@ import {
   appendRunItem,
   assertImportGate,
   beginMigration,
+  cancelQueuedRuns,
   credentialFor as connectCredential,
   finishMigration,
+  handOverMigrationSources,
   importMigrationProject,
+  importRunMembers,
   releaseMigrating,
+  removeSourcesOfRun,
   stopMigration,
   undoMigration,
 } from "./migration-import";
@@ -106,8 +113,32 @@ export interface StartRunInput {
    * Another team of the SAME panel is queued behind this run, so the agents on
    * the source machines are not this run's to remove - the next team reads the
    * same disks. See `migration_runs.keep_sources`.
+   *
+   * Derived from `queued` when that is given: the last team of a walk is the one
+   * that clears them, and nothing outside this function decides which that is.
    */
   keepSources?: boolean;
+  /**
+   * The teams of the same panel to bring over after this one, in order. They are
+   * written down now and started by the control plane as each turn ends - the
+   * queue used to live in the browser tab, so closing it lost every team but the
+   * first.
+   */
+  queued?: QueuedTeamInput[];
+}
+
+/** One more team of the same panel, waiting its turn. */
+export interface QueuedTeamInput {
+  /** That team's own token: a key reads exactly one team on both products. */
+  apiKey: string;
+  orgName?: string | null;
+  /** The Deplo team it lands in, when it exists already. */
+  teamId?: string | null;
+  /** Otherwise the team made for it, right now, so its turn has somewhere to go. */
+  newTeamName?: string | null;
+  newTeamImage?: string | null;
+  targets: StartRunInput["targets"];
+  servers: { from: string; to: string }[];
 }
 
 /**
@@ -134,16 +165,37 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
     input.targets.map((t) => t.serviceId),
   );
 
+  // Every queued token is proved HERE, before anything is created: a bad key on
+  // the third team used to surface forty minutes into the first one's copy.
+  const queued = input.queued ?? [];
+  const queuedCreds: SourceCredential[] = [];
+  for (const q of queued) {
+    const qc = await connectCredential({
+      url: input.url,
+      apiKey: q.apiKey,
+      kind: c.kind,
+    });
+    const qclient = sourceClient(qc);
+    await qclient.assertReadable();
+    await qclient.listProjects();
+    queuedCreds.push(qc);
+    if (q.targets.length === 0)
+      throw new Error("A queued team has nothing selected to migrate.");
+  }
+
   const runId = await beginMigration({
     url: input.url,
     orgName: input.orgName ?? null,
     kind: c.kind,
-    keepSources: input.keepSources ?? false,
+    // A queue is the fact: a caller that says otherwise while queueing teams
+    // would have the first run take the agents off machines the rest still read.
+    keepSources: queued.length > 0 || (input.keepSources ?? false),
   });
   const { currentIdentity } = await import("../auth/request-context");
   const { getCurrentUser } = await import("../auth");
-  const userId =
-    currentIdentity()?.userId ?? (await getCurrentUser())?.id ?? null;
+  const me = await getCurrentUser();
+  const userId = currentIdentity()?.userId ?? me?.id ?? null;
+  const actorName = me?.name ?? "someone";
 
   await getDb().transaction(async (tx) => {
     await tx
@@ -178,6 +230,18 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
           .onConflictDoNothing();
   });
 
+  for (const [i, q] of queued.entries())
+    await enqueueTeam({
+      sessionId: runId,
+      url: input.url,
+      credential: queuedCreds[i],
+      team: q,
+      actor: { name: actorName, userId },
+      // The LAST team of the walk is the one that takes Deplo's agents back off
+      // the source machines; everyone before it leaves them for the next turn.
+      keepSources: i < queued.length - 1,
+    });
+
   publishMigrationChanged();
   // Do not await: the caller is a mutation, and the run is now durable enough to
   // be finished by any tick, including one in another process.
@@ -185,6 +249,79 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
     console.error("[migration] first tick failed:", e),
   );
   return runId;
+}
+
+/**
+ * Write down one team that is still to come: its own token, where it lands, and
+ * everything the review chose for it. Nothing of it runs until the turn before it
+ * ends - see {@link promoteQueuedRuns}.
+ */
+async function enqueueTeam(opts: {
+  sessionId: string;
+  url: string;
+  credential: SourceCredential;
+  team: QueuedTeamInput;
+  actor: { name: string; userId: string | null };
+  keepSources: boolean;
+}): Promise<string> {
+  const { team } = opts;
+  let teamId = team.teamId?.trim() || "";
+  if (teamId) {
+    if (!(await holdsTeamWideCapability(teamId, "create_projects")))
+      throw new Error("You cannot create projects in one of the teams chosen.");
+  } else {
+    const name = team.newTeamName?.trim() || team.orgName?.trim() || "";
+    if (!name) throw new Error("A queued team needs a name to land under.");
+    // Made now rather than when its turn comes: a team that does not exist has
+    // nowhere to hang the run row, and the review already said it would be made.
+    teamId = (await createTeam({ name, image: team.newTeamImage ?? null })).id;
+  }
+  const id = newId("dimp");
+  const now = nowIso();
+  await getDb().transaction(async (tx) => {
+    await tx.insert(runsTable).values({
+      id,
+      teamId,
+      sourceUrl: normalizeSourceBaseUrl(opts.url),
+      platform: opts.credential.kind,
+      orgName: team.orgName?.trim() || null,
+      actor: opts.actor.name,
+      actorUserId: opts.actor.userId,
+      status: "queued",
+      created: 0,
+      skipped: 0,
+      failed: 0,
+      manual: 0,
+      error: null,
+      startedAt: now,
+      finishedAt: null,
+      apiKeyEnc: encryptSecret(team.apiKey),
+      totalSteps: team.targets.length,
+      doneSteps: 0,
+      phase: "config",
+      keepSources: opts.keepSources,
+      sessionId: opts.sessionId,
+    });
+    for (const t of team.targets)
+      await tx.insert(targetsTable).values({
+        id: newId("dtgt"),
+        runId: id,
+        projectId: t.projectId,
+        projectName: t.projectName,
+        serviceId: t.serviceId,
+        serverId: t.serverId ?? null,
+        buildServerId: t.buildServerId ?? null,
+        exposedPort: t.exposedPort ?? null,
+        exposedPortSet: t.exposedPortSet ?? false,
+      });
+    for (const s of team.servers)
+      if (s.to)
+        await tx
+          .insert(runServersTable)
+          .values({ runId: id, fromId: s.from, toId: s.to })
+          .onConflictDoNothing();
+  });
+  return id;
 }
 
 /** Ask a run to stop. It notices between steps; nothing is abandoned mid-call. */
@@ -215,6 +352,11 @@ export async function requestStopMigrationRun(runId: string): Promise<void> {
  */
 export async function runMigrationTick(): Promise<void> {
   try {
+    await promoteQueuedRuns();
+  } catch (e) {
+    console.error("[migration] promoting the queue failed:", e);
+  }
+  try {
     const now = new Date();
     const cold = new Date(now.getTime() - STALE_MS).toISOString();
     const rows = await getDb()
@@ -244,6 +386,76 @@ export async function runMigrationTick(): Promise<void> {
     await Promise.all(rows.filter((r) => !inflight.has(r.id)).map(drive));
   } catch (e) {
     console.error("[migration] tick failed:", e);
+  }
+}
+
+/**
+ * The turn AFTER: every session whose team has finished and whose next team has
+ * not started. Idempotent and driven off the rows alone, so a control plane that
+ * died mid-walk picks the queue up on its first tick.
+ */
+async function promoteQueuedRuns(): Promise<void> {
+  const waiting = await getDb()
+    .select()
+    .from(runsTable)
+    .where(eq(runsTable.status, "queued"))
+    .orderBy(asc(runsTable.seq));
+  const seen = new Set<string>();
+  for (const next of waiting) {
+    const sessionId = next.sessionId;
+    if (!sessionId || seen.has(sessionId)) continue;
+    seen.add(sessionId);
+    const siblings = await getDb()
+      .select()
+      .from(runsTable)
+      .where(eq(runsTable.sessionId, sessionId))
+      .orderBy(asc(runsTable.seq));
+    // Its turn has not come: one of this panel's teams is still moving.
+    if (siblings.some((s) => s.status === "running")) continue;
+    const before = siblings.filter((s) => s.status !== "queued").pop();
+    if (before && before.status !== "done") {
+      // The team before it did not land. Carrying on would import the next team
+      // through machines a failure has just been undone on.
+      const why = `The team before this one ${before.status === "stopped" ? "was stopped" : "did not finish"}, so the rest of the migration did not start.`;
+      await cancelQueuedRuns(sessionId, why);
+      if (before.actorUserId)
+        await runWithIdentity(
+          { userId: before.actorUserId, teamId: before.teamId },
+          () => removeSourcesOfRun(before.id, before.teamId),
+        ).catch((e) =>
+          console.error("[migration] clearing sources after a stop:", e),
+        );
+      continue;
+    }
+    if (!next.actorUserId) {
+      await cancelQueuedRuns(
+        sessionId,
+        "This team was queued by a run Deplo can no longer resume.",
+      );
+      continue;
+    }
+    try {
+      // The machines are read team by team, and every lookup that reads one is
+      // team-scoped: they follow the turn.
+      await runWithIdentity(
+        { userId: next.actorUserId, teamId: next.teamId },
+        () => handOverMigrationSources(before?.teamId ?? null),
+      );
+    } catch (e) {
+      console.error("[migration] handing the sources to the next team:", e);
+      continue;
+    }
+    await getDb()
+      .update(runsTable)
+      .set({
+        status: "running",
+        startedAt: nowIso(),
+        heartbeatAt: null,
+        runnerOwner: null,
+        phase: "config",
+      })
+      .where(and(eq(runsTable.id, next.id), eq(runsTable.status, "queued")));
+    publishMigrationChanged();
   }
 }
 
@@ -958,10 +1170,30 @@ async function runDataPhase(row: RunRow, c: RunCredential): Promise<void> {
       outcome: "manual",
       message: `${failedHere} service(s) could not have their data cut over. Each is named above and refuses to deploy until you bring its data across yourself or choose "Deploy anyway" on its page.`,
     });
+  // The people, while the token is still here to read them with: the run records
+  // who was on that team and hands out the links, so the wizard's People step is
+  // the same screen an hour later in another tab.
+  try {
+    await importRunMembers(row.id, await connectCredential(c));
+  } catch (e) {
+    console.error("[migration] bringing the members over failed:", e);
+    await appendRunItem(row.id, panelNameFor(row), {
+      path: "Members",
+      sourceKind: "member",
+      sourceName: "Members",
+      outcome: "failed",
+      message: `The people on this team could not be brought over: ${
+        e instanceof Error ? e.message : String(e)
+      } Invite them from Members.`,
+    });
+  }
   await finishMigration(row.id);
   await getDb()
     .update(runsTable)
     .set({ apiKeyEnc: null, runnerOwner: null, phase: "done" })
     .where(eq(runsTable.id, row.id));
   publishMigrationChanged();
+  // The next team of this panel starts on the very next tick; kick one rather
+  // than leaving it to the timer, so a queue moves as fast as a person would.
+  void runMigrationTick().catch(() => {});
 }

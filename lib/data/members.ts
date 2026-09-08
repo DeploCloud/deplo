@@ -1363,6 +1363,8 @@ export async function resetUserPasskeys(userId: string): Promise<void> {
 export interface MintRegistrationResult {
   /** Absolute /register/<token> URL, always returned for copying/sharing. */
   link: string;
+  /** The row, so a caller that has to find this link again can point at it. */
+  id: string;
 }
 
 const MAX_REGISTRATION_TEAMS = 50;
@@ -1461,7 +1463,62 @@ export async function mintRegistrationLink(input: {
   }
 
   const base = await instancePublicBaseUrl();
-  return { link: `${base}/register/${rawToken}` };
+  return { link: `${base}/register/${rawToken}`, id: linkId };
+}
+
+/**
+ * Put one more team on a link that has not been used yet. One person on two teams
+ * of the same panel is ONE person: a second link for the same address is a second
+ * account, and the email is unique - so the second team joins the first link.
+ */
+export async function addTeamToRegistrationLink(
+  linkId: string,
+  teamId: string,
+  role: Role,
+): Promise<boolean> {
+  await requireInstanceAdmin();
+  if (role !== "member" && role !== "viewer")
+    throw new Error("A new user can only join a team as a member or viewer");
+  const me = await getCurrentUser();
+  if (!me) throw new Error("Not authenticated");
+  const mine = await getDb()
+    .select({ teamId: membershipsTable.teamId })
+    .from(membershipsTable)
+    .where(
+      and(
+        eq(membershipsTable.userId, me.id),
+        eq(membershipsTable.teamId, teamId),
+      ),
+    );
+  if (mine.length === 0)
+    throw new Error("You can only add new users to teams you belong to");
+  const [link] = await getDb()
+    .select({ id: registrationLinksTable.id })
+    .from(registrationLinksTable)
+    .where(
+      and(
+        eq(registrationLinksTable.id, linkId),
+        eq(registrationLinksTable.status, "pending"),
+        eq(registrationLinksTable.mode, "existing_teams"),
+        gte(registrationLinksTable.expiresAt, sql`now()`),
+      ),
+    )
+    .limit(1);
+  // Used, revoked or expired: the caller mints a fresh one instead.
+  if (!link) return false;
+  const linkTeamId = newId("rlt");
+  const added = await getDb()
+    .insert(registrationLinkTeamsTable)
+    .values({ id: linkTeamId, linkId, teamId, role })
+    .onConflictDoNothing()
+    .returning({ id: registrationLinkTeamsTable.id });
+  if (added.length === 0) return true;
+  const caps = cleanCapabilities(undefined, role);
+  if (caps.length > 0)
+    await getDb()
+      .insert(registrationLinkTeamCapabilitiesTable)
+      .values(caps.map((c) => ({ linkTeamId, capability: c })));
+  return true;
 }
 
 /** Pending + recent registration links for the Settings → Users tab. */

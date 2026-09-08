@@ -18,6 +18,12 @@ import {
   releaseMigrationRunnerLease,
   runMigrationTick,
 } from "./migration-runner";
+import {
+  seedIdentity,
+  TEAM_A,
+  TRUNCATE_IDENTITY,
+  USER_1,
+} from "./identity-test-helpers";
 
 /**
  * The runner's lease, which decides whether a migration may move. Per RUN, it
@@ -41,6 +47,8 @@ beforeEach(async () => {
   __resetLocalLeases();
   await harness.db.execute("delete from projects;");
   await harness.db.execute("delete from migration_runs;");
+  await harness.db.execute(TRUNCATE_IDENTITY);
+  await seedIdentity(harness.db);
 });
 
 /** A run the tick will pick up and drive. With no `actor_user_id` it fails on
@@ -160,4 +168,95 @@ test("overlapping ticks settle a run once and leave no lease behind", async () =
     true,
     "and every claim on it handed back, however many passes touched it",
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* The queue of teams                                                  */
+/* ------------------------------------------------------------------ */
+
+/** One team of a walk, waiting its turn behind `session`. */
+async function seedQueued(
+  id: string,
+  session: string,
+  opts: { actor?: string | null } = {},
+): Promise<string> {
+  const actor =
+    opts.actor === undefined
+      ? `'${USER_1}'`
+      : opts.actor
+        ? `'${opts.actor}'`
+        : "null";
+  await harness.db.execute(
+    `insert into migration_runs
+       (id, team_id, source_url, actor, status, created, skipped, failed, manual,
+        started_at, api_key_enc, total_steps, done_steps, phase, session_id,
+        actor_user_id)
+     values ('${id}', '${TEAM_A}', 'https://dokploy.example', 'tester', 'queued', 0, 0, 0, 0,
+             now(), 'enc', 1, 0, 'config', '${session}', ${actor});`,
+  );
+  return id;
+}
+
+/** The team whose turn just ended, in whatever way it ended. */
+async function seedLanded(id: string, status: string): Promise<string> {
+  await harness.db.execute(
+    `insert into migration_runs
+       (id, team_id, source_url, actor, status, created, skipped, failed, manual,
+        started_at, finished_at, total_steps, done_steps, phase, keep_sources,
+        session_id, actor_user_id)
+     values ('${id}', '${TEAM_A}', 'https://dokploy.example', 'tester', '${status}', 1, 0, 0, 0,
+             now(), now(), 1, 1, 'done', true, '${id}', '${USER_1}');`,
+  );
+  return id;
+}
+
+test("the team behind a landed one starts on the next tick", async () => {
+  const first = await seedLanded("dimp_one", "done");
+  const next = await seedQueued("dimp_two", first);
+  // Held by another control plane, so the tick promotes it and leaves the
+  // driving alone - which is the half this test is about.
+  assert.equal(await acquireLease(leaseFor(next), "another-instance"), true);
+
+  await runMigrationTick();
+
+  assert.equal(await statusOf(next), "running");
+});
+
+// Carrying on would import the next team through machines the failure has just
+// been undone on.
+test("a team that did not land takes the rest of the walk with it", async () => {
+  const first = await seedLanded("dimp_bad", "failed");
+  const next = await seedQueued("dimp_after", first);
+
+  await runMigrationTick();
+
+  assert.equal(await statusOf(next), "stopped");
+  const r = await harness.db.execute(
+    `select error from migration_runs where id = '${next}'`,
+  );
+  assert.match(
+    String((r.rows[0] as { error: string }).error),
+    /did not finish/,
+  );
+});
+
+test("a queued team whose starter is gone is cancelled, not run headless", async () => {
+  const first = await seedLanded("dimp_orphan", "done");
+  const next = await seedQueued("dimp_orphaned", first, { actor: null });
+
+  await runMigrationTick();
+
+  assert.equal(await statusOf(next), "stopped");
+});
+
+test("only the first team of a walk starts, never both at once", async () => {
+  const first = await seedLanded("dimp_head", "done");
+  const second = await seedQueued("dimp_mid", first);
+  const third = await seedQueued("dimp_tail", first);
+  assert.equal(await acquireLease(leaseFor(second), "another-instance"), true);
+
+  await runMigrationTick();
+
+  assert.equal(await statusOf(second), "running");
+  assert.equal(await statusOf(third), "queued");
 });

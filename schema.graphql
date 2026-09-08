@@ -2322,7 +2322,12 @@ type MigrationDataVolume {
 One person from the source team or organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.
 """
 type MigrationInvite {
+  """Their picture, when they already have an account here."""
+  avatarUrl: String
   email: String
+
+  """Whether that address already has an account here."""
+  hasAccount: Boolean
 
   """
   The single-use registration link to send them, or null when they were added directly.
@@ -2331,6 +2336,9 @@ type MigrationInvite {
   message: String
   name: String
   outcome: MigrationOutcome
+
+  """What they were on the panel, when it says."""
+  sourceRole: String
 }
 
 """
@@ -2515,6 +2523,21 @@ type MigrationProjectResult {
   skipped: Int
 }
 
+input MigrationQueuedTeamInput {
+  """That team's own token - a key reads exactly one team."""
+  apiKey: String!
+  newTeamImage: String
+  newTeamName: String
+  orgName: String
+  servers: [MigrationServerChoiceInput!]
+  targets: [MigrationRunTargetInput!]!
+
+  """
+  The Deplo team it lands in. Omit to have one created for it now, named by `newTeamName`.
+  """
+  teamId: String
+}
+
 """
 The panel service a blocked app or database was imported from. Its key is NOT here: a run wipes the token the moment it ends, so copying the data again asks for it once more.
 """
@@ -2568,6 +2591,11 @@ type MigrationRun {
   """
   lastPath: String
   manual: Int
+
+  """
+  The people the panel listed on this team, as the run recorded them - who was added, and who was handed a link. Only the session query loads them.
+  """
+  members: [MigrationInvite!]
   orgName: String
 
   """
@@ -2577,6 +2605,11 @@ type MigrationRun {
 
   """Which product this run read. Decided once, when it connected."""
   platform: MigrationPlatform
+
+  """
+  The runs of ONE walk of the wizard share this: several teams of the same panel are several runs, brought over one after another by the control plane. Null on runs made before the queue left the browser.
+  """
+  sessionId: String
   skipped: Int
   sourceUrl: String
   startedAt: String
@@ -2591,6 +2624,12 @@ type MigrationRun {
   Somebody asked it to stop. The runner notices between steps - never mid-call, because a call already sent finishes on the far side whatever this row says.
   """
   stopRequested: Boolean
+  teamAvatarUrl: String
+
+  """The Deplo team this run landed in."""
+  teamId: String
+  teamName: String
+  teamSlug: String
   totalSteps: Int
 }
 
@@ -3666,10 +3705,15 @@ type Mutation {
     input: MigrationSourceInput!
 
     """
-    Another team of the SAME panel is still to come, so this run must leave Deplo's agents on the source machines - the next team reads the same disks, and an uninstall scheduled here would race the install that follows it. The last run of a series leaves this false, and it is that one that clears them. It also holds the takeover: the ports cannot be taken while a run says more teams are owed.
+    Another team of the SAME panel is still to come, so this run must leave Deplo's agents on the source machines - the next team reads the same disks, and an uninstall scheduled here would race the install that follows it. The last run of a series leaves this false, and it is that one that clears them. It also holds the takeover: the ports cannot be taken while a run says more teams are owed. Ignored when `queued` is given: the queue itself says which run is the last.
     """
     keepSources: Boolean
     orgName: String
+
+    """
+    The other teams of this panel, in the order they should be brought over. Each is written down with its own token, its own targets and the team it lands in, and the control plane starts each one as the turn before it ends - so the browser tab is not what walks the list any more. Every token is proved before anything is created, and a team that is to be made here is made now.
+    """
+    queued: [MigrationQueuedTeamInput!]
     servers: [MigrationServerChoiceInput!]
     targets: [MigrationRunTargetInput!]!
   ): String
@@ -4361,6 +4405,14 @@ type Query {
   This team's import history, newest first. Without the per-run report - read one run for that.
   """
   migrationRuns: [MigrationRun!]
+
+  """
+  Every team of ONE walk of the wizard, oldest first, with the people each run brought over. A panel with three teams is three runs, started one after another by the control plane - this is what makes them one migration on screen again after the tab that began them is gone. A team still waiting its turn is in here with status `queued`.
+  """
+  migrationSession(
+    """Any run of the session."""
+    runId: String!
+  ): [MigrationRun!]
 
   """The instance-wide monitoring settings."""
   monitoringSettings: MonitoringSettings

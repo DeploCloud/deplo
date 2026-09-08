@@ -11,7 +11,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StepShell } from "./step-shell";
 import { copyFor, type SourceKind, stepDocs } from "./sources";
-import type { Invite, PlanMember } from "./types";
+import type { Invite } from "./types";
 
 /**
  * One team's people: who was on the panel's team, their links once minted, and
@@ -21,12 +21,8 @@ import type { Invite, PlanMember } from "./types";
 export interface PeopleGroup {
   key: string;
   team: { name: string; avatarUrl: string | null };
-  people: PlanMember[];
-  /** Null until the links have been minted; then one entry per person. */
-  invites: Invite[] | null;
-  /** False until there is a run to record the invites against. */
-  canInvite: boolean;
-  onInvite: () => void;
+  /** Who the panel listed, and what the run did with each of them. */
+  people: Invite[];
   inviteLink: string | null;
   minting: boolean;
   onMintLink: () => void;
@@ -40,30 +36,14 @@ export interface PeopleGroup {
 export function PeopleStep({
   kind,
   groups,
-  inviting,
   onContinue,
 }: {
   /** Which panel these people came from. */
   kind: SourceKind | null;
   /** One per team that came over, in the order they did. */
   groups: PeopleGroup[];
-  inviting: boolean;
   onContinue: () => void;
 }) {
-  // Once per team, on arrival. A ref rather than the `invites == null` test
-  // alone, because development re-invokes effects and a second call mints a
-  // second link for everybody.
-  const asked = React.useRef(new Set<string>());
-  React.useEffect(() => {
-    for (const g of groups) {
-      if (asked.current.has(g.key) || g.invites != null || !g.canInvite)
-        continue;
-      if (g.people.length === 0) continue;
-      asked.current.add(g.key);
-      g.onInvite();
-    }
-  }, [groups]);
-
   const several = groups.length > 1;
   const nobody = groups.every((g) => g.people.length === 0);
 
@@ -86,7 +66,6 @@ export function PeopleStep({
           key={g.key}
           group={g}
           kind={kind}
-          inviting={inviting}
           named={several}
           hoisted={groups.length === 1}
         />
@@ -108,18 +87,15 @@ export function PeopleStep({
 function TeamPeople({
   group: g,
   kind,
-  inviting,
   named,
   hoisted = false,
 }: {
   group: PeopleGroup;
   kind: SourceKind | null;
-  inviting: boolean;
   named: boolean;
   /** One team: its extra link sits in the step's footer instead. */
   hoisted?: boolean;
 }) {
-  const byEmail = new Map((g.invites ?? []).map((i) => [i.email, i]));
   const body = (
     <>
       {g.people.length === 0 ? (
@@ -134,13 +110,7 @@ function TeamPeople({
         // email addresses.
         <div className="grid gap-3 sm:grid-cols-2">
           {g.people.map((p) => (
-            <PersonCard
-              panel={copyFor(kind).name}
-              key={p.email}
-              person={p}
-              invite={byEmail.get(p.email) ?? null}
-              pending={inviting || g.invites == null}
-            />
+            <PersonCard panel={copyFor(kind).name} key={p.email} person={p} />
           ))}
         </div>
       )}
@@ -163,14 +133,9 @@ function TeamPeople({
 /** Two letters for the avatar. The local part, which is the half people read. */
 function PersonCard({
   person,
-  invite,
-  pending,
   panel,
 }: {
-  person: PlanMember;
-  invite: Invite | null;
-  /** The links are still being minted, so the foot of the card is not empty. */
-  pending: boolean;
+  person: Invite;
   /** The panel's name. Coolify hides a member's role, so the line goes with it. */
   panel: string;
 }) {
@@ -207,28 +172,21 @@ function PersonCard({
       {/* The link is the point of the card, so it sits at its foot with a rule
           above it - the same shape a member card uses for its badges. */}
       <div className="mt-auto border-t border-border pt-3">
-        {invite?.link ? (
+        {person.link ? (
           <div className="flex items-center gap-2">
             <Input
               readOnly
-              value={invite.link}
+              value={person.link}
               className="h-8 min-w-0 flex-1"
             />
-            <CopyButton value={invite.link} />
+            <CopyButton value={person.link} />
           </div>
-        ) : invite ? (
+        ) : (
           // No link means Deplo did something else with them - added them
           // straight away, or could not. Its own message says which.
           <p className="text-xs text-muted-foreground">
-            {invite.message ?? invite.outcome}
+            {person.message ?? person.outcome}
           </p>
-        ) : pending ? (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" />
-            Creating their link
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground">No link for this one.</p>
         )}
       </div>
     </div>
