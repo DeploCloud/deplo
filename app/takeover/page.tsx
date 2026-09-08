@@ -140,7 +140,9 @@ function Screen({
         <DeploLogo />
       </header>
       <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8">
-        <div className="w-full max-w-xl space-y-6">{children}</div>
+        {/* Wide enough for the People step's grid; every other step keeps its
+            own narrower measure. */}
+        <div className="w-full max-w-3xl space-y-6">{children}</div>
       </main>
       {/* Clear of AuthChrome's own row of links, which sits at the page's foot. */}
       {footer && <footer className="relative z-10 px-4 pb-14">{footer}</footer>}

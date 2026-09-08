@@ -1438,31 +1438,15 @@ export function MigrationWizard({
     ];
   });
 
-  /** One card per team of the walk, off the runs themselves - so the step is the
-   *  same whether the tab that started them is this one or a reload. */
+  /** One group per team of the walk, off the runs themselves - so the step is
+   *  the same whether the tab that started them is this one or a reload. The
+   *  step itself merges them into one card per person. */
   const landed = sessionRuns.filter((r) => r.status === "done");
   const teamOf = (r: SessionRun) => r.orgName || r.teamName || sourceLabel;
-  /**
-   * Which teams one link joins. A person on two teams of the panel gets ONE link
-   * and appears on both cards; without this the two cards read as two links.
-   */
-  const teamsPerLink = new Map<string, string[]>();
-  for (const r of landed)
-    for (const m of r.members)
-      if (m.link)
-        teamsPerLink.set(m.link, [
-          ...(teamsPerLink.get(m.link) ?? []),
-          teamOf(r),
-        ]);
   const peopleGroups: PeopleGroup[] = landed.map((r) => ({
     key: r.id,
     team: { name: teamOf(r), avatarUrl: r.teamAvatarUrl },
-    people: r.members.map((m) => ({
-      ...m,
-      alsoIn: (m.link ? (teamsPerLink.get(m.link) ?? []) : []).filter(
-        (n) => n !== teamOf(r),
-      ),
-    })),
+    people: r.members,
     inviteLink: teamLinks[r.id] ?? null,
     minting: mintingFor === r.id,
     onMintLink: () => void mintLinkFor(r),
@@ -1831,11 +1815,16 @@ export function MigrationWizard({
           )}
 
           {/**
-           * One width for every step, and it is the narrow one: a wizard is read top to
-           * bottom, and a 48rem measure under a centred picture reads as a page rather than a
-           * sequence.
+           * The narrow measure for every step: a wizard is read top to bottom, and a wide
+           * column under a centred picture reads as a page rather than a sequence. People is
+           * the exception - it holds a grid of cards, not a sentence.
            */}
-          <div className="w-full max-w-xl min-w-0">
+          <div
+            className={cn(
+              "w-full min-w-0",
+              step === "people" ? "max-w-3xl" : "max-w-xl",
+            )}
+          >
             {/* One step is taller than the next, and a page that jumps between
                 them reads as a new screen rather than the same one moving on. */}
             <AnimatedHeight scroll={false} className="space-y-6">
