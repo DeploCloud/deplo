@@ -746,27 +746,33 @@ export function DeploymentSettingsForm({
               )}
 
               {/* Named before a deploy discovers it in a build log. Both describe
-                  the SAVED source, so they step aside while another tab is open. */}
-              {usesGithubApp && repoAccess && repoAccess.missing.length > 0 && (
-                <GitAccessNotice
-                  heading="Deplo is missing access on GitHub"
-                  items={repoAccess.missing}
-                  fix={
-                    canManageGit
-                      ? {
-                          href: repoAccess.settingsUrl,
-                          label: "Update on GitHub",
-                        }
-                      : null
-                  }
-                />
-              )}
-              {(usesGithubApp || usesGitUrl) && cloneRefusal && (
-                <GitAccessNotice
-                  heading="This repository will not clone"
-                  note={cloneRefusal}
-                />
-              )}
+                  the SAVED source, so they step aside while another tab is open,
+                  or while the picker holds an edit Save has yet to re-check. */}
+              {usesGithubApp &&
+                !sourceDirty &&
+                repoAccess &&
+                repoAccess.missing.length > 0 && (
+                  <GitAccessNotice
+                    heading="Deplo is missing access on GitHub"
+                    items={repoAccess.missing}
+                    fix={
+                      canManageGit
+                        ? {
+                            href: repoAccess.settingsUrl,
+                            label: "Update on GitHub",
+                          }
+                        : null
+                    }
+                  />
+                )}
+              {(usesGithubApp || usesGitUrl) &&
+                !sourceDirty &&
+                cloneRefusal && (
+                  <GitAccessNotice
+                    heading="This repository will not clone"
+                    note={cloneRefusal}
+                  />
+                )}
 
               {/* The one case auto-registration cannot cover: a token without the
                   webhook scope. Rather than leaving auto-deploy quietly dead, show
