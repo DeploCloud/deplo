@@ -5,19 +5,17 @@ import {
   BookOpen,
   CloudOff,
   Globe,
-  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { GitHubIcon } from "@/components/shared/brand-icons";
-import { LogoImage } from "@/components/shared/project-logo";
 import { CategoryIcon } from "@/components/templates/category-icon";
+import { LogoTile } from "@/components/templates/logo-tile";
 import {
   TemplateCard,
   toStoreTemplate,
 } from "@/components/templates/template-card";
-import { plateClass, veilProps } from "@/components/templates/veil";
 import { RemoteMarkdown } from "@/components/shared/remote-markdown";
 import { TemplateRail } from "@/components/templates/template-rail";
 import { TemplateSearchLink } from "@/components/templates/template-search";
@@ -34,6 +32,7 @@ import {
   type OverviewPlacement,
 } from "@/lib/overview-links";
 import { templateAccent, templateAccents } from "@/lib/templates/logo-color";
+import { pickRelated } from "@/lib/templates/related";
 import {
   getTemplate,
   listCatalog,
@@ -42,8 +41,10 @@ import {
 import { defaultVariant } from "@/templates/types";
 import { titleClass } from "@/components/shared/page-header";
 
-/** How many siblings the Related rail carries. */
-const RELATED = 12;
+/** How many siblings the Related rail carries: never fewer than the floor, so a
+ *  lone template still gets a row worth scrolling. */
+const RELATED_MIN = 6;
+const RELATED_MAX = 12;
 
 export async function generateMetadata(
   props: PageProps<"/[team]/templates/[slug]">,
@@ -92,24 +93,25 @@ export default async function TemplatePage(
   const wanted = Array.isArray(searchParams.variant)
     ? searchParams.variant[0]
     : searchParams.variant;
-  const variant =
-    template.variants.find((v) => v.slug === wanted) ?? fallbackVariant;
+  // A family with more than one variant starts with NOTHING chosen: the page
+  // still reads as the default, but deploying is a decision the picker owns.
+  const chosen = template.variants.find((v) => v.slug === wanted) ?? null;
+  const variant = chosen ?? fallbackVariant;
   const manyVariants = template.variants.length > 1;
 
   // `getTemplate` hands back raw asset paths, unlike `listCatalog`.
   const logo = variant.logo ? templateAssetUrl(variant.logo) : null;
   const images = variant.images.map(templateAssetUrl);
   const accent = await templateAccent(template.slug, logo);
-  const veil = veilProps(accent, "on");
 
   const catalog = await listCatalog().catch(() => []);
-  const related = catalog
-    .filter(
-      (t) =>
-        t.slug !== template.slug &&
-        defaultVariant(t).category.slug === variant.category.slug,
-    )
-    .slice(0, RELATED);
+  const related = pickRelated(
+    catalog,
+    template.slug,
+    variant.category.slug,
+    RELATED_MIN,
+    RELATED_MAX,
+  );
   const relatedAccents = await templateAccents(related);
 
   const deployHref = newAppHref(placement, {
@@ -124,20 +126,13 @@ export default async function TemplatePage(
       {/* Header: the logo sits on its own wash, in its own colour. */}
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
-          <div
-            style={veil.style}
-            className={cn(
-              "flex size-18 shrink-0 items-center justify-center rounded-2xl border border-border",
-              veil.className,
-            )}
-          >
-            <LogoImage
-              src={logo}
-              size={48}
-              className={cn("tpl-logo", plateClass(accent))}
-              fallback={<Package className="size-6 text-muted-foreground" />}
-            />
-          </div>
+          <LogoTile
+            src={logo}
+            accent={accent}
+            size={72}
+            logoSize={48}
+            className="rounded-2xl"
+          />
           <div className="min-w-0">
             <h1 className={cn("truncate", titleClass.page)}>{template.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -148,7 +143,7 @@ export default async function TemplatePage(
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
           {manyVariants && (
             <VariantPicker
-              selected={variant.slug}
+              selected={chosen?.slug ?? ""}
               variants={template.variants.map((v) => ({
                 slug: v.slug,
                 name: v.name,
@@ -156,7 +151,11 @@ export default async function TemplatePage(
               }))}
             />
           )}
-          <DeployButton canDeploy={canDeploy} href={deployHref} />
+          <DeployButton
+            canDeploy={canDeploy}
+            needsVariant={manyVariants && !chosen}
+            href={deployHref}
+          />
         </div>
       </div>
 
@@ -227,7 +226,7 @@ export default async function TemplatePage(
                 key={t.slug}
                 template={toStoreTemplate(t)}
                 accent={relatedAccents[t.slug]}
-                href={`/templates/${t.slug}`}
+                href={templateHref(t.slug, placement)}
                 className="w-72 shrink-0 snap-start"
               />
             ))}
@@ -261,14 +260,17 @@ function TopBar({ placement }: { placement: OverviewPlacement | null }) {
 
 function DeployButton({
   canDeploy,
+  needsVariant,
   href,
 }: {
   canDeploy: boolean;
+  /** The family has variants and none is chosen yet. */
+  needsVariant: boolean;
   href: string;
 }) {
-  if (canDeploy)
+  if (canDeploy && !needsVariant)
     return (
-      <Button asChild className="shrink-0 sm:w-40">
+      <Button asChild className="shrink-0 sm:w-32">
         <Link href={href}>
           Deploy
           <ArrowUpRight className="size-4" />
@@ -278,9 +280,15 @@ function DeployButton({
   return (
     // A disabled button swallows pointer events, so the tooltip needs a
     // focusable wrapper to stay reachable.
-    <SimpleTooltip content="Needs the “Create apps” permission">
+    <SimpleTooltip
+      content={
+        needsVariant
+          ? "Pick a variant first"
+          : "Needs the “Create apps” permission"
+      }
+    >
       <span tabIndex={0} className="shrink-0">
-        <Button disabled className="w-full sm:w-40">
+        <Button disabled className="w-full sm:w-32">
           Deploy
           <ArrowUpRight className="size-4" />
         </Button>

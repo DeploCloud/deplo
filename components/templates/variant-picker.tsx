@@ -20,12 +20,14 @@ export interface VariantOption {
 /**
  * Which variant of a template family the page shows; only rendered when there is
  * more than one. The choice rides `?variant=` and `replace`s rather than
- * `push`es, because picking a variant refines the page you are on. */
+ * `push`es, because picking a variant refines the page you are on. It starts
+ * EMPTY: a family's variants deploy different things, so one must be chosen. */
 export function VariantPicker({
   variants,
   selected,
 }: {
   variants: VariantOption[];
+  /** Empty until the reader picks one. */
   selected: string;
 }) {
   const router = useRouter();
@@ -37,7 +39,8 @@ export function VariantPicker({
 
   return (
     <Select
-      value={shown}
+      // Radix reserves the empty string, so "nothing chosen" is `undefined`.
+      value={shown || undefined}
       onValueChange={(slug) => {
         const next = variants.find((v) => v.slug === slug);
         if (!next) return;
@@ -48,7 +51,7 @@ export function VariantPicker({
       }}
     >
       <SelectTrigger aria-label="Variant" className="w-full sm:w-44">
-        <SelectValue />
+        <SelectValue placeholder="Choose a variant" />
       </SelectTrigger>
       <SelectContent>
         {variants.map((v) => (
