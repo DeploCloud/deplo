@@ -296,6 +296,8 @@ export interface ReviewGroup {
   plan: Plan;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
+  /** The panel is being read again under a landing team that just changed. */
+  rescanning?: boolean;
 }
 
 /** Every team's projects as one plan, which is what the port check reads. */
@@ -366,6 +368,12 @@ export function ReviewStep({
     .filter((s) => chosen.has(s.sourceId))
     .map((s) => s.name);
   const panel = copyFor(kind).name;
+  /** Has this team anything ticked under it? A team that has not is not a turn. */
+  const picked = (g: ReviewGroup) =>
+    g.plan.projects
+      .flatMap((p) => importableOf(p))
+      .some((s) => chosen.has(s.sourceId));
+  const running = groups.filter(picked).length;
 
   return (
     <StepShell
@@ -444,7 +452,12 @@ export function ReviewStep({
                       disabled={starting}
                     />
                   )}
-                  <span className="ml-auto">
+                  <span className="ml-auto flex items-center gap-2">
+                    {/* The panel is being read again under the new landing:
+                        "already here" is an answer about a team. */}
+                    {g.rescanning && (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    )}
                     {/* Locked the moment Start is pressed: the teams are being
                         made and the panel is being read again, and a landing
                         changed now would be a landing nothing honours. */}
@@ -452,11 +465,18 @@ export function ReviewStep({
                       value={g.target}
                       teams={targetTeams}
                       sourceName={g.team.name}
-                      disabled={starting}
+                      disabled={starting || g.rescanning === true}
                       onChange={(t) => onRetarget(g.key, t)}
                     />
                   </span>
                 </div>
+                {/* Nothing under it is ticked, so this team is not a turn: said
+                    here, because the button counts the ones that will run. */}
+                {!picked(g) && g.plan.projects.length > 0 && (
+                  <p className="text-sm text-warning">
+                    Nothing is ticked here, so this team is skipped.
+                  </p>
+                )}
                 {g.plan.projects.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     Nothing to bring over from this team.
@@ -513,9 +533,9 @@ export function ReviewStep({
           }
         >
           {starting && <Loader2 className="size-4 animate-spin" />}
-          {groups.length > 1
-            ? `Migrate ${groups.length} teams`
-            : "Start migration"}
+          {/* The teams that will actually RUN. Counting the sections instead
+              promised two and brought one over, silently. */}
+          {running > 1 ? `Migrate ${running} teams` : "Start migration"}
         </Button>
       </div>
     </StepShell>

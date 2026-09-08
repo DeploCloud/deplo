@@ -23,6 +23,7 @@ import {
   ServerUnreachableError,
 } from "./server-connection";
 import { TEAM_HEADER, teamSlugFromPath } from "./team-path";
+import { assertVariablesDeclared } from "./graphql-vars";
 
 /**
  * The team the open page belongs to. `/api/graphql` is flat, so this header is
@@ -108,6 +109,7 @@ export async function gql<TData = unknown>(
   signal?: AbortSignal,
   opts?: GqlOptions,
 ): Promise<TData> {
+  assertVariablesDeclared(query, variables);
   // Already latched offline: the request can only fail, so refuse it up front with
   // the custom message instead of making the user wait out a timeout for a raw
   // "Failed to fetch".

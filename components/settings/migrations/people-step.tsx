@@ -69,7 +69,9 @@ export function PeopleStep({
           key={g.key}
           group={g}
           kind={kind}
-          named={several}
+          // Always: a link that joins somebody to a team has to say WHICH team,
+          // and one team on the list is still one team the reader has to know.
+          named
           hoisted={groups.length === 1}
         />
       ))}

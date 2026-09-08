@@ -138,14 +138,14 @@ const START = /* GraphQL */ `
     $orgName: String
     $targets: [MigrationRunTargetInput!]!
     $servers: [MigrationServerChoiceInput!]
-    $keepSources: Boolean
+    $queued: [MigrationQueuedTeamInput!]
   ) {
     startMigration(
       input: $input
       orgName: $orgName
       targets: $targets
       servers: $servers
-      keepSources: $keepSources
+      queued: $queued
     )
   }
 `;
@@ -622,6 +622,10 @@ export function MigrationWizard({
   /** Teams this walk created, by their place on the list, so a start that was
    *  refused after one was made does not make a second on the next press. */
   const madeTeams = React.useRef<Record<number, string>>({});
+  /** Rows whose plan is being read again after a change of landing team. */
+  const [rescanning, setRescanning] = React.useState<Record<number, boolean>>(
+    {},
+  );
 
   const [serverMap, setServerMap] = React.useState<Record<string, string>>({});
   /**
@@ -985,6 +989,57 @@ export function MigrationWizard({
     updateQueue(retarget(queueRef.current, i, target));
     if (target.kind === "existing" && !fleetsRef.current[target.teamId])
       void loadFleet(target.teamId);
+    void rescanTeam(i, target);
+  }
+
+  /**
+   * "Already here" is an answer about ONE team, and so are the ticks that follow
+   * from it: a row pointed somewhere else is reading the wrong answer until the
+   * panel is read again under the new landing. Skipped before the first scan -
+   * there is nothing to re-read yet.
+   */
+  async function rescanTeam(i: number, target: TeamTarget) {
+    const q = queueRef.current[i];
+    if (!q?.apiKey || teamPlansRef.current[i] == null) return;
+    const into = target.kind === "existing" ? target.teamId : null;
+    setRescanning((prev) => ({ ...prev, [i]: true }));
+    const res = await gqlAction<{ scanMigrationSource: Plan }, Plan>(
+      SCAN,
+      {
+        input: { url, apiKey: q.apiKey, kind: forcedKind },
+        newTeam: into == null,
+      },
+      (d) => d.scanMigrationSource,
+      into ? { teamId: into } : undefined,
+    );
+    setRescanning((prev) => {
+      const next = { ...prev };
+      delete next[i];
+      return next;
+    });
+    if (!res.ok || !res.data) {
+      toast.error(res.ok ? "Deplo could not read the panel again." : res.error);
+      return;
+    }
+    const fresh = res.data;
+    setTeamPlans((prev) => ({ ...prev, [i]: fresh }));
+    // This team's ticks are replaced by what the new landing makes importable;
+    // every other team's are left exactly as they were.
+    const mine = new Set(
+      fresh.projects.flatMap(importableOf).map((s) => s.sourceId),
+    );
+    setChosen((prev) => {
+      const next = new Set([...prev].filter((id) => !mine.has(id)));
+      for (const id of defaultChoice(fresh)) next.add(id);
+      return next;
+    });
+    const fleet = into ? (fleetsRef.current[into] ?? ownFleet) : ownFleet;
+    const defaults = landingDefaults(fresh, fleet.servers);
+    placementsRef.current = {
+      ...defaults.placements,
+      ...placementsRef.current,
+    };
+    setPlacements(placementsRef.current);
   }
 
   /** The picture the team this row makes will be created with. */
@@ -1378,6 +1433,7 @@ export function MigrationWizard({
         plan: p,
         servers: fleet.servers,
         buildServers: fleet.buildServers,
+        rescanning: rescanning[i] === true,
       },
     ];
   });
