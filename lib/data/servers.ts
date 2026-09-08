@@ -6,11 +6,13 @@ import {
   databases as databasesTable,
   backupDestination as destinationTable,
   apps as appsTable,
+  migrationRuns as runsTable,
   serverTeams as serverTeamsTable,
   servers as serversTable,
   teams as teamsTable,
 } from "../db/schema/control-plane";
 import { assembleServer, serverToRow } from "./infra-rows";
+import { sourceAgentReachable } from "./agent-reach";
 import { appCapabilities } from "./node-access";
 import {
   deploHostSelfAddresses,
@@ -354,13 +356,20 @@ export async function addServer(
   const importOnly = input.importOnly ?? false;
   if (importOnly) {
     const reached = await existingImportSource(host);
-    // A machine Deplo already reaches needs no second row: an agent that has
-    // called home needs no install at all, and a source whose agent never
-    // answered is the last attempt's leftover, so it gets its command back.
-    if (reached)
-      return reached.agent || !reached.importOnly
+    // A machine Deplo already reaches needs no second row. A fleet server at that
+    // address is not this wizard's to touch; a migration source is, so it goes to
+    // whoever is reading it now.
+    if (reached && !reached.importOnly)
+      return { server: reached, installCommand: "" };
+    if (reached) {
+      await claimImportSource(reached, teamId);
+      // A ROW is not a running agent: one that answered once and has since been
+      // taken off keeps its fingerprint, and reading that as "connected" walked
+      // the wizard past Install onto a machine Deplo cannot read.
+      return reached.agent && (await sourceAgentReachable(reached.id))
         ? { server: reached, installCommand: "" }
         : reissueBootstrap(reached.id);
+    }
   }
 
   // Default to instance-wide. Another team seeing it in its own Servers list would be
@@ -452,6 +461,58 @@ async function existingImportSource(host: string): Promise<Server | null> {
         s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
     ) ?? null
   );
+}
+
+/**
+ * The machine is being read again: grant it to the team reading it, and forget
+ * what the last walk left on the row. Refused while another team's migration is
+ * still running - those disks are being copied right now.
+ */
+async function claimImportSource(
+  source: Server,
+  teamId: string,
+): Promise<void> {
+  const [held] = await getDb()
+    .select({ teamId: serverTeamsTable.teamId })
+    .from(serverTeamsTable)
+    .where(eq(serverTeamsTable.serverId, source.id))
+    .limit(1);
+  if (!held)
+    await getDb()
+      .insert(serverTeamsTable)
+      .values({ serverId: source.id, teamId })
+      .onConflictDoNothing();
+  else if (held.teamId !== teamId) {
+    const live = await getDb()
+      .select({ id: runsTable.id })
+      .from(runsTable)
+      .where(
+        and(eq(runsTable.teamId, held.teamId), eq(runsTable.status, "running")),
+      )
+      .limit(1);
+    if (live.length > 0)
+      throw new Error(
+        `${source.name} is being read by a migration in another team.`,
+      );
+    await getDb()
+      .update(serverTeamsTable)
+      .set({ teamId })
+      .where(
+        and(
+          eq(serverTeamsTable.serverId, source.id),
+          eq(serverTeamsTable.teamId, held.teamId),
+        ),
+      );
+  }
+  await getDb()
+    .update(serversTable)
+    .set({
+      uninstallNextAt: null,
+      uninstallRunId: null,
+      uninstallAttempts: 0,
+      uninstallError: "",
+    })
+    .where(eq(serversTable.id, source.id));
 }
 
 /**

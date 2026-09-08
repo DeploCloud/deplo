@@ -8,7 +8,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
 import { eq } from "drizzle-orm";
 import { runWithIdentity } from "../auth/request-context";
-import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
+import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_PROJECT_GRAPH, seedApp } from "./app-graph-test-helpers";
 import { seedDatabase, seedDestination } from "./backup-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
@@ -537,6 +537,7 @@ test("a source whose agent never answered gets its command back, not a refusal",
 
 test("a source that already answered is offered, not re-bootstrapped", async () => {
   const id = await seedMigrationSource("192.0.2.70");
+  fakeAgent();
   const res = await asAdmin(() =>
     addServer({ name: "coolify-host", host: "192.0.2.70", importOnly: true }),
   );
@@ -544,4 +545,56 @@ test("a source that already answered is offered, not re-bootstrapped", async () 
   // Re-minting a token on a TRUSTED agent arms a re-pin window that can silently
   // replace its certificate. There is nothing to install here, so nothing is minted.
   assert.equal(res.installCommand, "");
+});
+
+// The wizard reads "connected" off this answer. A machine whose agent was taken
+// off keeps the fingerprint it earned, and calling that connected walked the
+// whole wizard past Install and onto a Start that could read nothing.
+test("a source whose agent is GONE is told to install again", async () => {
+  const id = await seedMigrationSource("192.0.2.71");
+  __setAgentConnectorForTest(async () => {
+    throw new Error("connect ECONNREFUSED 192.0.2.71:9443");
+  });
+
+  const res = await asAdmin(() =>
+    addServer({ name: "coolify-host", host: "192.0.2.71", importOnly: true }),
+  );
+
+  assert.equal(res.server.id, id, "a second row for one machine");
+  assert.ok(res.installCommand.length > 0, "no way to put the agent back");
+});
+
+test("a source another team left behind follows the team reading it now", async () => {
+  const id = await seedMigrationSource("192.0.2.72");
+  const { serverTeams } = await import("../db/schema/control-plane");
+  await db
+    .update(serverTeams)
+    .set({ teamId: TEAM_B })
+    .where(eq(serverTeams.serverId, id));
+  // What a walk that gave up leaves on the row: nothing may take it off the
+  // machine, and every lookup in the new team is blind to it.
+  const { servers } = await import("../db/schema/control-plane");
+  await db
+    .update(servers)
+    .set({ uninstallAttempts: 3, uninstallError: "no answer" })
+    .where(eq(servers.id, id));
+  __setAgentConnectorForTest(async () => {
+    throw new Error("connect ECONNREFUSED 192.0.2.72:9443");
+  });
+
+  await asAdmin(() =>
+    addServer({ name: "coolify-host", host: "192.0.2.72", importOnly: true }),
+  );
+
+  const [grant] = await db
+    .select()
+    .from(serverTeams)
+    .where(eq(serverTeams.serverId, id));
+  assert.equal(
+    grant?.teamId,
+    TEAM_A,
+    "the new walk cannot see its own machine",
+  );
+  const back = await getServerById(id);
+  assert.equal(back?.uninstallError, "", "the old walk's verdict still stands");
 });

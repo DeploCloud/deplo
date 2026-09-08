@@ -2362,16 +2362,45 @@ test("the sweep finishes what a dead process started, with nobody signed in", as
   );
 });
 
-test("leaving the wizard takes Deplo's agent off the source it registered", async () => {
+test("leaving the wizard pencils the source in, and the sweep takes it later", async () => {
   const id = await seedSource("dokploy-host", "192.0.2.76");
 
   assert.equal(await asOwner(() => abandonMigration()), 1);
+
+  // Nothing tried yet: changing page for a minute used to cost the machines, and
+  // the walk that came back could not start on them any more.
+  assert.ok(await asOwner(() => getServerById(id)));
+  const pencilled = await uninstallState(id);
+  assert.equal(Number(pencilled.uninstall_attempts), 0);
+  assert.ok(Date.parse(String(pencilled.uninstall_next_at)) > Date.now());
+  await drainMigrationSourceUninstalls(new Date());
+  assert.ok(await asOwner(() => getServerById(id)), "not due yet");
+
+  await drainMigrationSourceUninstalls(new Date(Date.now() + 11 * 60_000));
 
   assert.equal(
     await asOwner(() => getServerById(id)),
     null,
     "walking away left an agent running on somebody else's machine",
   );
+});
+
+test("the sweep leaves a machine whose team has started a run since", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.82");
+  // Left the page, came back, started: the schedule is older than the run, and
+  // the reaper would have pulled the agent out from under the copy.
+  await db.execute(
+    `update servers set uninstall_next_at = now() - interval '1 minute' where id = '${id}'`,
+  );
+  await asOwner(() => beginMigration({ url: URL_BASE }));
+
+  await drainMigrationSourceUninstalls(new Date());
+
+  assert.ok(
+    await asOwner(() => getServerById(id)),
+    "the run reads its volumes through that agent",
+  );
+  assert.equal((await uninstallState(id)).uninstall_next_at, null);
 });
 
 test("leaving does not touch the sources a run in flight is reading", async () => {
@@ -3509,6 +3538,36 @@ test("a queued run's machines can still be handed to the next team", async () =>
   assert.deepEqual(
     grants.rows.map((r) => r.team_id),
     [TEAM_B],
+  );
+});
+
+// The wizard was left for a moment, so the sources are pencilled in for removal.
+// Coming back has to find them: a source left behind blocks the run, which is
+// what "the machine has no agent" meant on a walk that had one all along.
+test("a machine only pencilled in for removal is claimed back", async () => {
+  await inBothTeams("mem_1_b", USER_1, ["view", "create_projects"]);
+  const { server: source } = await asOwner(() =>
+    addServer({
+      name: "dokploy-host",
+      host: "203.0.113.81",
+      importOnly: true,
+    }),
+  );
+  assert.equal(await asOwner(() => abandonMigration()), 1);
+
+  const moved = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+    handOverMigrationSources(TEAM_A),
+  );
+
+  assert.equal(moved, 1);
+  const [row] = await db
+    .select()
+    .from(serversTable)
+    .where(eq(serversTable.id, source.id));
+  assert.equal(
+    row?.uninstallNextAt ?? null,
+    null,
+    "the reaper would have taken the agent off mid-run",
   );
 });
 

@@ -99,12 +99,11 @@ const SETTLE_MS = 2000;
 const POLL_MS = 6000;
 
 /**
- * What Deplo KNOWS when a probe comes back `offline`, and it is worth saying out
- * loud because the reader has just run a command and cannot tell whether it
- * worked.
+ * What a probe coming back `offline` means, said out loud because the reader has
+ * just run a command and cannot tell whether it worked. Never "installed": the
+ * agent may also have been taken off since the last walk.
  */
-const INSTALLED_BUT_UNREACHABLE =
-  "Installed and calling home, but Deplo cannot reach it back.";
+const AGENT_UNREACHABLE = "Deplo cannot reach the agent on this machine.";
 
 /**
  * The other reason nothing answers at that address, and the one this wizard causes
@@ -818,12 +817,15 @@ export function InstallStep({
               {p && bad && bad.status === "offline" && (
                 <div className="space-y-2">
                   <p className="text-xs text-destructive">
-                    {INSTALLED_BUT_UNREACHABLE}{" "}
+                    {AGENT_UNREACHABLE}{" "}
                     {m.cloudflare
                       ? CLOUDFLARE_ADDRESS_NOTICE
                       : `${AGENT_PORT_NOTICE} ${PANEL_ADDRESS_NOTICE}`}
                   </p>
                   <p className="text-xs text-muted-foreground">{bad.message}</p>
+                  {/* Both ways out: the line to run when the agent is not there
+                      at all, and the address when it is. */}
+                  <CommandLine command={p.installCommand} truncate />
                   {canAddServers ? (
                     <AddressForm
                       value={draft[m.sourceId] ?? ""}

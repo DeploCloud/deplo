@@ -1704,11 +1704,14 @@ export function MigrationWizard({
 
   // Armed from the moment there is something to lose. Not after Finish either - by
   // then the migration is over and every link on the report is somewhere you are
-  // meant to go.
+  // meant to go. A run the control plane already owns is free to walk away from;
+  // the START is not - it is several round trips long and none of it is written
+  // down until the last one lands.
   const guarded =
     step !== "done" &&
     report == null &&
-    !inFlight &&
+    !takenOver &&
+    !awaitingRun &&
     (plan != null || url.trim() !== "" || apiKey.trim() !== "");
 
   /**
@@ -1716,9 +1719,10 @@ export function MigrationWizard({
    */
   const abandonRef = React.useRef(false);
   // No dependency array on purpose: this is the "latest value" of a flag the
-  // listeners below read long after the render that produced it.
+  // listeners below read long after the render that produced it. Never while a
+  // start is in flight: those machines are about to be read, not given back.
   React.useEffect(() => {
-    abandonRef.current = guarded && plan != null;
+    abandonRef.current = guarded && plan != null && !starting && !running;
   });
   React.useEffect(() => {
     const abandon = () => {
@@ -1754,8 +1758,12 @@ export function MigrationWizard({
        */}
       <UnsavedChangesGuard
         when={guarded}
-        title="Leave the migration?"
-        description="Deplo takes its agent back off the machines it installed one on. Coming back means setting those machines up again."
+        title={starting ? "The migration is starting" : "Leave the migration?"}
+        description={
+          starting
+            ? "Nothing is written down until it has started. Leaving now can lose what you chose."
+            : "Deplo takes its agent back off the machines it installed one on if you do not come back within ten minutes."
+        }
         confirmLabel="Leave anyway"
         cancelLabel="Stay on this page"
       />

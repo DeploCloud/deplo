@@ -464,12 +464,7 @@ async function adoptMigrationSources(
     })
     .from(serversTable)
     .leftJoin(serverTeamsTable, eq(serverTeamsTable.serverId, serversTable.id))
-    .where(
-      and(
-        eq(serversTable.importOnly, true),
-        isNull(serversTable.uninstallNextAt),
-      ),
-    );
+    .where(and(eq(serversTable.importOnly, true), notBeingRemoved()));
   const admin = await isInstanceAdmin();
   let moved = 0;
   for (const r of rows) {
@@ -481,6 +476,7 @@ async function adoptMigrationSources(
         .insert(serverTeamsTable)
         .values({ serverId: r.id, teamId })
         .onConflictDoNothing();
+      await keepSourceMachine(r.id);
       moved++;
       continue;
     }
@@ -496,6 +492,7 @@ async function adoptMigrationSources(
           eq(serverTeamsTable.teamId, r.teamId),
         ),
       );
+    await keepSourceMachine(r.id);
     moved++;
   }
   if (moved > 0)
@@ -525,9 +522,9 @@ export async function handOverMigrationSources(
         fromTeamId
           ? eq(serverTeamsTable.teamId, fromTeamId)
           : ne(serverTeamsTable.teamId, teamId),
-        // One already on the way out belongs to the reaper, which reads the grant
-        // it was queued with.
-        isNull(serversTable.uninstallNextAt),
+        // One the reaper has already STARTED on belongs to it; one merely
+        // pencilled in is a machine somebody came back to.
+        notBeingRemoved(),
       ),
     );
   if (held.length === 0) return 0;
@@ -555,6 +552,7 @@ export async function handOverMigrationSources(
         ne(serverTeamsTable.teamId, teamId),
       ),
     );
+  for (const id of ids) await keepSourceMachine(id);
   // Both trails: one team's machines left it, and they are another's now.
   const actor = (await getCurrentUser())?.name ?? "Migrations";
   const what = ids.length === 1 ? "machine" : "machines";
@@ -1851,6 +1849,34 @@ async function hasStrandedVolume(runId: string): Promise<boolean> {
   return false;
 }
 
+/**
+ * How long a walked-away wizard's machines are left alone before Deplo takes its
+ * agent off them. Coming back inside it costs nothing.
+ */
+const ABANDON_GRACE_MS = 10 * 60_000;
+
+/** Nothing has been TRIED on this machine yet, so a wizard may claim it back:
+ *  never scheduled, or scheduled and not attempted. */
+function notBeingRemoved() {
+  return or(
+    isNull(serversTable.uninstallNextAt),
+    and(
+      eq(serversTable.uninstallAttempts, 0),
+      eq(serversTable.uninstallError, ""),
+    ),
+  );
+}
+
+/** This machine is in use again: take it off the reaper's list. */
+async function keepSourceMachine(id: string): Promise<void> {
+  await getDb()
+    .update(serversTable)
+    .set({ uninstallNextAt: null, uninstallRunId: null, uninstallAttempts: 0 })
+    .where(
+      and(eq(serversTable.id, id), isNotNull(serversTable.uninstallNextAt)),
+    );
+}
+
 /** Put every one of these sources on the uninstall ladder and take the first
  *  rung now. `runId` is null when nobody's report is waiting on the answer. */
 async function scheduleSourceUninstalls(
@@ -1858,6 +1884,9 @@ async function scheduleSourceUninstalls(
   runId: string | null,
   teamId: string,
   actor: string,
+  /** Wait this long before the first rung, and let the sweep take it: leaving a
+   *  page for a minute must not cost the machines. */
+  graceMs = 0,
 ): Promise<void> {
   for (const s of sources) {
     // The intent FIRST, so a process that dies on the next line still leaves a
@@ -1869,9 +1898,10 @@ async function scheduleSourceUninstalls(
         uninstallRunId: runId,
         uninstallAttempts: 0,
         uninstallError: "",
-        uninstallNextAt: nowIso(),
+        uninstallNextAt: new Date(Date.now() + graceMs).toISOString(),
       })
       .where(eq(serversTable.id, s.id));
+    if (graceMs > 0) continue;
     await attemptSourceUninstall(
       { id: s.id, name: s.name, attempts: 0, runId },
       teamId,
@@ -1910,7 +1940,15 @@ export async function abandonMigration(): Promise<number> {
     (s) => s.importOnly && !s.uninstallPending && !s.uninstallError,
   );
   if (sources.length === 0) return 0;
-  await scheduleSourceUninstalls(sources, null, teamId, actor);
+  // Pencilled in, not torn down: the person may be back in a minute, and the
+  // wizard that comes back takes them off the list again.
+  await scheduleSourceUninstalls(
+    sources,
+    null,
+    teamId,
+    actor,
+    ABANDON_GRACE_MS,
+  );
   return sources.length;
 }
 
@@ -2018,6 +2056,23 @@ export async function drainMigrationSourceUninstalls(
       .where(eq(serverTeamsTable.serverId, row.id))
       .limit(1);
     if (!grant) continue;
+    // ANOTHER run is reading those disks right now: somebody left the wizard,
+    // came back and started, and the reaper was about to pull the agent out from
+    // under the copy. The run that asked for the uninstall still gets it.
+    const [inFlight] = await getDb()
+      .select({ id: runsTable.id })
+      .from(runsTable)
+      .where(
+        and(
+          eq(runsTable.teamId, grant.teamId),
+          eq(runsTable.status, "running"),
+        ),
+      )
+      .limit(1);
+    if (inFlight && inFlight.id !== row.runId) {
+      await keepSourceMachine(row.id);
+      continue;
+    }
     const [run] = row.runId
       ? await getDb()
           .select({ actor: runsTable.actor })
