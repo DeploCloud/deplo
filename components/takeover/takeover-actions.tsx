@@ -90,7 +90,6 @@ export function TakeoverStep({
   finishedRunId,
   finalUrl,
   dataLoss = [],
-  onBack,
 }: {
   platformLabel: string;
   /** Whether anything was brought across, which is what the confirmation says. */
@@ -105,8 +104,6 @@ export function TakeoverStep({
   finalUrl: string;
   /** Services whose data did not come across: the old panel holds the only copy. */
   dataLoss?: string[];
-  /** Back to the choice, while it is still only a choice. */
-  onBack?: () => void;
 }) {
   if (state !== "pending" && state !== "failed")
     return (
@@ -123,7 +120,6 @@ export function TakeoverStep({
       finishedRunId={finishedRunId}
       error={state === "failed" ? (error ?? "") : null}
       dataLoss={dataLoss}
-      onBack={onBack}
     />
   );
 }
@@ -135,7 +131,6 @@ function TakeoverConfirm({
   finishedRunId,
   error,
   dataLoss,
-  onBack,
 }: {
   platformLabel: string;
   mode: TakeoverMode;
@@ -143,7 +138,6 @@ function TakeoverConfirm({
   /** Non-null when the last attempt rolled back: the card offers Try again instead. */
   error: string | null;
   dataLoss: string[];
-  onBack?: () => void;
 }) {
   const router = useRouter();
   const [retrying, setRetrying] = React.useState(false);
@@ -210,11 +204,6 @@ function TakeoverConfirm({
       {/* The one thing left to do on this screen, so it sits under the middle
           of it rather than in a footer's corner. */}
       <div className="flex items-center justify-center gap-3">
-        {onBack && (
-          <Button variant="outline" onClick={onBack}>
-            Back
-          </Button>
-        )}
         {error !== null ? (
           <Button onClick={retry} disabled={retrying}>
             {retrying && <Loader2 className="animate-spin" />}

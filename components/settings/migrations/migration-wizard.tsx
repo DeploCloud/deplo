@@ -2037,9 +2037,6 @@ export function MigrationWizard({
                     finalUrl={takeover.finalUrl}
                     error={takeover.error}
                     dataLoss={takeover.dataLoss}
-                    onBack={
-                      reach("choose") ? () => setStep("choose") : undefined
-                    }
                   />
                 )}
               </div>
