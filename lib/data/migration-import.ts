@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/move-from-dokploy
+// https://deplo.build/docs/migrations/move-from-dokploy
 
 import {
   and,

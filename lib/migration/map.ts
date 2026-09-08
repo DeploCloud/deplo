@@ -1,4 +1,4 @@
-// https://deplo.build/docs/guides/move-from-dokploy
+// https://deplo.build/docs/migrations/move-from-dokploy
 
 /**
  * Dokploy row → Deplo input. The convention for anything that cannot be

@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { StepShell } from "@/components/settings/migrations/step-shell";
 import type { TakeoverMode } from "@/components/settings/migrations/steps";
 
-// https://deplo.build/docs/guides/take-over-your-vps
+// https://deplo.build/docs/migrations
 
 const STATUS = /* GraphQL */ `
   query TakeoverStatus {

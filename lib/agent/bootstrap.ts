@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/server/add-a-server
+// https://deplo.build/docs/operations/servers/add-a-server
 
 import { connect as tlsConnect } from "node:tls";
 import { createHmac, timingSafeEqual } from "node:crypto";

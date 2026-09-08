@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/take-over-your-vps
+// https://deplo.build/docs/migrations
 
 import { cache } from "@/lib/request-cache";
 import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";

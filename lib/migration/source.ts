@@ -3,7 +3,7 @@
  *
  * The importer and the mappers speak only this: an adapter turns its own API into
  * the row shapes in `./model`, and nothing above the seam learns which panel it is
- * reading. See https://deplo.build/docs/guides/move-from-dokploy
+ * reading. See https://deplo.build/docs/migrations/move-from-dokploy
  */
 
 import type {

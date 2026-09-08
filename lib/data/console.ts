@@ -1,6 +1,6 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/observability/console-and-files
+// https://deplo.build/docs/guides/observability/console
 
 import { and, eq } from "drizzle-orm";
 

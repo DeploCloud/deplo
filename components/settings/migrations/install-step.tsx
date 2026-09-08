@@ -202,7 +202,7 @@ function AddressForm({
       </form>
       {/* The mistake this screen invites, said where it would be made: the panel is
           reached at a name, the machine at an IP. A name pointing straight at the
-          machine works too - https://deplo.build/docs/guides/move-from-dokploy */}
+          machine works too - https://deplo.build/docs/migrations/move-from-dokploy */}
       <p className="text-xs text-muted-foreground">
         The machine&rsquo;s own IP address, not the panel&rsquo;s.
       </p>

@@ -16,7 +16,7 @@ export const DOCS = {
   "install.overview": "getting-started/install",
 
   "projects.overview": "concepts/apps-projects-and-environments",
-  "deploy.sources": "guides/deploy#the-five-sources",
+  "deploy.sources": "guides/deploy",
   "deploy.trace": "concepts/what-happens-on-a-deploy",
   "deploy.queue": "concepts/what-happens-on-a-deploy#it-waits-for-a-slot",
   "deploy.fromGit": "guides/deploy/from-git",
@@ -25,21 +25,19 @@ export const DOCS = {
 
   "build.settings": "guides/releases/build-settings",
   "build.methods": "guides/releases/build-settings#the-four-build-methods",
-  "build.fields":
-    "guides/releases/build-settings#the-fields-everyone-eventually-uses",
+  "build.fields": "guides/releases/build-settings#the-fields",
   "build.port":
     "guides/releases/build-settings#the-port-is-the-one-people-get-wrong",
   "build.cache": "guides/releases/build-settings#build-cache",
-  "build.advanced":
-    "guides/releases/build-settings#advanced-settings-you-probably-do-not-need",
-  "build.serversHowItWorks": "advanced/build-servers#how-it-works",
+  "build.advanced": "guides/releases/build-settings#build-cache",
+  "build.serversHowItWorks": "advanced/build-servers",
 
   "releases.autoDeploy": "guides/releases/automatic-deployments",
   "releases.trigger": "guides/releases/automatic-deployments#set-the-trigger",
   "releases.submodules":
-    "guides/releases/automatic-deployments#optional-submodules",
+    "guides/releases/automatic-deployments#optional-submodules-and-watch-paths",
   "releases.watchPaths":
-    "guides/releases/automatic-deployments#optional-watch-paths",
+    "guides/releases/automatic-deployments#optional-submodules-and-watch-paths",
   "releases.deployHook":
     "guides/releases/automatic-deployments#the-deploy-hook",
   "releases.rollbacks": "guides/releases/rollbacks",
@@ -67,7 +65,7 @@ export const DOCS = {
   "previews.turnOn": "guides/networking/pull-request-previews#turn-it-on",
   "previews.settings": "guides/networking/pull-request-previews#settings",
   "previews.forksAndSecrets":
-    "guides/networking/pull-request-previews#the-two-rules-about-forks-and-secrets",
+    "guides/networking/pull-request-previews#the-two-rules-about-forks",
   "previews.limit": "guides/networking/pull-request-previews#over-the-limit",
 
   "env.overview": "guides/config/environment-variables",
@@ -132,7 +130,7 @@ export const DOCS = {
   "team.password": "guides/team/account-security#change-your-password",
   "team.twoFactor": "guides/team/account-security#two-factor-authentication",
   "team.passkeys": "guides/team/account-security#passkeys",
-  "team.sessions": "guides/team/account-security#signed-in-devices",
+  "team.sessions": "guides/team/account-security#devices",
   "team.requireTwoFactor":
     "guides/team/account-security#when-your-team-requires-two-factor",
 
@@ -147,21 +145,22 @@ export const DOCS = {
     "guides/roles-and-permissions/folder-shares#choose-the-grant",
   "capabilities.reference": "reference/capabilities",
 
-  "servers.overview": "guides/server",
-  "servers.add": "guides/server/add-a-server",
-  "servers.address": "guides/server/add-a-server#set-the-address",
-  "servers.role": "guides/server/add-a-server#choose-what-its-for",
+  "servers.overview": "operations/servers",
+  "servers.add": "operations/servers/add-a-server",
+  "servers.address":
+    "operations/servers/add-a-server#name-it-and-set-the-address",
+  "servers.role": "operations/servers/add-a-server#choose-what-its-for",
   "servers.readiness":
-    "guides/server/add-a-server#check-it-before-you-trust-it",
-  "servers.teams": "guides/server/add-a-server#let-teams-use-it",
-  "servers.cleanup": "guides/server/cleanup",
-  "servers.cleanupScopes": "guides/server/cleanup#what-gets-cleaned",
-  "servers.cleanupSettings": "guides/server/cleanup#settings",
+    "operations/servers/add-a-server#check-it-before-you-trust-it",
+  "servers.teams": "operations/servers/add-a-server#let-teams-use-it",
+  "servers.cleanup": "operations/servers/cleanup",
+  "servers.cleanupScopes": "operations/servers/cleanup#what-gets-cleaned",
+  "servers.cleanupSettings": "operations/servers/cleanup#settings",
   "servers.remove": "operations/remove-a-server-or-uninstall",
-  "servers.maintenance": "guides/server/maintenance-and-advanced",
-  "servers.advanced": "guides/server/maintenance-and-advanced#advanced",
-  "registries.overview": "guides/server/container-registries",
-  "registries.add": "guides/server/container-registries#add-one",
+  "servers.maintenance": "operations/servers/maintenance-and-advanced",
+  "servers.advanced": "operations/servers/maintenance-and-advanced#advanced",
+  "registries.overview": "operations/servers/container-registries",
+  "registries.add": "operations/servers/container-registries#add-one",
 
   "compose.overview": "advanced/compose-apps",
   "network.isolation": "advanced/network-isolation",
@@ -198,23 +197,21 @@ export const DOCS = {
   "upgrade.overview": "operations/upgrade",
   "upgrade.releases": "operations/upgrade#release-history",
 
-  "migration.takeover": "guides/take-over-your-vps",
-  "migration.dokploy": "guides/move-from-dokploy",
-  "migration.coolify": "guides/move-from-coolify",
+  "migration.takeover": "migrations",
+  "migration.dokploy": "migrations/move-from-dokploy",
+  "migration.coolify": "migrations/move-from-coolify",
   // One guide per panel, section by section: a Coolify migration that sent people
   // to the Dokploy page described a wizard they were not looking at.
-  "migration.run": "guides/move-from-dokploy#run-a-migration",
-  "migration.source":
-    "guides/move-from-dokploy#install-the-agent-on-the-source",
-  "migration.people": "guides/move-from-dokploy#handle-the-people",
-  "migration.changes":
-    "guides/move-from-dokploy#what-changes-on-the-way-across",
-  "migration.coolify.run": "guides/move-from-coolify#run-a-migration",
+  "migration.run": "migrations/move-from-dokploy#run-the-migration",
+  "migration.source": "migrations/move-from-dokploy#on-every-source-machine",
+  "migration.people": "migrations/move-from-dokploy#run-the-migration",
+  "migration.changes": "migrations/move-from-dokploy#what-changes-on-the-way",
+  "migration.coolify.run": "migrations/move-from-coolify#run-the-migration",
   "migration.coolify.source":
-    "guides/move-from-coolify#install-the-agent-on-each-source-machine",
-  "migration.coolify.people": "guides/move-from-coolify#handle-the-people",
+    "migrations/move-from-coolify#on-every-source-machine",
+  "migration.coolify.people": "migrations/move-from-coolify#run-the-migration",
   "migration.coolify.changes":
-    "guides/move-from-coolify#what-changes-on-the-way-across",
+    "migrations/move-from-coolify#what-changes-on-the-way",
 } as const;
 
 export type DocsTopic = keyof typeof DOCS;
