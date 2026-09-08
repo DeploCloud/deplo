@@ -13,20 +13,6 @@ export const MIN_COLLECTION_SIZE = 4;
 
 export const COLLECTIONS: TemplateCollection[] = [
   {
-    title: "Start here",
-    subtitle: "The ones everyone deploys first",
-    slugs: [
-      "uptime-kuma",
-      "vaultwarden",
-      "n8n",
-      "nextcloud",
-      "portainer",
-      "dozzle",
-      "memos",
-      "plausible",
-    ],
-  },
-  {
     title: "Serving hot now",
     subtitle: "What teams are putting on their own servers",
     slugs: [

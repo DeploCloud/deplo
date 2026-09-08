@@ -15,10 +15,10 @@ export default function Loading() {
       aria-busy
       aria-label="Loading templates"
     >
-      <div className="mx-auto flex max-w-2xl flex-col items-center">
+      <div className="mx-auto flex max-w-2xl flex-col items-center pt-8 sm:pt-12">
         <Skeleton className="h-9 w-44" shimmer />
         <Skeleton className="mt-2 h-4 w-72" shimmer />
-        <Skeleton className="mt-5 h-10 w-full" shimmer />
+        <Skeleton className="mt-5 h-10 w-full max-w-md" shimmer />
       </div>
 
       <StoreChipsSkeleton />

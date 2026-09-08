@@ -133,13 +133,13 @@ export function TemplateStore({
 
   return (
     <div className="space-y-8">
-      <div className="mx-auto max-w-2xl text-center">
+      <div className="mx-auto max-w-2xl pt-8 text-center sm:pt-12">
         <h1 className="text-3xl font-semibold tracking-tight">Templates</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {templates.length} apps, databases and services, ready to run on your
           own servers. <DocsLink topic="deploy.fromTemplate" />
         </p>
-        <div className="mt-5 flex items-center gap-2">
+        <div className="mx-auto mt-5 flex max-w-md items-center gap-2">
           <TemplateSearchField
             value={q}
             onChange={(next) => {

@@ -37,14 +37,16 @@ export function FeaturedTemplates({
   return (
     <section className="space-y-3">
       <h2 className={titleClass.section}>Featured</h2>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         <Hero
           template={hero}
           accent={accents[hero.slug]}
           canDeploy={canDeploy}
           placement={placement}
         />
-        <div className="grid gap-3">
+        {/* `contents` dissolves the pair's own column: from xl the three cards
+            are three cells of one row, below it they stack beside the hero. */}
+        <div className="grid gap-3 xl:contents">
           {rest.map((t) => (
             <Sidekick
               key={t.slug}

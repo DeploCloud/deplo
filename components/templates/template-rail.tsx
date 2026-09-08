@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { titleClass } from "@/components/shared/page-header";
 
-/** How far the row fades out on a side that has more to show. */
+/** How far the row fades out on the side that has more to show. */
 const FADE = "56px";
 
 /**
@@ -59,13 +59,11 @@ export function TemplateRail({
   };
 
   // Masked, not overlaid: a gradient in the page's own colour would be a fill
-  // nobody chose, and the row sits on two different surfaces.
-  const mask =
-    edges.left || edges.right
-      ? `linear-gradient(to right, transparent 0, black ${
-          edges.left ? FADE : "0px"
-        }, black calc(100% - ${edges.right ? FADE : "0px"}), transparent 100%)`
-      : undefined;
+  // nobody chose, and the row sits on two different surfaces. RIGHT ONLY - the
+  // left edge is where a card starts, and a card cut by a fade reads as broken.
+  const mask = edges.right
+    ? `linear-gradient(to right, black calc(100% - ${FADE}), transparent 100%)`
+    : undefined;
 
   return (
     <section className="group/rail space-y-3">
