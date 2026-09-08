@@ -1,8 +1,7 @@
 import Link from "@/components/ui/link";
-import { Package } from "lucide-react";
-import { LogoImage } from "@/components/shared/project-logo";
 import { cn } from "@/lib/utils";
-import { plateClass, veilProps } from "@/components/templates/veil";
+import { LogoTile } from "@/components/templates/logo-tile";
+import { veilProps } from "@/components/templates/veil";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import { defaultVariant, type CatalogTemplate } from "@/templates/types";
 
@@ -16,6 +15,8 @@ export interface StoreTemplate {
   name: string;
   shortDescription: string;
   logo: string | null;
+  /** How many variants the family has: one means Deploy can skip the page. */
+  variants: number;
   category: { slug: string; name: string; icon: string };
 }
 
@@ -26,6 +27,7 @@ export function toStoreTemplate(t: CatalogTemplate): StoreTemplate {
     name: t.name,
     shortDescription: variant.shortDescription,
     logo: t.logo,
+    variants: t.variants.length,
     category: {
       slug: variant.category.slug,
       name: variant.category.name,
@@ -62,12 +64,7 @@ export function TemplateCard({
         className,
       )}
     >
-      <LogoImage
-        src={template.logo}
-        size={56}
-        className={cn("tpl-logo", plateClass(accent))}
-        fallback={<Package className="size-6 text-muted-foreground" />}
-      />
+      <LogoTile src={template.logo} accent={accent} size={56} logoSize={40} />
       <div className="min-w-0">
         <h3 className="truncate text-sm font-medium">{template.name}</h3>
         <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">

@@ -4,7 +4,7 @@ import {
   StoreRailsSkeleton,
 } from "@/components/templates/store-skeleton";
 
-/** Mirrors the store's real layout: the search band, the chip row and two rails.
+/** Mirrors the store's real layout: the search header, the chip row and the rails.
  *  The chips and rails come from `store-skeleton.tsx`, which the store itself
  *  renders while its logo accents stream - one shape, one place to change it. */
 export default function Loading() {
@@ -15,12 +15,10 @@ export default function Loading() {
       aria-busy
       aria-label="Loading templates"
     >
-      <div className="deplo-grid-bg rounded-xl border border-border px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mx-auto flex max-w-2xl flex-col items-center">
-          <Skeleton className="h-8 w-40" shimmer />
-          <Skeleton className="mt-2 h-4 w-72" shimmer />
-          <Skeleton className="mt-5 h-10 w-full" shimmer />
-        </div>
+      <div className="mx-auto flex max-w-2xl flex-col items-center">
+        <Skeleton className="h-9 w-44" shimmer />
+        <Skeleton className="mt-2 h-4 w-72" shimmer />
+        <Skeleton className="mt-5 h-10 w-full" shimmer />
       </div>
 
       <StoreChipsSkeleton />

@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { toStoreTemplate } from "@/components/templates/template-card";
 import { TemplateStore } from "@/components/templates/template-store";
 import { CatalogOfflineGraphic } from "@/components/templates/catalog-offline-graphic";
+import { hasCapability } from "@/lib/membership";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
 import { templateAccents } from "@/lib/templates/logo-color";
@@ -21,9 +22,10 @@ export default async function TemplatesPage(
   const searchParams = await props.searchParams;
 
   // The catalogue is a catalogue: anyone on the team may read it.
-  const placement = await resolveOverviewPlacement(
-    placementFromSearchParams(searchParams),
-  );
+  const [placement, canDeploy] = await Promise.all([
+    resolveOverviewPlacement(placementFromSearchParams(searchParams)),
+    hasCapability("create_apps"),
+  ]);
 
   // The catalogue lives on a remote service. An instance with no egress (or a
   // service having a bad day) gets a page that says so, not an error boundary
@@ -48,6 +50,7 @@ export default async function TemplatesPage(
       // which costs a cold process seconds. A catalogue having a bad day costs colour,
       // never the page.
       accents={templateAccents(templates).catch(() => ({}))}
+      canDeploy={canDeploy}
       placement={placement}
       initialQuery={one(searchParams.q)}
       initialCategory={one(searchParams.category)}

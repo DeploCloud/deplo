@@ -23,10 +23,18 @@ export function StoreChipsSkeleton() {
   );
 }
 
-/** Two category rails: the head of the store, and enough of it to fill a screen. */
+/** The storefront plus two rails: the head of the store, and enough of it to
+ *  fill a screen. */
 export function StoreRailsSkeleton() {
   return (
     <div className="space-y-8">
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Skeleton className="h-56 rounded-xl" shimmer />
+        <div className="grid gap-3">
+          <Skeleton className="h-[6.5rem] rounded-xl" shimmer />
+          <Skeleton className="h-[6.5rem] rounded-xl" shimmer />
+        </div>
+      </div>
       {Array.from({ length: 2 }).map((_, row) => (
         <div key={row} className="space-y-3">
           <Skeleton className="h-5 w-44" shimmer />

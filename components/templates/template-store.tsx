@@ -3,13 +3,15 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { RefreshCw } from "lucide-react";
+import { ArrowRight, RefreshCw } from "lucide-react";
 import { gqlAction } from "@/lib/graphql-client";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DocsLink } from "@/components/ui/docs-link";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CategoryChips } from "@/components/templates/category-chips";
+import { CategoryIcon } from "@/components/templates/category-icon";
+import { FeaturedTemplates } from "@/components/templates/featured-templates";
 import { NoResultsGraphic } from "@/components/templates/no-results-graphic";
 import { StoreRailsSkeleton } from "@/components/templates/store-skeleton";
 import { TemplateSearchField } from "@/components/templates/template-search";
@@ -20,6 +22,7 @@ import {
 import { TemplateRail } from "@/components/templates/template-rail";
 import {
   COLLECTIONS,
+  FEATURED,
   MIN_COLLECTION_SIZE,
 } from "@/components/templates/collections";
 import { templatesHref, type OverviewPlacement } from "@/lib/overview-links";
@@ -30,6 +33,8 @@ import { titleClass } from "@/components/shared/page-header";
 const MIN_RAIL_SIZE = 4;
 /** Cards per category row. The rest of a category is one chip away. */
 const RAIL_LIMIT = 12;
+/** The A-to-Z grid opens on this many: the whole catalogue is 380+ cards. */
+const GRID_LIMIT = 12;
 
 /** slug → what its logo needs: a hue to wash the card in, a plate to be visible
  *  at all, or nothing. Absent when the logo asked for neither. */
@@ -45,6 +50,7 @@ interface Category {
 export function TemplateStore({
   templates,
   accents,
+  canDeploy,
   placement = null,
   initialQuery,
   initialCategory,
@@ -57,6 +63,8 @@ export function TemplateStore({
    * arrive as a promise and only the cards wait behind `<Suspense>`. Never
    * painted uncoloured first - a catalogue that changes shade reads as broken. */
   accents: Promise<Accents>;
+  /** Whether the storefront's Deploy button leads anywhere for this member. */
+  canDeploy: boolean;
   /** The Overview drill-in the store was opened from, carried on to the wizard
    *  so a template deployed from inside a folder is created IN that folder. */
   placement?: OverviewPlacement | null;
@@ -97,10 +105,13 @@ export function TemplateStore({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
-  function selectCategory(next: string) {
-    setCategory(next);
-    router.replace(href(q, next), { scroll: false });
-  }
+  const selectCategory = React.useCallback(
+    (next: string) => {
+      setCategory(next);
+      router.replace(href(q, next), { scroll: false });
+    },
+    [href, q, router],
+  );
 
   // Categories the catalogue actually uses, most populated first - derived from
   // the entries rather than fetched, so a chip can never offer an empty filter.
@@ -122,25 +133,22 @@ export function TemplateStore({
 
   return (
     <div className="space-y-8">
-      {/* The band: one control, the one every store opens with. */}
-      <div className="deplo-grid-bg rounded-xl border border-border px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mx-auto max-w-2xl text-center">
-          <h1 className={titleClass.page}>Templates</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {templates.length} apps, databases and services, ready to run on
-            your own servers. <DocsLink topic="deploy.fromTemplate" />
-          </p>
-          <div className="mt-5 flex items-center gap-2">
-            <TemplateSearchField
-              value={q}
-              onChange={(next) => {
-                typed.current = true;
-                setQ(next);
-              }}
-              className="min-w-0 flex-1"
-            />
-            <TemplateRefreshButton />
-          </div>
+      <div className="mx-auto max-w-2xl text-center">
+        <h1 className="text-3xl font-semibold tracking-tight">Templates</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {templates.length} apps, databases and services, ready to run on your
+          own servers. <DocsLink topic="deploy.fromTemplate" />
+        </p>
+        <div className="mt-5 flex items-center gap-2">
+          <TemplateSearchField
+            value={q}
+            onChange={(next) => {
+              typed.current = true;
+              setQ(next);
+            }}
+            className="min-w-0 flex-1"
+          />
+          <TemplateRefreshButton />
         </div>
       </div>
 
@@ -157,7 +165,9 @@ export function TemplateStore({
           categories={categories}
           category={category}
           q={q}
+          canDeploy={canDeploy}
           placement={placement}
+          onSelectCategory={selectCategory}
         />
       </React.Suspense>
     </div>
@@ -205,16 +215,21 @@ function StoreResults({
   categories,
   category,
   q,
+  canDeploy,
   placement,
+  onSelectCategory,
 }: {
   templates: StoreTemplate[];
   accents: Promise<Accents>;
   categories: Category[];
   category: string;
   q: string;
+  canDeploy: boolean;
   placement: OverviewPlacement | null;
+  onSelectCategory: (slug: string) => void;
 }) {
   const accents = React.use(pending);
+  const [showAll, setShowAll] = React.useState(false);
 
   const bySlug = React.useMemo(
     () => new Map(templates.map((t) => [t.slug, t])),
@@ -271,10 +286,24 @@ function StoreResults({
       </section>
     );
 
+  const featured = FEATURED.map((slug) => bySlug.get(slug)).filter(
+    (t): t is StoreTemplate => Boolean(t),
+  );
+  const sorted = [...templates].sort(byName);
+  const shown = showAll ? sorted : sorted.slice(0, GRID_LIMIT);
+
   return (
     <div className="space-y-10">
+      <FeaturedTemplates
+        templates={featured}
+        accents={accents}
+        canDeploy={canDeploy}
+        placement={placement}
+      />
+
       {COLLECTIONS.map((collection) => {
         const picks = collection.slugs
+          .filter((slug) => !FEATURED.includes(slug))
           .map((slug) => bySlug.get(slug))
           .filter((t): t is StoreTemplate => Boolean(t));
         if (picks.length < MIN_COLLECTION_SIZE) return null;
@@ -284,10 +313,17 @@ function StoreResults({
             title={collection.title}
             subtitle={collection.subtitle}
           >
-            {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
+            {picks.map((t) => card(t, "w-72 shrink-0 snap-start"))}
           </TemplateRail>
         );
       })}
+
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Browse by category
+        </span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
 
       {categories.map((c) => {
         const picks = templates
@@ -295,7 +331,29 @@ function StoreResults({
           .slice(0, RAIL_LIMIT);
         if (picks.length < MIN_RAIL_SIZE) return null;
         return (
-          <TemplateRail key={c.slug} title={c.name}>
+          <TemplateRail
+            key={c.slug}
+            title={c.name}
+            icon={
+              <CategoryIcon
+                icon={c.icon}
+                className="size-4 text-muted-foreground"
+              />
+            }
+            action={
+              c.count > picks.length ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => onSelectCategory(c.slug)}
+                >
+                  See all {c.count}
+                  <ArrowRight className="size-4" />
+                </Button>
+              ) : undefined
+            }
+          >
             {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
           </TemplateRail>
         );
@@ -303,14 +361,26 @@ function StoreResults({
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-base font-semibold tracking-tight lg:text-lg">
-            All templates
+          <h2 className={titleClass.section}>
+            All templates{" "}
+            <span className="font-normal text-muted-foreground">
+              {templates.length}
+            </span>
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Everything in the catalogue, A to Z.
           </p>
         </div>
-        <Grid>{[...templates].sort(byName).map((t) => card(t))}</Grid>
+        <Grid>{shown.map((t) => card(t))}</Grid>
+        {sorted.length > GRID_LIMIT && (
+          <div className="flex justify-center pt-1">
+            <Button variant="outline" onClick={() => setShowAll(!showAll)}>
+              {showAll
+                ? "Show less"
+                : `Show ${sorted.length - GRID_LIMIT} more`}
+            </Button>
+          </div>
+        )}
       </section>
     </div>
   );

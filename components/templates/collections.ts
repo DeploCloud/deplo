@@ -69,3 +69,7 @@ export const COLLECTIONS: TemplateCollection[] = [
     ],
   },
 ];
+
+/** The three the store opens with. They are dropped from the collections above
+ *  so the same card never appears twice within one screen. */
+export const FEATURED = ["uptime-kuma", "n8n", "vaultwarden"];
