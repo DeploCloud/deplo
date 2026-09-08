@@ -502,7 +502,7 @@ async function adoptMigrationSources(
     await recordActivity(
       "server",
       `Moved ${moved} migration source ${moved === 1 ? "machine" : "machines"} to this team`,
-      (await getCurrentUser())?.name ?? "a migration",
+      (await getCurrentUser())?.name ?? "Migrations",
       null,
       teamId,
     );
@@ -556,7 +556,7 @@ export async function handOverMigrationSources(
       ),
     );
   // Both trails: one team's machines left it, and they are another's now.
-  const actor = (await getCurrentUser())?.name ?? "a migration";
+  const actor = (await getCurrentUser())?.name ?? "Migrations";
   const what = ids.length === 1 ? "machine" : "machines";
   for (const from of new Set(held.map((r) => r.teamId)))
     await recordActivity(
@@ -1755,7 +1755,7 @@ async function removeMigrationSources(
     sources,
     runId,
     teamId,
-    run?.actor ?? "the migration",
+    run?.actor ?? "Migrations",
   );
 }
 
@@ -1889,7 +1889,7 @@ async function scheduleSourceUninstalls(
  */
 export async function abandonMigration(): Promise<number> {
   const { teamId } = await assertPanelReadGate();
-  const actor = (await getCurrentUser())?.name ?? "the migration";
+  const actor = (await getCurrentUser())?.name ?? "Migrations";
 
   const [latest] = await getDb()
     .select({ id: runsTable.id, status: runsTable.status })
@@ -2028,7 +2028,7 @@ export async function drainMigrationSourceUninstalls(
     await attemptSourceUninstall(
       row,
       grant.teamId,
-      run?.actor ?? "the migration",
+      run?.actor ?? "Migrations",
       now,
     );
   }
