@@ -22,8 +22,6 @@ export const metadata: Metadata = {
     default: "Overview - Deplo",
     template: "%s - Deplo",
   },
-  description:
-    "Deplo is a self-hosted platform to deploy apps, databases and services with Docker and Traefik. Push, and it is live, on your own servers.",
   icons: { icon: "/favicon.ico" },
   // Private operations panel: no page is ever indexed. Reinforced by
   // app/robots.ts and the X-Robots-Tag header (next.config.ts + proxy.ts).
