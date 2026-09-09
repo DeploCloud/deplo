@@ -1,8 +1,4 @@
-import {
-  uniqueNamesGenerator,
-  adjectives,
-  animals,
-} from "unique-names-generator";
+import { friendlyWords } from "./friendly-words";
 
 /**
  * Regenerating a server-provided nip.io suggestion, in the BROWSER. The names
@@ -19,11 +15,7 @@ const NIP_SUGGESTION_RE = /^(.*)-[a-z0-9]+-[a-z0-9]+-([0-9a-f]{8}\.nip\.io)$/i;
 /** A fresh `adjective-animal` pair (same generator the server uses), in the
  * browser, so every click yields new words with no round-trip. */
 function freshWords(): string {
-  return uniqueNamesGenerator({
-    dictionaries: [adjectives, animals],
-    separator: "-",
-    length: 2,
-  });
+  return friendlyWords();
 }
 
 /**

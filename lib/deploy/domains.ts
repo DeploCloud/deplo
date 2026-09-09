@@ -2,11 +2,7 @@ import "server-only";
 
 import { networkInterfaces } from "node:os";
 import { readFileSync } from "node:fs";
-import {
-  uniqueNamesGenerator,
-  adjectives,
-  animals,
-} from "unique-names-generator";
+import { friendlyWords } from "../friendly-words";
 import { hash6 } from "./routing";
 import type { CertProvider, DomainEntrypoint } from "../types";
 import { publicBaseUrl } from "../public-url";
@@ -451,11 +447,7 @@ export function rehostBlueprintHosts<T extends BlueprintHosts>(
  * words baked between a domain's app prefix and its hex IP.
  */
 export function randomWords(): string {
-  return uniqueNamesGenerator({
-    dictionaries: [adjectives, animals],
-    separator: "-",
-    length: 2,
-  });
+  return friendlyWords();
 }
 
 /**
