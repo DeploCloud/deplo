@@ -31,3 +31,13 @@ test("install.sh updates in place when Deplo is already there", async () => {
   // release workflow pushes that tag - without it a rate-limited host is stuck.
   assert.match(script, /DEPLO_VERSION="\$\{DEPLO_VERSION:-latest\}"/);
 });
+
+test("the installer's only question is the takeover", async () => {
+  const script = await readFile(join(process.cwd(), "install.sh"), "utf8");
+  const prompts = script.match(/ask "[^"]+"/g) ?? [];
+  assert.deepEqual(
+    prompts.map((p) => p.slice(5, -1)),
+    ["Migrate off $FOREIGN_LABEL and let Deplo replace it? [y/N]"],
+    "the one-liner must ask nothing but the takeover - a domain goes on --domain",
+  );
+});

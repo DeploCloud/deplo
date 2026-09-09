@@ -4,11 +4,11 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
 #
-# The dashboard is ALWAYS served over HTTPS by Traefik, on a real hostname. Give
-# it a domain and it uses that; give it nothing and this script generates
-# deplo-<hex>.nip.io, which resolves to this server with no DNS to set up. Port
-# 3000 is published on 127.0.0.1 only, so the way back in when the proxy itself is
-# what broke is an SSH tunnel, never the open internet.
+# The dashboard is ALWAYS served over HTTPS by Traefik, on a real hostname, and
+# the installer never asks for one: it generates deplo-<hex>.nip.io, which
+# resolves to this server with no DNS to set up. Your own domain is opt-in, on
+# the command line. Port 3000 is published on 127.0.0.1 only, so the way back in
+# when the proxy itself is what broke is an SSH tunnel, never the open internet.
 #   curl -fsSL .../install.sh | DEPLO_DOMAIN=deplo.example.com ACME_EMAIL=you@example.com bash
 #
 # Flags (after `bash -s --`, or on a downloaded copy):
@@ -16,7 +16,7 @@
 #   --domain <d>     serve the dashboard on this domain over HTTPS
 #   --email <e>      Let's Encrypt contact address (default admin@<domain>)
 #   --version <v>    install this Deplo version instead of `latest`
-#   --yes            never ask anything, take every default
+#   --yes            take every default (the takeover question is never one)
 #   --force          continue even if the preflight failed
 #   --plain          ASCII output, no colour, no spinners
 #   --no-color       colour off, keep the rest
@@ -309,7 +309,7 @@ usage() {
   printf '   --domain <d>     serve the dashboard on this domain over HTTPS\n'
   printf '   --email <e>      Let'"'"'s Encrypt contact address\n'
   printf '   --version <v>    install this Deplo version instead of latest\n'
-  printf '   --yes            never ask anything, take every default\n'
+  printf '   --yes            take every default\n'
   printf '   --force          continue even if the preflight failed\n'
   printf '   --plain          ASCII output, no colour, no spinners\n'
   printf '   --no-color       colour off, keep the rest\n'
@@ -901,11 +901,6 @@ FALLBACK_HOST="deplo-$(ip_hex "$TARGET_IP" || ip_hex 127.0.0.1).nip.io"
 # challenge and eats a rate limit that lasts an hour. Resolve it first.
 if [ "$MODE" = update ] && [ -z "${DEPLO_DOMAIN:-}" ] && [ -f "$ENV_FILE" ]; then
   DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
-fi
-
-if [ "$MODE" = install ] && [ -z "${DEPLO_DOMAIN:-}" ]; then
-  ANSWER="$(ask "Domain for the dashboard (Enter for https://$FALLBACK_HOST):" || true)"
-  [ -n "$ANSWER" ] && DEPLO_DOMAIN="$ANSWER"
 fi
 
 # A bare address reads as a domain to the lexical check below, and no certificate
