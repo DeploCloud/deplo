@@ -94,10 +94,11 @@ export default async function TemplatePage(
   const wanted = Array.isArray(searchParams.variant)
     ? searchParams.variant[0]
     : searchParams.variant;
-  // A family with more than one variant starts with NOTHING chosen: the page
-  // still reads as the default, but deploying is a decision the picker owns.
-  const chosen = template.variants.find((v) => v.slug === wanted) ?? null;
-  const variant = chosen ?? fallbackVariant;
+  // The family default IS the selection until the picker changes it: the page
+  // already reads as that variant, and a disabled Deploy over a description you
+  // are looking at is a dead end, not a decision.
+  const variant =
+    template.variants.find((v) => v.slug === wanted) ?? fallbackVariant;
   const manyVariants = template.variants.length > 1;
 
   // `getTemplate` hands back raw asset paths, unlike `listCatalog`.
@@ -144,7 +145,7 @@ export default async function TemplatePage(
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
           {manyVariants && (
             <VariantPicker
-              selected={chosen?.slug ?? ""}
+              selected={variant.slug}
               variants={template.variants.map((v) => ({
                 slug: v.slug,
                 name: v.name,
@@ -152,11 +153,7 @@ export default async function TemplatePage(
               }))}
             />
           )}
-          <DeployButton
-            canDeploy={canDeploy}
-            needsVariant={manyVariants && !chosen}
-            href={deployHref}
-          />
+          <DeployButton canDeploy={canDeploy} href={deployHref} />
         </div>
       </div>
 
@@ -263,15 +260,12 @@ function TopBar({ placement }: { placement: OverviewPlacement | null }) {
 
 function DeployButton({
   canDeploy,
-  needsVariant,
   href,
 }: {
   canDeploy: boolean;
-  /** The family has variants and none is chosen yet. */
-  needsVariant: boolean;
   href: string;
 }) {
-  if (canDeploy && !needsVariant)
+  if (canDeploy)
     return (
       <Button asChild className="shrink-0 sm:w-32">
         <Link href={href}>
@@ -283,13 +277,7 @@ function DeployButton({
   return (
     // A disabled button swallows pointer events, so the tooltip needs a
     // focusable wrapper to stay reachable.
-    <SimpleTooltip
-      content={
-        needsVariant
-          ? "Pick a variant first"
-          : "Needs the “Create apps” permission"
-      }
-    >
+    <SimpleTooltip content="Needs the “Create apps” permission">
       <span tabIndex={0} className="shrink-0">
         <Button disabled className="w-full sm:w-32">
           Deploy

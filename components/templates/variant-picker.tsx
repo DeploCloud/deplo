@@ -20,14 +20,14 @@ export interface VariantOption {
 /**
  * Which variant of a template family the page shows; only rendered when there is
  * more than one. The choice rides `?variant=` and `replace`s rather than
- * `push`es, because picking a variant refines the page you are on. It starts
- * EMPTY: a family's variants deploy different things, so one must be chosen. */
+ * `push`es, because picking a variant refines the page you are on. It starts on
+ * the family DEFAULT, which is the variant the page is already describing. */
 export function VariantPicker({
   variants,
   selected,
 }: {
   variants: VariantOption[];
-  /** Empty until the reader picks one. */
+  /** The variant the page is showing - the family default until one is picked. */
   selected: string;
 }) {
   const router = useRouter();
