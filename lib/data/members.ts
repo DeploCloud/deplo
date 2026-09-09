@@ -252,8 +252,9 @@ export interface RegistrationLinkInfo {
 /**
  * The username to attribute an audit entry to.
  */
-async function actorUsername(): Promise<string> {
-  return (await getCurrentUser())?.username ?? "an admin";
+/** Who did it, as the Activity trail names everyone else: the display name. */
+async function actorName(): Promise<string> {
+  return (await getCurrentUser())?.name ?? "an admin";
 }
 
 /**
@@ -722,7 +723,7 @@ export async function addExistingMember(input: {
   await recordActivity(
     "member",
     `Added ${target.username} to the team`,
-    await actorUsername(),
+    await actorName(),
     null,
     teamId,
     "member_joined",
@@ -898,7 +899,7 @@ export async function updateMember(input: {
         ? `the ${assignment.roleName} role`
         : "their own set of permissions"
     }`,
-    await actorUsername(),
+    await actorName(),
     null,
     teamId,
     "member_access_changed",
@@ -975,7 +976,7 @@ export async function removeMember(userId: string): Promise<void> {
   await recordActivity(
     "member",
     `Removed ${username || "a member"} from the team`,
-    await actorUsername(),
+    await actorName(),
     null,
     teamId,
     "member_removed",
@@ -1244,7 +1245,7 @@ async function recordForEveryTeamOf(
     .selectDistinct({ teamId: membershipsTable.teamId })
     .from(membershipsTable)
     .where(eq(membershipsTable.userId, userId));
-  const actor = await actorUsername();
+  const actor = await actorName();
   for (const { teamId } of rows)
     await recordActivity(
       type,
@@ -1378,7 +1379,7 @@ export async function mintRegistrationLink(input: {
   teamAssignments?: RegistrationTeamAssignment[];
 }): Promise<MintRegistrationResult> {
   await requireInstanceAdmin();
-  const createdBy = await actorUsername();
+  const createdBy = await actorName();
   const rawToken = randomToken(24);
   const now = nowIso();
   const linkId = newId("reg");

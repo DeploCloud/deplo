@@ -905,8 +905,9 @@ async function assertNameFree(
   if (clash) throw new Error(`This team already has a role called “${name}”`);
 }
 
-async function actorUsername(): Promise<string> {
-  return (await getCurrentUser())?.username ?? "an admin";
+/** Who did it, as the Activity trail names everyone else: the display name. */
+async function actorName(): Promise<string> {
+  return (await getCurrentUser())?.name ?? "an admin";
 }
 
 /**
@@ -989,7 +990,7 @@ export async function createRole(input: {
   await recordActivity(
     "member",
     `Created the ${name} role`,
-    await actorUsername(),
+    await actorName(),
     null,
     teamId,
   );
@@ -1092,7 +1093,7 @@ export async function updateRole(input: {
   await recordActivity(
     "member",
     `Updated the ${name} role`,
-    await actorUsername(),
+    await actorName(),
     null,
     teamId,
     "member_access_changed",
@@ -1150,7 +1151,7 @@ export async function resetRole(id: string): Promise<void> {
   await recordActivity(
     "member",
     `Reset the ${name} role to its default`,
-    await actorUsername(),
+    await actorName(),
     null,
     teamId,
     "member_access_changed",
@@ -1197,7 +1198,7 @@ export async function deleteRole(id: string): Promise<void> {
   await recordActivity(
     "member",
     `Deleted the ${name} role`,
-    await actorUsername(),
+    await actorName(),
     null,
     teamId,
     "member_access_changed",
