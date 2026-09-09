@@ -379,7 +379,11 @@ export async function addServer(
 
   const server: Server = {
     id: newId("srv"),
-    name: cleanServerName(input.name.trim() || host),
+    // Truncate rather than refuse: a migration source is named from the run, and
+    // an over-long name is not worth failing an install over.
+    name: cleanServerName(
+      (input.name.trim() || host).slice(0, SERVER_NAME_MAX),
+    ),
     host,
     type: "remote",
     status: "provisioning",
@@ -1279,6 +1283,8 @@ export async function renameServer(id: string, name: string): Promise<Server> {
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   const clean = cleanServerName(name);
+  const server = await getServerById(id);
+  if (!server) throw new Error("Server not found");
   const updated = await getDb()
     .update(serversTable)
     .set({ name: clean })
@@ -1287,7 +1293,7 @@ export async function renameServer(id: string, name: string): Promise<Server> {
   if (updated.length === 0) throw new Error("Server not found");
   await recordActivity(
     "server",
-    `Renamed server to ${clean}`,
+    `Renamed server ${server.name} to ${clean}`,
     user.name,
     null,
     teamId,

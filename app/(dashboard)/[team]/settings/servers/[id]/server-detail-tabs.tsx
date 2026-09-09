@@ -230,18 +230,21 @@ function OverviewTab({ server }: { server: ServerSummary }) {
 
   function saveName(e: React.FormEvent) {
     e.preventDefault();
+    const next = name.trim();
     startTransition(async () => {
       const res = await gqlAction<{ renameServer: { id: string } }>(
         `mutation RenameServer($id: String!, $name: String!) {
           renameServer(id: $id, name: $name) { id }
         }`,
-        { id: server.id, name },
+        { id: server.id, name: next },
       );
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
-      toast.success(`Server renamed to ${name.trim()}`);
+      // The field shows what was STORED, not what was typed.
+      setName(next);
+      toast.success(`Server renamed to ${next}`);
       router.refresh();
     });
   }
