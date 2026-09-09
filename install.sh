@@ -959,6 +959,10 @@ fi
 if [ "$CHECK_ONLY" = true ]; then
   blank
   note "Nothing was changed. Re-run without --check to install."
+  # Piped from curl, this script IS stdin, and exiting here leaves curl writing
+  # into a closed pipe - which it reports as "curl: (23)" under the summary.
+  # Draining what is left costs nothing and keeps the last line honest.
+  [ -t 0 ] || cat >/dev/null 2>&1 || true
   [ "$PF_FAIL" -gt 0 ] && exit 1
   exit 0
 fi
@@ -1294,6 +1298,17 @@ PUBLIC_URL="$(panel_url)"
 # the way in is the side door.
 setup_url() { printf '%s/setup?key=%s' "${1:-$PUBLIC_URL}" "$SETUP_KEY"; }
 
+# Is there still a first account to create? The link stops working the moment one
+# exists, so an update of a claimed instance must not print it. Unreadable
+# database (fresh install, container not up yet) counts as pending, which is what
+# a first install is.
+setup_pending() {
+  local n
+  n="$(docker exec deplo-postgres-1 psql -U deplo -d deplo -tAc \
+    'select count(*) from users' 2>/dev/null || true)"
+  [ -z "$n" ] || [ "$n" = 0 ]
+}
+
 # One router per host, both onto the one service. Unquoted scalars on purpose:
 # this is byte-for-byte what `withPanelRoute` re-renders, so the first edit from
 # the panel produces no spurious diff in the file an operator may be reading on
@@ -1375,7 +1390,10 @@ $TRAEFIK_FILE_PROVIDER
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
-      - --certificatesresolvers.letsencrypt.acme.email=\${ACME_EMAIL}
+      # The RESOLVED address, not \${ACME_EMAIL}: the panel reads this file back to
+      # show and edit the certificate contact, and a variable it cannot expand
+      # was displayed literally.
+      - --certificatesresolvers.letsencrypt.acme.email=$ACME_EMAIL
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
     ports:
       - "$PROXY_BIND$HTTP_PORT:80"
@@ -2537,7 +2555,9 @@ if [ -n "$TAKEOVER_DOOR" ]; then
   esac
 else
   card_kv "Dashboard" "$PUBLIC_URL"
-  card_kv "Set up" "$(setup_url)"
+  # The setup link is dead the moment an account exists, so printing it on an
+  # update of a claimed instance is a secret-looking URL that does nothing.
+  setup_pending && card_kv "Set up" "$(setup_url)"
 fi
 [ "$USE_DOMAIN" = true ] && card_kv "Backup address" "https://$FALLBACK_HOST"
 card_kv "Version" "$VERSION_LABEL"
@@ -2610,8 +2630,9 @@ if [ "$MODE" != update ]; then
 else
   printf '   Open %b%s%b - your apps kept running throughout.\n\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
   # The card above truncates a long address, and an update is exactly when
-  # somebody is re-running this to find a setup link they lost.
-  note "No account yet? Create it at $(setup_url)"
+  # somebody is re-running this to find a setup link they lost - but only while
+  # there is still an account to create.
+  setup_pending && note "No account yet? Create it at $(setup_url)"
 fi
 
 closing_notes
