@@ -63,6 +63,26 @@ export function composeTruthy(v: unknown): boolean {
 
 export type LintSeverity = "error" | "warning" | "info";
 
+/**
+ * The rules that mean "this stack reaches the server itself". Named once so the
+ * wizard can say so on the card - a template that mounts the Docker socket used
+ * to be a one-click deploy with the warning two clicks away, under Advanced.
+ */
+export const HOST_ACCESS_RULES: readonly string[] = [
+  "host-privileges",
+  "foreign-volume",
+  "bind-mount-absolute",
+  "bind-mount-escapes-sandbox",
+  "bind-mount-interpolated",
+];
+
+/** Does this stack need the host-volume grant? */
+export function needsHostAccess(
+  diagnostics: readonly { rule: string }[],
+): boolean {
+  return diagnostics.some((d) => HOST_ACCESS_RULES.includes(d.rule));
+}
+
 export interface LintDiagnostic {
   severity: LintSeverity;
   message: string;

@@ -408,3 +408,127 @@ export async function checkImageExists(
     clearTimeout(t);
   }
 }
+
+// ---------------------------------------------------------------------------
+// The port an image declares
+// ---------------------------------------------------------------------------
+
+/** A manifest, an index, and the config blob - only the fields we read. */
+interface ManifestDoc {
+  config?: { digest?: string };
+  manifests?: {
+    digest?: string;
+    platform?: { os?: string; architecture?: string };
+  }[];
+}
+interface ConfigBlob {
+  config?: { ExposedPorts?: Record<string, unknown> };
+}
+
+/**
+ * The container port an image declares in its own `EXPOSE`, or null when it
+ * declares none, several, or the registry will not say. It is what stops a
+ * Docker-image app from being routed to a guessed 3000 and answering 502.
+ * Read from the registry, never a pull: two small GETs, no layers.
+ */
+export async function imageExposedPort(
+  imageRef: string,
+): Promise<number | null> {
+  const parsed = parseImageRef(imageRef);
+  if (!parsed) return null;
+  const registryHost =
+    parsed.registry === DOCKER_HUB_REGISTRY
+      ? "registry-1.docker.io"
+      : parsed.registry;
+  const repo = encodeRepoPath(parsed.repository);
+  const token = await ociToken(registryHost, parsed.repository);
+  const headers = { Accept: MANIFEST_ACCEPT, ...ociAuthHeaders(token) };
+  const at = (ref: string) =>
+    `https://${registryHost}/v2/${repo}/manifests/${encodeURIComponent(ref)}`;
+
+  let doc = (
+    await fetchJson<ManifestDoc>(at(parsed.digest ?? parsed.tag), { headers })
+  ).body;
+  // A multi-arch tag answers with an index: follow the linux/amd64 entry, which
+  // is the platform every declared port we care about is described on.
+  if (doc?.manifests?.length) {
+    const pick =
+      doc.manifests.find(
+        (m) =>
+          m.platform?.os === "linux" && m.platform?.architecture === "amd64",
+      ) ?? doc.manifests[0];
+    if (!pick?.digest) return null;
+    doc = (await fetchJson<ManifestDoc>(at(pick.digest), { headers })).body;
+  }
+  const configDigest = doc?.config?.digest;
+  if (!configDigest) return null;
+
+  const blob = await fetchConfigBlob(
+    `https://${registryHost}/v2/${repo}/blobs/${encodeURIComponent(configDigest)}`,
+    ociAuthHeaders(token),
+  );
+  return singleExposedPort(blob?.config?.ExposedPorts);
+}
+
+/** Largest config blob we will read. Real ones are a few KB; this is the bound. */
+const CONFIG_BLOB_MAX = 256 * 1024;
+
+/**
+ * The config blob, following ONE redirect. Registries hand blobs off to a CDN
+ * (Docker Hub answers 307 to CloudFront), so refusing every 3xx like the manifest
+ * path does would always come back empty. The hop is re-checked against the same
+ * SSRF rule and the token is NOT carried to it - a CDN URL is pre-signed.
+ */
+async function fetchConfigBlob(
+  url: string,
+  headers: Record<string, string>,
+): Promise<ConfigBlob | null> {
+  const once = async (
+    target: string,
+    withAuth: boolean,
+  ): Promise<Response | null> => {
+    if (!(await isPublicHttpsUrl(target))) return null;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
+    try {
+      return await fetch(target, {
+        headers: { "User-Agent": UA, ...(withAuth ? headers : {}) },
+        signal: ctrl.signal,
+        cache: "no-store",
+        redirect: "manual",
+      });
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
+  let res = await once(url, true);
+  if (res && res.status >= 300 && res.status < 400) {
+    const to = res.headers.get("location");
+    res = to ? await once(new URL(to, url).toString(), false) : null;
+  }
+  if (!res?.ok) return null;
+  const text = await res.text().catch(() => "");
+  if (!text || text.length > CONFIG_BLOB_MAX) return null;
+  try {
+    return JSON.parse(text) as ConfigBlob;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `{"80/tcp":{}}` → 80. An image that exposes several ports has not answered the
+ * question, so it gets no answer: the app keeps the default and the field is there.
+ */
+export function singleExposedPort(
+  exposed: Record<string, unknown> | undefined | null,
+): number | null {
+  const tcp = Object.keys(exposed ?? {})
+    .filter((k) => !k.includes("/") || k.endsWith("/tcp"))
+    .map((k) => Number(k.split("/")[0]))
+    .filter((n) => Number.isInteger(n) && n > 0 && n < 65536);
+  return tcp.length === 1 ? tcp[0] : null;
+}

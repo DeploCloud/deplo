@@ -90,6 +90,7 @@ import { markPendingChanges } from "./pending-changes";
 import { setSharedVarAppLink } from "./shared-vars";
 import { teardownOrQueue } from "./teardown-queue";
 import { matchesQuery } from "../match-query";
+import { imageExposedPort } from "../registry/client";
 import { buildConfigFor } from "../frameworks";
 import type {
   App,
@@ -776,6 +777,23 @@ export async function composeNameClashes(
   }));
 }
 
+/**
+ * A Docker-image app has no repository to read a port out of, and 3000 is a guess
+ * that answers 502 on most images (`nginx`, `traefik/whoami`, `httpd` all listen
+ * on 80). Ask the registry what the image itself declares, and only when the
+ * caller did not say. Null - several ports, none, or a registry that would not
+ * answer - keeps the default, which the Port field is there to correct.
+ */
+async function withImagePort(
+  input: Pick<CreateAppInput, "source" | "dockerImage" | "build">,
+): Promise<Partial<BuildConfig> | undefined> {
+  const image = input.dockerImage?.trim();
+  if (input.source !== "docker-image" || !image) return input.build;
+  if (input.build?.port) return input.build;
+  const port = await imageExposedPort(image).catch(() => null);
+  return port ? { ...input.build, port } : input.build;
+}
+
 export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   // `create_apps` is asked of the DESTINATION (resolvePlacement): a node grant can
   // hold it where the role does not, and withhold it where the role has it.
@@ -1039,7 +1057,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     upload: null,
     compose: input.compose ?? null,
     mounts: input.mounts?.length ? input.mounts : null,
-    build: buildConfigFor(input.build),
+    build: buildConfigFor(await withImagePort(input)),
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
     previewEnabled: false,

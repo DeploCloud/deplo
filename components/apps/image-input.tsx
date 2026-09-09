@@ -59,6 +59,9 @@ function useDebounced<T>(value: T, ms: number): T {
 export interface ImageInputProps {
   value: string;
   onChange: (value: string) => void;
+  /** The port the image declares (`EXPOSE`), or null when it declares none or
+   *  several. Fires with the existence check, on the same round trip. */
+  onPort?: (port: number | null) => void;
   placeholder?: string;
   id?: string;
   className?: string;
@@ -67,6 +70,7 @@ export interface ImageInputProps {
 export function ImageInput({
   value,
   onChange,
+  onPort,
   placeholder = "ghcr.io/acme/app:latest",
   id,
   className,
@@ -79,6 +83,12 @@ export function ImageInput({
     Existence | "checking" | null
   >(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  // Held in a ref so an inline callback from the caller cannot re-fire the
+  // registry check on every render.
+  const onPortRef = React.useRef(onPort);
+  React.useEffect(() => {
+    onPortRef.current = onPort;
+  }, [onPort]);
 
   const debouncedValue = useDebounced(value, 280);
   // Whether the user is currently completing a tag (after a ":") - drives the
@@ -165,6 +175,7 @@ export function ImageInput({
         );
         const json = await res.json();
         setExistence((json.status as Existence) ?? "unknown");
+        onPortRef.current?.(typeof json.port === "number" ? json.port : null);
       } catch {
         // aborted or failed - leave the previous status
       }

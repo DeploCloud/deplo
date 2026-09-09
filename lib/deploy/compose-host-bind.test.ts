@@ -16,6 +16,7 @@ import {
   isFilesConventionSource,
   isHostBindSource,
   lintCompose,
+  needsHostAccess,
   volumeSource,
   assertComposeWithinLimits,
   composeHasInlineEnvValues,
@@ -984,4 +985,35 @@ test("inline environment values are seen in both forms, pass-throughs are not", 
     composeHasInlineEnvValues("services:\n  a:\n    image: x\n"),
     false,
   );
+});
+
+/**
+ * The wizard has to say "this reaches the server" on the card, not two clicks
+ * away under Advanced: a featured template that mounts the Docker socket was a
+ * one-click deploy with the disclosure hidden.
+ */
+test("a stack that reaches the server is flagged before it is deployed", () => {
+  const socket = lintCompose(`services:
+  kuma:
+    image: louislam/uptime-kuma:2
+    volumes:
+      - kuma-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+volumes:
+  kuma-data:
+`);
+  assert.equal(needsHostAccess(socket), true);
+
+  const privileged = lintCompose(`services:
+  app:
+    image: alpine:3
+    privileged: true
+`);
+  assert.equal(needsHostAccess(privileged), true);
+
+  const plain = lintCompose(`services:
+  web:
+    image: nginx:alpine
+`);
+  assert.equal(needsHostAccess(plain), false);
 });

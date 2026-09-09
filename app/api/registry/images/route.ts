@@ -4,6 +4,7 @@ import {
   searchImages,
   listTags,
   checkImageExists,
+  imageExposedPort,
 } from "@/lib/registry/client";
 
 /**
@@ -41,7 +42,14 @@ export async function GET(request: NextRequest) {
       const image = params.get("image") ?? "";
       if (!image.trim()) return Response.json({ status: "unknown" });
       const result = await checkImageExists(image);
-      return Response.json(result);
+      // The port the image declares rides along: it is the same registry round
+      // trip the field already pays for, and it is what saves a Docker-image app
+      // from being routed to a guessed 3000.
+      const port =
+        result.status === "exists"
+          ? await imageExposedPort(image).catch(() => null)
+          : null;
+      return Response.json({ ...result, port });
     }
 
     return Response.json({ error: "Unknown action" }, { status: 400 });

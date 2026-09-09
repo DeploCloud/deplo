@@ -9,6 +9,7 @@ import {
   FileText,
   Server as ServerIcon,
   Pencil,
+  ShieldAlert,
   Variable,
 } from "lucide-react";
 
@@ -81,6 +82,7 @@ import {
 import {
   hasBlockingErrors,
   lintCompose,
+  needsHostAccess,
   composeServiceNames,
   composeRouteCandidates,
   type LintDiagnostic,
@@ -311,6 +313,8 @@ export function NewAppWizard({
   // repository told us layered on.
   const [draftBuild, setDraftBuild] = React.useState(() => buildConfigFor());
   const [portTouched, setPortTouched] = React.useState(false);
+  /** What the picked image declares in its own EXPOSE, or null. */
+  const [imagePort, setImagePort] = React.useState<number | null>(null);
   const [outputTouched, setOutputTouched] = React.useState(false);
   const [commandsTouched, setCommandsTouched] = React.useState(false);
 
@@ -361,6 +365,11 @@ export function NewAppWizard({
     if (framework && !portTouched && next.port !== framework.defaultPort) {
       next = { ...next, port: framework.defaultPort };
     }
+    // A prebuilt image has no repository to read: what it declares in its own
+    // EXPOSE is the only honest default, and 3000 is a guess that 502s.
+    if (imagePort && !portTouched && next.port !== imagePort) {
+      next = { ...next, port: imagePort };
+    }
     // A framework that builds a directory and runs no server is SERVED, not started.
     if (framework?.staticOutput && !outputTouched && !next.outputDirectory) {
       next = { ...next, outputDirectory: framework.staticOutput };
@@ -376,6 +385,7 @@ export function NewAppWizard({
   }, [
     draftBuild,
     framework,
+    imagePort,
     portTouched,
     outputTouched,
     commands,
@@ -788,6 +798,30 @@ export function NewAppWizard({
         </div>
       </AdvancedGroup>
 
+      {source === "docker-image" && !useCompose && (
+        <AdvancedGroup title="Port">
+          <FieldLabel
+            htmlFor="image-port"
+            info="The port the image listens on inside the container (Traefik routes here). Filled in from the image when it declares one."
+            docs="build.port"
+          >
+            Container port
+          </FieldLabel>
+          <Input
+            id="image-port"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            value={String(build.port)}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n))
+                onBuildChange({ ...build, port: Math.max(1, Math.round(n)) });
+            }}
+          />
+        </AdvancedGroup>
+      )}
+
       {buildsImage && (
         <>
           {/* No wrapper title: these fields carry their own headings, and the
@@ -997,6 +1031,7 @@ export function NewAppWizard({
                     setDockerImage(v);
                     suggestName(nameFromImage(v));
                   }}
+                  onPort={setImagePort}
                 />
               </div>
             )}
@@ -1033,6 +1068,16 @@ export function NewAppWizard({
                 diagnostics={composeDiags}
                 onOpen={() => setComposeOpen(true)}
               />
+            )}
+
+            {useCompose && needsHostAccess(composeDiags) && (
+              <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3.5 py-2.5 text-sm text-warning">
+                <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+                <p className="min-w-0">
+                  This stack reaches the server itself, so it needs the host
+                  access permission. <DocsLink topic="hostAccess.gated" />
+                </p>
+              </div>
             )}
 
             {useCompose && routeCandidates.length > 1 && (
