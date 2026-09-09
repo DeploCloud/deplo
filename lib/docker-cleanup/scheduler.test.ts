@@ -53,8 +53,10 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
-  await seedServer(db, SERVER_1);
-  await seedServer(db, SERVER_2);
+  // Provisioned on purpose: the tick skips a host whose agent never called home,
+  // and these tests are about the schedule, not about enrolment.
+  await seedServer(db, SERVER_1, { provisioned: true });
+  await seedServer(db, SERVER_2, { provisioned: true });
   lease.__resetLocalLeases();
 });
 

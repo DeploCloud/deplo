@@ -54,6 +54,9 @@ async function appSlug(db: TestDb, appId: string): Promise<string> {
 export async function seedServer(
   db: TestDb,
   id: string = SERVER_1,
+  /** Give it an enrolled agent. Off by default: most tests want the "never
+   *  called home" host, which is what the un-provisioned errors are about. */
+  opts: { provisioned?: boolean } = {},
 ): Promise<void> {
   await db
     .insert(serversTable)
@@ -65,6 +68,9 @@ export async function seedServer(
       status: "online",
       ip: "10.0.0.1",
       dockerVersion: "27",
+      ...(opts.provisioned
+        ? { agentPort: 9443, agentCertFingerprint: `fp-${id}` }
+        : {}),
       traefikEnabled: true,
       cpuCores: 4,
       memoryMb: 8192,

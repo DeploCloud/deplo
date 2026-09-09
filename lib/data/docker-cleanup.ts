@@ -938,6 +938,11 @@ export async function runScheduledCleanup(
   policy: CleanupPolicy,
 ): Promise<void> {
   try {
+    // A host whose agent has never called home has nothing to sweep, and nobody
+    // is watching this tick. Recording a failed run would put a red line in the
+    // history of an install that is simply still being set up.
+    const server = await getServerById(serverId);
+    if (!server?.agent?.certFingerprint) return;
     const run = await beginCleanupRun({
       serverId,
       serverName,
