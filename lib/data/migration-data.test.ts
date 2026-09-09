@@ -890,7 +890,7 @@ test("a source volume that is not on that host wipes nothing and is not a copy",
   const runId = await openRun();
   agentCalls = [];
 
-  const res = await asOwner(() =>
+  await asOwner(() =>
     moveMigrationServiceData({
       ...CONNECT,
       runId,

@@ -1,5 +1,5 @@
 import Link from "@/components/ui/link";
-import { Plus, Rocket, Folder, Boxes, Eye, ArrowUpRight } from "lucide-react";
+import { Plus, Rocket, Folder, Boxes, ArrowUpRight } from "lucide-react";
 import { listApps } from "@/lib/data/apps";
 import { listFolders } from "@/lib/data/folders";
 import { listProjects } from "@/lib/data/projects";

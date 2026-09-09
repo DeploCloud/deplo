@@ -58,14 +58,9 @@ import {
 } from "../membership";
 import { assertSafeOutboundUrl } from "../outbound-url";
 import {
-  composeBuildReachesHost,
   composeClaimsReservedName,
   composeInterpolatedHostname,
   interpolatedHostnameMessage,
-  composeHasHostBindMount,
-  composeJoinsForeignNetwork,
-  composeMountsForeignStorage,
-  composeNeedsHostPrivileges,
   composeHostReach,
   composePublishesPorts,
   composeFileBindings,

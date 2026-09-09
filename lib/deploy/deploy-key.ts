@@ -3,14 +3,6 @@
  * after.
  */
 
-/** The fields this module reads from an Environment. A full `Environment` satisfies it. */
-export interface DeployKeyEnvironment {
-  /** `[a-z0-9-]` per-project key. */
-  slug: string;
-  /** Exactly one environment per project is the default; it owns the bare slug. */
-  isDefault: boolean;
-}
-
 /** The separator between an app slug and a deploy target's suffix. A slug can
  *  never contain it, which is the whole collision proof. */
 const SEP = "__";

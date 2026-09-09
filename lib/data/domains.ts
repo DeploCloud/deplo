@@ -49,7 +49,6 @@ import {
   loadDomainsForApp,
   loadDomainsForApps,
   loadAppGraph,
-  appInTeam,
   appScopeWhere,
 } from "./app-graph-load";
 import { domainToRow, domainMiddlewaresToRows } from "./app-graph-rows";
@@ -1490,14 +1489,6 @@ async function checkDomainDns(
   }
   if (ips.length === 0) return "pending";
   return classifyDomainDns(ips, target);
-}
-
-/**
- * Working, routable hostnames for a project, primary first. The primary is sorted
- * first so it stays the canonical host.
- */
-export async function routableDomains(appId: string): Promise<string[]> {
-  return (await routableRoutes(appId)).map((d) => d.name);
 }
 
 /**

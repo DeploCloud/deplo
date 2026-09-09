@@ -348,7 +348,3 @@ export function requireAuth(): NonNullable<ReturnType<typeof getAuth>> {
     throw new Error("Authentication is unavailable: no database configured");
   return auth;
 }
-
-export function isBetterAuthEnabled(): boolean {
-  return isPostgresEnabled();
-}

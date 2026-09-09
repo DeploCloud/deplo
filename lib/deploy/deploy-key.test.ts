@@ -2,9 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  appSlugFromDeployKey,
   isSuffixedDeployKey,
-  PREVIEW_SUFFIX_RE,
   prNumberFromDeployKey,
   previewDeployKey,
   stackName,

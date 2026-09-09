@@ -88,7 +88,6 @@ export function ConnectWizard({
   canManageTeam,
   publicUrl,
   tree,
-  activeTeamId,
   tools,
   connectionCount,
   overlay,
@@ -100,7 +99,6 @@ export function ConnectWizard({
   canManageTeam: boolean;
   publicUrl: string;
   tree: ScopeTreeTeam[];
-  activeTeamId: string;
   tools: McpToolSummary[];
   /** Agents already in this team, from the server. Drives the return view. */
   connectionCount: number;
@@ -125,7 +123,6 @@ export function ConnectWizard({
       url={url}
       https={https}
       tree={tree}
-      activeTeamId={activeTeamId}
       tools={tools}
       connectionCount={connectionCount}
       overlay={overlay}
@@ -146,7 +143,6 @@ function WizardRun({
   url,
   https,
   tree,
-  activeTeamId,
   tools,
   connectionCount,
   overlay,
@@ -159,7 +155,6 @@ function WizardRun({
   url: string;
   https: boolean;
   tree: ScopeTreeTeam[];
-  activeTeamId: string;
   tools: McpToolSummary[];
   connectionCount: number;
   overlay?: React.ReactNode;

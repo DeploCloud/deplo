@@ -74,11 +74,6 @@ const CANDIDATES_QUERY = `query($folderId: ID!, $query: String) {
   }
 }`;
 
-/** Two-letter avatar initials from a username, matching the member picker. */
-function initials(username: string): string {
-  return username.slice(0, 2).toUpperCase();
-}
-
 /**
  * Manage who can access a folder.
  */

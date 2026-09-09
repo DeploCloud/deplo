@@ -32,12 +32,6 @@ export function pkcePair(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-export interface RegisteredClient {
-  clientId: string;
-  clientSecret?: string;
-  redirectUri: string;
-}
-
 /**
  * The status a SUCCESSFUL dynamic registration answers with.
  */

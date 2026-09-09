@@ -22,11 +22,7 @@ import {
   requireCapability,
 } from "../membership";
 import { invalidScheduleMessage, isValidSchedule } from "../schedule";
-import {
-  canonicalTimeZone,
-  dstSkipWarning,
-  nextCronRunInZone,
-} from "../crons/cron-tz";
+import { canonicalTimeZone, nextCronRunInZone } from "../crons/cron-tz";
 import {
   cancelRun,
   loadInFlightRun,
@@ -716,14 +712,6 @@ export async function listCronRuns(
     .orderBy(desc(cronRunsTable.seq))
     .limit(Math.min(Math.max(limit, 1), MAX_KEEP_RUNS));
   return rows.map(toRunDTO);
-}
-
-/** The sentence to show under a schedule DST could skip, or null. */
-export function cronDstWarning(
-  schedule: string,
-  timezone: string,
-): string | null {
-  return dstSkipWarning(schedule, timezone);
 }
 
 /* ------------------------------------------------------------------ */

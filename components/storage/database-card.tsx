@@ -36,7 +36,6 @@ import {
   DatabaseStatusDot,
 } from "@/components/storage/database-status-badge";
 import { OverlayLink } from "@/components/shared/overlay-link";
-import { cn } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import { DatabaseLogo } from "./database-logo";
 import { DB_NAMES } from "./db-engines";

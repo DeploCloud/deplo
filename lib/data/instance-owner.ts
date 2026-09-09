@@ -93,27 +93,6 @@ export async function markWelcomeSeen(): Promise<boolean> {
 }
 
 /**
- * Claim the instance for `userId` at first-run setup. Called INSIDE the setup
- * transaction, so an instance is never briefly unowned.
- */
-export async function claimInstanceOwner(
-  tx: DbTx,
-  userId: string,
-): Promise<void> {
-  await tx
-    .insert(instanceSettings)
-    .values({ id: SETTINGS_ID, ownerUserId: userId, updatedAt: nowIso() })
-    // An UPDATE guarded on `owner_user_id IS NULL`, not DO NOTHING: the row can already
-    // exist for a reason that has nothing to do with ownership (the panel address, the
-    // VAPID keypair), and "do nothing" would then leave the instance permanently
-    .onConflictDoUpdate({
-      target: instanceSettings.id,
-      set: { ownerUserId: userId, updatedAt: nowIso() },
-      setWhere: isNull(instanceSettings.ownerUserId),
-    });
-}
-
-/**
  * Hand the crown to another user. The ONLY way `owner_user_id` ever changes after
  * setup, and the one thing here the owner alone may do - an instance admin calling
  * this is rejected even though they pass {@link requireInstanceAdmin}.

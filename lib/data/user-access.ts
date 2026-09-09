@@ -1,10 +1,9 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
-  activities as activitiesTable,
   appGrants as appGrantsTable,
   apps as appsTable,
   folderGrants as folderGrantsTable,
@@ -18,14 +17,8 @@ import {
   users as usersTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
-import { assembleActivity } from "./infra-rows";
 import { newId, nowIso } from "../ids";
-import {
-  isInstanceAdmin,
-  requireCapability,
-  requireInstanceAdmin,
-  teamsForUser,
-} from "../membership";
+import { requireCapability, requireInstanceAdmin } from "../membership";
 import {
   CAPABILITY_META,
   NODE_GRANTABLE_CAPABILITIES,
@@ -37,14 +30,13 @@ import { recordActivity } from "./activity";
 import { assertAdminCoverage, teamFounderUserId } from "./members";
 import { instanceOwnerUserId } from "./instance-owner";
 import { ensureTeamRoles, roleAssignment } from "./roles";
-import { buildScopeTree, type ScopeTreeTeam } from "./tokens";
 import { nodeCapabilitiesFor, withView } from "./node-access";
 import {
   clearNodeGrants,
   handOverFolders,
   recordFoldersHanded,
 } from "./node-grants";
-import type { Activity, AlertKey, Capability, Membership } from "../types";
+import type { AlertKey, Capability, Membership } from "../types";
 
 /**
  * Instance-admin administration of ONE person's access across the whole instance -
@@ -246,22 +238,6 @@ async function nodeGrantsFor(
 }
 
 /**
- * The scope tree rooted at the TARGET's teams - the same picker the token editor
- * draws, built from someone else's memberships. The flag is therefore derived here
- * rather than passed in, so a second caller cannot arrive with it set.
- */
-export async function listUserAccessTree(
-  userId: string,
-): Promise<ScopeTreeTeam[]> {
-  await requireInstanceAdmin();
-  // Derived from the answer, not from the gate above: re-gate this function and
-  // the filter follows on its own, instead of leaking every private folder in
-  // every team the target belongs to.
-  const unfiltered = await isInstanceAdmin();
-  return buildScopeTree(await teamsForUser(userId), { asCaller: !unfiltered });
-}
-
-/**
  * One member's access in the ACTIVE team, for the team-side member page.
  */
 export async function getMemberAccess(
@@ -269,28 +245,6 @@ export async function getMemberAccess(
 ): Promise<UserTeamAccessDTO | null> {
   const { teamId } = await requireCapability("manage_members");
   return (await loadUserAccess(userId, teamId))[0] ?? null;
-}
-
-/**
- * What this person has DONE, newest first, across every team - the Activity card
- * on their page. Instance admin only; served by `activities_actor_created_idx`.
- */
-export async function listUserActivity(
-  userId: string,
-  limit = 10,
-): Promise<(Activity & { teamName: string })[]> {
-  await requireInstanceAdmin();
-  const rows = await getDb()
-    .select({ activity: activitiesTable, teamName: teamsTable.name })
-    .from(activitiesTable)
-    .innerJoin(teamsTable, eq(teamsTable.id, activitiesTable.teamId))
-    .where(eq(activitiesTable.actorUserId, userId))
-    .orderBy(desc(activitiesTable.createdAt), desc(activitiesTable.seq))
-    .limit(limit);
-  return rows.map((r) => ({
-    ...assembleActivity(r.activity),
-    teamName: r.teamName,
-  }));
 }
 
 /* ------------------------------------------------------------------ */

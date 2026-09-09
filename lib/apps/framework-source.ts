@@ -10,11 +10,7 @@ import { readGitCredential } from "../data/git-connections";
 import { providerFor, readProviderText } from "../git/providers";
 import { normalizeRootRel, resolveBuildDir } from "../deploy/source";
 import { isGithubRepo } from "./favicon-shared";
-import {
-  frameworkById,
-  supportsFrameworkDetection,
-  type FrameworkId,
-} from "./framework-catalog";
+import { frameworkById, type FrameworkId } from "./framework-catalog";
 import {
   angularOutputDir,
   declaredDependencies,
@@ -26,7 +22,7 @@ import {
   type DetectedCommands,
   type PackageManifest,
 } from "./framework-detect";
-import type { BuildConfig, GitRepo } from "../types";
+import type { GitRepo } from "../types";
 
 /**
  * Reading an app's own source to name its framework - the server-only I/O around
@@ -233,25 +229,4 @@ export async function detectTreeFramework(
     }
   }
   return detectFramework(files, manifest);
-}
-
-/** The minimal app shape framework recognition reads. A loaded app graph
- * satisfies it structurally. */
-export interface FrameworkDetectApp {
-  source: string;
-  repo?: GitRepo | null;
-  build: Pick<BuildConfig, "buildMethod" | "rootDirectory">;
-}
-
-/**
- * Name the framework backing an app from whichever source it actually has - the
- * entry point the API uses.
- */
-export async function detectAppFramework(
-  app: FrameworkDetectApp,
-): Promise<FrameworkId | null> {
-  if (!supportsFrameworkDetection(app.build.buildMethod)) return null;
-  if (!app.repo) return null;
-  return (await detectRepoFramework(app.repo, app.build.rootDirectory))
-    .framework;
 }

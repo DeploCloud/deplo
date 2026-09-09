@@ -32,8 +32,6 @@ export function FolderColorPicker({
   const [hex, setHex] = React.useState(value ?? "");
 
   const current = (value ?? "").toLowerCase();
-  const selectedSwatch = FOLDER_COLORS.find((c) => c.value === current);
-  const isCustom = value != null && !selectedSwatch;
   const invalid = hex.trim() !== "" && !isHexColor(hex);
 
   /** Choose a swatch / the default - sets both the field text and the value. */

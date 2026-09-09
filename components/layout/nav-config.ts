@@ -20,7 +20,6 @@ import {
   GitBranch,
   Globe,
   SquareTerminal,
-  FolderTree,
   Archive,
   Bell,
   KeyRound,

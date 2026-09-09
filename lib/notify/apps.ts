@@ -122,9 +122,3 @@ async function appRows(serverId: string, ids: string[]) {
       ),
     );
 }
-
-/** Test hook - the previous-pass maps outlive a single test file otherwise. */
-export function __resetAppHealth(): void {
-  lastSeen.clear();
-  alerted.clear();
-}

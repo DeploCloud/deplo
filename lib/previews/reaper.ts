@@ -154,12 +154,3 @@ export function startPreviewReaper(): void {
 export async function releasePreviewReaperLease(): Promise<void> {
   await releaseLease(PREVIEW_REAPER_LEASE, state.owner);
 }
-
-/** Test-only: forget the "already swept" clock so the next tick does work. */
-export function __resetPreviewReaperForTest(): void {
-  state.started = false;
-  state.lastSweepAt = 0;
-  state.ticking = false;
-  if (state.timer) clearInterval(state.timer);
-  state.timer = null;
-}

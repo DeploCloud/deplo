@@ -169,17 +169,6 @@ export interface ImportRun {
   heartbeatAt?: string | null;
 }
 
-/** What a revert took back out of Deplo, and what it could not. */
-export interface RevertResult {
-  apps: number;
-  databases: number;
-  environments: number;
-  projects: number;
-  sharedVars: number;
-  /** One line per thing that is still here, and why. */
-  failed: string[];
-}
-
 /** A team the migration could land in - the viewer may create projects in each. */
 export interface TargetTeam {
   id: string;

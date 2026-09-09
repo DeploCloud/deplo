@@ -143,44 +143,6 @@ interface Stored {
 
 const EMPTY_STORED: Stored = { bytes: 0, count: 0 };
 
-export const S3_PROVIDERS: {
-  id: S3Provider;
-  name: string;
-  endpointHint: string;
-}[] = [
-  {
-    id: "aws",
-    name: "Amazon S3",
-    endpointHint: "https://s3.<region>.amazonaws.com",
-  },
-  {
-    id: "cloudflare-r2",
-    name: "Cloudflare R2",
-    endpointHint: "https://<account>.r2.cloudflarestorage.com",
-  },
-  {
-    id: "backblaze-b2",
-    name: "Backblaze B2",
-    endpointHint: "https://s3.<region>.backblazeb2.com",
-  },
-  {
-    id: "digitalocean",
-    name: "DigitalOcean Spaces",
-    endpointHint: "https://<region>.digitaloceanspaces.com",
-  },
-  {
-    id: "wasabi",
-    name: "Wasabi",
-    endpointHint: "https://s3.<region>.wasabisys.com",
-  },
-  {
-    id: "minio",
-    name: "MinIO (self-hosted)",
-    endpointHint: "https://minio.example.com",
-  },
-  { id: "other", name: "Other S3-compatible", endpointHint: "https://..." },
-];
-
 /**
  * The outbound-URL guard lives in `lib/outbound-url.ts` (a leaf, so the alert
  * channels can import it without closing a cycle back through this module's

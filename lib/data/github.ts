@@ -246,17 +246,6 @@ export async function teamUsesPreviews(): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** True once the active team has at least one App connected. */
-export async function hasGithubApp(): Promise<boolean> {
-  const teamId = await requireActiveTeamId();
-  const rows = await getDb()
-    .select({ id: githubAppsTable.id })
-    .from(githubAppsTable)
-    .where(eq(githubAppsTable.teamId, teamId))
-    .limit(1);
-  return rows.length > 0;
-}
-
 /**
  * Record (or refresh) an installation of a connected App.
  */
@@ -316,28 +305,6 @@ export async function upsertInstallation(input: {
     membership.teamId,
   );
   return assembleGithubInstallation(row);
-}
-
-/** Most-recently-created connected App owned by the active team. */
-export async function latestGithubApp(): Promise<GithubApp | null> {
-  const teamId = await requireActiveTeamId();
-  const rows = await getDb()
-    .select()
-    .from(githubAppsTable)
-    .where(eq(githubAppsTable.teamId, teamId));
-  // Most-recently-created: max createdAt, ties broken by id (deterministic).
-  const apps = rows
-    .map(assembleGithubApp)
-    .sort((a, b) =>
-      a.createdAt < b.createdAt
-        ? -1
-        : a.createdAt > b.createdAt
-          ? 1
-          : a.id < b.id
-            ? -1
-            : 1,
-    );
-  return apps[apps.length - 1] ?? null;
 }
 
 export async function removeGithubApp(id: string): Promise<void> {

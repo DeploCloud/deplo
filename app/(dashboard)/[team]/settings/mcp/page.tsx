@@ -1,7 +1,6 @@
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
-import { requireActiveTeamId } from "@/lib/membership";
 import { listScopeTree } from "@/lib/data/tokens";
 import { countMcpAgents } from "@/lib/data/mcp-clients";
 import { PageHeader } from "@/components/shared/page-header";
@@ -40,7 +39,6 @@ export default async function McpSettingsPage() {
   const [
     settings,
     publicUrl,
-    teamId,
     // Connecting YOUR agent is `manage_mcp`; the team's switch is `manage_team`.
     canConnect,
     canManageTeam,
@@ -49,7 +47,6 @@ export default async function McpSettingsPage() {
   ] = await Promise.all([
     getMcpSettings(),
     instancePublicBaseUrl(),
-    requireActiveTeamId(),
     hasCapability("manage_mcp"),
     hasCapability("manage_team"),
     countMcpAgents(),
@@ -74,7 +71,6 @@ export default async function McpSettingsPage() {
         canManageTeam={canManageTeam}
         publicUrl={publicUrl}
         tree={tree}
-        activeTeamId={teamId}
         tools={TOOL_SUMMARIES}
         connectionCount={agentCount}
         overlay={

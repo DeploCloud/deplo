@@ -21,7 +21,6 @@ import { updateMember } from "./members";
 import {
   addUserToTeam,
   listUserAccess,
-  listUserActivity,
   removeUserFromTeam,
   setMemberAccess,
   setUserTeamAccess,
@@ -370,10 +369,6 @@ test("the change lands in the affected team's Activity", async () => {
     "logged in the team it affected, not the actor's",
   );
   assert.match(rows[0].message, /u_dev/);
-  // And it is readable back on the target's own page.
-  const feed = await as(ADMIN, () => listUserActivity(ADMIN, 10));
-  assert.equal(feed.length, 1);
-  assert.equal(feed[0].teamName, "team-a");
 });
 
 test("the team's OWN door logs it too, in the team it happened in", async () => {

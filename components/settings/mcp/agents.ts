@@ -281,7 +281,3 @@ export const AGENTS: AgentDef[] = [
       `URL:    ${url}\nHeader: Authorization: Bearer ${token}`,
   },
 ];
-
-export function agentById(id: AgentId): AgentDef {
-  return AGENTS.find((a) => a.id === id) ?? AGENTS[AGENTS.length - 1];
-}

@@ -2,16 +2,11 @@ import "server-only";
 
 import { cache } from "@/lib/request-cache";
 
-import { and, eq, exists, or, sql } from "drizzle-orm";
+import { and, eq, exists, sql } from "drizzle-orm";
 
 import { getDb } from "./db/client";
 import { passkey as passkeyTable } from "./db/schema/auth";
-import {
-  memberships as membershipsTable,
-  teamRoles as teamRolesTable,
-  teams as teamsTable,
-  users as usersTable,
-} from "./db/schema/control-plane";
+import { users as usersTable } from "./db/schema/control-plane";
 import { passkeyRelyingParty } from "./public-url";
 import { currentSessionAuthMethod, currentSessionId } from "./auth";
 

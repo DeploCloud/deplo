@@ -2175,12 +2175,6 @@ export function mapCronUnsupported(e: unknown): Error {
 }
 
 /**
- * The capability an agent advertises once it can serve per-container `docker
- * stats` (ContainerStats) - the per-app/per-database Monitoring tab.
- */
-export const CONTAINER_STATS_CAPABILITY = "container-stats";
-
-/**
  * The capability an agent advertises once it can serve the long-lived {@link
  * AgentConnection.streamMetrics} telemetry stream.
  */
@@ -2205,22 +2199,6 @@ export async function connectMetricsStreamAgent(
     conn.close();
     throw e;
   }
-}
-
-/**
- * Map a {@link AgentConnection.containerStats} error to {@link
- * AgentContainerStatsUnsupportedError} when it is a gRPC UNIMPLEMENTED (an agent
- * too old to serve the RPC), passing every other error through unchanged.
- */
-export function mapContainerStatsUnsupported(e: unknown): Error {
-  if (e instanceof AgentContainerStatsUnsupportedError) return e;
-  if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
-    return new AgentContainerStatsUnsupportedError(
-      `The agent on this server is too old to report per-container metrics. ` +
-        `Update the agent on this server, then try again.`,
-    );
-  }
-  return e instanceof Error ? e : new Error(String(e));
 }
 
 /**

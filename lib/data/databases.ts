@@ -162,7 +162,6 @@ function sanitizeDbIdentifier(raw: string): string | null {
  * whitespace or a control char breaks both the line and the YAML.
  */
 function assertPasswordSafe(password: string): void {
-  // eslint-disable-next-line no-control-regex
   if (/[$\s\u0000-\u001f\u007f]/.test(password))
     throw new Error("Password may not contain $ or whitespace");
 }

@@ -128,17 +128,6 @@ async function toPublic(u: {
   };
 }
 
-/** True if a username is already in use (case-insensitive, normalized). */
-export async function isUsernameTaken(username: string): Promise<boolean> {
-  const n = normalizeUsername(username);
-  const rows = await getDb()
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.username, n))
-    .limit(1);
-  return rows.length > 0;
-}
-
 /**
  * Validate-free user insert shared by {@link createAccountWithTeam} and {@link
  * createAccountWithTeams}.
@@ -940,15 +929,6 @@ export async function startSessionFor(
   // Omitted when the caller is only re-issuing a session (e.g. after a password
   // change), where the existing `deplo_team` cookie must survive untouched.
   if (teamId) await setActiveTeamCookie(teamId);
-}
-
-/**
- * Switch the active-team cookie for the already-signed-in user.
- */
-export async function setActiveTeamForCurrentUser(
-  teamId: string,
-): Promise<void> {
-  await setActiveTeamCookie(teamId);
 }
 
 /**

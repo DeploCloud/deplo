@@ -154,7 +154,6 @@ import {
   frameworkById,
   isFrameworkId,
   supportsFrameworkDetection,
-  type FrameworkId,
 } from "../apps/framework-catalog";
 import { listGithubInstallations } from "./github";
 import {
@@ -171,7 +170,6 @@ import {
   inAppScope,
   inFolderScope,
   inProjectScope,
-  narrowedScope,
 } from "../auth/request-context";
 import { appInScope, folderInScope } from "./node-scope";
 import {
@@ -243,13 +241,7 @@ export interface AppSummary extends App {
   capabilities?: Capability[];
 }
 
-// The pure read-time normalizers moved to `./normalize-app` so the
-// app-graph backfill can apply the IDENTICAL normalization before exploding a
-// legacy row into the strict child tables (relational-store PLAN §7). The live
-// READ path no longer normalizes (relational rows are already in the current
-// model - the backfill/live writes store normalized rows). `deriveVolumeName` is
-// still used by `validateVolumes` here and re-exported for the volume tests.
-import { deriveVolumeName } from "./normalize-app";
+import { deriveVolumeName } from "../apps/volume-model";
 import { assertCloneTargetSafe } from "../git/clone-url";
 
 export { deriveVolumeName };
@@ -1431,7 +1423,6 @@ function cleanMountPath(raw: string): string {
     throw new Error(
       `A config file path must stay inside the app's files: ${raw}`,
     );
-  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f:$]/.test(rel))
     throw new Error(`A config file path can't contain that character: ${raw}`);
   if (rel === ".env")

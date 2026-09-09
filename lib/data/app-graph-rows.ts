@@ -418,20 +418,6 @@ function volumeRowToMount(v: AppVolumeRow): VolumeMount {
 /* ------------------------------------------------------------------ */
 
 /**
- * The full row-set for ONE project, FK-ordered for insertion: the flat parent
- * first, then the 1-to-1 children, then the ordered lists. `createApp` builds
- * this and inserts each non-empty array.
- */
-export interface AppRowSet {
-  project: AppInsert;
-  build: AppBuildInsert;
-  methodSettings: AppBuildMethodSettingsInsert | null;
-  volumes: AppVolumeInsert[];
-  ports: AppPortInsert[];
-  mounts: AppMountInsert[];
-}
-
-/**
  * The flat `resource_*` columns for a {@link ResourceLimits} (null ⇒ every column
  * NULL, i.e. no limits).
  */
@@ -616,19 +602,6 @@ export function mountsToRows(
     filePath: m.filePath,
     content: m.content,
   }));
-}
-
-/** The full FK-ordered row-set for a normalized {@link App}. */
-export function appToRowSet(p: App): AppRowSet {
-  const ms = methodSettingsToRow(p.id, p.build.methodSettings);
-  return {
-    project: appToRow(p),
-    build: buildToRow(p.id, p.build),
-    methodSettings: ms,
-    volumes: volumesToRows(p.id, p.volumes),
-    ports: portsToRows(p.id, p.ports),
-    mounts: mountsToRows(p.id, p.mounts),
-  };
 }
 
 /* ------------------------------------------------------------------ */

@@ -505,12 +505,6 @@ export async function releaseMigrationRunnerLease(): Promise<void> {
     await releaseLease(leaseFor(runId), owner).catch(() => {});
 }
 
-/** Test seam: stop the timer so a suite does not tick under itself. */
-export function stopMigrationRunner(): void {
-  if (timer) clearInterval(timer);
-  timer = null;
-}
-
 type RunRow = typeof runsTable.$inferSelect;
 
 /** Runs whose lease another control plane took from under this one. */

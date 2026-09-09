@@ -23,7 +23,6 @@ export function UpdateBanner() {
       setDismissed(window.localStorage.getItem(DISMISS_KEY) ?? "");
     } catch {
       /* private mode, blocked storage - the banner simply shows */
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDismissed("");
     }
   }, []);

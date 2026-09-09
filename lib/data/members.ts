@@ -1666,25 +1666,6 @@ export async function revokeAllRegistrationLinks(): Promise<number> {
   return revoked.length;
 }
 
-/** True if a pending, unexpired registration link exists for the raw token. */
-export async function isRegistrationTokenValid(
-  rawToken: string,
-): Promise<boolean> {
-  const hash = sha256Hex(rawToken);
-  const rows = await getDb()
-    .select({ id: registrationLinksTable.id })
-    .from(registrationLinksTable)
-    .where(
-      and(
-        eq(registrationLinksTable.tokenHash, hash),
-        eq(registrationLinksTable.status, "pending"),
-        gte(registrationLinksTable.expiresAt, sql`now()`),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
-}
-
 /**
  * Public, display-only view of a registration link for the /register page: is it
  * usable, which mode, and (for `existing_teams`) the names of the teams the

@@ -12,8 +12,6 @@ export const MCP_RESOURCE_PATH = "/api/mcp";
  * before hashing, so it is never stored.
  */
 export const OAUTH_ACCESS_TOKEN_PREFIX = "dplo_at_";
-export const OAUTH_REFRESH_TOKEN_PREFIX = "dplo_rt_";
-export const OAUTH_CLIENT_SECRET_PREFIX = "dplo_cs_";
 
 /** RFC 9728's well-known prefix. */
 export const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";

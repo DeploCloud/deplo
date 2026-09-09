@@ -1,4 +1,4 @@
-import { test, before, after, beforeEach } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";

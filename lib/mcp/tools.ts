@@ -5261,8 +5261,3 @@ export const MCP_TOOLS: McpToolDef[] = [
   ...INTEGRATIONS,
   ...ESCAPE_HATCH,
 ];
-
-/** Group order for the settings table, derived so the two cannot drift. */
-export const MCP_TOOL_GROUPS: string[] = [
-  ...new Set(MCP_TOOLS.map((t) => t.group)),
-];

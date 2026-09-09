@@ -9,7 +9,6 @@ import {
 } from "../db/schema/control-plane";
 import { TEAM_A } from "./identity-test-helpers";
 import type { AgentConnection } from "../infra/agent-client";
-import type { InFlightRun } from "../crons/runner";
 
 /**
  * Seeders + a fake agent for the cron tests. Not named `*.test.ts` so the
@@ -251,9 +250,4 @@ export class FakeAgent {
       this.jobs.set(id, { found: true, running: false, ...state });
     }
   }
-}
-
-/** The agent handle a run is currently attached to, or null. */
-export function agentJobIdOf(r: InFlightRun): string | null {
-  return r.run.agentJobId;
 }

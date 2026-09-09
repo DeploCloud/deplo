@@ -43,8 +43,6 @@ import {
   deploEngineFor,
   withPanel,
   composeHostMounts,
-  declaredSourceBindMounts,
-  swarmHealthCheck,
   unsupportedNotes,
 } from "./map";
 import type { SourceApplication, SourceDatabase } from "./model";

@@ -166,13 +166,6 @@ export async function controlPlaneCert(
   return cert;
 }
 
-/** {@link controlPlaneCert}, when only the pin is wanted. */
-export async function controlPlaneCertFingerprint(
-  baseUrl: string,
-): Promise<string> {
-  return (await controlPlaneCert(baseUrl)).fingerprint;
-}
-
 /**
  * Refuse to mint a command that cannot work. The agent will not bootstrap against
  * an HTTPS control plane without a pinned fingerprint, so an empty one produces a
@@ -270,14 +263,6 @@ export function findServerForToken(
     throw new BootstrapError("expired-token", "bootstrap token has expired");
   }
   return server;
-}
-
-/** The signed-cert payload the control plane returns to a calling-home agent. */
-export interface BootstrapResult {
-  /** The agent's signed server cert + pinned CA + the cert fingerprint. */
-  signed: SignedAgentCert;
-  /** The agent's gRPC port the control plane will dial it on. */
-  agentPort: number;
 }
 
 /**

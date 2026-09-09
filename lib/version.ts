@@ -15,7 +15,6 @@ export const DEPLO_REPO = "DeploCloud/deplo";
  * fleet list can compare two versions without pulling a server-only module.
  */
 export const FALLBACK_AGENT_VERSION = "0.1.0";
-export const EXPECTED_AGENT_VERSION = FALLBACK_AGENT_VERSION;
 
 /** Parse a `[v]MAJOR.MINOR.PATCH[...]` string into a numeric triple, or null. */
 function parseSemver(v: string): [number, number, number] | null {
