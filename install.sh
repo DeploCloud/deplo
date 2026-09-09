@@ -1303,9 +1303,16 @@ setup_url() { printf '%s/setup?key=%s' "${1:-$PUBLIC_URL}" "$SETUP_KEY"; }
 # database (fresh install, container not up yet) counts as pending, which is what
 # a first install is.
 setup_pending() {
-  local n
-  n="$(docker exec deplo-postgres-1 psql -U deplo -d deplo -tAc \
-    'select count(*) from users' 2>/dev/null || true)"
+  local n i
+  # Retried: on an UPDATE this runs seconds after Postgres was recreated, and a
+  # database that is not answering yet would read as "no account" and print a
+  # link that has been dead for months.
+  for i in 1 2 3 4 5; do
+    n="$(docker exec deplo-postgres-1 psql -U deplo -d deplo -tAc \
+      'select count(*) from users' 2>/dev/null || true)"
+    [ -n "$n" ] && break
+    sleep 1
+  done
   [ -z "$n" ] || [ "$n" = 0 ]
 }
 
