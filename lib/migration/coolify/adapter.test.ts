@@ -262,7 +262,7 @@ test("a rate limit while probing a service is raised, never read as `not a servi
     hits++;
     return new Response(JSON.stringify({ message: "Too many attempts." }), {
       status: 429,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "retry-after": "0" },
     });
   });
   await assert.rejects(

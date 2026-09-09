@@ -118,7 +118,7 @@ test("an unauthenticated call carries Coolify's own words, and says a token can 
   });
 });
 
-test("a rate limit is retried once, then given up on with the number", async (t) => {
+test("a rate limit is waited out and retried, then given up on with the number", async (t) => {
   reset(t);
   let calls = 0;
   __setMigrationFetchForTest(async () => {
@@ -145,7 +145,25 @@ test("a rate limit is retried once, then given up on with the number", async (t)
     });
   });
   await assert.rejects(listProjects(cred), /200 requests a minute/);
-  assert.equal(calls, 2);
+  assert.equal(calls, 6);
+
+  // The wait Coolify asked for is taken, and it is the whole panel that waits.
+  calls = 0;
+  __setMigrationFetchForTest(async () => {
+    calls += 1;
+    if (calls > 1)
+      return new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    return new Response(JSON.stringify({ message: "Too Many Attempts." }), {
+      status: 429,
+      headers: { "retry-after": "0.05" },
+    });
+  });
+  const started = Date.now();
+  assert.deepEqual(await listProjects(cred), []);
+  assert.ok(Date.now() - started >= 40, "the retry-after was not waited out");
 });
 
 test("a redirect is refused rather than followed", async (t) => {

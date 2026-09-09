@@ -282,9 +282,24 @@ export interface CoolifyUser {
 const RATE_PER_MINUTE = 150;
 const buckets = new Map<string, { tokens: number; refilledAt: number }>();
 
+/** Until when a 429 says to send this panel nothing at all. */
+const blockedUntil = new Map<string, number>();
+
+/** How many times a 429 is waited out before the caller is told. */
+const RATE_LIMIT_RETRIES = 5;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function take(baseUrl: string): Promise<void> {
   for (;;) {
     const now = Date.now();
+    // A 429 holds back every caller, not only the one that got it: the budget
+    // belongs to the panel.
+    const until = blockedUntil.get(baseUrl) ?? 0;
+    if (until > now) {
+      await sleep(Math.min(until - now, 1_000));
+      continue;
+    }
     const b = buckets.get(baseUrl) ?? {
       tokens: RATE_PER_MINUTE,
       refilledAt: now,
@@ -298,15 +313,14 @@ async function take(baseUrl: string): Promise<void> {
       return;
     }
     buckets.set(baseUrl, b);
-    await new Promise((r) =>
-      setTimeout(r, Math.ceil(60_000 / RATE_PER_MINUTE)),
-    );
+    await sleep(Math.ceil(60_000 / RATE_PER_MINUTE));
   }
 }
 
 /** Tests drive many calls through one bucket; this puts it back. */
 export function __resetCoolifyRateLimitForTest(): void {
   buckets.clear();
+  blockedUntil.clear();
 }
 
 /* ------------------------------------------------------------------ */
@@ -350,16 +364,16 @@ function refusalMessage(status: number, body: string): string {
     return `Coolify refused the token${quoted}. It may have expired - every token is minted with an expiry - or been revoked: mint a new one under Keys & Tokens.`;
   if (status === 400) return said || `Coolify refused the token (${status}).`;
   if (status === 429)
-    return `Coolify is rate limiting Deplo (200 requests a minute). Wait a moment and try again.${quoted}`;
+    return `Coolify kept rate limiting Deplo (200 requests a minute) through every retry. Something else is using its API: wait for it to quieten down, then try again.${quoted}`;
   return `Coolify request failed (${status})${quoted}`;
 }
 
-function retryAfterMs(res: Response): number {
+/** Coolify answers a 429 with `Retry-After`; without one, back off and ask again. */
+function retryAfterMs(res: Response, attempt: number): number {
   const raw = res.headers.get("retry-after");
-  const secs = raw ? Number(raw) : NaN;
-  return Number.isFinite(secs) && secs > 0
-    ? Math.min(secs * 1000, 30_000)
-    : 2_000;
+  const secs = raw === null ? NaN : Number(raw);
+  if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, 60_000);
+  return Math.min(2_000 * 2 ** attempt, 30_000);
 }
 
 async function request(
@@ -393,16 +407,17 @@ async function request(
     );
   };
 
-  await take(c.baseUrl);
-  let res = await send();
-  // One retry, because the budget is shared with whoever is using the panel.
-  if (res.status === 429) {
-    await new Promise((r) => setTimeout(r, retryAfterMs(res)));
+  // A rate limit is the panel busy, not a failure: wait it out and ask again,
+  // rather than losing a volume copy over a minute the panel wanted back.
+  for (let attempt = 0; ; attempt++) {
     await take(c.baseUrl);
-    res = await send();
+    const res = await send();
+    if (res.status !== 429 || attempt >= RATE_LIMIT_RETRIES) {
+      refuseRedirect(res, COOLIFY_PANEL);
+      return res;
+    }
+    blockedUntil.set(c.baseUrl, Date.now() + retryAfterMs(res, attempt));
   }
-  refuseRedirect(res, COOLIFY_PANEL);
-  return res;
 }
 
 async function get<T>(
