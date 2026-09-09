@@ -41,7 +41,6 @@ type UpdateInfo = {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
-  url: string | null;
   publishedAt: string | null;
   error?: string | null;
 };
@@ -62,7 +61,6 @@ const UPDATES_QUERY = /* GraphQL */ `
       current
       latest
       updateAvailable
-      url
       publishedAt
       error
     }
@@ -294,17 +292,6 @@ export function DeploUpdatesTab({
                       />
                       {checking ? "Checking" : "Check now"}
                     </Button>
-                    {info?.updateAvailable && info.url && (
-                      <Button variant="outline" size="sm" asChild>
-                        <a
-                          href={info.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          Release notes
-                        </a>
-                      </Button>
-                    )}
                   </div>
                 </>
               )}
