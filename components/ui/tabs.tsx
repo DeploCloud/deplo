@@ -5,6 +5,7 @@ import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { cn } from "@/lib/utils";
 import {
   useSlidingRect,
+  SlidingBackground,
   SlidingUnderline,
 } from "@/components/ui/sliding-underline";
 
@@ -30,6 +31,9 @@ TabsList.displayName = TabsPrimitive.List.displayName;
 // re-invented the gap, or forgot it, and the glyph sat glued to the word.
 const TRIGGER_ICON = "gap-2 [&_svg]:size-4 [&_svg]:shrink-0";
 
+const triggerClass =
+  "inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-all hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground";
+
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
@@ -37,7 +41,8 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-all hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-accent data-[state=active]:text-foreground",
+      triggerClass,
+      "data-[state=active]:bg-accent",
       TRIGGER_ICON,
       className,
     )}
@@ -45,6 +50,54 @@ const TabsTrigger = React.forwardRef<
   />
 ));
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
+
+/**
+ * Segmented tab list on a track: the pill SLIDES behind the active trigger
+ * instead of blinking from one half to the other.
+ */
+function SegmentedTabsList({
+  className,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>) {
+  const listRef =
+    React.useRef<React.ElementRef<typeof TabsPrimitive.List>>(null);
+  const rect = useSlidingRect(
+    listRef,
+    () =>
+      listRef.current?.querySelector<HTMLElement>('[data-state="active"]') ??
+      null,
+    [],
+    true,
+  );
+  return (
+    <TabsPrimitive.List
+      ref={listRef}
+      className={cn(
+        "relative isolate grid h-auto w-full auto-cols-fr grid-flow-col items-center rounded-lg border border-border bg-surface p-1",
+        className,
+      )}
+      {...props}
+    >
+      <SlidingBackground rect={rect} className="bg-background shadow-sm" />
+      {children}
+    </TabsPrimitive.List>
+  );
+}
+SegmentedTabsList.displayName = "SegmentedTabsList";
+
+/** A trigger for that track - it paints no background of its own, the pill is it. */
+const SegmentedTabsTrigger = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Trigger
+    ref={ref}
+    className={cn(triggerClass, "relative z-10", TRIGGER_ICON, className)}
+    {...props}
+  />
+));
+SegmentedTabsTrigger.displayName = "SegmentedTabsTrigger";
 
 const TabsContent = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
@@ -121,6 +174,8 @@ export {
   TabsList,
   TabsTrigger,
   TabsContent,
+  SegmentedTabsList,
+  SegmentedTabsTrigger,
   UnderlineTabsList,
   UnderlineTabsTrigger,
 };

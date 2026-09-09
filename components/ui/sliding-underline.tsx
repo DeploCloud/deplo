@@ -41,14 +41,17 @@ export function useSlidingRect(
       }
       const c = container.getBoundingClientRect();
       const r = el.getBoundingClientRect();
+      // A scaled ancestor (a dialog's zoom-in) shrinks every measured box, and
+      // nothing re-fires once it settles: divide the scale back out.
+      const scale = c.width / container.offsetWidth || 1;
       const next: SlideRect = {
         // Scroll offsets included on purpose: the highlight is positioned inside the
         // container's CONTENT box, which moves when the container scrolls (the tab strip
         // does, on a narrow screen).
-        top: r.top - c.top + container.scrollTop,
-        left: r.left - c.left + container.scrollLeft,
-        width: r.width,
-        height: r.height,
+        top: (r.top - c.top) / scale + container.scrollTop,
+        left: (r.left - c.left) / scale + container.scrollLeft,
+        width: r.width / scale,
+        height: r.height / scale,
       };
       // Keep the same object when nothing moved so we don't re-render in a loop
       // (ResizeObserver fires once on observe).

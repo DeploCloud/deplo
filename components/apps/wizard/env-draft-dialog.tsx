@@ -11,7 +11,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  SegmentedTabsList,
+  SegmentedTabsTrigger,
+} from "@/components/ui/tabs";
+import { SlidingPanels } from "@/components/shared/sliding-panels";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +46,8 @@ export interface LinkableSharedVar {
   teamWide: boolean;
 }
 
-type Tab = "variables" | "shared";
+const TABS = ["variables", "shared"] as const;
+type Tab = (typeof TABS)[number];
 
 /**
  * The variables modal with no app behind it: everything typed or ticked here is
@@ -131,58 +137,65 @@ function EnvDraftBody({
     <>
       <form onSubmit={onSubmit} className="grid gap-4">
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-          <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-surface p-1">
-            <TabsTrigger value="variables">
-              <Variable className="size-4" />
+          <SegmentedTabsList>
+            <SegmentedTabsTrigger value="variables">
+              <Variable />
               Variables
-            </TabsTrigger>
-            <TabsTrigger value="shared">
-              <KeyRound className="size-4" />
+            </SegmentedTabsTrigger>
+            <SegmentedTabsTrigger value="shared">
+              <KeyRound />
               Shared
-            </TabsTrigger>
-          </TabsList>
+            </SegmentedTabsTrigger>
+          </SegmentedTabsList>
         </Tabs>
 
-        {tab === "variables" ? (
-          <div className="space-y-3">
-            <EnvRowsEditor rows={draft} onChange={setDraft} />
-            <SecretRow secret={secret} onChange={setSecret} />
-          </div>
-        ) : sharedVars.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            This team has no shared variables yet.
-          </p>
-        ) : (
-          <div className="focus-safe-scroll max-h-64 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
-            {sharedVars.map((v) => (
-              <label
-                key={v.id}
-                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-surface"
-              >
-                <Checkbox
-                  checked={picked.includes(v.id)}
-                  onCheckedChange={(on) =>
-                    setPicked((ids) =>
-                      on ? [...ids, v.id] : ids.filter((i) => i !== v.id),
-                    )
-                  }
-                />
-                <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                  {v.key}
-                </span>
-                {v.type === "secret" && (
-                  <Badge variant="outline" className="gap-1">
-                    <KeyRound className="size-3" />
-                    Secret
-                  </Badge>
-                )}
-                <span className="text-xs text-muted-foreground">
-                  {v.teamWide ? "Team-wide" : "Scoped"}
-                </span>
-              </label>
-            ))}
-          </div>
-        )}
+        <SlidingPanels
+          panels={TABS}
+          current={tab}
+          labelFor={(t) => (t === "variables" ? "Variables" : "Shared")}
+          render={(t) =>
+            t === "variables" ? (
+              <div className="space-y-3">
+                <EnvRowsEditor rows={draft} onChange={setDraft} />
+                <SecretRow secret={secret} onChange={setSecret} />
+              </div>
+            ) : sharedVars.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                This team has no shared variables yet.
+              </p>
+            ) : (
+              <div className="focus-safe-scroll max-h-64 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
+                {sharedVars.map((v) => (
+                  <label
+                    key={v.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-surface"
+                  >
+                    <Checkbox
+                      checked={picked.includes(v.id)}
+                      onCheckedChange={(on) =>
+                        setPicked((ids) =>
+                          on ? [...ids, v.id] : ids.filter((i) => i !== v.id),
+                        )
+                      }
+                    />
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                      {v.key}
+                    </span>
+                    {v.type === "secret" && (
+                      <Badge variant="outline" className="gap-1">
+                        <KeyRound className="size-3" />
+                        Secret
+                      </Badge>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {v.teamWide ? "Team-wide" : "Scoped"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )
+          }
+        />
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onCancel}>

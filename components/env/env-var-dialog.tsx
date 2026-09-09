@@ -21,7 +21,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  SegmentedTabsList,
+  SegmentedTabsTrigger,
+} from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -348,22 +352,16 @@ function AddDialog({
             ) : (
               // A segmented control on a track - the same shape the app wears
               // elsewhere, so the idle half still reads as a place you can go.
-              <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-surface p-1">
-                <TabsTrigger
-                  value="standalone"
-                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                >
+              <SegmentedTabsList>
+                <SegmentedTabsTrigger value="standalone">
                   <Plus />
                   Standalone
-                </TabsTrigger>
-                <TabsTrigger
-                  value="shared"
-                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                >
+                </SegmentedTabsTrigger>
+                <SegmentedTabsTrigger value="shared">
                   <Share2 />
                   Shared
-                </TabsTrigger>
-              </TabsList>
+                </SegmentedTabsTrigger>
+              </SegmentedTabsList>
             )}
           </div>
 
