@@ -1,7 +1,11 @@
 import "server-only";
 
 import { getCurrentUser } from "@/lib/auth";
-import { getActiveTeamId, reachableCapabilities } from "@/lib/membership";
+import {
+  getActiveTeamId,
+  reachableCapabilities,
+  TwoFactorRequiredError,
+} from "@/lib/membership";
 import { authenticateToken } from "@/lib/data/tokens";
 import {
   runWithIdentity,
@@ -63,8 +67,19 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
   // `x-deplo-team` (lib/graphql-client.ts), which getActiveTeamId reads: this
   // endpoint is flat, so the header is the only thing that carries it.
   const viewer = await getCurrentUser();
-  const teamId = await getActiveTeamId();
-  const capabilities = await reachableCapabilities();
+  let teamId: string | null = null;
+  let capabilities: Capability[] = [];
+  try {
+    teamId = await getActiveTeamId();
+    capabilities = await reachableCapabilities();
+  } catch (e) {
+    // A member their team locks out still has to be able to sign out and to enrol -
+    // both account-only fields. The team stays unresolved, so everything scoped to
+    // one refuses again in lib/data, which is the boundary.
+    if (!(e instanceof TwoFactorRequiredError)) throw e;
+    teamId = null;
+    capabilities = [];
+  }
   return {
     viewer,
     teamId,

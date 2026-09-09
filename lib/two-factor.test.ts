@@ -21,6 +21,7 @@ import {
   TwoFactorRequiredError,
   twoFactorMandateForCurrentUser,
 } from "./membership";
+import { buildContext } from "./graphql/context";
 import { authenticateToken, createToken } from "./data/tokens";
 import { ensureTeamRoles } from "./data/roles";
 import { seedIdentity, TEAM_A, USER_1 } from "./data/identity-test-helpers";
@@ -303,6 +304,24 @@ test("a team mandate blocks mutations, reads AND the bearer API", async () => {
     (e: unknown) => e instanceof TwoFactorRequiredError,
     "a bearer token must die with its principal's mandate",
   );
+});
+
+test("the mandate never blocks the way out", async () => {
+  await requireForTeam();
+  await asUser(USER_2, async () => {
+    await assert.rejects(
+      () => requireActiveTeamId(),
+      (e: unknown) => e instanceof TwoFactorRequiredError,
+      "the gate itself stays shut",
+    );
+    // The request still gets a context, or `logout` and the enrolment pair - fields
+    // about the account, not the team - would be refused along with everything else,
+    // and the lock screen would be a dead end.
+    const ctx = await buildContext(new Request("http://localhost/api/graphql"));
+    assert.equal(ctx.viewer?.id, USER_2);
+    assert.equal(ctx.teamId, null, "the team stays unresolved");
+    assert.deepEqual(ctx.capabilities, [], "and grants nothing");
+  });
 });
 
 test("the same member passes every gate once enrolled", async () => {
