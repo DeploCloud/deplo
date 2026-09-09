@@ -133,6 +133,12 @@ export function Topbar({
   );
 }
 
+/** Segments whose name is not just their path, capitalised ("mcp" is not "Mcp"). */
+const SEGMENT_LABELS: Record<string, string> = {
+  mcp: "MCP Server",
+  tokens: "API tokens",
+};
+
 function breadcrumb(pathname: string): string {
   if (pathname === "/") return "Overview";
   const segs = pathname.split("/").filter(Boolean);
@@ -140,5 +146,5 @@ function breadcrumb(pathname: string): string {
   // generic "Settings"; elsewhere use the top-level segment.
   const seg =
     segs[0] === "settings" && segs.length > 1 ? segs[1] : (segs[0] ?? "");
-  return seg.charAt(0).toUpperCase() + seg.slice(1);
+  return SEGMENT_LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1);
 }
