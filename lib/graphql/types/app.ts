@@ -214,6 +214,20 @@ const MountPropagationEnum = builder.enumType("MountPropagation", {
   values: MOUNT_PROPAGATIONS,
 });
 
+/**
+ * What a mount IS. An enum rather than a free string: `type` used to be a
+ * `String` whose unknown values fell through to a managed volume, so an API or
+ * MCP client asking for a `bind` silently got something else, no error.
+ */
+const VolumeKindEnum = builder.enumType("VolumeKind", {
+  description:
+    'What the mount is: "named" is a Volume Deplo creates and keeps, "app" a ' +
+    'File in the app\'s own files directory, "host" a Bind to a folder that ' +
+    'already exists on the server. "service" is the volume editor\'s older ' +
+    'spelling of "app" and still accepted.',
+  values: ["named", "app", "service", "host"] as const,
+});
+
 const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   description:
     "A persistent volume mounted into an app - a docker named volume, an " +
@@ -526,7 +540,7 @@ const VolumeInput = builder.inputType("VolumeInput", {
     id: t.string({ required: false }),
     /** "named" (docker-managed, default), "app" (bind inside the app's
      * files dir), or "host" (bind an absolute host path). */
-    type: t.string({ required: false }),
+    type: t.field({ type: VolumeKindEnum, required: false }),
     name: t.string({ required: false }),
     /** Path relative to the app's files dir (project mounts only). */
     projectPath: t.string({ required: false }),

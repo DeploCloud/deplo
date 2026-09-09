@@ -2124,7 +2124,7 @@ type HealthCheck {
 }
 
 """
-A health check to save. Send null instead to turn it off. An http check needs curl or wget in the image; one that has neither cannot answer, and the container would sit unhealthy.
+A health check to save. Send null instead to turn it off. An http check is asked BY DEPLO through the agent, so it works on any image and never changes routing; a command check runs inside the container as a compose `healthcheck:`.
 """
 input HealthCheckInput {
   command: String
@@ -5975,5 +5975,15 @@ input VolumeInput {
   propagation: MountPropagation
   readOnly: Boolean
   service: String
-  type: String
+  type: VolumeKind
+}
+
+"""
+What the mount is: "named" is a Volume Deplo creates and keeps, "app" a File in the app's own files directory, "host" a Bind to a folder that already exists on the server. "service" is the volume editor's older spelling of "app" and still accepted.
+"""
+enum VolumeKind {
+  app
+  host
+  named
+  service
 }
