@@ -15,6 +15,7 @@ import { FeaturedTemplates } from "@/components/templates/featured-templates";
 import { NoResultsGraphic } from "@/components/templates/no-results-graphic";
 import { StoreRailsSkeleton } from "@/components/templates/store-skeleton";
 import { TemplateSearchField } from "@/components/templates/template-search";
+import { TrademarkNote } from "@/components/templates/trademark-note";
 import {
   TemplateCard,
   type StoreTemplate,
@@ -170,6 +171,8 @@ export function TemplateStore({
           onSelectCategory={selectCategory}
         />
       </React.Suspense>
+
+      <TrademarkNote />
     </div>
   );
 }

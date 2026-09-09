@@ -19,6 +19,7 @@ import {
 import { RemoteMarkdown } from "@/components/shared/remote-markdown";
 import { TemplateRail } from "@/components/templates/template-rail";
 import { TemplateSearchLink } from "@/components/templates/template-search";
+import { TrademarkNote } from "@/components/templates/trademark-note";
 import { TemplateScreenshots } from "@/components/templates/template-screenshots";
 import { VariantPicker } from "@/components/templates/variant-picker";
 import { hasCapability } from "@/lib/membership";
@@ -135,7 +136,7 @@ export default async function TemplatePage(
           />
           <div className="min-w-0">
             <h1 className={cn("truncate", titleClass.page)}>{template.name}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-balance text-muted-foreground">
               {variant.shortDescription}
             </p>
           </div>
@@ -233,6 +234,8 @@ export default async function TemplatePage(
           </TemplateRail>
         </div>
       )}
+
+      <TrademarkNote />
     </div>
   );
 }
