@@ -379,7 +379,7 @@ export async function addServer(
 
   const server: Server = {
     id: newId("srv"),
-    name: input.name.trim() || host,
+    name: cleanServerName(input.name.trim() || host),
     host,
     type: "remote",
     status: "provisioning",
@@ -1251,6 +1251,43 @@ export async function setServerDeployConcurrency(
   await recordActivity(
     "server",
     `Set deploy concurrency for server ${server.name} to ${n}`,
+    user.name,
+    null,
+    teamId,
+  );
+  return (await getServerById(id))!;
+}
+
+/** Cap the display name like an App's, so a huge string can't ride every payload. */
+const SERVER_NAME_MAX = 60;
+
+function cleanServerName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Server name is required.");
+  if (trimmed.length > SERVER_NAME_MAX)
+    throw new Error(
+      `Server name must be ${SERVER_NAME_MAX} characters or fewer.`,
+    );
+  return trimmed;
+}
+
+/**
+ * Rename a server. Display only: nothing dials, routes or deploys by name.
+ */
+export async function renameServer(id: string, name: string): Promise<Server> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const clean = cleanServerName(name);
+  const updated = await getDb()
+    .update(serversTable)
+    .set({ name: clean })
+    .where(eq(serversTable.id, id))
+    .returning({ name: serversTable.name });
+  if (updated.length === 0) throw new Error("Server not found");
+  await recordActivity(
+    "server",
+    `Renamed server to ${clean}`,
     user.name,
     null,
     teamId,

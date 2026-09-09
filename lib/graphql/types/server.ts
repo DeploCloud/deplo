@@ -7,6 +7,7 @@ import {
   listBuildServerChoices,
   getServerTeams,
   addServer,
+  renameServer,
   reissueBootstrap,
   removeServer,
   uninstallServerAgent,
@@ -636,6 +637,17 @@ builder.mutationFields((t) => ({
         buildOnly: input.buildOnly ?? undefined,
         importOnly: input.importOnly ?? undefined,
       }),
+  }),
+  renameServer: t.field({
+    type: ServerRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Change a server's display name. Cosmetic: nothing dials, routes or deploys by name.",
+    args: {
+      id: t.arg.string({ required: true }),
+      name: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { id, name }) => renameServer(id, name),
   }),
   uninstallServerAgent: t.field({
     type: ServerUninstallRef,

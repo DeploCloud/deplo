@@ -14,6 +14,7 @@ import {
   ListChecks,
   MemoryStick,
   ShieldCheck,
+  Tag,
   SlidersHorizontal,
   Users,
   Wrench,
@@ -220,11 +221,30 @@ function OverviewTab({ server }: { server: ServerSummary }) {
   const [pending, startTransition] = React.useTransition();
   const [readinessOpen, setReadinessOpen] = React.useState(false);
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
+  const [name, setName] = React.useState(server.name);
 
   // Stored capacity, persisted from the agent. 0 means never measured, which is
   // an em dash rather than a confident "0 cores".
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
   const num = (n: number) => (n > 0 ? String(n) : "—");
+
+  function saveName(e: React.FormEvent) {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await gqlAction<{ renameServer: { id: string } }>(
+        `mutation RenameServer($id: String!, $name: String!) {
+          renameServer(id: $id, name: $name) { id }
+        }`,
+        { id: server.id, name },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`Server renamed to ${name.trim()}`);
+      router.refresh();
+    });
+  }
 
   function update() {
     startTransition(async () => {
@@ -271,6 +291,38 @@ function OverviewTab({ server }: { server: ServerSummary }) {
           unit="engine"
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Tag className="size-4" />
+            Display name
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            What this server is called in Deplo. Nothing on the host changes.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={saveName}
+          >
+            <Input
+              aria-label="Display name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={pending}
+              className="max-w-xs"
+            />
+            <Button
+              type="submit"
+              disabled={pending || !name.trim() || name.trim() === server.name}
+            >
+              {pending ? "Saving" : "Save"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
