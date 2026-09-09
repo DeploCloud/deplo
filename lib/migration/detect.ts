@@ -10,8 +10,14 @@ import {
   panelFromHealth,
 } from "./coolify/client";
 import { listProjects as dokployProjects } from "./dokploy/client";
+import { SELF_PANEL_REFUSAL } from "./self";
 import type { MigrationPlatform, SourceCredential } from "./source";
-import { PanelUnreachableError } from "./transport";
+import {
+  PanelUnreachableError,
+  REQUEST_TIMEOUT_MS,
+  sendRequest,
+  type PanelIdentity,
+} from "./transport";
 
 /**
  * Laravel Sanctum mints `<id>|<random>`, and Dokploy's keys have no pipe. Free,
@@ -27,6 +33,35 @@ const PROBE: Record<
   dokploy: (c) => dokployProjects(c),
   coolify: (c) => coolifyProjects(c),
 };
+
+const DEPLO_PANEL: PanelIdentity = { name: "Deplo", portHint: ":3000" };
+
+/**
+ * Deplo's own API answering. Its `/api/health` says `{"ok":true}`, word for word
+ * Dokploy's, so what tells them apart is the GraphQL endpoint neither panel has.
+ */
+async function answersAsDeplo(baseUrl: string): Promise<boolean> {
+  try {
+    const res = await sendRequest(
+      baseUrl,
+      `${baseUrl}/api/graphql`,
+      {
+        method: "GET",
+        headers: { Accept: "application/json", "User-Agent": "deplo" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+      DEPLO_PANEL,
+    );
+    const body = (await res.json().catch(() => null)) as {
+      errors?: unknown;
+    } | null;
+    // A GET with no query: yoga answers 200 with an `errors` array and nothing else.
+    return Array.isArray(body?.errors);
+  } catch {
+    return false;
+  }
+}
 
 export class PanelNotIdentifiedError extends Error {
   constructor(message: string) {
@@ -64,7 +99,13 @@ export async function detectMigrationSource(
     }
   }
 
-  // Both refused. The unauthenticated healthcheck only chooses the WORDS - a
+  // Both refused, so this is asked before the healthcheck rather than never:
+  // Deplo answers that one exactly as a Dokploy does, and read as one it would
+  // tell somebody their own panel is a Dokploy with a bad key.
+  if (await answersAsDeplo(baseUrl))
+    throw new PanelNotIdentifiedError(SELF_PANEL_REFUSAL);
+
+  // The unauthenticated healthcheck only chooses the WORDS - a
   // reverse proxy can answer 200 there, so it never decides which product it is.
   const answered = await panelFromHealth(baseUrl);
   const name = answered === "coolify" ? "Coolify" : "Dokploy";

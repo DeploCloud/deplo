@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
+import { SELF_PANEL_REFUSAL } from "@/lib/migration/self";
 import { TEAM_HEADER } from "@/lib/team-path";
 import { docsUrl } from "@/lib/docs";
 import { formatBuildDuration } from "@/lib/utils";
@@ -2346,8 +2347,13 @@ function ConnectStep({
               </div>
             </div>
             {/* Hidden once a token has been read: the panel is known, and the
-                installer already said which it is on a takeover. */}
-            <div hidden={takeover || queue.length > 0}>
+                installer already said which it is on a takeover. A Deplo answering
+                there is neither of them, so picking one only fails a second time. */}
+            <div
+              hidden={
+                takeover || queue.length > 0 || scanError === SELF_PANEL_REFUSAL
+              }
+            >
               <p className="text-sm font-medium">Which one is this?</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {SOURCE_KINDS.map((k) => (

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { detectMigrationSource } from "./detect";
+import { SELF_PANEL_REFUSAL } from "./self";
 import { __resetCoolifyRateLimitForTest } from "./coolify/client";
 import {
   __resetMigrationFetchForTest,
@@ -166,4 +167,50 @@ test("somebody's front page on /api/health decides nothing", async (t) => {
     detectMigrationSource(BASE, COOLIFY_TOKEN),
     /could not read/,
   );
+});
+
+// Deplo's own health is `{"ok":true}`, which is Dokploy's word for word: read by
+// that alone, somebody's own panel came back "a Dokploy that refused the token".
+test("Deplo's own address is named as Deplo, not as a Dokploy", async (t) => {
+  reset(t);
+  __setMigrationFetchForTest(async (url) => {
+    if (url.endsWith("/api/health"))
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    if (url.endsWith("/api/graphql"))
+      return new Response(
+        JSON.stringify({ errors: [{ message: "Must provide query string." }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    return new Response("<!doctype html><html></html>", { status: 404 });
+  });
+  await assert.rejects(detectMigrationSource(BASE, DOKPLOY_KEY), (e: Error) => {
+    assert.equal(e.message, SELF_PANEL_REFUSAL);
+    return true;
+  });
+});
+
+test("a Dokploy that refuses the token is still a Dokploy", async (t) => {
+  reset(t);
+  const seen: string[] = [];
+  __setMigrationFetchForTest(async (url) => {
+    seen.push(url);
+    if (url.endsWith("/api/health"))
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    return new Response(JSON.stringify({ message: "Unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  await assert.rejects(
+    detectMigrationSource(BASE, DOKPLOY_KEY),
+    /That is a Dokploy panel/,
+  );
+  // Asked, and it answered nothing yoga would: the Deplo probe decides nothing here.
+  assert.ok(seen.some((u) => u.endsWith("/api/graphql")));
 });
