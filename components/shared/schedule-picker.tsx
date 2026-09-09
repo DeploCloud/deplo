@@ -61,6 +61,7 @@ export function SchedulePicker({
   docs,
   timezone = "UTC",
   summary = true,
+  omitModes,
 }: {
   value: string;
   onChange: (cron: string) => void;
@@ -87,6 +88,8 @@ export function SchedulePicker({
    * or a typo would be accepted in silence.
    */
   summary?: boolean;
+  /** Presets to leave out, for a caller whose server refuses them. */
+  omitModes?: readonly ScheduleMode[];
 }) {
   const [parts, setParts] = React.useState<ScheduleParts>(
     () => partsFromCron(value) ?? DEFAULT_PARTS,
@@ -97,6 +100,10 @@ export function SchedulePicker({
   );
 
   const mode: ScheduleMode = custom ? "custom" : parts.mode;
+  const options = omitModes?.length
+    ? SCHEDULE_OPTIONS.filter((o) => !omitModes.includes(o.mode))
+    : SCHEDULE_OPTIONS;
+  const groups = GROUPS.filter((g) => options.some((o) => o.group === g));
   const valid = isValidSchedule(value);
   const description = describeCron(value, { timeZone: timezone });
 
@@ -210,16 +217,16 @@ export function SchedulePicker({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {GROUPS.map((group) => (
+              {groups.map((group) => (
                 <SelectGroup key={group}>
                   <SelectLabel>{group}</SelectLabel>
-                  {SCHEDULE_OPTIONS.filter((o) => o.group === group).map(
-                    (o) => (
+                  {options
+                    .filter((o) => o.group === group)
+                    .map((o) => (
                       <SelectItem key={o.mode} value={o.mode}>
                         {o.label}
                       </SelectItem>
-                    ),
-                  )}
+                    ))}
                 </SelectGroup>
               ))}
               <SelectSeparator />

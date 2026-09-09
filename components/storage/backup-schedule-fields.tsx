@@ -6,8 +6,19 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { SchedulePicker } from "@/components/shared/schedule-picker";
 import { TimezonePicker } from "@/components/servers/timezone-picker";
 import { dstSkipWarning } from "@/lib/crons/cron-tz";
-import { SCHEDULE_OPTIONS, partsFromCron } from "@/lib/schedule";
+import {
+  SCHEDULE_OPTIONS,
+  backupTooFrequent,
+  cronFromParts,
+  DEFAULT_PARTS,
+  partsFromCron,
+} from "@/lib/schedule";
 import { cn } from "@/lib/utils";
+
+/** The presets `createBackup` refuses, derived from its own rule so the two cannot drift. */
+const TOO_FREQUENT = SCHEDULE_OPTIONS.filter((o) =>
+  backupTooFrequent(cronFromParts({ ...DEFAULT_PARTS, mode: o.mode })),
+).map((o) => o.mode);
 
 /** What a schedule keeps when the field is left empty - the server's own default. */
 export const DEFAULT_RETENTION = 7;
@@ -56,6 +67,7 @@ export function BackupScheduleFields({
         onChange={onScheduleChange}
         timezone={timezone}
         summary={false}
+        omitModes={TOO_FREQUENT}
         info="How often this backup runs. Pick a frequency - the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
         docs="backups.schedule"
         trailing={

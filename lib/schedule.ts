@@ -253,6 +253,21 @@ export function describeCron(
 /**
  * Would the scheduler ever fire this expression?
  */
+/**
+ * A backup may not fire more often than every 15 minutes - a dump that often pins
+ * the host's disk. Shared so the picker hides exactly what `createBackup` refuses.
+ */
+export function backupTooFrequent(cron: string): boolean {
+  const minute = cron.trim().split(/\s+/)[0] ?? "";
+  const step = /^\*\/(\d+)$/.exec(minute);
+  return (
+    minute === "*" ||
+    minute.includes("-") ||
+    (!!step && Number(step[1]) < 15) ||
+    minute.split(",").length > 4
+  );
+}
+
 export function isValidSchedule(cron: string): boolean {
   return parseCron(cron) !== null;
 }

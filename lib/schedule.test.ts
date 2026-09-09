@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_SCHEDULE,
   MAX_MONTH_DAY,
+  DEFAULT_PARTS,
   SCHEDULE_OPTIONS,
+  backupTooFrequent,
   cronFromParts,
   describeCron,
   isValidSchedule,
@@ -224,4 +226,18 @@ test("a macro reads back as the schedule it stands for", () => {
   // Names have no control: they stay custom, and valid.
   assert.equal(describeCron("0 9 * * MON-FRI"), null);
   assert.ok(isValidSchedule("0 9 * * MON-FRI"));
+});
+
+test("the backup picker hides exactly what createBackup refuses", () => {
+  assert.equal(backupTooFrequent("* * * * *"), true);
+  assert.equal(backupTooFrequent("*/5 * * * *"), true);
+  assert.equal(backupTooFrequent("*/15 * * * *"), false);
+  assert.equal(backupTooFrequent("0 3 * * *"), false);
+  const offered = SCHEDULE_OPTIONS.filter(
+    (o) =>
+      !backupTooFrequent(cronFromParts({ ...DEFAULT_PARTS, mode: o.mode })),
+  ).map((o) => o.mode);
+  assert.ok(!offered.includes("every-minute"));
+  assert.ok(!offered.includes("every-5-minutes"));
+  assert.ok(offered.includes("every-15-minutes"));
 });

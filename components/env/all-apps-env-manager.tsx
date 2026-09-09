@@ -384,7 +384,7 @@ export function AllAppsEnvManager({
         description="None of your apps has an environment variable. Open an app to add its first one, or create a shared variable."
         action={
           <Button variant="outline" asChild>
-            <Link href="/apps">
+            <Link href="/">
               Browse apps
               <ArrowUpRight className="size-4" />
             </Link>
