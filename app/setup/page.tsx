@@ -40,7 +40,7 @@ export default async function SetupPage(props: PageProps<"/setup">) {
                   ? "This instance isn't set up yet"
                   : "That setup link isn't valid"}
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-sm text-balance text-muted-foreground">
                 {state === "missing"
                   ? "Opening it needs the setup link your installer printed. Lost it? Re-run install.sh on the server and it prints the link again."
                   : "It may be an old link, or the address may have been cut short when it was copied. Re-run install.sh on the server for a fresh one."}
