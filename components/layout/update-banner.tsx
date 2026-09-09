@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Sparkles, ArrowUpRight, X } from "lucide-react";
+import { Sparkles, ArrowRight, X } from "lucide-react";
 
+import Link from "@/components/ui/link";
 import { useUpstreamUpdate } from "./update-state";
 
 const DISMISS_KEY = "deplo:update-dismissed";
@@ -51,15 +52,15 @@ export function UpdateBanner() {
           - you have v{update.current}
         </span>
       </span>
-      <a
-        href={update.url ?? "#"}
-        target="_blank"
-        rel="noopener noreferrer"
+      {/* Into the panel, not out to the release page: the command that applies
+          the update lives on that tab, and the notes are on it too. */}
+      <Link
+        href="/settings/deplo?tab=updates"
         className="ml-auto inline-flex shrink-0 items-center gap-1 font-medium hover:underline"
       >
-        View release
-        <ArrowUpRight className="size-3.5" />
-      </a>
+        Update
+        <ArrowRight className="size-3.5" />
+      </Link>
       <button
         type="button"
         onClick={dismiss}

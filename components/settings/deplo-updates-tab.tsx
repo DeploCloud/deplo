@@ -22,6 +22,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
+import { CommandLine } from "@/components/shared/code-block";
+import { installOneLiner } from "@/lib/install-script";
 import { RemoteMarkdown } from "@/components/shared/remote-markdown";
 import { UpdateGraphic } from "@/components/settings/update-graphic";
 import { gqlAction } from "@/lib/graphql-client";
@@ -165,13 +167,22 @@ export function DeploUpdatesTab({
                 <CircleFadingArrowUp className="size-4" />
                 Control plane
                 <InfoTip
-                  content="Deplo checks the official repository for new releases. Applying one is a command on the machine, never a button here."
+                  content="The command keeps your data and settings, and saves a copy of the database before it starts."
                   docs="upgrade.overview"
                 />
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Verdict info={info} version={version} />
+              {info?.updateAvailable && (
+                <div className="space-y-1.5">
+                  <CommandLine command={installOneLiner()} />
+                  <p className="text-xs text-muted-foreground">
+                    Run it on the machine that runs Deplo. Your apps keep
+                    running.
+                  </p>
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"

@@ -53,7 +53,7 @@ export function AppShell({
           the stream opens, so switching teams has to reconnect it. */}
       <DeployActivityProvider key={team.id}>
         <MigrationActivityProvider key={team.id}>
-          <UpdateProvider>
+          <UpdateProvider enabled={isAdmin}>
             {/**
              * The frame itself is a client component: it reads the route, because the log
              * consoles take the whole area to the right of the sidebar and every other page
