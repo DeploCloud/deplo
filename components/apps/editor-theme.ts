@@ -124,9 +124,10 @@ export const deploTheme = EditorView.theme({
     boxShadow: "0 4px 12px color-mix(in srgb, black 15%, transparent)",
     overflow: "hidden",
   },
-  // The lint tooltip IS the .cm-tooltip element, not a child of one.
-  ".cm-tooltip.cm-tooltip-lint": { padding: "0", maxWidth: "20rem" },
-  ".cm-tooltip.cm-tooltip-lint .cm-diagnostic": {
+  // Two shapes: the gutter marker's tooltip IS the .cm-tooltip element, the one
+  // hovering the squiggle is a .cm-tooltip-section inside a .cm-tooltip-hover.
+  ".cm-tooltip-lint": { padding: "0", maxWidth: "20rem" },
+  ".cm-tooltip-lint .cm-diagnostic": {
     padding: "6px 10px",
     margin: "0",
     borderLeftWidth: "3px",
