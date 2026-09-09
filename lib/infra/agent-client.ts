@@ -60,6 +60,7 @@ export type {
   RestartControlPlaneResponse,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
+import { isNewer } from "../version";
 import { streamEvents, pumpClientStream } from "./stream-events";
 import {
   getServerById,
@@ -2466,6 +2467,13 @@ export async function selfUpdateServerAgent(
           `(target v${release.version}). Re-run the install command to upgrade it.`,
       );
     }
+    // Forward only (docs/agents/fleet-rollout.md). A GitHub blip resolves the
+    // PINNED fallback instead of `latest`, which can be older than what this host
+    // already runs, and the agent has no downgrade path.
+    if (isNewer(hello.agentVersion, release.version))
+      throw new Error(
+        `This server already runs agent v${hello.agentVersion}, newer than the latest release Deplo can see (v${release.version}). Nothing to install.`,
+      );
     return await conn.selfUpdate(release.version, binaries);
   } catch (e) {
     // Belt-and-braces: a just-old-enough agent that advertises nothing useful, or
