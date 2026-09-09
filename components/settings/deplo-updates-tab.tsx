@@ -349,9 +349,7 @@ function Updating({
       <div className="space-y-1">
         <p className="flex items-start gap-1.5 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
-          <span>
-            Deplo is still on v{version}, so the update was rolled back.
-          </span>
+          <span>Deplo is still on v{version}, so the update did not take.</span>
         </p>
         <p className="text-xs text-muted-foreground">
           The machine transcribed the run to {updating.logPath}.
