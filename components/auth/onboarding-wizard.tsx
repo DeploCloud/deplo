@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "@/lib/nav";
 import { AlertCircle, ShieldCheck } from "lucide-react";
 
 import {
@@ -58,7 +57,6 @@ const STEPS = [
 ];
 
 export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
-  const router = useRouter();
   const { phase, markSeen } = useLogoIntro(INTRO_SEEN);
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
   const [error, setError] = React.useState<string | null>(null);
@@ -80,8 +78,8 @@ export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
           teamImage: team.image,
           key: setupKey,
         });
-        router.push("/?welcome=1");
-        router.refresh();
+        // Hard, not the router: it cached `/` before this account existed.
+        window.location.assign("/?welcome=1");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Setup failed");
       }

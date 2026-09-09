@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "@/components/ui/link";
-import { useRouter } from "@/lib/nav";
 import {
   LogOut,
   User as UserIcon,
@@ -39,11 +38,10 @@ const EXTERNAL_LINKS = [
 ];
 
 export function UserMenu({ user }: { user: PublicUser }) {
-  const router = useRouter();
-
   async function handleLogout() {
     await gqlAction(`mutation { logout }`);
-    router.push("/login");
+    // Hard, not the router: what it cached is the dashboard of the person leaving.
+    window.location.assign("/login");
   }
 
   return (

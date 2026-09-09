@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "@/lib/nav";
+import { useSearchParams } from "@/lib/nav";
 import { gql } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,7 +69,6 @@ function safeNext(raw: string | null): string {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const next = useSearchParams().get("next");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -91,9 +90,9 @@ export default function LoginPage() {
       window.location.assign(`/api/auth/oauth2/authorize?${sp}`);
       return;
     }
-    // The session cookie is now set; navigate and refresh the RSC tree.
-    router.push(safeNext(next));
-    router.refresh();
+    // A hard navigation, never the router: every payload it cached was rendered for
+    // a signed-out visitor, `/` included - the logo above prefetches it.
+    window.location.assign(safeNext(next));
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {

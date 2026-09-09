@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { Globe, Loader2, Pencil, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -121,7 +120,6 @@ export function ConsentForm({
   /** Whose account the minted token will act as - worth saying before the click. */
   username: string;
 }) {
-  const router = useRouter();
   const mcpPreset = TOKEN_PRESETS.find((p) => p.id === "mcp");
   const [capabilities, setCapabilities] = useState<Capability[]>(
     mcpPreset?.capabilities ?? ["view"],
@@ -236,8 +234,8 @@ export function ConsentForm({
     setPending(true);
     await gqlAction(`mutation { logout }`, {});
     const here = window.location.pathname + window.location.search;
-    router.push(`/login?next=${encodeURIComponent(here)}`);
-    router.refresh();
+    // Hard, not the router: what it cached belongs to the session just ended.
+    window.location.assign(`/login?next=${encodeURIComponent(here)}`);
   }
 
   async function onDeny() {

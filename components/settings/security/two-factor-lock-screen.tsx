@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "@/components/ui/link";
-import { useRouter } from "@/lib/nav";
 import { ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +36,6 @@ export function TwoFactorLockScreen({
   /** This account holds a passkey that works here, but did not sign in with it. */
   hasPasskey?: boolean;
 }) {
-  const router = useRouter();
   const [wizard, setWizard] = React.useState(false);
 
   return (
@@ -109,8 +107,8 @@ export function TwoFactorLockScreen({
               className="w-full"
               onClick={async () => {
                 await gqlAction(`mutation { logout }`, {});
-                router.push("/login");
-                router.refresh();
+                // Hard, not the router: what it cached belongs to the session just ended.
+                window.location.assign("/login");
               }}
             >
               Sign out

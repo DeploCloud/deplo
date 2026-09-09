@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { AlertCircle, ShieldCheck } from "lucide-react";
 
@@ -72,7 +71,6 @@ export function RegisterWizard({
   /** What the link already knows about them, empty when it says nothing. */
   prefill: { name: string; email: string };
 }) {
-  const router = useRouter();
   const ownTeam = mode === "own_team";
   // No sessionStorage key: a registration link is opened once, so the mark
   // greets every arrival rather than only the first this browser saw.
@@ -102,8 +100,8 @@ export function RegisterWizard({
           teamImage: ownTeam ? team.image : null,
         });
         toast.success("Welcome to Deplo.");
-        router.push("/");
-        router.refresh();
+        // Hard, not the router: it cached `/` before this account existed.
+        window.location.assign("/");
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Could not create the account",
