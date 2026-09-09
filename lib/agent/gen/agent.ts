@@ -2410,6 +2410,29 @@ export interface RestartControlPlaneResponse {
   container: string;
 }
 
+export interface UpdateControlPlaneRequest {
+  /** The caller's own hostname / container id - see HostInfoRequest. */
+  controlPlaneHint: string;
+  /**
+   * The version to install ("0.1.1"), or "" to take whatever the installer
+   * resolves as the latest release. MAJOR.MINOR.PATCH, refused otherwise: it
+   * becomes an environment variable for a script that runs as root.
+   */
+  version: string;
+}
+
+export interface UpdateControlPlaneResponse {
+  /**
+   * True => the updater was STARTED, not finished. It outlives this call and
+   * takes the panel down with it, so the agent cannot report the outcome; the
+   * control plane learns it by coming back on a new version.
+   */
+  ok: boolean;
+  error: string;
+  /** Where the run is transcribed on the host, for an update that did not take. */
+  logPath: string;
+}
+
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
   return {};
 }
@@ -16844,6 +16867,182 @@ export const RestartControlPlaneResponse: MessageFns<RestartControlPlaneResponse
   },
 };
 
+function createBaseUpdateControlPlaneRequest(): UpdateControlPlaneRequest {
+  return { controlPlaneHint: "", version: "" };
+}
+
+export const UpdateControlPlaneRequest: MessageFns<UpdateControlPlaneRequest> = {
+  encode(message: UpdateControlPlaneRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.controlPlaneHint !== "") {
+      writer.uint32(10).string(message.controlPlaneHint);
+    }
+    if (message.version !== "") {
+      writer.uint32(18).string(message.version);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): UpdateControlPlaneRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseUpdateControlPlaneRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.controlPlaneHint = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.version = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): UpdateControlPlaneRequest {
+    return {
+      controlPlaneHint: isSet(object.controlPlaneHint)
+        ? globalThis.String(object.controlPlaneHint)
+        : isSet(object.control_plane_hint)
+        ? globalThis.String(object.control_plane_hint)
+        : "",
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+    };
+  },
+
+  toJSON(message: UpdateControlPlaneRequest): unknown {
+    const obj: any = {};
+    if (message.controlPlaneHint !== "") {
+      obj.controlPlaneHint = message.controlPlaneHint;
+    }
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<UpdateControlPlaneRequest>, I>>(base?: I): UpdateControlPlaneRequest {
+    return UpdateControlPlaneRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<UpdateControlPlaneRequest>, I>>(object: I): UpdateControlPlaneRequest {
+    const message = createBaseUpdateControlPlaneRequest();
+    message.controlPlaneHint = object.controlPlaneHint ?? "";
+    message.version = object.version ?? "";
+    return message;
+  },
+};
+
+function createBaseUpdateControlPlaneResponse(): UpdateControlPlaneResponse {
+  return { ok: false, error: "", logPath: "" };
+}
+
+export const UpdateControlPlaneResponse: MessageFns<UpdateControlPlaneResponse> = {
+  encode(message: UpdateControlPlaneResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    if (message.logPath !== "") {
+      writer.uint32(26).string(message.logPath);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): UpdateControlPlaneResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseUpdateControlPlaneResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.logPath = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): UpdateControlPlaneResponse {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      logPath: isSet(object.logPath)
+        ? globalThis.String(object.logPath)
+        : isSet(object.log_path)
+        ? globalThis.String(object.log_path)
+        : "",
+    };
+  },
+
+  toJSON(message: UpdateControlPlaneResponse): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.logPath !== "") {
+      obj.logPath = message.logPath;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<UpdateControlPlaneResponse>, I>>(base?: I): UpdateControlPlaneResponse {
+    return UpdateControlPlaneResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<UpdateControlPlaneResponse>, I>>(object: I): UpdateControlPlaneResponse {
+    const message = createBaseUpdateControlPlaneResponse();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    message.logPath = object.logPath ?? "";
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -17653,6 +17852,22 @@ export const AgentService = {
       Buffer.from(RestartControlPlaneResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): RestartControlPlaneResponse => RestartControlPlaneResponse.decode(value),
   },
+  /**
+   * Update the Deplo control plane on THIS host by re-running its own installer,
+   * which is exactly what the manual tells an operator to run by hand. The agent
+   * fetches the script itself: nothing about WHAT runs comes from the caller.
+   */
+  updateControlPlane: {
+    path: "/deplo.agent.v1.Agent/UpdateControlPlane" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: UpdateControlPlaneRequest): Buffer =>
+      Buffer.from(UpdateControlPlaneRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): UpdateControlPlaneRequest => UpdateControlPlaneRequest.decode(value),
+    responseSerialize: (value: UpdateControlPlaneResponse): Buffer =>
+      Buffer.from(UpdateControlPlaneResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): UpdateControlPlaneResponse => UpdateControlPlaneResponse.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -17931,6 +18146,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    * a remote has no panel to restart).
    */
   restartControlPlane: handleUnaryCall<RestartControlPlaneRequest, RestartControlPlaneResponse>;
+  /**
+   * Update the Deplo control plane on THIS host by re-running its own installer,
+   * which is exactly what the manual tells an operator to run by hand. The agent
+   * fetches the script itself: nothing about WHAT runs comes from the caller.
+   */
+  updateControlPlane: handleUnaryCall<UpdateControlPlaneRequest, UpdateControlPlaneResponse>;
 }
 
 export interface AgentClient extends Client {
@@ -18969,6 +19190,26 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: RestartControlPlaneResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Update the Deplo control plane on THIS host by re-running its own installer,
+   * which is exactly what the manual tells an operator to run by hand. The agent
+   * fetches the script itself: nothing about WHAT runs comes from the caller.
+   */
+  updateControlPlane(
+    request: UpdateControlPlaneRequest,
+    callback: (error: ServiceError | null, response: UpdateControlPlaneResponse) => void,
+  ): ClientUnaryCall;
+  updateControlPlane(
+    request: UpdateControlPlaneRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: UpdateControlPlaneResponse) => void,
+  ): ClientUnaryCall;
+  updateControlPlane(
+    request: UpdateControlPlaneRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: UpdateControlPlaneResponse) => void,
   ): ClientUnaryCall;
 }
 

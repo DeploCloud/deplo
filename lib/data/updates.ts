@@ -2,9 +2,14 @@ import "server-only";
 
 import { revalidateTag } from "next/cache";
 
+import { hostname } from "node:os";
+
 import { DEPLO_VERSION, DEPLO_REPO, isNewer } from "../version";
 import { resolveExpectedAgentVersion } from "../agent/release";
-import { requireInstanceAdmin } from "../membership";
+import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
+import { getCurrentUser } from "../auth";
+import { deploHostServer } from "./instance-settings";
+import { recordActivity } from "./activity";
 
 /** Result of checking the upstream GitHub repository for a newer release. */
 export interface UpdateInfo {
@@ -224,4 +229,64 @@ export async function refreshAgentVersion(): Promise<string> {
   // unreachable -> FALLBACK_AGENT_VERSION) stays in one place; it re-populates
   // the memo, so the RSC re-render that follows reuses this fresh value.
   return resolveExpectedAgentVersion();
+}
+
+/** An update that has been STARTED on the host - see {@link applyDeploUpdate}. */
+export interface DeploUpdateStarted {
+  version: string;
+  /** Where the run is transcribed on the machine, for an update that did not take. */
+  logPath: string;
+}
+
+/**
+ * Update this instance to the release upstream, from the panel: the agent on the
+ * machine Deplo runs on re-runs the installer, which is what the manual tells an
+ * operator to type. https://deplo.build/docs/operations/upgrade
+ */
+export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+
+  // The CACHED answer on purpose: it is the release the operator was looking at
+  // when they pressed the button, not whatever GitHub says a second later.
+  const info = await getUpdateInfo();
+  if (!info.updateAvailable || !info.latest)
+    throw new Error(
+      info.error ||
+        `Deplo is already on the newest release (v${info.current}).`,
+    );
+  const version = normalizeTag(info.latest);
+
+  const server = await deploHostServer();
+  if (!server)
+    throw new Error(
+      "The machine Deplo runs on is not one of its servers, so Deplo cannot update itself here.",
+    );
+
+  const { updateControlPlaneOn } = await import("../infra/agent-client");
+  const res = await updateControlPlaneOn(
+    server.id,
+    // Inside a container the hostname IS the short container id, which is how the
+    // agent finds the panel to update.
+    hostname(),
+    // The agent takes MAJOR.MINOR.PATCH or nothing; a tag shaped like anything
+    // else lets the installer resolve the latest release itself.
+    /^\d+\.\d+\.\d+$/.test(version) ? version : "",
+  );
+  if (!res.ok)
+    throw new Error(
+      res.error || "Deplo could not start the update on this host",
+    );
+
+  // Recorded here, not after: the updater takes this process down within the
+  // minute, and an update nobody can see in the trail is the worse outcome.
+  await recordActivity(
+    "server",
+    `Started the update of Deplo to v${version}`,
+    user.name,
+    null,
+    teamId,
+  );
+  return { version, logPath: res.logPath };
 }

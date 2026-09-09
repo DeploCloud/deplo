@@ -13,7 +13,7 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
-import { listDeploReleases } from "./updates";
+import { applyDeploUpdate, listDeploReleases } from "./updates";
 
 /**
  * The changelog is remote input rendered inside the panel: a draft nobody
@@ -116,6 +116,44 @@ test("a member cannot read the instance's changelog", async () => {
     await assert.rejects(() => asUser(MEMBER, listDeploReleases));
     // Refused before the call went out, not after.
     assert.equal(capture.calls.length, 0);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a member cannot start an update of the instance", async () => {
+  const capture = captureFetch(() => json({ tag_name: "v99.0.0" }));
+  try {
+    await assert.rejects(() => asUser(MEMBER, applyDeploUpdate));
+    assert.equal(capture.calls.length, 0);
+  } finally {
+    capture.restore();
+  }
+});
+
+test("an instance already on the newest release is not updated", async () => {
+  const capture = captureFetch(() => json({ tag_name: `v${DEPLO_VERSION}` }));
+  try {
+    await assert.rejects(
+      () => asUser(ADMIN, applyDeploUpdate),
+      /newest release/,
+    );
+  } finally {
+    capture.restore();
+  }
+});
+
+test("without the panel's own machine as a server there is nobody to ask", async () => {
+  // The button exists because agent 0 runs the installer. An instance whose host
+  // is not enrolled has to be told that, not left with a spinner.
+  const capture = captureFetch(() =>
+    json({ tag_name: "v99.0.0", html_url: "u" }),
+  );
+  try {
+    await assert.rejects(
+      () => asUser(ADMIN, applyDeploUpdate),
+      /not one of its servers/,
+    );
   } finally {
     capture.restore();
   }

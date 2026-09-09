@@ -53,11 +53,14 @@ import {
   type TraefikConfigResponse,
   type RestartControlPlaneRequest,
   type RestartControlPlaneResponse,
+  type UpdateControlPlaneRequest,
+  type UpdateControlPlaneResponse,
 } from "../agent/gen/agent";
 export type {
   HostInfoResponse,
   TraefikConfigResponse,
   RestartControlPlaneResponse,
+  UpdateControlPlaneResponse,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
 import { isNewer } from "../version";
@@ -143,6 +146,8 @@ const CLEANUP_DEADLINE_MS = 30 * 60_000;
 // detached spawn - interactive, so an unresponsive host must fail fast rather than
 // hold a settings page open.
 const HOSTOPS_DEADLINE_MS = 20_000;
+/** The installer is fetched inside the call; the run it starts is not waited on. */
+const CONTROL_PLANE_UPDATE_DEADLINE_MS = 60_000;
 const TRAEFIK_DEADLINE_MS = 200_000;
 
 /** What to ask an app's own container for, never an address (see `probeHttp`). */
@@ -479,6 +484,9 @@ export interface AgentConnection {
   restartControlPlane(
     req: RestartControlPlaneRequest,
   ): Promise<RestartControlPlaneResponse>;
+  updateControlPlane(
+    req: UpdateControlPlaneRequest,
+  ): Promise<UpdateControlPlaneResponse>;
 
   // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
   /**
@@ -1655,6 +1663,15 @@ function dial(target: DialTarget): AgentConnection {
         HOSTOPS_DEADLINE_MS,
       );
     },
+    updateControlPlane(req: UpdateControlPlaneRequest) {
+      return unary<UpdateControlPlaneRequest, UpdateControlPlaneResponse>(
+        (r, md, opts, cb) => client.updateControlPlane(r, md, opts, cb),
+        req,
+        // The agent downloads the installer before it answers; everything after
+        // that outlives the call.
+        CONTROL_PLANE_UPDATE_DEADLINE_MS,
+      );
+    },
 
     // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
     backup(req: BackupRequest) {
@@ -2750,4 +2767,49 @@ export function restartControlPlaneOn(
   return withHostOps(serverId, (conn) =>
     conn.restartControlPlane({ controlPlaneHint }),
   );
+}
+
+/** The capability an agent advertises once it can update the panel on its host. */
+export const CONTROL_PLANE_UPDATE_CAPABILITY = "control-plane.update";
+
+/** An agent that cannot update the panel: the UI falls back on the command. */
+export class AgentControlPlaneUpdateUnsupportedError extends Error {}
+
+const CONTROL_PLANE_UPDATE_UNSUPPORTED_MESSAGE =
+  "The agent on this server is too old to update Deplo itself. " +
+  "Update the agent on this server first, or run the command below on the machine.";
+
+/**
+ * Update the panel on the host that runs it, by having its agent re-run the Deplo
+ * installer. `ok:true` means STARTED: the updater outlives the reply and takes this
+ * process down with it, so the outcome is read from the version that comes back.
+ */
+export async function updateControlPlaneOn(
+  serverId: string,
+  controlPlaneHint: string,
+  version: string,
+): Promise<UpdateControlPlaneResponse> {
+  const target = await resolveTarget(serverId);
+  const conn = dial(target);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CONTROL_PLANE_UPDATE_CAPABILITY)) {
+      throw new AgentControlPlaneUpdateUnsupportedError(
+        CONTROL_PLANE_UPDATE_UNSUPPORTED_MESSAGE,
+      );
+    }
+    return await conn.updateControlPlane({ controlPlaneHint, version });
+  } catch (e) {
+    if (
+      !(e instanceof AgentControlPlaneUpdateUnsupportedError) &&
+      (e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED
+    ) {
+      throw new AgentControlPlaneUpdateUnsupportedError(
+        CONTROL_PLANE_UPDATE_UNSUPPORTED_MESSAGE,
+      );
+    }
+    throw e;
+  } finally {
+    conn.close();
+  }
 }

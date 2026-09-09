@@ -1,9 +1,11 @@
 import { builder } from "../builder";
 import {
+  applyDeploUpdate,
   getUpdateInfo,
   listDeploReleases,
   refreshUpdateInfo,
   type DeploRelease,
+  type DeploUpdateStarted,
   type UpdateInfo,
 } from "@/lib/data/updates";
 
@@ -69,7 +71,25 @@ builder.queryFields((t) => ({
   }),
 }));
 
+const UpdateStartedRef = builder
+  .objectRef<DeploUpdateStarted>("DeploUpdateStarted")
+  .implement({
+    description:
+      "An update the host has STARTED. Deplo restarts as it lands, so there is no completion to report here.",
+    fields: (t) => ({
+      version: t.exposeString("version"),
+      logPath: t.exposeString("logPath"),
+    }),
+  });
+
 builder.mutationFields((t) => ({
+  updateDeplo: t.field({
+    type: UpdateStartedRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Update this instance to the newest release: the agent on the machine Deplo runs on re-runs the installer.",
+    resolve: () => applyDeploUpdate(),
+  }),
   checkForUpdates: t.field({
     type: UpdateInfoRef,
     authScopes: { instanceAdmin: true },

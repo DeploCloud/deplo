@@ -1438,6 +1438,14 @@ type DeploRelease {
   url: String
 }
 
+"""
+An update the host has STARTED. Deplo restarts as it lands, so there is no completion to report here.
+"""
+type DeploUpdateStarted {
+  logPath: String
+  version: String
+}
+
 enum DeploySource {
   COMPOSE
   DOCKER_IMAGE
@@ -3842,6 +3850,11 @@ type Mutation {
   Save the database's per-container resource limits. Applied on the next redeploy or settings-driven reroute.
   """
   updateDatabaseResources(id: String!, limits: ResourceLimitsInput!): Database
+
+  """
+  Update this instance to the newest release: the agent on the machine Deplo runs on re-runs the installer.
+  """
+  updateDeplo: DeploUpdateStarted
 
   """
   Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse - an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.

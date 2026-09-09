@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   CircleFadingArrowUp,
+  Loader2,
   RefreshCw,
   Server as ServerIcon,
   TriangleAlert,
@@ -23,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CommandLine } from "@/components/shared/code-block";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { installOneLiner } from "@/lib/install-script";
 import { RemoteMarkdown } from "@/components/shared/remote-markdown";
 import { UpdateGraphic } from "@/components/settings/update-graphic";
@@ -106,6 +108,15 @@ export function DeploUpdatesTab({
   const [releases, setReleases] = React.useState<Release[] | null>(null);
   const [listError, setListError] = React.useState<string | null>(null);
   const [checking, setChecking] = React.useState(false);
+  // An update the host has started: the panel goes down in the middle of it, so
+  // "did it land" is answered by the version that comes back, not by a reply.
+  const [updating, setUpdating] = React.useState<{
+    version: string;
+    logPath: string;
+  } | null>(null);
+  const [stalled, setStalled] = React.useState(false);
+  // Why the button could not do it, which is the only time the command appears.
+  const [manual, setManual] = React.useState<string | null>(null);
   const loaded = React.useRef(false);
 
   const load = React.useCallback(async () => {
@@ -149,6 +160,71 @@ export function DeploUpdatesTab({
     }
   }
 
+  // The panel restarts into the new image mid-update, so the only honest signal is
+  // the version this instance reports once it answers again.
+  React.useEffect(() => {
+    if (!updating) return;
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setTimeout>;
+    let stop = false;
+    const poll = async () => {
+      const res = await gqlAction<
+        { instanceSettings: { version: string } },
+        string
+      >(
+        /* GraphQL */ `
+          query RunningVersion {
+            instanceSettings {
+              version
+            }
+          }
+        `,
+        undefined,
+        (d) => d.instanceSettings.version,
+      );
+      if (stop) return;
+      if (res.ok && res.data && res.data !== version) {
+        window.location.reload();
+        return;
+      }
+      // The installer restores the previous image when the new one will not come
+      // up, so a panel that is back on the old version is a FAILED update.
+      if (Date.now() - startedAt > UPDATE_TIMEOUT_MS) {
+        setStalled(true);
+        return;
+      }
+      timer = setTimeout(poll, 5000);
+    };
+    timer = setTimeout(poll, 10_000);
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [updating, version]);
+
+  async function startUpdate() {
+    setManual(null);
+    const res = await gqlAction<
+      { updateDeplo: { version: string; logPath: string } },
+      { version: string; logPath: string }
+    >(
+      /* GraphQL */ `
+        mutation UpdateDeplo {
+          updateDeplo {
+            version
+            logPath
+          }
+        }
+      `,
+      undefined,
+      (d) => d.updateDeplo,
+    );
+    // The one thing that puts the command on screen: the host could not do it.
+    if (!res.ok) setManual(res.error);
+    else if (res.data) setUpdating(res.data);
+    return res;
+  }
+
   return (
     // Two columns only from `xl`: the picture takes what the window grew by, and
     // never squeezes the reading column. Same measure as the MCP wizard.
@@ -167,47 +243,71 @@ export function DeploUpdatesTab({
                 <CircleFadingArrowUp className="size-4" />
                 Control plane
                 <InfoTip
-                  content="The command keeps your data and settings, and saves a copy of the database before it starts."
+                  content="Deplo saves a copy of its database first, keeps every setting, and puts the old version back if the new one fails."
                   docs="upgrade.overview"
                 />
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Verdict info={info} version={version} />
-              {info?.updateAvailable && (
-                <div className="space-y-1.5">
-                  <CommandLine command={installOneLiner()} />
-                  <p className="text-xs text-muted-foreground">
-                    Run it on the machine that runs Deplo. Your apps keep
-                    running.
-                  </p>
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={check}
-                  disabled={checking}
-                >
-                  <RefreshCw
-                    className={checking ? "size-4 animate-spin" : "size-4"}
-                  />
-                  {checking ? "Checking" : "Check now"}
-                </Button>
-                {info?.updateAvailable && info.url && (
-                  <Button size="sm" asChild>
-                    <a
-                      href={info.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+              {updating ? (
+                <Updating
+                  updating={updating}
+                  stalled={stalled}
+                  version={version}
+                />
+              ) : (
+                <>
+                  <Verdict info={info} version={version} />
+                  {manual && <ManualUpdate reason={manual} />}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {info?.updateAvailable && info.latest && (
+                      <ConfirmAction
+                        variant="default"
+                        title={`Update Deplo to ${info.latest}?`}
+                        description={
+                          <>
+                            The machine Deplo runs on pulls the new version and
+                            restarts the panel. It takes about a{" "}
+                            <strong>minute</strong>.
+                          </>
+                        }
+                        consequence="The dashboard is unreachable while it restarts. Deployed apps, sites and databases keep running."
+                        confirmLabel="Update"
+                        trigger={
+                          <Button size="sm">
+                            <CircleFadingArrowUp className="size-4" />
+                            Update to {info.latest}
+                          </Button>
+                        }
+                        onConfirm={startUpdate}
+                      />
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={check}
+                      disabled={checking}
                     >
-                      View release
-                    </a>
-                  </Button>
-                )}
-              </div>
+                      <RefreshCw
+                        className={checking ? "size-4 animate-spin" : "size-4"}
+                      />
+                      {checking ? "Checking" : "Check now"}
+                    </Button>
+                    {info?.updateAvailable && info.url && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a
+                          href={info.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Release notes
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -238,6 +338,64 @@ export function DeploUpdatesTab({
           <Changelog releases={releases} error={listError} />
         </section>
       </div>
+    </div>
+  );
+}
+
+/**
+ * How long to wait for the panel to come back on the new version. The installer
+ * pulls an image and dumps the database first, so a slow link is not a failure.
+ */
+const UPDATE_TIMEOUT_MS = 10 * 60_000;
+
+function Updating({
+  updating,
+  stalled,
+  version,
+}: {
+  updating: { version: string; logPath: string };
+  stalled: boolean;
+  version: string;
+}) {
+  if (stalled)
+    return (
+      <div className="space-y-1">
+        <p className="flex items-start gap-1.5 text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
+          <span>
+            Deplo is still on v{version}, so the update was rolled back.
+          </span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          The machine transcribed the run to {updating.logPath}.
+        </p>
+      </div>
+    );
+  return (
+    <div className="space-y-1">
+      <p className="flex items-center gap-2 text-sm">
+        <Loader2 className="size-4 animate-spin" />
+        Updating to v{updating.version}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        This page reloads itself when Deplo is back.
+      </p>
+    </div>
+  );
+}
+
+/** The fallback, and the only place the command appears: this host could not. */
+function ManualUpdate({ reason }: { reason: string }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="flex items-start gap-1.5 text-sm">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
+        <span>{reason}</span>
+      </p>
+      <CommandLine command={installOneLiner()} />
+      <p className="text-xs text-muted-foreground">
+        Run it on the machine that runs Deplo. Your apps keep running.
+      </p>
     </div>
   );
 }
