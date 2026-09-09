@@ -16,6 +16,12 @@ import { hasAppCapability, requireAppCapability } from "./node-access";
 import { loadTeamApp } from "./app-graph-load";
 import { primaryDomainApp } from "./domains";
 import { composeServiceNames } from "../deploy/compose-stack";
+import { portFor } from "../deploy/ports";
+import {
+  httpHealthVerdict,
+  recentHttpHealth,
+  withinStartPeriod,
+} from "../apps/http-health";
 import { isDockerLevelStderr } from "../infra/docker";
 import {
   connectAgent,
@@ -367,6 +373,8 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
     const present = new Set(containers.map((c) => c.service));
     const missing = declared.filter((s) => !present.has(s));
 
+    await applyHttpHealth(p, conn, containers, exposeService);
+
     return {
       total: containers.length,
       running: containers.filter((c) => c.running).length,
@@ -383,6 +391,53 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
   } finally {
     conn.close();
   }
+}
+
+/**
+ * An http health check is Deplo's to run: it asks the app through the agent and
+ * writes the verdict onto the container the domains route to, where the rest of
+ * the fold already reads it. See `lib/apps/http-health.ts` for why.
+ */
+async function applyHttpHealth(
+  p: App,
+  conn: AgentConnection,
+  containers: RuntimeContainer[],
+  exposeService: string,
+): Promise<void> {
+  const h = p.healthCheck;
+  if (h?.type !== "http") return;
+  const target =
+    containers.find((c) => c.running && c.service === exposeService) ??
+    containers.find((c) => c.running);
+  if (!target) return;
+  if (withinStartPeriod(target.startedAtUnix, h.startPeriodS)) {
+    target.health = "starting";
+    return;
+  }
+  // Asked at most once per `Interval`, however many pages are watching.
+  const recent = recentHttpHealth(p.id, h.intervalS);
+  if (recent) {
+    target.health = recent;
+    return;
+  }
+  let ok = false;
+  try {
+    const res = await conn.probeHttp({
+      appId: p.id,
+      slug: p.slug,
+      service: target.service,
+      port: h.port ?? portFor(p),
+      path: h.path?.trim() || "/",
+      host: "",
+      maxBytes: 1,
+    });
+    ok = res.status > 0 && res.status < 400;
+  } catch {
+    // Unreachable, refused or timed out is a failed check, not an unknown one:
+    // the container is up and the app inside it did not answer.
+    ok = false;
+  }
+  target.health = httpHealthVerdict(p.id, ok, h.retries);
 }
 
 function unknownRuntime(): AppRuntime {

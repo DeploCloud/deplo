@@ -5,14 +5,13 @@ import yaml from "../yaml";
 import {
   HEALTH_CHECK_DEFAULTS,
   healthCheckToComposeKeys,
-  httpProbeCommand,
   renderHealthCheckYaml,
 } from "./health-check";
 import type { HealthCheck } from "../types";
 
 /**
- * The block Deplo writes into an app's compose. Docker runs it INSIDE the
- * container, which is why the http probe has to reach for two clients.
+ * The block Deplo writes into an app's compose. Only a COMMAND check renders one:
+ * an http check is asked from the agent instead (`lib/apps/http-health.ts`).
  */
 
 const HTTP: HealthCheck = {
@@ -27,37 +26,25 @@ const HTTP: HealthCheck = {
 };
 
 test("an app with no check renders nothing at all", () => {
-  assert.deepEqual(healthCheckToComposeKeys(null, 3000), {});
-  assert.equal(renderHealthCheckYaml(null, 3000, 4), "");
+  assert.deepEqual(healthCheckToComposeKeys(null), {});
+  assert.equal(renderHealthCheckYaml(null, 4), "");
 });
 
-test("an http check reaches for curl, then wget, then gives up", () => {
-  const cmd = httpProbeCommand("/healthz", 3000);
-  assert.match(cmd, /^curl -fsS/);
-  assert.match(cmd, /\|\| wget /);
-  assert.match(cmd, /\|\| exit 1$/);
-  // 127.0.0.1, not the container's name: the check runs inside the container.
-  assert.match(cmd, /http:\/\/127\.0\.0\.1:3000\/healthz/);
-});
-
-test("a path without its slash still asks for a path", () => {
-  assert.match(httpProbeCommand("healthz", 8080), /:8080\/healthz/);
-});
-
-test("an http check falls back to the app's own port", () => {
-  const keys = healthCheckToComposeKeys(HTTP, 4321) as {
-    healthcheck: { test: string[] };
-  };
-  assert.match(keys.healthcheck.test[1], /:4321\/healthz/);
-
-  const pinned = healthCheckToComposeKeys({ ...HTTP, port: 9000 }, 4321) as {
-    healthcheck: { test: string[] };
-  };
-  assert.match(pinned.healthcheck.test[1], /:9000\/healthz/);
+// The whole reason the http probe moved out of the stack: a `healthcheck:` runs
+// inside the image, and a Railpack build, a distroless image or `traefik/whoami`
+// has neither curl nor wget - so the container sat unhealthy and Traefik, which
+// drops an unhealthy container, took the app off the internet.
+test("an http check renders NO healthcheck - Deplo asks the app itself", () => {
+  assert.deepEqual(healthCheckToComposeKeys(HTTP), {});
+  assert.equal(renderHealthCheckYaml(HTTP, 4), "");
 });
 
 test("the times come out as compose durations", () => {
-  const keys = healthCheckToComposeKeys(HTTP, 3000) as {
+  const keys = healthCheckToComposeKeys({
+    ...HTTP,
+    type: "command",
+    command: "true",
+  }) as {
     healthcheck: Record<string, unknown>;
   };
   assert.equal(keys.healthcheck.interval, "30s");
@@ -67,15 +54,12 @@ test("the times come out as compose durations", () => {
 });
 
 test("a command check runs through a shell, verbatim", () => {
-  const keys = healthCheckToComposeKeys(
-    {
-      ...HTTP,
-      type: "command",
-      path: null,
-      command: "pg_isready -U app || exit 1",
-    },
-    3000,
-  ) as { healthcheck: { test: string[] } };
+  const keys = healthCheckToComposeKeys({
+    ...HTTP,
+    type: "command",
+    path: null,
+    command: "pg_isready -U app || exit 1",
+  }) as { healthcheck: { test: string[] } };
   assert.deepEqual(keys.healthcheck.test, [
     "CMD-SHELL",
     "pg_isready -U app || exit 1",
@@ -86,13 +70,16 @@ test("a command check runs through a shell, verbatim", () => {
 // better than a check that cannot pass.
 test("a command check with no command renders nothing", () => {
   assert.deepEqual(
-    healthCheckToComposeKeys({ ...HTTP, type: "command", command: "  " }, 3000),
+    healthCheckToComposeKeys({ ...HTTP, type: "command", command: "  " }),
     {},
   );
 });
 
 test("the fragment lands at the service indent and parses", () => {
-  const frag = renderHealthCheckYaml(HTTP, 3000, 4);
+  const frag = renderHealthCheckYaml(
+    { ...HTTP, type: "command", command: "true" },
+    4,
+  );
   for (const line of frag.split("\n").filter(Boolean))
     assert.ok(line.startsWith("    "), line);
   const parsed = yaml.load(

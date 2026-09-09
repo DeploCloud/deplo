@@ -13,27 +13,17 @@ export const HEALTH_CHECK_DEFAULTS = {
 } as const;
 
 /**
- * The shell one line of an http check runs.
+ * A health check → the compose `healthcheck:` keys that run it.
  *
- * curl OR wget, because neither is guaranteed to be in an image and most images
- * have one of them. An image with neither cannot do an http check at all, which is
- * what the field's own help says.
+ * ONLY a command check renders one. An http check is asked by Deplo through the
+ * agent instead (`lib/apps/http-health.ts`): a compose probe needs curl or wget
+ * inside the image, and the images most people deploy have neither.
  */
-export function httpProbeCommand(path: string, port: number): string {
-  const url = `http://127.0.0.1:${port}${path.startsWith("/") ? path : `/${path}`}`;
-  return `curl -fsS -o /dev/null ${url} || wget -q -O /dev/null ${url} || exit 1`;
-}
-
-/** A health check → the compose `healthcheck:` keys that run it. */
 export function healthCheckToComposeKeys(
   h: HealthCheck | null | undefined,
-  fallbackPort: number,
 ): Record<string, unknown> {
-  if (!h) return {};
-  const test =
-    h.type === "command"
-      ? h.command?.trim()
-      : httpProbeCommand(h.path?.trim() || "/", h.port ?? fallbackPort);
+  if (!h || h.type !== "command") return {};
+  const test = h.command?.trim();
   if (!test) return {};
   return {
     healthcheck: {
@@ -71,8 +61,7 @@ export function renderYamlKeys(
  */
 export function renderHealthCheckYaml(
   h: HealthCheck | null | undefined,
-  fallbackPort: number,
   indent: number,
 ): string {
-  return renderYamlKeys(healthCheckToComposeKeys(h, fallbackPort), indent);
+  return renderYamlKeys(healthCheckToComposeKeys(h), indent);
 }

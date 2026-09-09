@@ -35,7 +35,7 @@ export const HealthCheckRef = builder
 
 export const HealthCheckInputType = builder.inputType("HealthCheckInput", {
   description:
-    "A health check to save. Send null instead to turn it off. An http check needs curl or wget in the image; one that has neither cannot answer, and the container would sit unhealthy.",
+    "A health check to save. Send null instead to turn it off. An http check is asked BY DEPLO through the agent, so it works on any image and never changes routing; a command check runs inside the container as a compose `healthcheck:`.",
   fields: (t) => ({
     type: t.field({ type: HealthCheckTypeEnum, required: true }),
     path: t.string({ required: false }),

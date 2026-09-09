@@ -112,7 +112,7 @@ export function HealthCheckForm({
             <div className="grid gap-2">
               <FieldLabel
                 htmlFor="health-check-type"
-                info="HTTP asks the app for a path over localhost. Command runs a shell line inside the container and reads its exit code."
+                info="HTTP asks the app for a path, from the server, so it works on any image. Command runs a shell line inside the container and reads its exit code."
               >
                 Check
               </FieldLabel>
@@ -135,7 +135,7 @@ export function HealthCheckForm({
                 <div className="grid gap-2">
                   <FieldLabel
                     htmlFor="health-check-path"
-                    info="Needs curl or wget in the image. An image with neither cannot answer an HTTP check."
+                    info="The path Deplo asks for. Anything under 400 is healthy."
                   >
                     Path
                   </FieldLabel>
