@@ -796,21 +796,28 @@ function requireOwnOrSession(tokenId: string): void {
 async function assertExpiryWithinActingToken(
   expiresAt: string | null | undefined,
 ): Promise<void> {
+  if (expiresAt === undefined) return;
+  const own = await actingTokenExpiry();
+  if (!own) return;
+  if (expiresAt === null || Date.parse(expiresAt) > Date.parse(own))
+    throw new Error(
+      "This API token expires, so a token it creates has to expire no later than it does.",
+    );
+}
+
+/** When the token doing the asking expires, or null (a person, or a token that never does). */
+async function actingTokenExpiry(): Promise<string | null> {
   const acting = currentIdentity()?.token;
-  if (!acting || expiresAt === undefined) return;
-  const own =
+  if (!acting) return null;
+  return (
     (
       await getDb()
         .select({ expiresAt: apiTokens.expiresAt })
         .from(apiTokens)
         .where(eq(apiTokens.id, acting.id))
         .limit(1)
-    )[0]?.expiresAt ?? null;
-  if (!own) return;
-  if (expiresAt === null || Date.parse(expiresAt) > Date.parse(own))
-    throw new Error(
-      "This API token expires, so a token it creates has to expire no later than it does.",
-    );
+    )[0]?.expiresAt ?? null
+  );
 }
 
 /** Returns the raw token ONCE; only the hash is persisted. */
@@ -819,7 +826,10 @@ export async function createToken(
     name: string;
     capabilities?: Capability[];
     instanceAdmin?: boolean;
-    /** ISO instant this token stops working. Absent/null ⇒ never. */
+    /**
+     * ISO instant this token stops working. ABSENT ⇒ the default expiry the
+     * editor offers; explicit `null` ⇒ never.
+     */
     expiresAt?: string | null;
   } & TokenScopeInput,
 ): Promise<{ raw: string; token: ApiTokenDTO }> {
@@ -828,7 +838,10 @@ export async function createToken(
   const { id: userId } = await assertUser();
   const name = cleanTokenName(input.name);
   const { scoped, instanceAdmin } = await validateScope(input);
-  const expiresAt = cleanExpiry(input.expiresAt);
+  const expiresAt =
+    input.expiresAt === undefined
+      ? await defaultExpiry()
+      : cleanExpiry(input.expiresAt);
   await assertExpiryWithinActingToken(expiresAt);
   const scope = await resolveScopeInput(input, userId);
   assertScopeWithinActingToken(scope, scoped);
@@ -895,6 +908,22 @@ export async function createToken(
  * There is no upper bound: a five-year token is a decision, and refusing it would
  * only push people back to "never".
  */
+/**
+ * What a token gets when the caller says nothing. The dashboard has always
+ * proposed ninety days; an API or MCP client that omitted the field used to mint
+ * a credential that never expires, which is the one nobody remembers to revoke.
+ */
+export const DEFAULT_TOKEN_DAYS = 90;
+
+async function defaultExpiry(): Promise<string> {
+  const ninety = Date.now() + DEFAULT_TOKEN_DAYS * 24 * 60 * 60 * 1000;
+  // A token minted BY a token can never outlive it, so the default is the
+  // sooner of the two - otherwise leaving the field out would be refused.
+  const parent = await actingTokenExpiry();
+  const at = parent ? Math.min(ninety, Date.parse(parent)) : ninety;
+  return new Date(at).toISOString();
+}
+
 function cleanExpiry(raw: string | null | undefined): string | null {
   const value = (raw ?? "").trim();
   if (!value) return null;
@@ -1458,7 +1487,7 @@ async function trail(
   alert: AlertKey | null = null,
   type: "security" | "mcp" = "security",
 ): Promise<void> {
-  const actor = await actorUsername();
+  const actor = await actorName();
   for (const teamId of teamIds)
     await recordActivity(type, what, actor, null, teamId, alert);
 }
@@ -1569,6 +1598,7 @@ const loadScope = cache(async function loadScope(
   };
 });
 
-async function actorUsername(): Promise<string> {
-  return (await getCurrentUser())?.username ?? "an admin";
+/** Who did it, as the Activity trail names everyone else: the display name. */
+async function actorName(): Promise<string> {
+  return (await getCurrentUser())?.name ?? "an admin";
 }

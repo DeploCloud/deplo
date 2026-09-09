@@ -1069,9 +1069,19 @@ test("createToken refuses an expiry that has already passed", async () => {
   });
 });
 
-test("no expiry is the default, and it stays null", async () => {
-  const { token } = await asUser1(() => createToken({ name: "Forever" }));
-  assert.equal(token.expiresAt, null);
+// Leaving the field out used to mint a credential that never expires - the one
+// nobody remembers to revoke. Absent now means the editor's own default; asking
+// for no expiry is still possible, it just has to be said out loud.
+test("an omitted expiry is ninety days, an explicit null is never", async () => {
+  const { token } = await asUser1(() => createToken({ name: "Default" }));
+  assert.ok(token.expiresAt, "an omitted expiry must not mean forever");
+  const days = (Date.parse(token.expiresAt!) - Date.now()) / 86_400_000;
+  assert.ok(days > 89 && days < 91, `expected ~90 days, got ${days}`);
+
+  const forever = await asUser1(() =>
+    createToken({ name: "Forever", expiresAt: null }),
+  );
+  assert.equal(forever.token.expiresAt, null);
   const rows = await db
     .select()
     .from(apiTokens)
@@ -1190,9 +1200,16 @@ test("a token that expires can't mint or re-author a successor that outlives it"
       fn,
     );
   await asA(async () => {
-    await assert.rejects(
-      () => createToken({ name: "forever", capabilities: ["view"] }),
-      /expire no later/i,
+    // Omitting the expiry no longer means forever: it takes the sooner of the
+    // default and the parent's own, so a successor still cannot outlive it.
+    const inherited = await createToken({
+      name: "inherits",
+      capabilities: ["view"],
+    });
+    assert.ok(inherited.token.expiresAt);
+    assert.ok(
+      Date.parse(inherited.token.expiresAt!) <= Date.parse(a.token.expiresAt!),
+      "a successor outlived the token that minted it",
     );
     await assert.rejects(
       () =>

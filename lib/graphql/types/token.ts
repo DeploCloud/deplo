@@ -131,8 +131,9 @@ const CreateTokenInputType = builder.inputType("CreateTokenInput", {
     folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
-    // ISO instant. Omitted ⇒ the token never expires, which is what every
-    // token was before this field existed.
+    // ISO instant. OMITTED ⇒ the default the editor proposes (ninety days);
+    // explicit null ⇒ never. A credential nobody remembers to revoke should not
+    // be what you get for leaving a field out.
     expiresAt: t.string({ required: false }),
   }),
 });
@@ -191,7 +192,10 @@ builder.mutationFields((t) => ({
         folderIds: input.folderIds ?? undefined,
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
-        expiresAt: input.expiresAt ?? undefined,
+        // Passed through, NOT `?? undefined`: absent means "the default expiry",
+        // explicit null means "never", and collapsing the two would hand a
+        // ninety-day token to someone who asked for one that does not expire.
+        expiresAt: input.expiresAt,
       }),
   }),
   updateToken: t.field({
