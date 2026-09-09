@@ -502,11 +502,21 @@ fi
 # Outbound provisioning succeeds either way, so a blocked port reads as a server
 # that enrolls and then never comes online. Say it now, not at the end.
 firewall_fix_command() {
-  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
-    ufw status 2>/dev/null | grep -qE "(^|[^0-9])$AGENT_PORT/tcp" \
-      || printf 'ufw allow %s/tcp' "$AGENT_PORT"
-  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --list-ports 2>/dev/null | grep -qE "(^| )$AGENT_PORT/tcp" \
+  # Read once and match WITHOUT a pipe: `grep -q` closes the pipe on its first
+  # hit, the producer dies of SIGPIPE, and under `pipefail` an active firewall
+  # then reads as no firewall at all.
+  local out
+  if command -v ufw >/dev/null 2>&1; then
+    out="$(ufw status 2>/dev/null || true)"
+    if [[ $out =~ (^|$'\n')[Ss]tatus:[[:space:]]+[Aa]ctive ]]; then
+      [[ $out =~ (^|[^0-9])$AGENT_PORT/tcp ]] \
+        || printf 'ufw allow %s/tcp' "$AGENT_PORT"
+      return 0
+    fi
+  fi
+  if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    out="$(firewall-cmd --list-ports 2>/dev/null || true)"
+    [[ $out =~ (^|[[:space:]])$AGENT_PORT/tcp ]] \
       || printf 'firewall-cmd --permanent --add-port=%s/tcp && firewall-cmd --reload' "$AGENT_PORT"
   fi
 }
@@ -823,18 +833,19 @@ elif [ "$BUILD_ONLY" = "1" ]; then
   skip "Build-only server: skipping Traefik (it builds images, it routes nothing)"
 elif [ "$IMPORT_ONLY" = "1" ]; then
   skip "Migration source: skipping Traefik (this host has its own, and it is not ours)"
-elif docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null \
-     | grep -qi traefik; then
+elif [[ "$(docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null || true)" == *[Tt]raefik* ]]; then
   ok "Traefik already running, leaving it untouched"
 else
   # Is anything already bound to 80 or 443? (ss if present, else netstat, else
   # a best-effort docker port check.) If so, don't try to bind them.
   PORTS_FREE=true
+  LISTENING=""
   if command -v ss >/dev/null 2>&1; then
-    ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|[.:])(80|443)$' && PORTS_FREE=false
+    LISTENING="$(ss -ltn 2>/dev/null || true)"
   elif command -v netstat >/dev/null 2>&1; then
-    netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|[.:])(80|443)$' && PORTS_FREE=false
+    LISTENING="$(netstat -ltn 2>/dev/null || true)"
   fi
+  [[ $LISTENING =~ [.:](80|443)([[:space:]]|$) ]] && PORTS_FREE=false
   if [ "$PORTS_FREE" != true ]; then
     warn "Ports 80/443 are already in use on this host, NOT installing Traefik."
     note "Apps deployed here are not routed until a reverse proxy on the shared 'deplo'"

@@ -386,6 +386,17 @@ test("a port that merely CONTAINS the agent port is not a match", async () => {
   );
 });
 
+// A real `ufw status` prints progressively: matching through a pipe let `grep -q`
+// close it mid-write, and under `pipefail` the SIGPIPE read as "no firewall".
+test("a firewall that writes slowly is still read, not lost to SIGPIPE", async () => {
+  assert.equal(
+    await runFirewallCheck({
+      ufw: `#!/bin/sh\necho "Status: active"\nsleep 0.05\necho "22/tcp  ALLOW  Anywhere"\n`,
+    }),
+    "ufw allow 9443/tcp",
+  );
+});
+
 /* ------------------------------------------------------------------ */
 /* The takeover's stop / rollback                                      */
 /* ------------------------------------------------------------------ */
