@@ -202,6 +202,8 @@ export function DeploUpdatesTab({
 
   async function startUpdate() {
     setManual(null);
+    // A retry after one that did not take starts from a clean slate.
+    setStalled(false);
     const res = await gqlAction<
       { updateDeplo: { version: string; logPath: string } },
       { version: string; logPath: string }
@@ -257,6 +259,12 @@ export function DeploUpdatesTab({
                 <>
                   <Verdict info={info} version={version} />
                   {manual && <ManualUpdate reason={manual} />}
+                </>
+              )}
+              {/* An update that did not take leaves the buttons: the next thing
+                  the operator wants is to try it again. */}
+              {(!updating || stalled) && (
+                <>
                   <div className="flex flex-wrap items-center gap-2">
                     {info?.updateAvailable && info.latest && (
                       <ConfirmAction
