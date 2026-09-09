@@ -16,9 +16,9 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * The storefront: one template the eye lands on and two beside it. Deploy skips
- * the page only for a family with a single variant - with more, the choice is
- * made on the template's own page.
+ * The storefront: one template the eye lands on and six smaller ones beside it.
+ * Deploy skips the page only for a family with a single variant - with more, the
+ * choice is made on the template's own page.
  */
 export function FeaturedTemplates({
   templates,
@@ -37,16 +37,16 @@ export function FeaturedTemplates({
   return (
     <section className="space-y-3">
       <h2 className={titleClass.section}>Featured</h2>
-      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 xl:grid-cols-3">
         <Hero
           template={hero}
           accent={accents[hero.slug]}
           canDeploy={canDeploy}
           placement={placement}
         />
-        {/* `contents` dissolves the pair's own column: from xl the three cards
-            are three cells of one row, below it they stack beside the hero. */}
-        <div className="grid gap-3 xl:contents">
+        {/* Two of the three columns, three cards deep each. Below xl the pair
+            drops under the hero rather than squeezing beside it. */}
+        <div className="grid gap-3 sm:grid-cols-2 xl:col-span-2">
           {rest.map((t) => (
             <Sidekick
               key={t.slug}
