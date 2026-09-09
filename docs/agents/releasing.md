@@ -35,8 +35,15 @@ Deplo is in **beta**, so every release is `0.x.y` and there are exactly two buck
 | **minor** `0.2.0` | The user notices: a new feature, changed behaviour, a DB migration, or a release that needs a newer `deplo-agent` | Preview environments ship       |
 | **patch** `0.1.1` | Everything else: a fix, copy, performance, security, an invisible refactor                                        | A dialog stops swallowing Enter |
 
-**No major during the beta.** `1.0.0` is the launch itself, and the owner decides when that is. It
-is not something you reach by accumulating minors.
+**No major during the beta.** `1.0.0` is the launch itself, not something you reach by accumulating
+minors. The owner's bar for it (9 Sep 2026): every surface that already exists exercised for real,
+with no confirmed bug left open against it, targeted at **Q4 2026**. Until that day the number stays
+on the `0.x` line however big a release feels.
+
+**A breaking release during the beta is still a minor.** A rename, a dropped setting, a release that
+needs a manual step from the operator: on the `0.x` line the number carries none of it, so the step
+goes in the release notes and the version does not move differently for it. Never cut `1.0.0`
+because something broke.
 
 After launch the same table holds with a third row: **major** is a release that cannot be applied by
 pulling the new image, because it needs a manual step from the operator. Ideally that row stays
