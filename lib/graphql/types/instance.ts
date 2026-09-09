@@ -54,7 +54,7 @@ const InstanceSettingsRef = builder
       }),
       panelFallbackDisabled: t.exposeBoolean("panelFallbackDisabled", {
         description:
-          "Whether that backup address is turned off. It then routes nowhere, and a panel whose domain stops answering is reached again only with `bun run recover panel-address` on the server itself. The address above is what turning it back on would restore.",
+          "Whether that backup address is turned off. It then routes nowhere, and a panel whose domain stops answering is reached again only with `deplo recover panel-address` on the server itself. The address above is what turning it back on would restore.",
       }),
       deploHostIp: t.exposeString("deploHostIp", {
         nullable: true,
@@ -226,7 +226,7 @@ builder.mutationFields((t) => ({
     type: InstanceSettingsRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Turn the generated `deplo-<hexip>.nip.io` backup route on or off. Off drops the second router from the panel's own Traefik file and remembers the choice, so moving the address or the scheme afterwards does not put it back - which is the whole reason this is stored rather than read off the host. The panel then answers on its domain and nowhere else: if that domain, its DNS or its certificate breaks, the way back in is `bun run recover panel-address` on the server. Refused while the generated address IS the panel's own address, which would leave no route at all.",
+      "Turn the generated `deplo-<hexip>.nip.io` backup route on or off. Off drops the second router from the panel's own Traefik file and remembers the choice, so moving the address or the scheme afterwards does not put it back - which is the whole reason this is stored rather than read off the host. The panel then answers on its domain and nowhere else: if that domain, its DNS or its certificate breaks, the way back in is `deplo recover panel-address` on the server. Refused while the generated address IS the panel's own address, which would leave no route at all.",
     args: { enabled: t.arg.boolean({ required: true }) },
     resolve: (_r, { enabled }) => setPanelFallback(enabled),
   }),

@@ -1580,6 +1580,55 @@ EOF
 
 write_panel_compose
 
+# The host CLI. Deplo's break-glass tool lives INSIDE the panel image (there is
+# no source tree on the host to `bun run`), and nobody should have to know the
+# container's name to reach it.
+# https://deplo.build/docs/operations/break-glass-recovery
+write_deplo_cli() {
+cat > /usr/local/bin/deplo <<EOF
+#!/usr/bin/env bash
+# Deplo host CLI - written by install.sh, safe to delete and re-run.
+set -uo pipefail
+
+dc() { docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" "\$@"; }
+
+case "\${1:-}" in
+  recover)
+    shift
+    # \`run\`, not \`exec\`: a panel that will not start is exactly when this is
+    # needed, and \`exec\` answers "service deplo is not running". -T is what a
+    # pipe or a cron line needs; \`password\` prompts, so keep a real TTY.
+    if [ -t 0 ]; then dc run --rm deplo node recover.js "\$@"
+    else dc run --rm -T deplo node recover.js "\$@"; fi
+    ;;
+  logs)    shift; dc logs -f --tail "\${1:-200}" deplo ;;
+  restart) shift; dc restart deplo ;;
+  update)
+    shift
+    # Refresh the copy install.sh keeps of itself, then run it. A failed refresh
+    # still runs the stored one rather than leaving \`deplo update\` dead offline.
+    curl -fsSL "$INSTALLER_URL" -o "$DEPLO_DIR/install.sh" 2>/dev/null && chmod 700 "$DEPLO_DIR/install.sh"
+    exec "$DEPLO_DIR/install.sh" "\$@"
+    ;;
+  *)
+    cat <<'USAGE'
+Deplo - the control plane on this host
+
+  deplo recover [command]   break-glass account and address recovery
+  deplo logs [lines]        follow the control plane's logs
+  deplo restart             restart the control plane
+  deplo update              re-run the installer to the latest version
+
+Run \`deplo recover\` on its own for the recovery commands.
+USAGE
+    [ -n "\${1:-}" ] && exit 1 || exit 0
+    ;;
+esac
+EOF
+chmod 755 /usr/local/bin/deplo
+}
+write_deplo_cli
+
 # Pull the control-plane image first so a bad version tag (or, on an update, the
 # newest image) fails clearly instead of a cryptic compose error. The image is
 # public, so let Docker's own message through rather than guessing the cause.
@@ -2332,6 +2381,7 @@ takeover_uninstall() {
     rm -rf /var/lib/deplo-agent
     systemctl daemon-reload >&9 2>&9 || true
   fi
+  rm -f /usr/local/bin/deplo
   foreign_start
   takeover_unit_remove
   rm -rf "$DEPLO_DIR"
@@ -2518,6 +2568,7 @@ closing_notes() {
     note "To use your own domain, re-run with --domain <your domain>."
   fi
   note "Locked out? ssh -L $PANEL_PORT:localhost:$PANEL_PORT root@$SERVER_IP, then open http://localhost:$PANEL_PORT"
+  note "Lost the owner account? \`deplo recover owner <username>\` on this host."
   note "GitHub must be able to reach $PUBLIC_URL for callbacks and webhooks."
 }
 

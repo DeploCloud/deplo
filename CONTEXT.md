@@ -107,7 +107,7 @@ last-active-admin invariant is satisfied by the attacker themselves, so before t
 single promoted admin could seize the whole instance, first account included. Not a dead
 end: ownership **transfers**, but only by the owner, only to an active instance admin, and
 only with their password re-entered. The sole way back from a locked-out owner is the
-host-side `bun run recover` CLI (the one intended shell path in the product).
+host-side `deplo recover` CLI (the one intended shell path in the product).
 _Avoid_: root user (that is Unix root), founder (that is the TEAM-level
 crown, `teams.founder_user_id`), super admin, instance admin (a different, lower tier).
 

@@ -8,3 +8,4 @@ npm-debug.log*
 README.md
 info.md
 templates/.patches
+dist

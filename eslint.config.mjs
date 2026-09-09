@@ -41,6 +41,8 @@ const eslintConfig = defineConfig([
     ".next.prev-*/**",
     "out/**",
     "build/**",
+    // The bundled break-glass CLI (`bun run build:recover`).
+    "dist/**",
     "next-env.d.ts",
   ]),
 ]);

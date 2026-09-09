@@ -131,7 +131,7 @@ export async function transferInstanceOwner(input: {
     const owner = settings?.ownerUserId ?? null;
     if (owner === null)
       throw new Error(
-        "This instance has no owner to transfer. Recover ownership from the host with `bun run recover`.",
+        "This instance has no owner to transfer. Recover ownership from the host with `deplo recover owner`.",
       );
     if (owner !== actingUserId)
       throw new Error("Only the instance owner can transfer ownership");

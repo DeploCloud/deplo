@@ -9,3 +9,4 @@ signatures/
 # Build artifacts and vendored trees.
 .next/
 node_modules/
+dist/

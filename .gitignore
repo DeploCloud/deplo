@@ -63,3 +63,6 @@ inj-scratch.ts
 # Migration scratch dir. It holds a live API token, is untracked, and used to be
 # unignored - one `git add -A` away from being published.
 /.tmp-mig/
+
+# Bundled break-glass CLI (`bun run build:recover`), built into the image
+/dist/

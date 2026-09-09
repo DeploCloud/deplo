@@ -1,5 +1,6 @@
 /**
- * Break-glass recovery, run on the host that runs Deplo - `bun run recover`.
+ * Break-glass recovery, run on the host that runs Deplo: `deplo recover` on a
+ * Docker install, `bun run recover` from a checkout.
  */
 
 import { and, asc, eq } from "drizzle-orm";
@@ -26,34 +27,37 @@ import {
   panelFallbackHost,
 } from "../lib/deploy/domains";
 
+/** Named by the Docker image, which has no package.json to `bun run`. */
+const CMD = process.env.DEPLO_RECOVER_CMD || "bun run recover";
+
 const USAGE = `
 Deplo recover - break-glass account recovery (run on the Deplo host)
 
-  bun run recover list
+  ${CMD} list
       Every account: username, email, and whether it is admin / owner / suspended.
 
-  bun run recover password <username> [newPassword]
+  ${CMD} password <username> [newPassword]
       Set an account's password. Omit newPassword to be prompted (hidden input);
       pass "-" to have a strong one generated and printed.
 
-  bun run recover owner <username>
+  ${CMD} owner <username>
       Give this account the instance-owner crown, and with it instance admin +
       an un-suspended state. Use when the owner has been locked out, or when an
       instance upgraded from before ownership existed has no owner at all.
 
-  bun run recover admin <username>
+  ${CMD} admin <username>
       Grant instance admin without touching ownership.
 
-  bun run recover unsuspend <username>
+  ${CMD} unsuspend <username>
       Lift a suspension.
 
-  bun run recover panel-address <address|->
+  ${CMD} panel-address <address|->
       Move the panel's own route onto <address> (a domain, optionally with
       http:// or https://), on the server that runs Deplo. Pass "-" for the
       generated deplo-<hex>.nip.io address, which also turns the backup address
       back on. The way back in when the panel's domain is what broke.
 
-  bun run recover server-address <server> <address> [agentPort]
+  ${CMD} server-address <server> <address> [agentPort]
       Rewrite where Deplo dials a server's agent (<server> is its name or id).
       Direct write, no reachability check - for undoing a mistyped address when
       the panel itself can no longer fix it.
@@ -108,9 +112,7 @@ async function findUser(handle: string) {
       u.username.toLowerCase() === needle || u.email.toLowerCase() === needle,
   );
   if (!user)
-    fail(
-      `No account matches "${handle}". Run \`bun run recover list\` to see them.`,
-    );
+    fail(`No account matches "${handle}". Run \`${CMD} list\` to see them.`);
   return user;
 }
 
@@ -148,7 +150,7 @@ async function cmdList() {
   }
   if (owner === null)
     console.log(
-      "\n  This instance has NO owner. `bun run recover owner <username>` claims it.",
+      `\n  This instance has NO owner. \`${CMD} owner <username>\` claims it.`,
     );
   console.log();
 }
@@ -203,7 +205,7 @@ async function cmdPassword(handle: string, given: string | undefined) {
   if (given === "-") console.log(`  New password: ${password}`);
   if (user.suspended)
     console.log(
-      `  NOTE: @${user.username} is SUSPENDED and still can't sign in - run \`bun run recover unsuspend ${user.username}\`.`,
+      `  NOTE: @${user.username} is SUSPENDED and still can't sign in - run \`${CMD} unsuspend ${user.username}\`.`,
     );
   console.log();
 }

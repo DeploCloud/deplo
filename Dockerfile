@@ -40,6 +40,11 @@ ENV DEPLO_DATABASE_URL=postgres://build:build@127.0.0.1:5432/build
 ENV DEPLO_SECRET=build-time-placeholder-not-a-real-secret
 RUN node node_modules/next/dist/bin/next build
 
+# The break-glass CLI as one bundled file. The runtime image below has no source
+# tree, no bun and no tsx, so `bun run recover` cannot exist there - which left
+# every Docker install with no way back in at all.
+RUN node scripts/build-recover.mjs
+
 # --- Runtime: minimal standalone server ---
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -74,6 +79,9 @@ RUN addgroup -g 1001 -S nodejs \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/dist/recover.js ./recover.js
+# What `deplo recover` on the host runs, and the name its own usage text prints.
+ENV DEPLO_RECOVER_CMD="deplo recover"
 
 # npm ships with the base image and the server never shells out to it (`node
 # server.js`). Left installed it contributes its own bundled dependency tree to

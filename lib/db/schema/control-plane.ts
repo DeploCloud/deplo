@@ -2632,7 +2632,7 @@ export const instanceSettings = pgTable("instance_settings", {
   /**
    * Whether the generated `deplo-<hex>.nip.io` backup route is turned off. An
    * advanced opt-out: with it off, a domain that stops answering leaves
-   * `bun run recover panel-address` on the host as the only way back in.
+   * `deplo recover panel-address` on the host as the only way back in.
    */
   panelFallbackDisabled: boolean("panel_fallback_disabled")
     .notNull()
