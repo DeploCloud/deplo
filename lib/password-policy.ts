@@ -63,7 +63,20 @@ export function passwordPolicyError(password: string): string | null {
  */
 export function assertPasswordPolicy(password: string): void {
   const error = passwordPolicyError(password);
-  if (error) throw new Error(error);
+  if (error) throw new PasswordError(error);
+}
+
+/**
+ * A refusal that is ABOUT the password, so a multi-step form can put the message
+ * back on the field that caused it instead of on the step the reader happens to
+ * be looking at.
+ */
+export class PasswordError extends Error {
+  readonly field = "password" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "PasswordError";
+  }
 }
 
 /* ------------------------------------------------------------------ */

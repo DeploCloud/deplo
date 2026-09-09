@@ -1,3 +1,5 @@
+import { GraphQLError } from "graphql";
+
 import { builder } from "../builder";
 import { ViewerRef } from "./viewer";
 import { z } from "zod";
@@ -7,6 +9,7 @@ import {
   logout,
   completeSetup,
   createAccountWithTeam,
+  emailForIdentifier,
   createAccountWithTeams,
   startSessionFor,
   verifyTwoFactorCode,
@@ -134,7 +137,10 @@ const AuthPayloadRef = builder
   });
 
 const loginSchema = z.object({
-  email: z.string().email("Enter a valid email"),
+  // An email OR a username: the product names people `@handle` everywhere, and
+  // the break-glass CLI addresses them that way, so demanding the address here
+  // was a rule only this one screen had.
+  email: z.string().trim().min(1, "Enter your email or username"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -185,7 +191,9 @@ builder.mutationFields((t) => ({
       const parsed = loginSchema.safeParse(args);
       if (!parsed.success)
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
-      const email = parsed.data.email.toLowerCase().trim();
+      // Resolved BEFORE the limiter, so a username and the address behind it
+      // share one bucket instead of giving an attacker two.
+      const email = await emailForIdentifier(parsed.data.email);
       // No global bucket: a shared fixed-window counter lets an anonymous
       // attacker exhaust it and lock every user out. Limiting is per-email and
       // per-client-IP only.
@@ -314,7 +322,12 @@ builder.mutationFields((t) => ({
       ]);
       if (limited) throw new Error(limited);
       const res = await completeSetup(parsed.data);
-      if (!res.ok) throw new Error(res.error ?? "Setup failed");
+      if (!res.ok)
+        throw new GraphQLError(res.error ?? "Setup failed", {
+          // The wizard reads this to put the message back on the step that owns
+          // the field, instead of on the one the reader is looking at.
+          extensions: res.field ? { field: res.field } : undefined,
+        });
       return { viewer: await getCurrentUser() };
     },
   }),

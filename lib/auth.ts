@@ -62,7 +62,7 @@ import {
 // Type-only: the assertion arrives as opaque JSON from the browser, and this is
 // the shape the plugin's verifier expects it to have.
 import type { AuthenticationResponseJSON } from "@simplewebauthn/browser";
-import { assertPasswordPolicy } from "./password-policy";
+import { assertPasswordPolicy, PasswordError } from "./password-policy";
 import { assertPasswordNotPwned } from "./pwned-password";
 
 /**
@@ -629,14 +629,34 @@ export interface LoginResult {
 }
 
 /**
- * Sign in with email + password (Better Auth, ADR-0014). The caller must then send
- * a code to `verifyTwoFactorCode`.
+ * The email a sign-in identifier names. An address is itself; a username is
+ * looked up. A username nobody has falls through unchanged, so a wrong one is
+ * refused by the credential check like any other - never by a different answer,
+ * which would make this an account-existence oracle.
+ */
+export async function emailForIdentifier(identifier: string): Promise<string> {
+  const value = identifier.toLowerCase().trim();
+  if (!value || value.includes("@")) return value;
+  return (
+    (
+      await getDb()
+        .select({ email: usersTable.email })
+        .from(usersTable)
+        .where(eq(sql`lower(${usersTable.username})`, value))
+        .limit(1)
+    )[0]?.email?.toLowerCase() ?? value
+  );
+}
+
+/**
+ * Sign in with email or username + password (Better Auth, ADR-0014). The caller
+ * must then send a code to `verifyTwoFactorCode`.
  */
 export async function login(
-  email: string,
+  identifier: string,
   password: string,
 ): Promise<LoginResult> {
-  const normalized = email.toLowerCase().trim();
+  const normalized = await emailForIdentifier(identifier);
   try {
     const res = await requireAuth().api.signInEmail({
       body: { email: normalized, password },
@@ -872,7 +892,7 @@ export async function completeSetup(input: {
   teamImage?: string | null;
   /** From the installer's setup link. Checked before anything touches the db. */
   key?: string | null;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; field?: "password" }> {
   if (checkSetupKey(input.key) !== "ok")
     return { ok: false, error: "That setup link is not valid." };
 
@@ -901,6 +921,9 @@ export async function completeSetup(input: {
     return {
       ok: false,
       error: e instanceof Error ? e.message : "Setup failed",
+      // Which FIELD was refused, so a two-step form can send the reader back to
+      // it: the password is checked here, one step after it was typed.
+      ...(e instanceof PasswordError ? { field: "password" as const } : {}),
     };
   }
 

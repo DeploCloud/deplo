@@ -285,12 +285,14 @@ export default function LoginPage() {
            */}
           <form method="post" onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email or username</Label>
               <Input
                 id="email"
                 name="email"
-                type="email"
-                autoComplete="email"
+                // NOT type="email": the browser's own validation refused the
+                // `@handle` this product names everyone by.
+                type="text"
+                autoComplete="username"
                 placeholder="you@example.com"
                 required
               />

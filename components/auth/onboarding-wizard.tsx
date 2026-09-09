@@ -17,7 +17,7 @@ import {
 } from "@/components/auth/wizard-steps";
 import { useStepSwap } from "@/components/apps/wizard/wizard-card";
 import { Collapse } from "@/components/ui/field-error";
-import { gql } from "@/lib/graphql-client";
+import { gql, GraphQLRequestError } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
 const COMPLETE_SETUP = /* GraphQL */ `
@@ -56,6 +56,13 @@ const STEPS = [
   { id: "team", label: "Your team" },
 ];
 
+/** The field a GraphQL error blames, when it blames one. */
+function errorField(err: unknown): string | null {
+  if (!(err instanceof GraphQLRequestError)) return null;
+  const field = err.errors[0]?.extensions?.field;
+  return typeof field === "string" ? field : null;
+}
+
 export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
   const { phase, markSeen } = useLogoIntro(INTRO_SEEN);
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
@@ -82,6 +89,9 @@ export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
         window.location.assign("/?welcome=1");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Setup failed");
+        // A password the server refuses was typed one step back; showing it here
+        // leaves the reader on the team name with nothing to fix.
+        if (errorField(err) === "password") go("account", "back");
       }
     });
   }

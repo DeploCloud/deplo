@@ -22,6 +22,7 @@ import {
   completeSetup,
   createAccountWithTeam,
   createAccountWithTeams,
+  emailForIdentifier,
   login,
 } from "./auth";
 import { consumeRegistrationLink } from "./data/members";
@@ -632,4 +633,23 @@ test("setup key: no key at all claims nothing", async () => {
     assert.match((await setupRefusal(WIZARD)) ?? "", /setup link/);
     assert.equal((await db.select().from(usersTable)).length, 0);
   });
+});
+
+/**
+ * The product names people `@handle` everywhere and the break-glass CLI takes a
+ * username, so demanding an address was a rule only the sign-in screen had.
+ */
+test("a username resolves to its address, and an unknown one is left alone", async () => {
+  await seedIdentity(db);
+  const row = (
+    await db.select().from(usersTable).where(eq(usersTable.id, USER_1))
+  )[0]!;
+  assert.equal(
+    await emailForIdentifier(row.username.toUpperCase()),
+    row.email.toLowerCase(),
+  );
+  assert.equal(await emailForIdentifier(row.email), row.email.toLowerCase());
+  // Nobody's username: unchanged, so the credential check refuses it like any
+  // other wrong sign-in rather than answering differently.
+  assert.equal(await emailForIdentifier("nobody-here"), "nobody-here");
 });

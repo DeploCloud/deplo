@@ -9,7 +9,11 @@
 export class GraphQLRequestError extends Error {
   constructor(
     message: string,
-    readonly errors: { message: string }[],
+    readonly errors: {
+      message: string;
+      /** What the server said the error is ABOUT, e.g. `{ field: "password" }`. */
+      extensions?: Record<string, unknown>;
+    }[],
   ) {
     super(message);
     this.name = "GraphQLRequestError";

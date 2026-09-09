@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import { isTestEnv } from "./db/pg";
+import { PasswordError } from "./password-policy";
 
 /**
  * Refuse a password that appears in the Have I Been Pwned breach corpus.
@@ -55,5 +56,6 @@ export async function assertPasswordNotPwned(password: string): Promise<void> {
   // The suite must not reach the network: it writes credentials in hundreds of
   // tests, and on a runner without egress each one would sit out the timeout.
   if (isTestEnv()) return;
-  if (await isPasswordPwned(password)) throw new Error(PWNED_PASSWORD_MESSAGE);
+  if (await isPasswordPwned(password))
+    throw new PasswordError(PWNED_PASSWORD_MESSAGE);
 }
