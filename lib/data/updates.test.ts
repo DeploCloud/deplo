@@ -13,7 +13,7 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
-import { applyDeploUpdate, listDeploReleases } from "./updates";
+import { applyDeploUpdate, listDeploReleases, releaseProse } from "./updates";
 
 /**
  * The changelog is remote input rendered inside the panel: a draft nobody
@@ -157,4 +157,33 @@ test("without the panel's own machine as a server there is nobody to ask", async
   } finally {
     capture.restore();
   }
+});
+
+/**
+ * The changelog is read by somebody deciding whether to update, not by whoever
+ * wrote the PRs: GitHub's generated "What's Changed" list is not their answer.
+ */
+test("the changelog keeps the prose and drops the generated list", () => {
+  const body = [
+    "Hello, world. This is Deplo's first tagged build.",
+    "",
+    "Self-hosting without the shell.",
+    "",
+    "## What's Changed",
+    "* feat: dev mode by @someone in https://github.com/x/y/pull/1",
+    "",
+    "**Full Changelog**: https://github.com/x/y/commits/v0.1.0",
+  ].join("\n");
+  const prose = releaseProse(body, "https://example.com/r");
+  assert.match(prose, /first tagged build/);
+  assert.match(prose, /without the shell/);
+  assert.doesNotMatch(prose, /What's Changed|pull\/1|Full Changelog/);
+
+  // A release that is ONLY the generated list gets a link, not the wall.
+  assert.equal(
+    releaseProse("## What's Changed\n* only a list", "https://example.com/r"),
+    "[Read the notes on GitHub](https://example.com/r)",
+  );
+  // Nothing at all stays nothing - no link to an empty page.
+  assert.equal(releaseProse("", "https://example.com/r"), "");
 });

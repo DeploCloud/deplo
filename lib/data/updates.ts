@@ -161,6 +161,21 @@ export async function refreshUpdateInfo(): Promise<UpdateInfo> {
  * The published releases of Deplo, newest first - the changelog the panel shows
  * so "what changed" has an answer that is not a GitHub tab.
  */
+/**
+ * The human half of a release body. GitHub appends its own "What's Changed" -
+ * a list of PR titles and handles, plus a "Full Changelog" link - and pasting
+ * that into the panel makes the changelog read like a commit log to somebody who
+ * only wants to know whether to update.
+ */
+export function releaseProse(body: string, url: string): string {
+  const cut = body.search(
+    /^\s{0,3}#{1,6}\s*what'?s\s+changed\b|^\s*\*\*full\s+changelog\*\*/im,
+  );
+  const prose = (cut === -1 ? body : body.slice(0, cut)).trim();
+  // Nothing but the generated list: a link beats a wall of PR titles.
+  return prose || (body.trim() ? `[Read the notes on GitHub](${url})` : "");
+}
+
 export async function listDeploReleases(): Promise<{
   releases: DeploRelease[];
   error?: string;
@@ -191,7 +206,10 @@ export async function listDeploReleases(): Promise<{
           typeof r.html_url === "string"
             ? r.html_url
             : `https://github.com/${DEPLO_REPO}/releases/tag/${tag}`;
-        const body = typeof r.body === "string" ? r.body.trim() : "";
+        const body = releaseProse(
+          typeof r.body === "string" ? r.body : "",
+          url,
+        );
         return {
           tag,
           name: typeof r.name === "string" && r.name ? r.name : tag,
