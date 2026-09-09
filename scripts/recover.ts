@@ -68,6 +68,14 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+/**
+ * What readline may echo while a password is being typed: the prompt it redraws
+ * with the buffer on every keypress, and nothing else.
+ */
+export function hiddenEcho(label: string, redraw: string): string {
+  return redraw.startsWith(label) ? label : "";
+}
+
 /** Read a line with the terminal echo off, so a password never lands on screen. */
 async function promptHidden(label: string): Promise<string> {
   if (!process.stdin.isTTY)
@@ -75,21 +83,27 @@ async function promptHidden(label: string): Promise<string> {
       "No terminal to prompt on. Pass the password as an argument, or use '-' to generate one.",
     );
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  // `output.write` is what readline uses to echo; muting it hides the typing
-  // while leaving the prompt itself visible (written before the mute flips on).
   const out = rl as unknown as {
     output: NodeJS.WriteStream;
     _writeToOutput: (s: string) => void;
   };
-  process.stdout.write(label);
-  let muted = false;
-  out._writeToOutput = (s: string) => {
-    if (!muted) out.output.write(s);
-  };
-  muted = true;
-  const answer = await new Promise<string>((resolve) =>
-    rl.question("", resolve),
-  );
+  const answer = await new Promise<string>((resolve) => {
+    // Ctrl-C and Ctrl-D both leave `question` pending for ever otherwise, and a
+    // wedged terminal is the last thing a break-glass tool should hand back.
+    rl.on("SIGINT", () => {
+      process.stdout.write("\n");
+      process.exit(130);
+    });
+    rl.on("close", () => resolve(""));
+    rl.question(label, resolve);
+    // Readline clears the whole row and redraws `prompt + line` on every
+    // keypress, so a prompt written around it is erased by the first character.
+    // Let the prompt back through here and drop the rest: that is the echo.
+    out._writeToOutput = (s: string) => {
+      const echo = hiddenEcho(label, s);
+      if (echo) out.output.write(echo);
+    };
+  });
   rl.close();
   process.stdout.write("\n");
   return answer;
@@ -409,8 +423,9 @@ async function main() {
   fail(`Unknown command "${command}".\n\n${USAGE}`);
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((e: unknown) => {
-    fail(e instanceof Error ? e.message : String(e));
-  });
+if (require.main === module)
+  main()
+    .then(() => process.exit(0))
+    .catch((e: unknown) => {
+      fail(e instanceof Error ? e.message : String(e));
+    });

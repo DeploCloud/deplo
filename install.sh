@@ -1596,10 +1596,14 @@ case "\${1:-}" in
   recover)
     shift
     # \`run\`, not \`exec\`: a panel that will not start is exactly when this is
-    # needed, and \`exec\` answers "service deplo is not running". -T is what a
-    # pipe or a cron line needs; \`password\` prompts, so keep a real TTY.
-    if [ -t 0 ]; then dc run --rm deplo node recover.js "\$@"
-    else dc run --rm -T deplo node recover.js "\$@"; fi
+    # needed, and \`exec\` answers "service deplo is not running". Quiet, because
+    # five lines of container progress and then two silent seconds read as a
+    # hang. -T is what a pipe needs; \`password\` prompts, so keep a real TTY.
+    # This installer is newer than any image that predates the bundled tool, so
+    # say which one is behind rather than let node throw MODULE_NOT_FOUND.
+    inner='[ -f /app/recover.js ] || { printf "\\n  This Deplo is older than the recovery tool. Run: deplo update\\n\\n" >&2; exit 1; }; exec node /app/recover.js "\$@"'
+    if [ -t 0 ]; then dc --progress quiet run --rm deplo sh -c "\$inner" deplo "\$@"
+    else dc --progress quiet run --rm -T deplo sh -c "\$inner" deplo "\$@"; fi
     ;;
   logs)    shift; dc logs -f --tail "\${1:-200}" deplo ;;
   restart) shift; dc restart deplo ;;

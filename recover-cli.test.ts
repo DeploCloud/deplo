@@ -5,6 +5,8 @@ import { copyFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { hiddenEcho } from "./scripts/recover";
+
 /**
  * The break-glass CLI has to run where there is no source tree, no bun and no
  * tsx: the Docker image ships this bundle and nothing else of `scripts/`.
@@ -46,4 +48,12 @@ test("a checkout still names `bun run recover`", () => {
   const res = runOutsideTheRepo({});
   assert.equal(res.status, 0, res.stderr);
   assert.match(res.stdout, /bun run recover owner <username>/);
+});
+
+test("the password prompt survives the first keypress", () => {
+  const label = "  New password for @ada: ";
+  // Readline redraws `prompt + buffer` on every keypress after clearing the
+  // row, so echoing nothing at all erases the prompt and reads as a hang.
+  assert.equal(hiddenEcho(label, `${label}hunter2`), label);
+  assert.equal(hiddenEcho(label, "hunter2"), "");
 });
