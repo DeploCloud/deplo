@@ -43,6 +43,16 @@ const TAKE_PORTS = /* GraphQL */ `
   }
 `;
 
+/** The list is read again from the client: the copy that fails writes it while
+ *  this very page is open. */
+const DATA_LOSS = /* GraphQL */ `
+  query TakeoverDataLoss {
+    takeover {
+      dataLoss
+    }
+  }
+`;
+
 const CANCEL = /* GraphQL */ `
   mutation CancelTakeover($apiKey: String) {
     cancelTakeover(apiKey: $apiKey) {
@@ -142,8 +152,20 @@ function TakeoverConfirm({
   const router = useRouter();
   const [retrying, setRetrying] = React.useState(false);
   const clean = mode === "clean";
+  /**
+   * The run happens in this page's own wizard, so what the server rendered is a
+   * step behind by the time it matters: a copy that failed a minute ago is not
+   * in it, and the takeover was then refused with no way to accept the loss.
+   */
+  const [loss, setLoss] = React.useState(dataLoss);
+  const readLoss = () => {
+    void gql<{ takeover: { dataLoss: string[] } | null }>(DATA_LOSS)
+      .then((d) => setLoss(d.takeover?.dataLoss ?? []))
+      // Keep what is known: the mutation refuses on the server's own list anyway.
+      .catch(() => {});
+  };
   /** The copy of these failed; the takeover stops the panel holding the only copy. */
-  const lossy = !clean && dataLoss.length > 0;
+  const lossy = !clean && loss.length > 0;
   const [lossAccepted, setLossAccepted] = React.useState(false);
   /**
    * A token reads ONE team of that panel, and the panel cannot always list the
@@ -167,7 +189,7 @@ function TakeoverConfirm({
     // The operator already ticked every box before the attempt that rolled back.
     const res = await gqlAction(TAKE_PORTS, {
       ...args(true),
-      acceptDataLoss: lossy ? true : null,
+      acceptDataLoss: clean ? null : true,
     });
     if (!res.ok) {
       setRetrying(false);
@@ -216,6 +238,11 @@ function TakeoverConfirm({
                 {clean ? "Delete it and take over" : "Take over the machine"}
               </Button>
             }
+            // What did not come across is asked for as the dialog opens, so the
+            // loss is on screen with a way to accept it, never a toast after.
+            onOpenChange={(v) => {
+              if (v) readLoss();
+            }}
             title={
               clean
                 ? `Delete ${platformLabel} from this machine?`
@@ -263,12 +290,12 @@ function TakeoverConfirm({
                     />
                     <span>
                       <span className="font-medium">
-                        {dataLoss.length === 1
-                          ? `${dataLoss[0]} loses its data`
-                          : `${dataLoss.length} services lose their data: ${dataLoss.join(", ")}`}
+                        {loss.length === 1
+                          ? `${loss[0]} loses its data`
+                          : `${loss.length} services lose their data: ${loss.join(", ")}`}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {`The copy failed, so ${platformLabel} still holds the only copy and it stops for good at the takeover. Go back to Review and copy the data again instead.`}
+                        {`The copy failed, so ${platformLabel} still holds the only copy and it stops for good at the takeover.`}
                       </span>
                     </span>
                   </label>
@@ -286,6 +313,9 @@ function TakeoverConfirm({
               // The state is the server's, and it is what swaps this step's
               // body for the one that says the ports are moving.
               if (res.ok) router.refresh();
+              // A copy that failed between opening this and confirming it: read
+              // the list again so re-opening offers the box, not the same wall.
+              else readLoss();
               return res;
             }}
           />
