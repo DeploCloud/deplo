@@ -76,11 +76,11 @@
     "graphql": "16.14.2",
     "graphql-scalars": "^1.26.0",
     "graphql-yoga": "^5.21.3",
-    "js-yaml": "^4.3.1",
+    "js-yaml": "^4.3.2",
     "lucide-react": "^1.31.0",
     "next": "16.3.3",
     "node-pty": "^1.1.0",
-    "nodemailer": "^9.0.5",
+    "nodemailer": "^9.1.1",
     "pg": "^8.23.0",
     "pretty-bytes": "^7.1.1",
     "qrcode.react": "^4.2.0",
@@ -135,7 +135,8 @@
     "@codemirror/view": "$@codemirror/view",
     "@codemirror/language": "$@codemirror/language",
     "esbuild": "^0.28.2",
+    "js-yaml": "^4.3.2",
     "postcss": "^8.5.26",
-    "browserslist": "^4.28.7"
+    "baseline-browser-mapping": "^2.11.21"
   }
 }
