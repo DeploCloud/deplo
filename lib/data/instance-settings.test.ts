@@ -23,12 +23,18 @@ import {
   moveWithRollback,
   noRouteReason,
   normalizePanelUrl,
+  setPanelFallback,
   setPanelHttps,
   setPanelUrl,
   setGravatarEnabled,
   checkPanelDns,
 } from "./instance-settings";
 import { gravatarEnabled } from "../avatar";
+import { panelRoute, withPanelRoute } from "../deploy/traefik-stack";
+import {
+  __setAgentConnectorForTest,
+  type AgentConnection,
+} from "../infra/agent-client";
 
 /**
  * The panel address is not an ordinary text setting: it is interpolated into
@@ -476,4 +482,111 @@ test("the panel's DNS check classifies the address the instance answers on", asy
 
 test("only an instance admin may ask", async () => {
   await assert.rejects(() => asUser(MEMBER, checkPanelDns));
+});
+
+/* ------------------------------------------------------------------ */
+/* The generated backup address                                        */
+/* ------------------------------------------------------------------ */
+
+/** HOST_IP as the hex label of the generated host. */
+const FALLBACK = "deplo-cb00710a.nip.io";
+
+const TRAEFIK_STACK = `services:
+  traefik:
+    image: traefik:v3.7
+    container_name: deplo-traefik
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=ops@acme.com
+`;
+
+const panelStack = (domain = "panel.example.com") =>
+  withPanelRoute(TRAEFIK_STACK, {
+    domain,
+    fallbackDomain: FALLBACK,
+    https: true,
+    certResolver: "letsencrypt",
+    target: "http://deplo:3000",
+  });
+
+/** A host that answers with its stack file and keeps whatever is applied to it. */
+function fakeHost(yaml: string) {
+  const state = { yaml };
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({ capabilities: ["hostops"] }),
+      hostInfo: async () => ({ traefikComposeYaml: state.yaml }),
+      traefikConfig: async (req: { composeYaml: string }) => {
+        if (req.composeYaml) state.yaml = req.composeYaml;
+        return { ok: true, error: "" };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  return state;
+}
+
+async function withSelfServer<T>(
+  t: { after: (fn: () => void) => void },
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prevIp = process.env.DEPLO_SERVER_IP;
+  process.env.DEPLO_SERVER_IP = HOST_IP;
+  await pg.exec(TRUNCATE_INFRA);
+  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  t.after(() => {
+    __setAgentConnectorForTest();
+    if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;
+    else process.env.DEPLO_SERVER_IP = prevIp;
+  });
+  return fn();
+}
+
+test("the backup address goes off, and stays off when the scheme moves", async (t) => {
+  await withSelfServer(t, async () => {
+    const host = fakeHost(panelStack());
+    assert.equal(
+      (await asUser(ADMIN, getPanelHttps)).fallbackDomain,
+      FALLBACK,
+      "it is on until somebody turns it off",
+    );
+
+    const off = await asUser(ADMIN, () => setPanelFallback(false));
+    assert.equal(off.panelFallbackDisabled, true);
+    assert.equal(panelRoute(host.yaml)?.fallbackDomain, null);
+
+    // The whole reason the choice is stored: every address and scheme change
+    // re-seeds that router, and used to put it straight back.
+    await asUser(ADMIN, () => setPanelHttps(false));
+    assert.equal(panelRoute(host.yaml)?.https, false);
+    assert.equal(panelRoute(host.yaml)?.fallbackDomain, null);
+
+    // An address that routes nowhere is not the one that keeps working.
+    const impact = await asUser(ADMIN, () =>
+      getPanelAddressImpact("moved.example.com"),
+    );
+    assert.equal(impact.panelFallbackUrl, null);
+
+    const on = await asUser(ADMIN, () => setPanelFallback(true));
+    assert.equal(on.panelFallbackDisabled, false);
+    assert.equal(panelRoute(host.yaml)?.fallbackDomain, FALLBACK);
+    assert.equal(on.panelFallbackUrl, `https://${FALLBACK}`);
+  });
+});
+
+test("the generated address cannot be turned off while it IS the address", async (t) => {
+  await withSelfServer(t, async () => {
+    fakeHost(panelStack(FALLBACK));
+    await assert.rejects(
+      () => asUser(ADMIN, () => setPanelFallback(false)),
+      /panel's own address/i,
+      "there would be no route left at all",
+    );
+    await assert.rejects(
+      () => asUser(MEMBER, () => setPanelFallback(false)),
+      /admin/i,
+    );
+  });
 });

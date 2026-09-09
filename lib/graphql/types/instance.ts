@@ -6,6 +6,7 @@ import {
   getPanelHttps,
   listCertificateAccounts,
   setCertificateEmail,
+  setPanelFallback,
   setPanelHttps,
   setGravatarEnabled,
   setLogMaxDays,
@@ -49,7 +50,11 @@ const InstanceSettingsRef = builder
       panelFallbackUrl: t.exposeString("panelFallbackUrl", {
         nullable: true,
         description:
-          "The generated address the panel also answers on, over https (https://deplo-<hexip>.nip.io). Always on and not a setting: it is the way back in when the panel's domain, its DNS or its certificate stops working, and it resolves to this server with nothing to set up. Null only when Deplo cannot work out an address of its own that anyone else could reach.",
+          "The generated address the panel also answers on, over https (https://deplo-<hexip>.nip.io). On unless an instance admin turned it off: it is the way back in when the panel's domain, its DNS or its certificate stops working, and it resolves to this server with nothing to set up. Null only when Deplo cannot work out an address of its own that anyone else could reach.",
+      }),
+      panelFallbackDisabled: t.exposeBoolean("panelFallbackDisabled", {
+        description:
+          "Whether that backup address is turned off. It then routes nowhere, and a panel whose domain stops answering is reached again only with `bun run recover panel-address` on the server itself. The address above is what turning it back on would restore.",
       }),
       deploHostIp: t.exposeString("deploHostIp", {
         nullable: true,
@@ -216,6 +221,14 @@ builder.mutationFields((t) => ({
       "Serve the panel over https, or over plain http. Turning it off is for a panel whose address cannot get a certificate - it does not resolve publicly yet, :80 is closed, the box is internal - where https means a browser warning on a page nobody has logged into yet. Three things move together: the route goes to the :80 entrypoint (with that entrypoint's redirect pinned below it), the stored panel address takes the new scheme, and the session cookie drops its `__Secure-` prefix, without which the panel would load over http and be impossible to log into. The host's proxy is recreated to pick it up, so sites on that server - this panel included - are unreachable for the few seconds it takes to come back. On a Deplo installed before it published its own route, the first change ADOPTS that route: Deplo writes one beside the container labels the installer left and outranks them, after proving from inside the network that it knows where the panel listens.",
     args: { enabled: t.arg.boolean({ required: true }) },
     resolve: (_r, { enabled }) => setPanelHttps(enabled),
+  }),
+  setPanelFallback: t.field({
+    type: InstanceSettingsRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Turn the generated `deplo-<hexip>.nip.io` backup route on or off. Off drops the second router from the panel's own Traefik file and remembers the choice, so moving the address or the scheme afterwards does not put it back - which is the whole reason this is stored rather than read off the host. The panel then answers on its domain and nowhere else: if that domain, its DNS or its certificate breaks, the way back in is `bun run recover panel-address` on the server. Refused while the generated address IS the panel's own address, which would leave no route at all.",
+    args: { enabled: t.arg.boolean({ required: true }) },
+    resolve: (_r, { enabled }) => setPanelFallback(enabled),
   }),
   setLogMaxDays: t.field({
     type: InstanceSettingsRef,

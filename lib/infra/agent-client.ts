@@ -2661,8 +2661,9 @@ async function withHostOps<T>(
   serverId: string,
   fn: (conn: AgentConnection) => Promise<T>,
 ): Promise<T> {
-  const target = await resolveTarget(serverId);
-  const conn = dial(target);
+  // Through connectAgent, not dial: same target, and the one seam a test can
+  // stand in on - host ops had none.
+  const conn = await connectAgent(serverId);
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(HOSTOPS_CAPABILITY)) {

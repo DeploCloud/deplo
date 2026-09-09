@@ -96,6 +96,9 @@ export type InstanceSettings = {
    * work out an address of its own that anyone else could reach.
    */
   panelFallbackUrl: string | null;
+  /** Whether the operator turned that address off. The address above is then what
+   *  turning it back on would restore, not somewhere the panel answers. */
+  panelFallbackDisabled: boolean;
   /** The IPv4 an A record for the panel's domain should point at. */
   deploHostIp: string | null;
   /** How far back the log viewer's time range may reach, in days. */
@@ -165,16 +168,22 @@ export type CertificateAccount = {
 
 /** The stored row, ungated and per-request cached. See the module comment. */
 const loadSettings = cache(
-  async (): Promise<{ panelUrl: string | null; logMaxDays: number }> => {
+  async (): Promise<{
+    panelUrl: string | null;
+    logMaxDays: number;
+    panelFallbackDisabled: boolean;
+  }> => {
     const [row] = await getDb()
       .select({
         panelUrl: instanceSettings.panelUrl,
         logMaxDays: instanceSettings.logMaxDays,
+        panelFallbackDisabled: instanceSettings.panelFallbackDisabled,
       })
       .from(instanceSettings)
       .where(eq(instanceSettings.id, SETTINGS_ID));
     return {
       panelUrl: row?.panelUrl ?? null,
+      panelFallbackDisabled: row?.panelFallbackDisabled ?? false,
       // No row at all is a fresh instance, which gets the same default the
       // column does rather than a 0 that would collapse the picker.
       logMaxDays: row?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS,
@@ -332,7 +341,7 @@ function reachableHostIp(host: { ip?: string } | null): string | null {
 
 export async function getInstanceSettings(): Promise<InstanceSettings> {
   await requireInstanceAdmin();
-  const { panelUrl, logMaxDays } = await loadSettings();
+  const { panelUrl, logMaxDays, panelFallbackDisabled } = await loadSettings();
   const [host, ownerName] = await Promise.all([
     deploHostServer(),
     instanceOwnerName(),
@@ -342,6 +351,7 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
   return {
     panelUrl: panelUrl ?? (await instancePublicBaseUrl()),
     panelFallbackUrl: hostIp ? `https://${panelFallbackHost(hostIp)}` : null,
+    panelFallbackDisabled,
     deploHostIp: hostIp,
     panelUrlSource: panelUrl
       ? "stored"
@@ -539,9 +549,10 @@ export async function getPanelAddressImpact(
   };
   const host = await deploHostServer();
   const hostIp = reachableHostIp(host);
-  base.panelFallbackUrl = hostIp
-    ? `https://${panelFallbackHost(hostIp)}`
-    : null;
+  base.panelFallbackUrl =
+    hostIp && !(await loadSettings()).panelFallbackDisabled
+      ? `https://${panelFallbackHost(hostIp)}`
+      : null;
   // Same address, nothing to warn about. Counting anyway would put a wall of
   // red in front of a save that changes nothing.
   if (!base.hostChanges && !base.schemeChanges) return base;
@@ -868,7 +879,7 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
 
     const next: PanelRoute = {
       ...current,
-      fallbackDomain: current.fallbackDomain ?? panelFallbackHost(),
+      fallbackDomain: await panelBackupDomain(current),
       https: enabled,
       // Read off the host rather than assumed, and null is fine: a proxy that
       // orders from nobody still terminates TLS with a certificate the operator
@@ -899,6 +910,87 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
     );
   }
   return readPanelHttps();
+}
+
+/**
+ * The backup host a route should carry. Seeded here and not only by the
+ * installer: a panel that WAS the generated host loses it the moment a domain is
+ * set, which is exactly when the way back in matters.
+ */
+async function panelBackupDomain(current: PanelRoute): Promise<string | null> {
+  if ((await loadSettings()).panelFallbackDisabled) return null;
+  return current.fallbackDomain ?? panelFallbackHost();
+}
+
+/**
+ * Turn the generated backup address on or off. Off is the advanced opt-out: the
+ * panel then answers on its own domain and nowhere else.
+ * https://deplo.build/docs/operations/panel-address-and-certificates
+ */
+export async function setPanelFallback(
+  enabled: boolean,
+): Promise<InstanceSettings> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+
+  const host = await deploHostServer();
+  if (!host)
+    throw new Error(
+      "The server running Deplo is not added here yet, so Deplo does not manage the panel's own address.",
+    );
+
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } =
+    await import("../infra/agent-client");
+  // Held across the read and the write, same as setPanelHttps: this rewrites the
+  // host's whole stack file.
+  await withTraefikStackLock(host.id, async () => {
+    const info = await fetchHostInfo(host.id);
+    const current =
+      panelRoute(info.traefikComposeYaml) ??
+      (await adoptPanelRoute(info.traefikComposeYaml));
+    // Turning it off while it IS the address would take the last route away.
+    if (!enabled && current.domain === panelFallbackHost())
+      throw new Error(
+        `${current.domain} is the panel's own address right now. Give the panel a domain first.`,
+      );
+    const next: PanelRoute = {
+      ...current,
+      fallbackDomain: enabled ? panelFallbackHost() : null,
+    };
+    if (next.fallbackDomain === current.fallbackDomain) return;
+    const res = await applyTraefikConfig(host.id, {
+      composeYaml: withPanelRoute(info.traefikComposeYaml, next),
+    });
+    if (!res.ok)
+      throw new Error(
+        res.error || "The proxy on this server refused the change",
+      );
+  });
+
+  const now = nowIso();
+  await getDb()
+    .insert(instanceSettings)
+    .values({
+      id: SETTINGS_ID,
+      panelFallbackDisabled: !enabled,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: instanceSettings.id,
+      set: { panelFallbackDisabled: !enabled, updatedAt: now },
+    });
+
+  await recordActivity(
+    "instance",
+    enabled
+      ? `Turned the panel's backup address back on (${panelFallbackHost()})`
+      : "Turned the panel's backup address off",
+    user.name,
+    null,
+    teamId,
+  );
+  return getInstanceSettings();
 }
 
 /**
@@ -998,10 +1090,7 @@ async function movePanelRoute(url: string): Promise<void> {
       to: {
         ...current,
         domain,
-        // Seeded here, not only by the installer: a panel that WAS the generated
-        // host loses it the moment a domain is set, which is exactly when the way
-        // back in matters.
-        fallbackDomain: current.fallbackDomain ?? panelFallbackHost(),
+        fallbackDomain: await panelBackupDomain(current),
         https,
         certResolver: https ? stackCertResolver(currentYaml) : null,
       },

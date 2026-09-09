@@ -190,6 +190,8 @@ export const DOCS = {
   "instance.users": "operations/instance-administration#users",
   "instance.owner": "operations/instance-administration#instance-owner",
   "panel.address": "operations/panel-address-and-certificates",
+  "panel.backupAddress":
+    "operations/panel-address-and-certificates#turn-the-backup-address-off",
   "panel.https":
     "operations/panel-address-and-certificates#https-is-not-optional",
   "panel.certEmail":

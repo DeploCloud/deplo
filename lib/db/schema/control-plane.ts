@@ -2630,6 +2630,14 @@ export const instanceSettings = pgTable("instance_settings", {
    */
   panelUrl: text("panel_url"),
   /**
+   * Whether the generated `deplo-<hex>.nip.io` backup route is turned off. An
+   * advanced opt-out: with it off, a domain that stops answering leaves
+   * `bun run recover panel-address` on the host as the only way back in.
+   */
+  panelFallbackDisabled: boolean("panel_fallback_disabled")
+    .notNull()
+    .default(false),
+  /**
    * The VAPID keypair that identifies THIS Deplo to every browser push service
    * (beta). NULL until then; the private half is encrypted like every other
    * secret.

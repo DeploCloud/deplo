@@ -17,6 +17,14 @@ import {
   session as sessionTable,
 } from "../lib/db/schema/auth";
 import { hashPassword } from "../lib/crypto";
+import { panelRoute, withPanelRoute } from "../lib/deploy/traefik-stack";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+  isIpv4,
+  nipEmbeddedIp,
+  panelFallbackHost,
+} from "../lib/deploy/domains";
 
 const USAGE = `
 Deplo recover - break-glass account recovery (run on the Deplo host)
@@ -38,6 +46,12 @@ Deplo recover - break-glass account recovery (run on the Deplo host)
 
   bun run recover unsuspend <username>
       Lift a suspension.
+
+  bun run recover panel-address <address|->
+      Move the panel's own route onto <address> (a domain, optionally with
+      http:// or https://), on the server that runs Deplo. Pass "-" for the
+      generated deplo-<hex>.nip.io address, which also turns the backup address
+      back on. The way back in when the panel's domain is what broke.
 
   bun run recover server-address <server> <address> [agentPort]
       Rewrite where Deplo dials a server's agent (<server> is its name or id).
@@ -290,12 +304,96 @@ async function cmdServerAddress(
   );
 }
 
+/**
+ * The break-glass half of setPanelUrl: rewrite the panel's own route on the host
+ * that serves it, with none of the checks and no reachability probe.
+ */
+async function cmdPanelAddress(arg: string) {
+  const servers = await getDb()
+    .select({
+      id: serversTable.id,
+      name: serversTable.name,
+      host: serversTable.host,
+      ip: serversTable.ip,
+    })
+    .from(serversTable);
+  const self = deploHostSelfAddresses();
+  const server =
+    servers.find((s) => isDeploHostServer(s, self)) ??
+    (servers.length === 1 ? servers[0] : null);
+  if (!server)
+    fail(
+      `Cannot tell which server runs Deplo. Set DEPLO_SERVER_IP to its address and try again. Known: ${servers.map((s) => s.name).join(", ") || "none"}.`,
+    );
+
+  const { fetchHostInfo, applyTraefikConfig } =
+    await import("../lib/infra/agent-client");
+  const yaml = (await fetchHostInfo(server.id)).traefikComposeYaml;
+  const current = yaml ? panelRoute(yaml) : null;
+  if (!current)
+    fail(
+      `${server.name} does not publish the panel through a route Deplo manages, so there is nothing here to move.`,
+    );
+
+  const generated = arg === "-";
+  let domain: string;
+  let https = current.https;
+  if (generated) {
+    domain = panelFallbackHost(isIpv4(server.ip ?? "") ? server.ip : undefined);
+    if (!nipEmbeddedIp(domain))
+      fail(
+        `Deplo cannot work out the generated address on ${server.name}. Pass a domain instead.`,
+      );
+  } else {
+    let parsed: URL;
+    try {
+      parsed = new URL(/^https?:\/\//i.test(arg) ? arg : `https://${arg}`);
+    } catch {
+      fail(`"${arg}" is not an address. Use a domain like deplo.example.com`);
+    }
+    domain = parsed.hostname;
+    https = parsed.protocol === "https:";
+  }
+
+  const res = await applyTraefikConfig(server.id, {
+    composeYaml: withPanelRoute(yaml, { ...current, domain, https }),
+  });
+  if (!res.ok)
+    fail(res.error || `The proxy on ${server.name} refused the new address`);
+
+  const url = `${https ? "https" : "http"}://${domain}`;
+  const now = new Date().toISOString();
+  // The generated address is the backup address: putting the panel back on it
+  // while it is switched off would leave the two disagreeing.
+  const set = {
+    panelUrl: url,
+    updatedAt: now,
+    ...(generated ? { panelFallbackDisabled: false } : {}),
+  };
+  await getDb()
+    .insert(instanceSettings)
+    .values({ id: "default", ...set })
+    .onConflictDoUpdate({ target: instanceSettings.id, set });
+
+  console.log(
+    `\n  panel: ${current.domain} -> ${domain} (${https ? "https" : "http"})`,
+  );
+  if (generated) console.log("  backup address turned back on");
+  console.log(
+    "  Restart Deplo so install commands and links carry the new address.\n",
+  );
+}
+
 async function main() {
   const [command, handle, extra, extra2] = process.argv.slice(2);
   if (!command || command === "help" || command === "--help")
     return void console.log(`\n${USAGE}\n`);
 
   if (command === "list") return cmdList();
+  if (command === "panel-address") {
+    if (!handle) fail(`\`panel-address\` needs an address.\n\n${USAGE}`);
+    return cmdPanelAddress(handle);
+  }
   if (!handle)
     fail(
       `\`${command}\` needs a ${command === "server-address" ? "server" : "username"}.\n\n${USAGE}`,

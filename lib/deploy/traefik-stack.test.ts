@@ -753,6 +753,17 @@ test("a panel that IS the generated host gets one router, not two identical ones
   assert.equal(panelRoute(out)?.fallbackDomain, null);
 });
 
+test("turning the backup address off drops that router and nothing else", () => {
+  const off = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    fallbackDomain: null,
+  });
+  const routers = panelFileOf(off).http.routers;
+  assert.equal(routers["deplo-panel"].rule, "Host(`deplo.example.com`)");
+  assert.equal(routers["deplo-panel-fallback"], undefined);
+  assert.equal(panelRoute(off)?.target, PANEL_ROUTE.target);
+});
+
 test("the panel's target is read live, never assumed", () => {
   // A panel running on the host rather than in a container (the from-source
   // setup) is reached through the docker gateway. Re-rendering it from a

@@ -44,8 +44,10 @@ import {
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { CopyButton } from "@/components/shared/copy-button";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
+import { DocsLink } from "@/components/ui/docs-link";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
 import {
@@ -182,8 +184,11 @@ export function DeploSettingsPanel({
               hosts={hosts}
             />
           </div>
-          {/* Last: the most consequential switch on the page, same reason the
-              ownership card sits at the bottom of General. */}
+          {/* Last, and in that order: the two switches that decide how the panel
+              itself is reachable, least consequential first. */}
+          <div className="lg:col-span-2">
+            <PanelBackupAddressCard settings={settings} />
+          </div>
           <div className="lg:col-span-2">
             <PanelHttpCard />
           </div>
@@ -330,6 +335,7 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
         <PanelFallbackRow
           url={settings.panelFallbackUrl}
           panelUrl={settings.panelUrl}
+          disabled={settings.panelFallbackDisabled}
         />
       </CardContent>
 
@@ -435,9 +441,11 @@ function PanelDnsBlock({
 function PanelFallbackRow({
   url,
   panelUrl,
+  disabled,
 }: {
   url: string | null;
   panelUrl: string;
+  disabled: boolean;
 }) {
   const [revealed, setRevealed] = React.useState(false);
   // Nothing to say when the panel is already reached this way: it would be the
@@ -449,29 +457,32 @@ function PanelFallbackRow({
         <div className="flex items-center gap-2 text-sm font-medium">
           <LifeBuoy className="size-4 text-muted-foreground" />
           Backup address
-          <Badge variant="muted">Always on</Badge>
+          <Badge variant="muted">{disabled ? "Off" : "Always on"}</Badge>
           <InfoTip
             content="Deplo generates this address from the server's own IP, so it resolves here with no DNS to set up. Use the address above day to day."
             docs="panel.address"
           />
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Works even when the domain above stops answering. It cannot be turned
-          off.
+          {disabled
+            ? "Turned off under Advanced. The panel answers on the address above and nowhere else."
+            : "Works even when the domain above stops answering."}
         </p>
       </div>
-      <div className="flex w-full items-center gap-1">
-        <RevealChip
-          value={url}
-          revealed={revealed}
-          onToggle={() => setRevealed((v) => !v)}
-          labels={{
-            reveal: "Reveal the backup address",
-            hide: "Hide the backup address",
-          }}
-        />
-        <CopyButton value={url} />
-      </div>
+      {!disabled && (
+        <div className="flex w-full items-center gap-1">
+          <RevealChip
+            value={url}
+            revealed={revealed}
+            onToggle={() => setRevealed((v) => !v)}
+            labels={{
+              reveal: "Reveal the backup address",
+              hide: "Hide the backup address",
+            }}
+          />
+          <CopyButton value={url} />
+        </div>
+      )}
     </div>
   );
 }
@@ -558,6 +569,117 @@ function PanelServingRow({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * The generated backup address, and the one switch that takes it away.
+ */
+function PanelBackupAddressCard({ settings }: { settings: InstanceSettings }) {
+  const router = useRouter();
+  const [confirming, setConfirming] = React.useState(false);
+  const [pending, startTransition] = React.useTransition();
+
+  const url = settings.panelFallbackUrl;
+  const off = settings.panelFallbackDisabled;
+  // Turning it off here would leave no route at all: it IS the address.
+  const isOwnAddress = !!url && url === settings.panelUrl;
+
+  async function apply(enabled: boolean) {
+    const res = await gqlAction(
+      `mutation SetPanelFallback($enabled: Boolean!) {
+        setPanelFallback(enabled: $enabled) { panelFallbackDisabled }
+      }`,
+      { enabled },
+    );
+    if (res.ok) router.refresh();
+    return res;
+  }
+
+  function toggle(turningOff: boolean) {
+    if (turningOff) return setConfirming(true);
+    startTransition(async () => {
+      const res = await apply(true);
+      if (!res.ok) toast.error(res.error);
+      else toast.success(`The panel answers at ${hostPart(url ?? "")} again`);
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <LifeBuoy className="size-4 text-muted-foreground" />
+          Backup address
+        </CardTitle>
+        <CardDescription>
+          The generated address that answers when your domain does not.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border border-border p-3">
+          {!url ? (
+            <p className="text-sm text-muted-foreground">
+              Add this server under Settings, Servers and Deplo generates one.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-sm">{hostPart(url)}</span>
+                <Badge variant="muted">{off ? "Off" : "On"}</Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {isOwnAddress
+                  ? "This is the panel's own address right now. Give it a domain first."
+                  : off
+                    ? "It routes nowhere. Your domain is the only way to the panel."
+                    : "It resolves to this server, so it answers with no DNS to set up."}
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <FieldLabel
+            htmlFor="panel-fallback"
+            info="Recovering a panel whose domain broke then means a command on the server, over SSH."
+            docs="panel.backupAddress"
+          >
+            Turn the backup address off
+          </FieldLabel>
+          <Switch
+            id="panel-fallback"
+            checked={off}
+            disabled={pending || !url || isOwnAddress}
+            onCheckedChange={toggle}
+            aria-label="Turn the backup address off"
+          />
+        </div>
+      </CardContent>
+
+      <ConfirmAction
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Turn the backup address off?"
+        description={
+          <>
+            The panel answers at{" "}
+            <strong>{hostPart(settings.panelUrl)} and nowhere else</strong>.
+          </>
+        }
+        consequence={
+          <>
+            If that domain, its DNS or its certificate breaks, the way back in
+            is a command on the server, over SSH.{" "}
+            <DocsLink topic="panel.backupAddress" />
+          </>
+        }
+        confirmLabel="Turn it off"
+        successMessage={`${hostPart(url ?? "")} no longer reaches the panel`}
+        onConfirm={() => apply(false)}
+      />
+    </Card>
   );
 }
 
