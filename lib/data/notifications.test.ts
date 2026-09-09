@@ -24,6 +24,7 @@ import {
   deleteNotificationChannel,
   listNotificationChannels,
   parseChannelInput,
+  deliveryReason,
   saveNotificationChannel,
   subscribeWebPush,
 } from "./notifications";
@@ -420,4 +421,31 @@ test("a team cannot grow an unbounded fan-out", async () => {
     );
   });
   assert.equal((await db.select().from(notificationChannels)).length, 25);
+});
+
+/**
+ * A test send that fails has to say WHY: `fetch` answers "fetch failed" and puts
+ * the reason on `cause`, so a bad certificate and a refused connection read the
+ * same without unwrapping it.
+ */
+test("a delivery failure names its cause, not just 'fetch failed'", () => {
+  const tls = new TypeError("fetch failed", {
+    cause: new Error("unable to verify the first certificate"),
+  });
+  assert.match(deliveryReason(tls), /fetch failed/);
+  assert.match(deliveryReason(tls), /verify the first certificate/);
+
+  const refused = Object.assign(
+    new Error("connect ECONNREFUSED 10.0.0.1:8443"),
+    {
+      code: "ECONNREFUSED",
+    },
+  );
+  const wrapped = new TypeError("fetch failed", { cause: refused });
+  assert.match(deliveryReason(wrapped), /ECONNREFUSED/);
+
+  assert.equal(
+    deliveryReason("not an error"),
+    "The channel could not be reached",
+  );
 });

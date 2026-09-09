@@ -512,19 +512,40 @@ export async function sendTestNotification(channelId: string): Promise<void> {
   if (typeof target === "string") throw new Error(target);
   // The same deadline the dispatcher gives a channel: a settings-page mutation
   // must not hang on a destination that accepts the connection and goes quiet.
-  await sendToChannel(
-    target,
-    {
-      // A success key on purpose: the Discord embed colours itself from the
-      // key, and a red stripe on "wired up correctly" reads as a failure.
-      key: "deployment_succeeded",
-      title: "Deplo test alert",
-      body: "This channel is wired up correctly.",
-      url: null,
-      ts: new Date().toISOString(),
-    },
-    AbortSignal.timeout(CHANNEL_TIMEOUT_MS),
-  );
+  try {
+    await sendToChannel(
+      target,
+      {
+        // A success key on purpose: the Discord embed colours itself from the
+        // key, and a red stripe on "wired up correctly" reads as a failure.
+        key: "deployment_succeeded",
+        title: "Deplo test alert",
+        body: "This channel is wired up correctly.",
+        url: null,
+        ts: new Date().toISOString(),
+      },
+      AbortSignal.timeout(CHANNEL_TIMEOUT_MS),
+    );
+  } catch (e) {
+    throw new Error(deliveryReason(e));
+  }
+}
+
+/**
+ * Why a send failed, in words. `fetch` throws "fetch failed" and hides the real
+ * reason on `cause` - a bad certificate, a refused connection, a name that does
+ * not resolve all read identically without it, and the operator is left guessing.
+ */
+export function deliveryReason(e: unknown): string {
+  const seen: string[] = [];
+  let cur: unknown = e;
+  for (let depth = 0; depth < 5 && cur instanceof Error; depth++) {
+    const code = (cur as NodeJS.ErrnoException).code;
+    for (const part of [cur.message, code])
+      if (part && !seen.includes(part)) seen.push(part);
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return seen.join(" - ") || "The channel could not be reached";
 }
 
 /** The instance's VAPID public key, minted on first use. Public by design. */
