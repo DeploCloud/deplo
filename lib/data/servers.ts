@@ -1306,6 +1306,14 @@ export async function renameServer(id: string, name: string): Promise<Server> {
  */
 export type ServerRole = "everything" | "build" | "storage" | "import";
 
+/** Every role the wire may name. The arg is a plain string, so it has to be checked. */
+export const SERVER_ROLES: readonly ServerRole[] = [
+  "everything",
+  "build",
+  "storage",
+  "import",
+];
+
 /** The stored flags as one word. */
 export function serverRole(
   s: Pick<Server, "storageOnly" | "buildOnly" | "importOnly">,
@@ -1326,6 +1334,12 @@ export async function setServerRole(
   role: ServerRole,
 ): Promise<Server> {
   await requireInstanceAdmin();
+  // An unknown role must be refused: falling through would clear both flags and
+  // put a build-only or backups-only host silently back into service.
+  if (!SERVER_ROLES.includes(role))
+    throw new Error(
+      `Unknown server role "${role}". Pick "everything", "build" or "storage".`,
+    );
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);

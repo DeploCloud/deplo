@@ -64,6 +64,17 @@ test("an empty server can take any role, and come back", async () => {
   });
 });
 
+test('an unknown role is refused, not read as "everything"', async () => {
+  await asOwner(async () => {
+    await setServerRole(SERVER_1, "build");
+    await assert.rejects(
+      () => setServerRole(SERVER_1, "backups" as never),
+      /Unknown server role/,
+    );
+    assert.equal(serverRole((await getServerById(SERVER_1))!), "build");
+  });
+});
+
 test("the two specialised roles are exclusive in the row, not just in the UI", async () => {
   await asOwner(async () => {
     await setServerRole(SERVER_1, "build");
