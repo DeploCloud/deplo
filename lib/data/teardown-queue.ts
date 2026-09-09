@@ -16,37 +16,14 @@ import { mapLimit } from "../utils";
 import { recordActivity } from "./activity";
 
 /**
- * The teardown queue: a stack that must die, kept until the host says it did.
- *
- * Deleting an App used to tear its stack down best-effort and drop the row
- * regardless, so an unreachable host kept the containers and the volumes and the
- * only trace was an Activity line asking somebody to go remove them by hand.
- * Nothing retried, nothing counted, and for a preview of a deleted app or a
- * deleted team's stacks not even a row survived that could name what is still
- * running. A row here IS the intent, and it outlives both the app row and the
- * team.
- *
- * Three rules make it safe:
- *
- *  1. **Write-ahead.** The row is inserted BEFORE the agent is dialed. A control
- *     plane killed mid-teardown does not get to run a catch block, and a team
- *     delete drops its own rows before the fan-out starts.
- *  2. **Identity, never the slug.** `apps_slug_uq` is global: a deleted slug can
- *     be taken by a new app on the same server within the hour. Every attempt
- *     asks the host what still carries the DOOMED thing's `deplo.project` label
- *     ({@link TeardownEntry.projectLabel}) - a reclaimed key answers "nothing of
- *     ours" and the row is dropped without a destructive call.
- *  3. **Verify, never trust `ok`.** The agent's DestroyStack lies in both
- *     directions: its fallback force-removes a container named `deplo-<slug>`,
- *     which matches neither a compose stack's `deplo-<slug>-<svc>-1` nor a
- *     database's `<host>`, and reports success; and once a successful teardown
- *     has swept the stack file, a later `down -v` on the missing file reports
- *     FAILURE for a host that is already clean. Only the container list decides.
+ * The teardown queue: a stack that must die, kept until the host says it did. A
+ * row IS the intent and outlives both the app row and the team. Three rules make
+ * it safe: written BEFORE the agent is dialed; matched on the `deplo.project`
+ * LABEL, never the reusable slug; and verified on the container list, because
+ * DestroyStack's `ok` lies in both directions.
  *
  * ponytail: the verdict covers containers, not volumes - no agent RPC lists
- * volumes. A stack whose containers are gone but whose named volumes survived an
- * older `down` without `-v` still reads as clean. Upgrade path: a ListVolumes
- * RPC, then check both here.
+ * volumes. Upgrade path: a ListVolumes RPC, then check both here.
  */
 
 /** One stack that must be destroyed on one host. */

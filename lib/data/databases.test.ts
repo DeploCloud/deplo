@@ -644,15 +644,10 @@ test("updateDatabaseLogo: set, clear, validate, and stay team-scoped", async () 
 /* ------------------------------------------------------------------ */
 
 /**
- * The password lands in a command line the agent may run through a shell
- * (`ExecRequest.command` is documented as "shell-interpreted or argv"), so a
- * value that closes a quote used to be arbitrary code execution inside the
- * database container for anyone holding `configure_databases`, which does NOT
- * include `open_database_console`.
- *
- * The command is now assembled with shell/SQL quoting instead of a character
- * blocklist, and this proves it by running the result through a REAL shell: what
- * comes out has to be the statement, byte for byte, and nothing else may run.
+ * The password lands in a command line the agent may run through a shell, so a
+ * value that closes a quote was arbitrary code execution for anyone holding
+ * `configure_databases`. Proved by running the assembled command through a REAL
+ * shell: what comes out has to be the statement and nothing else.
  */
 test("rotationExecCommand: a hostile password never escapes its quotes", () => {
   const db = {
@@ -727,14 +722,10 @@ test("rotationExecCommand: mariadb is driven by the mariadb client, mysql by mys
 /* ------------------------------------------------------------------ */
 
 /**
- * The account policy bounds a password a PERSON chose. An import carries
- * another platform's generated token, and running the policy over that one
- * refused practically every Dokploy database (they are alphanumeric, so "at
- * least 1 special character" alone was enough) - after which the import minted
- * a fresh password and every connection string that still spells out the old
- * one stopped working. What the connection string itself cannot carry stays
- * refused on both paths: that check is about the URL and the env-file, not
- * about strength.
+ * The account policy bounds a password a PERSON chose. An import carries another
+ * platform's generated token, and running the policy over it refused practically
+ * every one - after which the import minted a fresh password and broke every
+ * connection string. What the URL cannot carry stays refused on both paths.
  */
 test("createDatabase: the password policy is for a chosen password, not an imported one", async () => {
   await asUser1(async () => {
@@ -772,15 +763,10 @@ test("createDatabase: the password policy is for a chosen password, not an impor
 });
 
 /**
- * A host port is a singleton on the machine, and the agent's bind probe cannot
- * see one that has been CLAIMED but is not yet listening.
- *
- * Two databases created in a row - which is exactly what an import does, several
- * at once, each carrying the port it had on the other platform - both passed that
- * probe, because the first one's container is provisioned in the background and
- * has not bound anything yet. Both rows were written, and whichever started
- * second failed at `compose up` with nobody having been told. The row is the
- * second half of the check, and it is the half nothing had.
+ * A host port is a singleton, and the agent's bind probe cannot see one CLAIMED
+ * but not yet listening. Two databases created in a row - what an import does -
+ * both passed it, and whichever started second failed at `compose up` with nobody
+ * told. The row is the second half of the check.
  */
 test("a host port another database has reserved is refused before anything listens", async () => {
   await seedServerRow(db, {

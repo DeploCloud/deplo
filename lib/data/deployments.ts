@@ -389,29 +389,13 @@ export async function reloadApp(
 /* ------------------------------------------------------------------ */
 
 /**
- * The deployments an app can be put back on, as ids.
+ * The deployments an app can be put back on, as ids. Rollback re-runs an image a
+ * previous build LEFT ON THE HOST - Deplo pushes to no registry - so the offer has
+ * to match what retention kept: its own image, succeeded, production, same server,
+ * inside `rollback_keep`, and not the one already running.
  *
- * Rollback runs an image a previous build LEFT ON THE HOST - Deplo pushes to no
- * registry, so what is offered has to match what retention actually kept. Five
- * conditions, and each one is a different way of being gone:
- *
- *  - it produced its own image (`image_ref`, and `rollback_of` null - a rollback
- *    row re-runs someone else's image and never adds one to the host, so it must
- *    not occupy a slot when ranking);
- *  - it SUCCEEDED, and is a production build (a preview stack is torn down with
- *    its pull request);
- *  - it ran on the server the app is on TODAY (images do not follow an app across
- *    a host move);
- *  - it is inside the app's retention window - the newest `rollback_keep` builds
- *    behind the one that is live, which is exactly what the per-slug map tells the
- *    host to keep;
- *  - it is not the image already running, which would be a deploy that changes
- *    nothing.
- *
- * ponytail: ranks SUCCESSFUL builds, while the host ranks IMAGES - a failed build
- * that got as far as tagging one occupies a slot here invisibly, so a target at
- * the very edge of the window can still be gone. The failure is safe and legible
- * (compose reports the missing image, the running container is untouched), and the
+ * ponytail: ranks SUCCESSFUL builds while the host ranks IMAGES, so a target at
+ * the very edge of the window can still be gone. The failure is legible, and the
  * exact answer needs an image-listing RPC the agent does not have.
  */
 function rollbackTargetIds(

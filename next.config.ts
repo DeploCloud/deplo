@@ -39,12 +39,10 @@ const nextConfig: NextConfig = {
   // resources; see devOrigins() above. Ignored in production builds.
   allowedDevOrigins: devOrigins(),
   // Keep native/server-only packages out of the bundler so their dynamic
-  // requires resolve correctly at runtime. node-pty loads a native .node
-  // (the interactive attach PTY); the Dockerfile rebuilds it for the runtime.
+  // requires resolve correctly at runtime.
   serverExternalPackages: [
     "pg",
     "better-auth",
-    "node-pty",
     // Alert delivery: both reach for node crypto/net and must not be bundled.
     "nodemailer",
     "web-push",

@@ -134,13 +134,10 @@ function curlFlags(insecure?: boolean): string {
 }
 
 /**
- * Read the sha256 fingerprint of the cert the control plane's own public URL
- * serves. Empty over plain HTTP, where the agent uses the HMAC path instead.
- *
- * Over HTTPS it THROWS rather than answering empty: the agent refuses to start
- * without a pinned fingerprint ("HTTPS control plane requires a pinned
- * fingerprint"), so a command minted without one is a command that cannot work,
- * handed over with a green "the agent is calling home".
+ * Read the sha256 fingerprint of the cert the control plane's public URL serves.
+ * Empty over plain HTTP, where the agent uses the HMAC path. Over HTTPS it THROWS
+ * rather than answering empty: the agent refuses to start without a pinned
+ * fingerprint, so a command minted without one is one that cannot work.
  */
 export async function controlPlaneCert(
   baseUrl: string,

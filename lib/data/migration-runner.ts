@@ -110,12 +110,9 @@ export interface StartRunInput {
   /** Dokploy machine id (`''` for its own host) to the Deplo server it lands on. */
   servers: { from: string; to: string }[];
   /**
-   * Another team of the SAME panel is queued behind this run, so the agents on
-   * the source machines are not this run's to remove - the next team reads the
-   * same disks. See `migration_runs.keep_sources`.
-   *
-   * Derived from `queued` when that is given: the last team of a walk is the one
-   * that clears them, and nothing outside this function decides which that is.
+   * Another team of the SAME panel is queued behind this run, so the source
+   * agents are not this run's to remove. Derived from `queued`: the last team of
+   * a walk is the one that clears them.
    */
   keepSources?: boolean;
   /**
@@ -546,13 +543,9 @@ async function setProgress(
 }
 
 /**
- * Close a run as failed, say why, forget the key - and take it back out. There
- * used to be a panel offering to keep it; there is not any more, so leaving the
- * debris would leave it with nothing to remove it.
- *
- * Debris is a CONFIG phase that could not finish. Once the data phase has begun,
- * everything the run created is the user's new infrastructure: undoing it over a
- * volume that would not copy left the old platform stopped and the new one empty.
+ * Close a run as failed, say why, forget the key - and take it back out, since
+ * nothing else would. Debris is a CONFIG phase that could not finish: once the
+ * data phase has begun, what the run created is the user's new infrastructure.
  */
 async function failRun(row: RunRow, why: string): Promise<void> {
   // The phase it broke IN. `row` is the snapshot the tick opened with, and the
@@ -695,10 +688,8 @@ async function stopped(runId: string): Promise<boolean> {
 
 /**
  * A Stop, honoured. In the config phase it is total - apps, databases, projects,
- * variables, and Deplo's agent off the source machines (see `stopMigration`). In
- * the DATA phase what was created is the person's new infrastructure: it is
- * kept, every service whose data is not here is marked so, the agents stay for
- * the next attempt, and what this run stopped on the panel is started again.
+ * variables, and Deplo's agent off the source machines. In the DATA phase what was
+ * created is kept, marked, and the source's services are started again.
  */
 async function stopRun(runId: string): Promise<void> {
   const [row] = await getDb()

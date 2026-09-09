@@ -673,12 +673,9 @@ export async function requireAppCapability(
 
 /**
  * Everything the caller may do to ONE app - the read-side twin of {@link
- * requireAppCapability}, answering `[]` instead of throwing when the app isn't
- * reachable (gone, another team, out of the token's scope, in a folder they can't
- * see, or they aren't a member at all). **`[]` means "no access", never
- * "read-only"** - `view` is implied for anyone who can reach the app - so this
- * doubles as the visibility test that keeps an app inside a private folder out of
- * the UI entirely.
+ * requireAppCapability}, answering `[]` instead of throwing when the app is not
+ * reachable. **`[]` means "no access", never "read-only"** (`view` is implied), so
+ * this doubles as the test that keeps a private folder's apps out of the UI.
  */
 export const appCapabilities = cache(async function appCapabilities(
   appId: string,

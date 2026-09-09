@@ -164,11 +164,9 @@ export function nextCronRunInZone(
  * Does this expression name specific HOURS? The only schedules a repeated
  * (fall-back) hour can double-fire.
  *
- * ponytail: a STEPPED hour ("every 6 hours") counts as an interval here, so if a
- *   zone's repeated hour happens to land on one of its steps the job fires twice,
- *   once a year. That is the safe direction - this branch can never SUPPRESS a
- *   legitimate fire, only allow an extra one. Upgrade: treat a step of n hours
- *   where `24 % n !== 0` as pinned.
+ * ponytail: a STEPPED hour counts as an interval, so a repeated hour landing on a
+ *   step fires twice, once a year - the safe direction. Upgrade: treat a step of
+ *   n hours where `24 % n !== 0` as pinned.
  */
 export function pinsHour(expr: string): boolean {
   const hour = expandCronMacro(expr).trim().split(/\s+/)[1] ?? "*";
@@ -213,21 +211,12 @@ export function canonicalTimeZone(tz: string): string | null {
 
 /**
  * The wall clock `tz` DELETES at its next spring-forward, as fake-UTC instants
- * (`[start, end)`, so `start` is the first minute that never happens). Null for a
- * zone that has no such jump in the next 13 months.
+ * (`[start, end)`). Found rather than guessed - monthly probes then a binary
+ * search - because a January/July shortcut is wrong for Africa/Casablanca, which
+ * is UTC+1 in both and still deletes an hour coming off its Ramadan offset.
  *
- * Found rather than guessed: monthly probes for the pair of months whose offsets
- * differ upward, then a binary search over minutes for the exact transition. ~30
- * `Intl` reads on a zone that moves, 14 on one that doesn't.
- *
- * The scan is the ONLY test - a "does this zone use DST?" shortcut comparing
- * January to July is wrong for Africa/Casablanca, which is UTC+1 in both and
- * still deletes an hour when it comes back off its Ramadan offset.
- *
- * ponytail: reports the FIRST spring-forward ahead, which is the one a schedule
- *   meets first. A zone with two of them in the window (Africa/Casablanca pauses
- *   DST for Ramadan) can hold a second gap this does not name. Upgrade: return
- *   the list and warn on each.
+ * ponytail: reports the FIRST spring-forward ahead. A zone with two in the window
+ *   can hold a second gap this does not name. Upgrade: return the list.
  */
 function springForwardGap(
   tz: string,

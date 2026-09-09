@@ -141,22 +141,13 @@ function assertFullName(fullName: string): string {
 const REQUEST_TIMEOUT_MS = 15_000;
 
 /**
- * A fetch that gives up rather than hanging on an unreachable host, and that
- * NEVER follows a redirect.
+ * A fetch that gives up rather than hanging, and NEVER follows a redirect. The
+ * base URL is SSRF-checked once, when the connection is saved; a 302 is the way
+ * out of that check (`Location: http://169.254.169.254/…`), and `redirect:
+ * "manual"` closes it - what lib/outbound-url.ts documents every dialer as doing.
  *
- * The base URL is checked for SSRF once, when the connection is saved
- * (`assertSafeOutboundUrl` in lib/data/git-connections.ts). A 302 is the way out
- * of that check: the host passes as a public address and then answers every
- * subsequent call with `Location: http://169.254.169.254/…`, which this module
- * would dial and, worse than the usual blind case, hand back in `call`'s error
- * message. `redirect: "manual"` closes it in one line, and is what
- * `lib/outbound-url.ts` documents every dialer as doing (the notification
- * channels already did).
- *
- * ponytail: a redirect is refused, not re-validated. Every provider API here
- * answers 200 directly; if a host is ever found that legitimately redirects
- * (a raw-file CDN hop), follow it manually and put each `Location` through the
- * outbound guard rather than turning this back on.
+ * ponytail: a redirect is refused, not re-validated. If a host is ever found that
+ * legitimately redirects, put each `Location` through the outbound guard instead.
  */
 function timedFetch(target: string, init: RequestInit): Promise<Response> {
   return fetch(target, {

@@ -52,15 +52,10 @@ export function isGithubRepo(
 }
 
 /**
- * WHICH pile of files an app's icon is detected from - the single dispatch both
- * the detector and the settings UI read, so the "Detect from source" button is
- * offered exactly when the server can actually scan something. - `github`: the
- * repo's own tree, read over the GitHub API. - `upload`: the uploaded archive,
- * extracted control-plane-side. - `app-files`: the app's files dir ON ITS OWNING
- * SERVER: a **compose stack** has no repo and no archive, its files are the
- * `<stacks>/files/<slug>` tree its `./x` bind mounts resolve into,
- * so that is where its own web assets, favicon included, actually live. - `none`:
- * a prebuilt docker image and nothing else: no files to scan.
+ * WHICH pile of files an app's icon is detected from - the single dispatch the
+ * detector and the settings UI both read, so "Detect from source" is offered
+ * exactly when there is something to scan. `app-files` is the compose stack's
+ * case: no repo, no archive, its `./x` binds resolve into the files dir.
  */
 export type FaviconSourceKind =
   | "github"

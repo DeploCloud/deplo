@@ -557,14 +557,9 @@ async function resolveTarget(
 }
 
 /**
- * Refuse to dump a workload that is already being dumped.
- *
- * Two runs five seconds apart tarred one 61 GB volume in parallel: twice the read,
- * twice the host load, for one artifact's worth of value. Read from the ROW rather
- * than from memory, so a second control plane on the same database is caught too -
- * which is what two schedulers double-firing looks like. Bounded by the same
- * window `reconcileInFlightBackupRuns` uses, so a run left `running` by a dead
- * process cannot block this target for good.
+ * Refuse to dump a workload that is already being dumped: two runs five seconds
+ * apart tarred one 61 GB volume in parallel. Read from the ROW, so a second
+ * control plane on the same database is caught, and bounded by the same window.
  */
 async function assertNotAlreadyBackingUp(
   teamId: string,
@@ -1302,71 +1297,25 @@ export async function restoreBackup(runId: string): Promise<void> {
 }
 
 /**
- * Targets with an upload restore streaming into them right now.
- *
- * Two of these at once would untar into the same volumes while the other is
- * wiping them, and neither would be the backup anyone asked for. The second
- * caller is refused rather than queued: it is holding a file open in a browser,
- * and "wait for the other one" is an answer it can act on. Same shape and same
- * reasoning as `uploadsInFlight` in app/api/apps/[id]/upload/route.ts -
- * sufficient because the control plane is a single Node process.
+ * Targets with an upload restore streaming into them right now. Two at once would
+ * untar into the same volumes while the other wipes them. The second caller is
+ * refused, not queued - it is holding a file open in a browser.
  */
 const uploadRestoresInFlight = new Set<string>();
 
 /**
- * The dumps this process is currently driving, by run id, so "Stop" can reach
- * one that is already halfway through a 25 GB tar.
- *
- * Aborting the controller closes the agent connection, which cancels the gRPC
- * call, which cancels the stream context the agent's own write loop checks - so
- * the work actually stops ON THE HOST rather than being merely un-recorded here.
- * That is the difference from `cancelDeployment`, which can only flag the row and
- * let the build finish in the background: a backup's stream is one this process
- * holds open, so it has the lever.
- *
- * MODULE-LEVEL and in-memory, the same shape and the same reasoning as
- * `uploadRestoresInFlight`: the control plane is a single Node process. A run
- * this process does not hold (it restarted, or another instance owns it) is
- * still marked canceled - the record is the part that must always settle, and
- * `reconcileInFlightBackupRuns` sweeps whatever is left.
+ * The dumps this process is driving, by run id, so "Stop" can reach one halfway
+ * through a 25 GB tar: aborting the controller cancels the gRPC stream the agent's
+ * write loop checks, so the work stops ON THE HOST. In-memory, single process; a
+ * run this process does not hold is still marked canceled, then swept.
  */
 const backupRunsInFlight = new Map<string, AbortController>();
 
 /**
- * Restore an app or a database from an artifact the operator UPLOADS, rather
- * than from a run this instance recorded.
- *
- * This is the only recovery path that survives losing the control plane. Every
- * other restore starts from a `backup_runs` row: it knows the destination, the
- * object key and the digest. When the instance is gone, or the destination was
- * deleted, those rows are gone too and the artifacts on the disk or in the
- * bucket become unreachable through Deplo - which is exactly the moment a backup
- * is supposed to be worth something.
- *
- * Everything that can refuse, refuses BEFORE the agent is dialed: the capability,
- * the lock, and then the artifact itself (see {@link sniffArtifact} - the wrong
- * file or the wrong key would otherwise be discovered after the stack is stopped
- * and the volumes are wiped).
- *
- * The bytes never touch a disk on the way through. Encrypted uploads travel to
- * the agent exactly as they arrived, with the operator's key alongside them; a
- * PLAINTEXT upload - which is what Deplo's own Download hands out - is wrapped
- * here with an EPHEMERAL age keypair that exists only for the length of this
- * request, because the agent's RestoreFrom has no unencrypted mode.
- *
- * Returns the live event stream, so the caller can relay the agent's own log
- * lines to whoever is watching. All the gates run before it, so a refusal is a
- * thrown error the route can map to a status code, not a failed event. Abandoning
- * the stream (`return()`) is the abort: it runs the same cleanup a finished
- * restore does, which is what a browser closing mid-restore comes down to.
- *
- * `abandon()` is the SAME cleanup, reachable without the stream. It exists
- * because an async generator that was never pulled runs no `finally` at all: a
- * browser that goes away between this resolving and the response's first read
- * would leave the restore running on the host with its lock held for the life of
- * the process, the target parked on `restoring`, and - the part that actually
- * matters - a destructive operation with no entry in the Activity trail.
- * Idempotent, so the route can call both without settling twice.
+ * Restore an app or a database from an artifact the operator UPLOADS - the only
+ * recovery path that survives losing the control plane. Everything that can
+ * refuse refuses BEFORE the agent is dialed, and the bytes never touch a disk.
+ * `abandon()` is the same cleanup for a stream nobody pulled (no `finally` runs).
  */
 export async function prepareUploadRestore(input: {
   kind: BackupTargetKind;
@@ -1512,18 +1461,10 @@ export async function prepareUploadRestore(input: {
 }
 
 /**
- * Why an UPLOADED artifact must not be restored into this target, or null when
- * it may proceed. Pure, so the rule it encodes can be read and tested on its own.
- *
- * NOT the security boundary - that is the `untrusted_config` flag the upload
- * carries, which stops the agent taking compose, env or mounts out of an archive
- * that came from outside the fleet at all. This is the second line, and it is
- * here for a plainer reason: an app that was never deployed on its host has no
- * stack, so there is no container and no volume for the data to land in. Better
- * to say that than to accept the file, unpack it into nothing and report success.
- *
- * The descriptor's compose IS the stack file read off the host, which is why its
- * emptiness is the test for "never deployed here".
+ * Why an UPLOADED artifact must not be restored into this target, or null. NOT
+ * the security boundary (that is the `untrusted_config` flag): an app never
+ * deployed on its host has no stack for the data to land in, and its descriptor's
+ * empty compose is the test for that.
  */
 export function uploadRestoreRefusal(target: {
   kind: BackupTargetKind;
@@ -1578,11 +1519,8 @@ async function* uploadChunks(
 
 /**
  * Wrap a plaintext upload for an agent that only restores encrypted artifacts.
- *
- * The keypair lives for this request and is never written anywhere: it is not a
- * secret anyone has to keep, only the shape RestoreFrom insists on. Pull-based
- * throughout, so the agent's flow control still paces the browser and the
- * control plane holds one chunk at a time regardless of the file's size.
+ * The keypair lives for this request only - the shape RestoreFrom insists on, not
+ * a secret to keep. Pull-based, so one chunk is held whatever the file's size.
  */
 async function wrapPlaintextUpload(source: AsyncIterable<Buffer>): Promise<{
   ageIdentity: string;
@@ -1727,11 +1665,9 @@ export async function toggleBackup(
 }
 
 /**
- * Edit a schedule's settings: name, destination, cron expression and retention.
- * The target binding (kind + database/project) is fixed at creation - pointing a
- * schedule at a different target is a different schedule, so it is not editable
- * here. The cron scheduler re-reads each schedule from the store every tick, so a
- * changed `schedule` takes effect on the next tick (no re-registration needed).
+ * Edit a schedule's settings: name, destination, cron and retention. The target
+ * binding is fixed at creation - pointing a schedule elsewhere is a different
+ * schedule. The scheduler re-reads every tick, so a new cron needs no re-register.
  */
 export async function updateBackup(
   id: string,
@@ -1795,25 +1731,10 @@ export async function deleteBackup(id: string): Promise<void> {
 }
 
 /**
- * Stop a backup that is running.
- *
- * Two things happen, and the ORDER is the point. The record is flipped first, as
- * a compare-and-swap on `running`, so the answer is settled the moment the button
- * is pressed and cannot be undone by the dump finishing a second later
- * ({@link executeBackup}'s terminal write is the matching half). Then the dump
- * itself is aborted, which closes the agent connection and cancels the stream
- * context the agent's own write loop checks - so the tar stops and the upload
- * stops, on the host, rather than running to completion into a bucket nobody
- * wants it in.
- *
- * Gated on `manage_backups`, the capability whose own description is "create,
- * edit, disable and RUN backup schedules on demand": stopping a dump you are
- * allowed to start is the same power, and needing a second permission to undo
- * your own click would be a trap rather than a safeguard. It destroys nothing -
- * a canceled run produced no restore point - so it is not `delete_backups`.
- *
- * Returns whether a run was actually stopped: `false` when it had already
- * finished, so the caller can avoid claiming otherwise.
+ * Stop a running backup. The ORDER is the point: the record is flipped first as a
+ * compare-and-swap on `running`, so the dump finishing a second later cannot undo
+ * it; then the stream is aborted, so the tar stops on the host. Gated on
+ * `manage_backups` - stopping a dump you are allowed to start is the same power.
  */
 export async function cancelBackupRun(runId: string): Promise<boolean> {
   const { membership } = await requireMembership();
@@ -1876,31 +1797,10 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
 }
 
 /**
- * Delete ONE backup, artifact and record together.
- *
- * The panel's per-row Delete, and the only way to retire a single restore point:
- * everything else here is wholesale (retention thins a target's history,
- * {@link deleteAllBackupArtifacts} runs when the target itself is deleted). An
- * operator who took a bad backup, or one carrying data that should not have
- * left, needs a way to remove exactly that one.
- *
- * Gated on `delete_backups`, its own capability and not `manage_backups`, for
- * the reason it is its own capability: this is the one verb in the backup
- * surface with no way back and nothing downstream to catch it. Scheduling a dump
- * and destroying the last copy of one are not the same permission, and an admin
- * handing out the first must not be handing out the second. An app's backup
- * answers to the app's own grant (ADR-0016) exactly like every other action on
- * it.
- *
- * The ORDER is the artifact first, the record second, and it is the same rule
- * `pruneRetention` follows: a record dropped while its object survives is an
- * orphan nothing can name any more - not the retention pass, not the sweep,
- * which both start from the row. A delete that fails therefore keeps the row and
- * says so.
- *
- * A `running` run is refused rather than deleted: its artifact does not exist
- * yet, so there is nothing to remove, and taking the row away would let the dump
- * land a file nothing on this instance could ever find.
+ * Delete ONE backup, artifact and record together - the only way to retire a
+ * single restore point. `delete_backups`, its own capability: it is the one verb
+ * here with no way back. Artifact FIRST, record second, or the object outlives
+ * everything that could name it. A `running` run is refused, not deleted.
  */
 export async function deleteBackupRun(runId: string): Promise<void> {
   const { membership } = await requireMembership();
@@ -1964,25 +1864,10 @@ export async function deleteBackupRun(runId: string): Promise<void> {
 }
 
 /**
- * Delete a target's artifacts in ONE destination - the "delete artifacts too"
- * branch of DB/project deletion. Returns the count removed; throws when the
- * destination cannot be reached, so the caller can abort rather than delete a
- * target over artifacts it could not clear.
- *
- * BY EXACT KEY, never by prefix, and that is the whole shape of this function.
- * A prefix is `deplo/<team>/<kind>/<target>/`, which says nothing about WHICH
- * destination wrote what is under it, and two `server` destinations on the same
- * host with no custom path resolve to the SAME managed folder. So the prefix
- * sweep, which believed itself scoped to one destination, deleted the other's
- * artifacts too and then dropped only its own run records: the exact pair of an
- * orphaned file and a restore point pointing at nothing that the scoping was
- * there to prevent. That is not a rare shape either - the team's auto-seeded
- * default lives in the managed folder, and the second destination someone adds
- * by hand usually lands beside it.
- *
- * The keys come from `backup_runs`, which is the only record of what this
- * destination actually wrote. A run whose delete FAILS keeps its record so the
- * next attempt can find the file again.
+ * Delete a target's artifacts in ONE destination. BY EXACT KEY, never by prefix:
+ * two `server` destinations on one host resolve to the SAME managed folder, so a
+ * prefix sweep deleted the other's artifacts and kept its records. The keys come
+ * from `backup_runs`; a failed delete keeps its row so the next attempt finds it.
  */
 export async function deleteBackupArtifacts(input: {
   kind: BackupTargetKind;
@@ -2041,16 +1926,9 @@ export async function deleteBackupArtifacts(input: {
     );
   const deleted = results.reduce((n, r) => n + r.deleted, 0);
 
-  // Drop the run records for THIS target in THIS destination - records in other
-  // destinations (whose artifacts survive) stay. Runs that never owned a file go
-  // too: nothing is orphaned by removing them.
-  //
-  // EXCEPT a `running` one. Its artifact does not exist yet, so it was not in the
-  // sweep above, and deleting its record means the dump finishes, the file
-  // lands, and nothing anywhere names it: a permanent orphan the sweep cannot see
-  // either, because there is no row left to find it by. (The terminal write would
-  // also come back empty.) Keeping the record leaves the run to fail or finish
-  // normally, and the FK cascade then turns it into an ordinary orphan.
+  // Drop the run records for THIS target in THIS destination; other destinations
+  // stay. EXCEPT a `running` one: its file does not exist yet, so dropping the row
+  // means the dump lands an artifact nothing anywhere can name.
   const removable = runs.filter((r) => r.status !== "running").map((r) => r.id);
   if (removable.length > 0)
     await getDb()
@@ -2060,14 +1938,9 @@ export async function deleteBackupArtifacts(input: {
 }
 
 /**
- * The `backup_runs` WHERE clause selecting one target (database OR project).
- *
- * On `target_id`, NOT on the `database_id` / `app_id` FKs, and that is the fix
- * for a whole class of silently leaked disk: those two are ON DELETE SET NULL,
- * so the moment an app or database was deleted every one of its runs stopped
- * matching here. Retention no longer saw them, no screen listed them, and their
- * artifacts sat on the destination forever with nothing left that could name
- * them. `target_id` is written at insert and outlives the row it names.
+ * The `backup_runs` WHERE clause selecting one target. On `target_id`, NOT on the
+ * `database_id`/`app_id` FKs: those are ON DELETE SET NULL, so a deleted target's
+ * runs stopped matching and their artifacts sat there with nothing to name them.
  */
 function runTargetWhere(kind: BackupTargetKind, targetId: string) {
   return and(
@@ -2077,14 +1950,9 @@ function runTargetWhere(kind: BackupTargetKind, targetId: string) {
 }
 
 /**
- * How many stored backup artifacts a single target still has - one per SUCCESSFUL
- * run (a `failed`/`running` run never wrote one). Team-scoped; exactly one target
- * selected by kind.
- *
- * Drives the delete dialog's "also delete backup artifacts" affordance, which is
- * hidden at 0: offering an operator a bucket sweep with nothing to sweep is both
- * confusing and the source of the "$targetKind got invalid value" regression the
- * checkbox used to fire regardless of whether any artifact existed.
+ * How many stored artifacts a target still has - one per SUCCESSFUL run.
+ * Team-scoped. Drives the delete dialog's "also delete backup artifacts", hidden
+ * at 0: offering a sweep with nothing to sweep also fired an invalid-value error.
  */
 export async function countBackupArtifacts(input: {
   kind: BackupTargetKind;
@@ -2129,21 +1997,10 @@ export async function backupDestinationsForTarget(input: {
 }
 
 /**
- * Wipe EVERY artifact of one target across all the destinations it ever ran to -
- * the "also delete backup artifacts" branch of DB/project deletion. Sweeps each
- * distinct destination via {@link deleteBackupArtifacts}. Returns the total
- * removed plus any destinations whose sweep failed.
- *
- * Capability mirrors the target's OWN delete gate so this can never become a
- * privilege escalation OR an unexpected hard block: a database's artifacts need
- * `delete_databases` (like `deleteDatabase`), an app's need `delete_apps` (like
- * `deleteApp`). Run BEFORE the target row is deleted, so it still resolves to
- * its owning server.
- *
- * A partial failure is NOT swallowed: the call returns the failing destinations,
- * and the GraphQL resolver throws on a non-empty `failedDestinations` so the
- * delete flow aborts (a half-done "delete with backups" that silently leaves a
- * destination full is worse than a retryable no-op).
+ * Wipe EVERY artifact of one target across all its destinations. The capability
+ * mirrors the target's OWN delete gate (`delete_databases` / `delete_apps`), and
+ * it runs BEFORE the row goes so it still resolves its server. A partial failure
+ * is returned, not swallowed: the resolver throws and the delete aborts.
  */
 export async function deleteAllBackupArtifacts(input: {
   kind: BackupTargetKind;
@@ -2213,31 +2070,15 @@ export async function deleteAllBackupArtifacts(input: {
 
 /**
  * How long the backups of a DELETED app or database are kept before the sweep
- * reclaims their disk.
- *
- * Deleting a target offers "also delete the backup artifacts", off by default -
- * keeping them is the safe answer, and it is the right one: the backups of the
- * thing you just deleted are exactly what you want on the day you regret it. But
- * "keep" used to mean "keep forever, invisibly": nothing listed them, retention
- * could not see them, and on a `server` destination they were disk nobody could
- * ever reclaim without a shell, which is the one thing the platform promises
- * you never need.
- *
- * So they are kept, for a month, and then let go. Long enough to cover the
- * regret, bounded enough that a busy team's storage box does not fill with the
- * backups of apps that no longer exist.
+ * reclaims their disk. "Keep" used to mean "keep forever, invisibly" - nothing
+ * listed them and retention could not see them. A month covers the regret.
  */
 const ORPHAN_ARTIFACT_KEEP_MS = 30 * 24 * 60 * 60_000;
 
 /**
- * Any provisioned server whose agent can reach a BUCKET.
- *
- * A store destination dials its own host, but an S3 one is normally reached
- * through the WORKLOAD's agent, and in a sweep the workload is exactly what no
- * longer exists. Any backup-capable agent can talk to a bucket (it needs network
- * and credentials, not Docker), which is the same reasoning `testDestination`
- * already uses to probe one. Raw query rather than `listAllServers`, because the
- * sweep runs on a scheduler tick with no session to resolve.
+ * Any provisioned server whose agent can reach a BUCKET. In a sweep the workload
+ * whose agent would normally be used is exactly what no longer exists, and any
+ * backup-capable agent can talk to a bucket. Raw query: no session on a tick.
  */
 async function anyBackupCapableServer(): Promise<string | null> {
   const rows = await getDb()
@@ -2265,34 +2106,10 @@ async function anyBackupCapableServer(): Promise<string | null> {
 const ORPHAN_SWEEP_BATCH = 500;
 
 /**
- * Reclaim the artifacts of targets that no longer exist.
- *
- * A run's `database_id` / `app_id` are ON DELETE SET NULL, so a deleted target
- * leaves runs pointing at nothing - that is the shape this looks for, and it is
- * the ONLY shape, so a live target's artifacts are never in scope no matter how
- * old.
- *
- * TWO PASSES, and the split is the whole point. The first time a run is seen
- * orphaned it is STAMPED and left alone; only a stamp older than
- * {@link ORPHAN_ARTIFACT_KEEP_MS} is acted on. Measuring the window from
- * `started_at` instead, which is what this did first, meant an app deleted
- * TODAY with two-month-old backups was already past it, so "keep the backup
- * files", the default and an explicit choice, deleted them within the day. It
- * also meant the first sweep after the feature shipped would have removed every
- * artifact already orphaned on the instance, as a side effect of an upgrade.
- *
- * Stamping HERE rather than in the delete paths is deliberate: a target can go
- * through `deleteApp`, `deleteDatabase`, a folder or team cascade, or a FK the
- * database resolves with nothing in the app watching. One observer catches all
- * of them.
- *
- * Best-effort and idempotent, like every other prune here: a record is dropped
- * only once its artifact is confirmed gone, so a destination that is down today
- * simply gets swept tomorrow. Grouped by destination so a sweep opens one
- * connection per destination rather than one per artifact.
- *
- * Runs on the backup scheduler's tick, under the same lease, so exactly one
- * control plane does it however many are running.
+ * Reclaim the artifacts of targets that no longer exist - runs left pointing at
+ * nothing by an ON DELETE SET NULL, and only those. TWO PASSES: a run is STAMPED
+ * when first seen orphaned and acted on only once the stamp is old, or an app
+ * deleted today with old backups would lose them the same day. Idempotent.
  */
 export async function sweepOrphanedBackupArtifacts(): Promise<number> {
   const orphanedTargets = and(
@@ -2384,24 +2201,17 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
 }
 
 /**
- * The longest a real backup could still be running before we call a `running`
- * record orphaned. Derived from the agent RPC's own deadline
- * ({@link BACKUP_RUN_MAX_MS}) plus slack for the dial and the terminal write,
- * rather than picked next to it: the two used to be independent numbers that
- * disagreed with a comment claiming a third, so a run could be declared dead
- * while its RPC was still legally running.
+ * The longest a real backup could still be running before a `running` record is
+ * called orphaned. DERIVED from the agent RPC's own deadline plus slack, not
+ * picked beside it: two independent numbers disagreed and declared a live run dead.
  */
 const RUN_ORPHAN_AFTER_MS = BACKUP_RUN_MAX_MS;
 
 /**
- * Reconcile backup runs orphaned by a control-plane restart - the backup analogue
- * of `reconcileInFlightDeployments`. A run is persisted `running` BEFORE the long
- * dump and only flipped at the terminal mutate; if the process dies in between,
- * the record (and any owning schedule's `lastStatus`) is stuck `running` forever,
- * and retention never prunes a running run. Run once at boot (instrumentation.ts,
- * Node runtime) and safe to call periodically: it only touches runs older than
- * {@link RUN_ORPHAN_AFTER_MS}, so it can never race a genuinely in-flight run.
- * Returns how many it reconciled.
+ * Reconcile backup runs orphaned by a control-plane restart - the analogue of
+ * `reconcileInFlightDeployments`. A run is persisted `running` before the dump, so
+ * a death in between sticks it there forever and retention never prunes it. Only
+ * touches runs older than {@link RUN_ORPHAN_AFTER_MS}, so it cannot race a live one.
  */
 export async function reconcileInFlightBackupRuns(): Promise<number> {
   const cutoffIso = new Date(Date.now() - RUN_ORPHAN_AFTER_MS).toISOString();

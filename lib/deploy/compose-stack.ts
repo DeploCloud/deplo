@@ -130,10 +130,8 @@ export interface ComposeStackInput {
   onWarn?: (message: string) => void;
   /**
    * DNS names already answered on this network by OTHER stacks. A service whose
-   * name is in here is kept off it and stays on the stack's private network:
-   * `db` is the commonest service name there is, and joining a second one to the
-   * shared network makes Docker round-robin the two, so half of an app's queries
-   * reach a neighbour's database. Absent ⇒ nothing is known and nothing is held back.
+   * name is in here is kept off it: Docker round-robins two `db`s, so half an
+   * app's queries reach a neighbour's database. Absent ⇒ nothing is held back.
    */
   takenNames?: readonly string[];
 }
@@ -612,13 +610,9 @@ function readComposeKeepingEnvText(compose: string): string {
 }
 
 /**
- * `network_mode:` takes a free-form string, and any value that is not a keyword is
- * a docker NETWORK NAME - so it joins a network with DNS while `networks:` stays
- * empty and every rule that reads that key sees nothing.
- *
- * Refused HERE and not only at the gate, because the value can be
- * `${VAR}` filled from the env-file at `compose up`: no check on the authored text
- * can see the name, and a secret-typed variable does not even display it.
+ * `network_mode:` takes a free-form string, and any non-keyword value is a docker
+ * NETWORK NAME - it joins with DNS while `networks:` stays empty. Refused HERE
+ * too, because a `${VAR}` from the env-file is invisible to the authored text.
  */
 function assertNetworkModeIsNotANetwork(service: string, mode: unknown): void {
   if (typeof mode !== "string") return;
@@ -859,26 +853,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
     );
   }
 
-  // EVERY service joins, not only the routed ones. A worker with no domain is still
-  // the app: leaving it on the compose project's private `default` is what put it
-  // out of reach of the very database its Environment owns, while the docs promised
-  // the opposite. `wireApp` skips a `network_mode` service, which cannot have one.
-  //
-  // A service holding a RESERVED name is left off instead of refused: `postgres` is
-  // an ordinary name for a stack's own database, and it was harmless as long as
-  // nothing put it on the shared network. Joining it automatically and then throwing
-  // would stop such a stack from rendering at all. An author who joins it BY HAND
-  // still gets the refusal below.
-  // A service holding a reserved name cannot go on the shared network, but it is
-  // still part of THIS stack and the rest of it has to reach it. Since nothing asks
-  // for `default` any more, leaving it off both networks split the stack in two:
-  // `web` on the Environment's, `postgres` alone on the project's default, and the
-  // lookup between them failing. So when one is present, every service also keeps a
-  // private `default` - the one network compose creates for exactly this.
-  // A PREVIEW is sealed in a network of its own, where it has no neighbours - so the
-  // names taken on the app's OWN network mean nothing there. Reading them kept a
-  // service off a network nobody else is on, warned about a clash that cannot
-  // happen, and gave every preview stack a second network for it.
+  // EVERY service joins, not only the routed ones: a worker with no domain still
+  // needs its Environment's database. A service holding a RESERVED name is left
+  // OFF rather than refused, and the stack then keeps a private `default` so it is
+  // not split in two. A PREVIEW is sealed alone, so it reads no neighbour names.
   const taken = new Set(
     isPreviewNetwork(input.network)
       ? []
@@ -1016,16 +994,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
     }
   }
 
-  // Declare the stack's network at the top level, under ONE key. `deplo` is stable for
-  // every stack and for anything the author wrote by hand, while `name:` points it at
-  // the Environment's own network. Every other key that resolved to a network Deplo
-  // owns is gone: its services already moved onto this one, and two keys naming one
-  // network is a container attached to it twice. Rewriting beats refusing - the same
-  // YAML arrives from an import, and a copy-pasted `networks: [deplo]` must keep working.
-  // A LIST or a scalar under `networks:` is not a map: writing the `deplo` key onto
-  // an array made `yaml.dump` drop it, so the stack shipped with its own network
-  // never declared. Compose refuses that, so it failed closed - but every rule
-  // above had been skipped on the way there. Anything that is not a map is dropped.
+  // Declare the stack's network at the top level under ONE key: `deplo` is stable,
+  // `name:` points it at the Environment's own. Every other key resolving to a
+  // network Deplo owns is dropped - two keys on one network attaches it twice.
+  // A non-map `networks:` is dropped: `yaml.dump` loses a key written onto an array.
   const authored = doc.networks;
   const networks = (
     authored && typeof authored === "object" && !Array.isArray(authored)
@@ -1074,10 +1046,8 @@ export function stackNamesOnNetwork(renderedYaml: string): string[] {
 
 /**
  * Point a rendered stack's network entries at `network`, whatever they named
- * before. A restore ships the stack file READ OFF THE HOST, which can still name
- * the network the app had before it moved - or one the cleanup has since
- * reclaimed, and then `compose up` fails with "declared as external, but could
- * not be found" AFTER the data is back and the stack is down.
+ * before: a restore ships the stack file READ OFF THE HOST, which can name the
+ * network the app had before it moved, or one the cleanup has since reclaimed.
  */
 export function retargetStackNetwork(
   renderedYaml: string,
@@ -1140,13 +1110,9 @@ export function composeEnvValues(compose: string): Record<string, string> {
 }
 
 /**
- * The DNS names an AUTHORED compose would put on the Environment's network, which
- * is not every service it declares. A name-clash guard has to ask this and not
- * `composeClaimedNames`, or it refuses a move over a `postgres` that never joins -
- * naming, in the refusal, a container that does not exist there.
- *
- * Conservative in the one direction that is safe: a service kept off here can still
- * be wired by a ROUTE, and the deploy's clash warning catches that case.
+ * The DNS names an AUTHORED compose would put on the Environment's network - not
+ * every service it declares. A clash guard has to ask this, not
+ * `composeClaimedNames`, or it refuses a move over a `postgres` that never joins.
  */
 export function composeNamesOnNetwork(compose: string): string[] {
   let doc: ComposeDoc;

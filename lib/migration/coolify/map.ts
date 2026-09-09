@@ -136,11 +136,9 @@ const DB_FIELDS: Record<
 };
 
 /**
- * Whether this row still CARRIES its engine's password column.
- *
- * Coolify does not blank a secret for a token that may not read it - it drops the
- * key from the JSON entirely. So the presence of the key, not its value, is what
- * says whether the token holds `read:sensitive`.
+ * Whether this row still CARRIES its engine's password column. Coolify drops the
+ * key entirely for a token that may not read it, so the presence of the key, not
+ * its value, is what says the token holds `read:sensitive`.
  */
 export function coolifyDbSecretsVisible(
   row: CoolifyDatabase,
@@ -304,14 +302,9 @@ export function parseCoolifyFqdns(
 }
 
 /**
- * `SERVICE_FQDN_<ID>` and `SERVICE_FQDN_<ID>_<PORT>`: where a one-click SERVICE
- * keeps its address. Coolify's `services` table carries no `fqdn` column at all,
- * so without this every service arrived with no domain while its own variables
- * spelled one out.
- *
- * The id half names the compose service, written without its separators
- * (`it-tools` -> `ITTOOLS`); an id that matches nothing leaves the service
- * unset and Deplo routes to the one that exposes a port.
+ * `SERVICE_FQDN_<ID>[_<PORT>]`: where a one-click SERVICE keeps its address -
+ * Coolify's `services` table carries no `fqdn` column at all. The id half names
+ * the compose service without its separators (`it-tools` -> `ITTOOLS`).
  */
 const SERVICE_FQDN_KEY = /^SERVICE_FQDN_(.+?)(?:_(\d+))?$/;
 
@@ -499,11 +492,9 @@ function serializeValue(value: string): string {
 }
 
 /**
- * Coolify's own bookkeeping, injected into every resource it runs
- * (`COOLIFY_SERVER_UUID`, `COOLIFY_URL`, `COOLIFY_RESOURCE_UUID`, ...). It names
- * the machine and the panel this is LEAVING, so as a shared variable of the team
- * it is a row nobody can act on that outlives the revert - the revert only removes
- * what the run created, and the second import then calls it "already present".
+ * Coolify's own bookkeeping, injected into every resource it runs. It names the
+ * machine and the panel this is LEAVING, so as a team shared variable it is a row
+ * nobody can act on that outlives the revert.
  */
 export function withoutPanelInternals(blob: string): string {
   const entries = parseEnvBlob(blob);
@@ -648,13 +639,9 @@ const SOURCE_ORIGINS: Record<string, GitOrigin> = {
 };
 
 /**
- * The clone URL for a Coolify application.
- *
- * `git_repository` is a whole URL for a PUBLIC repository and a bare
- * `owner/repo` for one behind a source - Coolify keeps the host on the source
- * relation and joins the two at deploy time. Taken literally, `owner/repo` is
- * what `git clone` refuses with "repository does not exist", which is every git
- * app a migration brought over.
+ * The clone URL for a Coolify application. `git_repository` is a whole URL for a
+ * PUBLIC repo and a bare `owner/repo` behind a source, which `git clone` refuses
+ * with "repository does not exist" - every git app a migration brought over.
  */
 export function coolifyGitUrl(row: CoolifyApplication): {
   url: string | null;
@@ -713,11 +700,9 @@ export interface CoolifyExtras {
 }
 
 /**
- * One Coolify application → the shared application shape.
- *
- * A repository that sat behind a connected source keeps that provider, with no
- * credential: the app then ASKS for a GitHub App instead of failing the clone with
- * git's own "could not read Username".
+ * One Coolify application → the shared application shape. A repository behind a
+ * connected source keeps that provider with no credential, so the app ASKS for a
+ * GitHub App instead of failing the clone on git's "could not read Username".
  */
 export function coolifyApplication(
   row: CoolifyApplication,
@@ -852,13 +837,9 @@ export function coolifyFallbackPort(row: CoolifyApplication): number | null {
  * Coolify's copy, with its own labels, network and container names baked in.
  */
 /**
- * What each config file is CALLED beside the compose that mounts it, by the path
- * it lands on in the container.
- *
- * Coolify's storage row names only the container path, and its basename is a
- * different string whenever the two differ: `./filebrowser.json:/.filebrowser.json`
- * was written here as `.filebrowser.json`, so Docker found no `filebrowser.json`
- * to bind, created a DIRECTORY in its place, and the app mounted an empty one.
+ * What each config file is CALLED beside the compose that mounts it, by its
+ * container path. Coolify names only that path, and its basename differs:
+ * `./filebrowser.json:/.filebrowser.json` bound a DIRECTORY Docker created empty.
  */
 function fileNamesFromCompose(compose: string | null): Map<string, string> {
   const out = new Map<string, string>();
@@ -1108,12 +1089,8 @@ const NOT_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/;
 
 /**
  * `custom_labels` is base64 with one `key=value` per line - EXCEPT that Coolify
- * hands it back in clear for anything it never deployed successfully.
- *
- * `Buffer.from(x, "base64")` does not throw on that: it drops the bytes it cannot
- * read and answers with mojibake, so the old `catch` was dead code and the report
- * invented a label while hiding the real ones. What the decode produced has to be
- * TEXT, or it was never base64.
+ * hands it back in clear for anything it never deployed. `Buffer.from` does not
+ * throw on that, it answers mojibake, so what decodes has to be TEXT.
  */
 function decodeLabels(raw: string | null | undefined): string[] {
   const text = raw?.trim();

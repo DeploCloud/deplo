@@ -3137,17 +3137,10 @@ async function warnCrossNetwork(
     const foreign = neighbours.filter(
       (n): n is ForeignName => n.why !== "reachable" && n.network !== network,
     );
-    // The resolved env AND what the compose sets itself: a stack that writes
-    // `DATABASE_URL: postgres://db-shop:5432/x` in its own `environment:` block
-    // never reached the env layer, so the warning stayed silent on the commonest
-    // shape there is. Same reading `placeDatabasesByUsage` already does.
-    // The compose's own `environment:`, the resolved env, AND the config files this
-    // app mounts: an nginx `proxy_pass` or a `config.yml` names a neighbour just as
-    // squarely, and for those stacks the warning was silent altogether.
-    // The compose's own `environment:`, the resolved env, AND the config files this
-    // app mounts: an nginx `proxy_pass` or a `config.yml` names a neighbour just as
-    // squarely, and for those stacks the warning was silent altogether. Keyed by
-    // file path so the message can say where the name was found.
+    // The compose's own `environment:`, the resolved env, AND the config files
+    // this app mounts: a stack that writes its own `DATABASE_URL`, or an nginx
+    // `proxy_pass`, names a neighbour just as squarely. Keyed by file path so the
+    // message can say where the name was found.
     const mounted = await getDb()
       .select({
         path: appMountsTable.filePath,
@@ -3179,12 +3172,9 @@ async function warnCrossNetwork(
 }
 
 /**
- * Put moved apps onto the network their new placement owns. Moving between
- * Environments used to be a pure metadata write; now it changes which network the
- * containers are on, so the stack has to be brought up again to follow.
- *
- * Best-effort and sequential: a host that cannot be reached leaves the move
- * recorded and the stack where it was, and the next deploy finishes the job.
+ * Put moved apps onto the network their new placement owns: an Environment move
+ * used to be pure metadata and now changes the network, so the stack has to come
+ * up again. Best-effort - an unreachable host is finished by the next deploy.
  */
 export async function reapplyNetworkAfterMove(appIds: string[]): Promise<void> {
   // Bounded, not serial: a bulk move (or an Environment delete) reroutes every app it

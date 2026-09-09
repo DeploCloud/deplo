@@ -23,10 +23,8 @@ export interface Placement {
 
 /**
  * The DNS names already answered on `to`'s network, by everything but `exceptId`.
- *
- * A name is only contested by a neighbour on the SAME network AND the same host -
- * a Docker network lives on one machine, so a database in another Environment is
- * not a clash and refusing it would only take an ordinary name away.
+ * Only a neighbour on the SAME network AND host contests a name - a Docker network
+ * lives on one machine, so another Environment's database is not a clash.
  */
 export async function namesOnNetwork(
   to: Placement,
@@ -119,12 +117,8 @@ export async function neighboursOnNetwork(
 
 /**
  * Refuse a workload whose DNS names a neighbour on the destination network already
- * answers to. Docker round-robins a name two containers both claim, so half the
- * lookups reach the wrong one - which reads as an intermittent network fault, not
- * as a name collision.
- *
- * Every writer that can create the overlap has to ask: creating either side, and
- * MOVING either side onto the other's network.
+ * answers to: Docker round-robins a claimed name, so half the lookups reach the
+ * wrong one and it reads as an intermittent fault. Every writer has to ask.
  */
 export async function assertNoNameClash(opts: {
   to: Placement;
@@ -201,15 +195,12 @@ export async function nameClashesOnMove(
 }
 
 /**
- * Serialise everything that checks a name against a network and then writes to it.
- * The check and the write are two statements, so two concurrent moves both read a
- * free name and both take it - and there is no unique constraint underneath to
- * catch them, because the names live inside a compose file.
+ * Serialise everything that checks a name against a network and then writes to it:
+ * the check and the write are two statements, and the names live inside a compose
+ * file with no unique constraint underneath to catch two concurrent moves.
  *
- * ponytail: per-process lock (`withKeyedLock` chains on a module Map), so it
- * serialises one control plane, not two against one database. A real fix is an
- * advisory lock in Postgres keyed the same way; do that if a second control plane
- * ever becomes a supported shape.
+ * ponytail: per-process lock, so it serialises one control plane, not two against
+ * one database. A Postgres advisory lock keyed the same way is the real fix.
  */
 export function withNetworkLock<T>(
   to: Omit<Placement, "serverId">,

@@ -120,13 +120,9 @@ export function parseEnvBlob(blob: string | null | undefined): {
 }
 
 /**
- * Rewrite, IN PLACE, every variable that names a database by the hostname it had
- * on the other platform. The renamed host is the first thing that breaks after a
- * migration, and the app carries it inside its own connection strings.
- *
- * Only a WHOLE host token is replaced, and only for a name specific enough to be
- * one: a database called `postgres` would otherwise turn `DB_ENGINE=postgres`
- * into a hostname. Returns the keys that changed.
+ * Rewrite, IN PLACE, every variable that names a database by its hostname on the
+ * other platform - the app carries it inside its own connection strings. Only a
+ * WHOLE host token, and only for a name specific enough (never `postgres`).
  */
 export function renameDatabaseHosts(
   env: { key: string; value: string }[],
@@ -425,14 +421,10 @@ function stripNetworks(holder: YAMLMap, keys: Set<string>): void {
 }
 
 /**
- * Turn the source platform's compose file into a Deplo one. Left alone, a `../`
- * source is not
- * merely wrong - Deplo reads it as climbing OUT of the sandbox, so the stack would
- * demand the host-volumes grant and then bind a path that holds nothing.
- *
- * Edited as a DOCUMENT, so anchors, merge keys, comments and layout come out the
- * way their author wrote them - and an anchor is edited once, for every service
- * that merges it.
+ * Turn the source platform's compose file into a Deplo one. A `../` source is not
+ * merely wrong: Deplo reads it as climbing OUT of the sandbox, so the stack would
+ * demand the host-volumes grant and then bind nothing. Edited as a DOCUMENT, so
+ * anchors, comments and layout survive and an anchor is edited once.
  */
 export function adaptComposeForDeplo(
   source: string,
@@ -567,13 +559,9 @@ function hostTokenRe(name: string): RegExp {
 const HOSTISH_TAIL = /(HOST|HOSTNAME|SERVER|ADDR|ADDRESS|ENDPOINT)$/i;
 
 /**
- * Whether this env key holds a HOSTNAME as its whole value.
- *
- * The tail alone is not enough - `GHOST` ends in HOST and is an app, not a host -
- * and anchoring the tail to a `_` was not either: `PAPERLESS_DBHOST` glues the
- * word onto `DB`, so a rename left it pointing at a service that no longer
- * existed, and the app spent its life restarting against a NEIGHBOUR's database.
- * A separator anywhere in the key is what tells the two apart.
+ * Whether this env key holds a HOSTNAME as its whole value. The tail alone is not
+ * enough (`GHOST` is an app), nor is anchoring it to a `_`: `PAPERLESS_DBHOST`
+ * glues the word onto `DB`. A separator anywhere in the key tells them apart.
  */
 function isHostishKey(key: string): boolean {
   if (/^(HOST|HOSTNAME|SERVER|ADDR|ADDRESS|ENDPOINT)$/i.test(key)) return true;
@@ -630,12 +618,8 @@ function rewriteEnvNode(node: unknown, renames: Map<string, string>): void {
 
 /**
  * Rename every service whose DNS name a neighbour on the destination network
- * already answers to, and carry the references with it.
- *
- * An Environment is one network (ADR-0028), and two one-click stacks both calling
- * their database `db` is the ordinary case, not the exotic one - refusing the
- * second one lost the whole app. Rewriting beats refusing: the same YAML arrives
- * from an import, and only the import knows what is already there.
+ * already answers to, and carry the references with it. An Environment is one
+ * network (ADR-0028), and two stacks both calling their database `db` is ordinary.
  */
 export function renameClashingServices(
   source: string,
@@ -755,11 +739,9 @@ function isNamedVolumeSource(source: string): boolean {
 }
 
 /**
- * A volume NAME somebody typed a slash onto (`memos/`). Compose reads a source
- * with no leading `./`, `../` or `/` as a volume name, so this is not a path -
- * it is a name it will then refuse the whole stack over, undeclared and
- * undeclarable. The platform that stored it normalises it on render; Deplo has
- * the file as written, so it normalises it here.
+ * A volume NAME somebody typed a slash onto (`memos/`). With no leading `./`,
+ * `../` or `/` compose reads it as a name, not a path - then refuses the whole
+ * stack over it. The source platform normalises on render; Deplo does it here.
  */
 const VOLUME_NAME_WITH_SLASH = /^([A-Za-z0-9][A-Za-z0-9_.-]*)\/+$/;
 
@@ -768,19 +750,14 @@ function trailingSlashOffVolume(source: string): string | null {
 }
 
 /**
- * Declare every named volume the services mount that the file itself does not.
- *
- * A one-click template's compose is a FRAGMENT: the platform synthesises the
- * top-level `volumes:` block when it renders one, so the file as stored is
- * refused outright - "service X refers to undefined volume Y: invalid compose
- * project" - and the stack never starts.
+ * Declare every named volume the services mount that the file itself does not: a
+ * one-click template's compose is a FRAGMENT, and the platform synthesises the
+ * top-level `volumes:` block on render, so the stored file is refused outright.
  */
 /**
- * A top-level volume that names storage OUTSIDE this stack - `external: true`, a
- * pinned `name:`, or a `driver_opts` bind of a host path - is storage the
- * destination does not have. The copy puts the bytes in the stack's OWN volume,
- * so a declaration left pointing elsewhere fails `compose up` on a volume nobody
- * ever wrote, with the data sitting one name away.
+ * A top-level volume naming storage OUTSIDE this stack - `external:`, a pinned
+ * `name:`, a `driver_opts` bind - is storage the destination does not have. The
+ * copy fills the stack's OWN volume, so the declaration has to point at it.
  */
 function localiseStackVolumes(root: YAMLMap, changes: string[]): void {
   const declared = root.get("volumes", true);
@@ -1136,10 +1113,7 @@ export function parseMemoryMb(raw: string | null | undefined): number | null {
  * Dokploy's CPU limit → Deplo's milli-CPUs.
  *
  * ponytail: the column is free text and holds two conventions - cores as a
- * decimal (`0.5`, what Dokploy's form asks for) and nano-CPUs (`500000000`, what
- * Docker's API takes). Split on 1000, because a 1000-core limit is not a thing
- * anyone types and half a nano-CPU is not either. If a third convention ever
- * shows up, this is the line to change.
+ * decimal and nano-CPUs. Split on 1000; a third convention changes this line.
  */
 export function parseCpuMilli(raw: string | null | undefined): number | null {
   const s = raw?.trim();
@@ -2091,14 +2065,10 @@ export function stackRelativePath(
 }
 
 /**
- * The host directories a compose file binds ITSELF. Neither side saw one: not the
- * panel's mount rows, not Deplo's `app_volumes` - so `- /etc/app:/cfg` arrived in
- * the YAML byte for byte and the directory it names arrived empty.
- *
- * A `./x` source is one too, and pretending otherwise ("the compose import brings
- * it across") lost every relative bind on both panels: only the FILE came over,
- * never the directory it names. It resolves against `baseDir` - the stack's own
- * directory on that machine - and is left out when there is none to resolve with.
+ * The host directories a compose file binds ITSELF - neither the panel's mount
+ * rows nor `app_volumes` saw one, so `- /etc/app:/cfg` arrived byte for byte with
+ * an empty directory behind it. A `./x` source counts too: only the FILE came
+ * over, never its directory. Resolved against `baseDir`, skipped without one.
  */
 export function composeHostMounts(
   compose: string,

@@ -13,13 +13,10 @@ import { reissueBootstrap } from "./servers";
 process.env.DEPLO_SECRET = "test-secret-for-bootstrap-url-aaaaaaaa";
 
 /**
- * Which address the install command tells an agent to call home to.
- *
- * During a takeover the panel and its proxy are published on loopback ONLY, so
- * the public address answers nothing and no certificate can be read for it - and
- * that refused every command at the one moment recovering from the panel was the
- * only way out. This host's own agent is bootstrapped over loopback, which is
- * what the installer has always done for it.
+ * Which address the install command tells an agent to call home to. During a
+ * takeover the panel and its proxy are on loopback ONLY, so the public address
+ * answers nothing and no certificate can be read - which refused every command at
+ * the one moment recovering from the panel was the only way out.
  */
 
 let db: TestDb;

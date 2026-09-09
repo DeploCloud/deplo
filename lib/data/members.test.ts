@@ -686,14 +686,10 @@ test("updateUserAdmin can promote a non-admin even when they aren't yet in the a
 /* ------------------------------------------------------------------ */
 
 /**
- * `manage_members` is a TEAM capability, so the people it offers have to be
- * bounded by the actor's own reach. It used to return EVERY account on the
- * instance that was not already in the team - on a shared install, one team
- * admin reading every other customer's staff list, which is exactly the
- * "operator == end user" assumption a managed Deplo cannot make.
- *
- * A colleague (someone in another of the actor's own teams) is still offered
- * with no query at all; a stranger only by their exact username.
+ * `manage_members` is a TEAM capability, so the people it offers are bounded by
+ * the actor's own reach. It used to return EVERY account on the instance - one
+ * team admin reading every other customer's staff list. A colleague is still
+ * offered with no query; a stranger only by their exact username.
  */
 test("searchUsers offers colleagues, and a stranger only by exact username", async () => {
   await seedIdentity(db, {

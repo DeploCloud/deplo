@@ -283,17 +283,10 @@ test("only an instance admin can remove a server", async () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * The one case where Deplo DOES touch the host, and the reason it is not a
- * contradiction of the above: the agent on a migration source was installed by
- * Deplo, on a machine that is not part of the fleet, for one import. Ending that
- * by handing someone a shell command would be the failure the product exists to
- * remove.
- *
- * What these lock is the ORDER, because getting it wrong is silent: the guards run
- * before the RPC (a destination on the host is ON DELETE RESTRICT, so discovering
- * it afterwards would leave a de-agented server nobody can remove), and the row
- * survives every failure - a deleted row plus a live agent is a machine nobody can
- * see and nobody can clean.
+ * The one case where Deplo DOES touch the host: the agent on a migration source
+ * was installed by Deplo for one import, and ending that with a shell command is
+ * the failure the product exists to remove. What these lock is the ORDER - guards
+ * before the RPC, and the row survives every failure.
  */
 
 /** A stand-in agent. `capabilities` and `fail` decide which branch is exercised. */

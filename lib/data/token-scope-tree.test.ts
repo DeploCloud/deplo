@@ -336,12 +336,8 @@ test("a foreign team can't be put in a scope", async () => {
 
 /**
  * Filing an app into a folder CLEARS its `project_id`, so before folders were in
- * the tree a project scope reached almost nothing people expected it to, and the
- * picker showed nearly every app as "outside a project".
- *
- * Fixture on top of the one above: TEAM_A gains `fld_root` (filed under
- * `prc_in`) with `fld_child` nested inside it, and `fld_loose` at the team top
- * level. One app in each.
+ * the tree a project scope reached almost nothing. Fixture on the one above:
+ * `fld_root` under `prc_in` with `fld_child` inside, `fld_loose` at the top.
  */
 async function seedFolders() {
   await db.insert(foldersTable).values([
@@ -549,13 +545,9 @@ test("a folder in a team you don't belong to can't be put in a scope", async () 
 /* ------------------------------------------------------------------ */
 
 /**
- * A folder is private to its owner and its grantees. The picker draws the tree
- * the scope is ticked in, and the tree is bounded by the AUTHOR's memberships,
- * but membership of the team is not access to every folder in it, so the picker
- * has to ask the per-node question too. It used to list every private folder in
- * the team by name, with the apps inside it; and because the list paths then
- * exempted a narrowed token from the per-app access check, a token ticked onto
- * one read those apps in full.
+ * A folder is private to its owner and its grantees. The tree is bounded by the
+ * AUTHOR's memberships, but membership of a team is not access to every folder in
+ * it - the picker used to list every private one by name, with its apps.
  */
 async function seedPrivateFolder(): Promise<void> {
   await db.insert(foldersTable).values({

@@ -134,19 +134,11 @@ export const NODE_GRANTABLE_CAPABILITIES: Capability[] =
 
 /**
  * How one member's access compares with the role they hold: `null` when they are
- * exactly their role, which is almost everybody.
+ * exactly their role. One function, so the tile, the header chip and the live
+ * preview can never disagree. Narrower wins over wider when both are true.
  *
- * It is the sentence the member roster and the member page both need - "why does
- * this person differ from everyone else with the same role", and it is one
- * function so the tile, the header chip and the live preview while an admin
- * edits can never disagree.
- *
- * Narrower wins over wider when both are true: someone who lost `delete_apps`
- * and gained a folder is more usefully flagged by what was taken away.
- *
- * ponytail: compares TICKED node ids, not their subtrees - ticking a folder
- * inside a project the role names reads as narrower (which it is) rather than as
- * both. Compare expanded reach if that ever needs to be exact.
+ * ponytail: compares TICKED node ids, not their subtrees. Compare expanded reach
+ * if that ever needs to be exact.
  */
 export function accessDelta(input: {
   /** The member's effective capability set. */

@@ -199,19 +199,14 @@ export async function noteBrowserReached(): Promise<void> {
 }
 
 /**
- * The operator asked for the machine: the installer moves the ports and then
- * takes the other platform off the disk, in one go.
- *
- * Either a run that finished, or `discardData` - the operator has chosen to keep
- * nothing. Without one of the two, taking the ports would cost them their old
- * panel's routing for nothing, and a disabled button is not a gate.
+ * The operator asked for the machine: the installer moves the ports and then takes
+ * the other platform off the disk, in one go. Either a finished run or
+ * `discardData` - otherwise the ports cost them their old routing for nothing.
  */
 /**
- * The services that arrived WITHOUT their data - a copy that failed - named the
- * way the report names them. The cutover stops the old panel for good (its
- * volumes stay on the disk, unread), so for these it holds the only copy. One
- * run, or every run that finished: the machine is one, and a team brought over
- * earlier is on it as much as the last.
+ * The services that arrived WITHOUT their data - a failed copy - named the way the
+ * report names them. The cutover stops the old panel for good, so for these it
+ * holds the only copy. Every finished run counts: the machine is one.
  */
 export async function takeoverDataLoss(runId?: string): Promise<string[]> {
   // The report is history; the marker on the resource is the state, and a copy
@@ -371,11 +366,9 @@ export async function markTakeoverProgress(
 }
 
 /**
- * Back out: stop the run, undo what it created, and start the source's services
- * again over there. The installer sees `cancelled` and uninstalls Deplo.
- *
- * The API token is wiped when a run stops, so a cancel after the fact has to be
- * handed one again - the operator minted it minutes ago and still has it.
+ * Back out: stop the run, undo what it created, start the source's services again.
+ * The installer sees `cancelled` and uninstalls Deplo. The API token is wiped when
+ * a run stops, so a cancel after the fact has to be handed one again.
  */
 export async function cancelTakeover(
   apiKey?: string,
@@ -462,12 +455,11 @@ export interface TakeoverPreflight {
   diskFreeBytes: number;
   diskTotalBytes: number;
   /**
-   * The copy writes a second copy of every volume it moves, and nothing here can
-   * measure what they hold - so this is a warning with the real numbers, never a
-   * refusal over an amount nobody knows.
+   * The copy writes a second copy of every volume it moves and nothing here can
+   * measure what they hold - a warning with the real numbers, never a refusal.
    *
-   * ponytail: a `VolumeSize` RPC would turn this into a real comparison; it needs
-   * an agent release, and the free space is the number that actually goes wrong.
+   * ponytail: a `VolumeSize` RPC would make this a real comparison; it needs an
+   * agent release, and the free space is the number that actually goes wrong.
    */
   diskTight: boolean;
   /** Whether the agent on this machine ANSWERS - a live probe, not a stored row. */

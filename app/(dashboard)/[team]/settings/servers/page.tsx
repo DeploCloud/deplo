@@ -79,18 +79,10 @@ function Spec({
 }
 
 /**
- * The four capacity tiles.
- *
- * They are the ONE thing on this page that can wait on a network round trip: a
- * server nobody has measured yet is dialed here, in the render (see
- * `hydrateServerSpecs`), and that dial is allowed four seconds. Awaited inline
- * it held back the whole page - the header, every card, the health chips - for
- * a number that fills four small boxes. So it is awaited here instead, behind
- * the card's own <Suspense>, and everything else paints immediately.
- *
- * A fleet whose specs are all stored (the normal case) resolves before the
- * first flush, so nothing flickers: the skeleton is for the one card that is
- * genuinely being measured.
+ * The four capacity tiles - the ONE thing on this page that waits on a network
+ * round trip (`hydrateServerSpecs` dials an unmeasured server, up to four
+ * seconds). Awaited here behind the card's own <Suspense>, so the header, the
+ * cards and the health chips paint immediately.
  */
 async function SpecTiles({ specs }: { specs: Promise<Server> }) {
   const server = await specs;
@@ -380,15 +372,10 @@ export default async function ServersPage(
     // manage_infra member of their active team.
     listAllTeamsForAdmin(),
   ]);
-  // Fill in capacity specs for the static cards (measures an unmeasured server
-  // once, then reuses the persisted values). No per-second polling anymore.
-  //
-  // Deliberately NOT awaited: measuring dials the agent, and an unreachable host
-  // spends the full four-second cap before giving up. Awaited here that cap was
-  // the whole page's - the operator who just added a server waited on the box
-  // they added to render the page that says whether it answered. Each card
-  // streams its own tiles instead (see `SpecTiles`); a rejection degrades to the
-  // stored capacity rather than to an error boundary over the fleet.
+  // Fill in capacity specs for the static cards. Deliberately NOT awaited:
+  // measuring dials the agent, and an unreachable host spends the full four-second
+  // cap - the operator who just added a server would wait on it to see whether it
+  // answered. Each card streams its own tiles instead (see `SpecTiles`).
   const measured = hydrateServerSpecs(serversRaw)
     .catch(() => serversRaw)
     .then((list) => new Map(list.map((s) => [s.id, s])));
@@ -439,15 +426,10 @@ export default async function ServersPage(
     ),
   }));
 
-  // The LAST OBSERVED health of each server, handed to the client so the cards paint
-  // immediately. It is a seed, not the answer: <ServerHealthProvider> re-probes every
-  // agent on mount, and the chip refuses to paint any of this once it is stale. The
-  // probe deliberately does NOT run here - dialing every agent inside the render would
-  // make the one page an operator opens *because* a host is broken as slow as that
-  // broken host, on every single load.
-  // Straight from the stored rows: the in-render measurement is not folded in
-  // any more, now that it streams. It never belonged here anyway - the seed is
-  // the LAST OBSERVED health, and the sweep is what makes it current.
+  // The LAST OBSERVED health of each server, so the cards paint immediately. A
+  // seed, not the answer: <ServerHealthProvider> re-probes on mount. Dialing every
+  // agent in the render would make the page an operator opens *because* a host is
+  // broken as slow as that broken host.
   const healthSeed: Record<string, ServerHealthState> = Object.fromEntries(
     servers.map((s) => [
       s.id,

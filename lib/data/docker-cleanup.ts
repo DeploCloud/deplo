@@ -177,16 +177,10 @@ function normalizeScopes(scopes: readonly string[]): CleanupScopeId[] {
  *  know (a downgrade after a newer one wrote the policy) is dropped, not thrown on. A
  *  read that fails closed would take the whole settings page down over one stale row. */
 /**
- * When each scope became a box the operator could tick, ISO-8601.
- *
- * A saved policy stores the scopes that were SELECTED, so a scope added later is
- * absent from it - and absence read as "turned off" made every new scope dead on
- * arrival for every instance whose settings had ever been saved. Measured: an
- * instance saved 2026-07-19 never once ran `leftover_app_files` (shipped 08-23),
- * and would never have run `leftover_networks` either.
- *
- * `Record<CleanupScopeId, …>` is exhaustive on purpose: adding a scope without
- * dating it here does not compile, so the next one cannot repeat this.
+ * When each scope became a box the operator could tick, ISO-8601. A saved policy
+ * stores the scopes SELECTED, so absence read as "turned off" made every new scope
+ * dead on arrival. Exhaustive on purpose: adding a scope without dating it here
+ * does not compile.
  */
 const SCOPE_SINCE: Record<CleanupScopeId, string> = {
   build_cache: "2026-01-01T00:00:00.000Z",
@@ -1038,13 +1032,9 @@ export async function liveStackSlugs(): Promise<string[]> {
 }
 
 /**
- * Every tenant network this Deplo still knows about - the proof
- * `leftover_networks` rests on. Environments and teams answer for the stacks
- * placed in them; previews answer for themselves.
- *
- * Instance-wide, like {@link liveStackSlugs}: a network is per host, but which
- * ones are LIVE is a control-plane fact, and scoping this per server would call
- * an Environment's network litter on every host but one.
+ * Every tenant network this Deplo still knows about - the proof `leftover_networks`
+ * rests on. Instance-wide, like {@link liveStackSlugs}: which ones are LIVE is a
+ * control-plane fact, and scoping per server would call one litter everywhere else.
  */
 export async function liveNetworkNames(): Promise<string[]> {
   const db = getDb();
@@ -1077,11 +1067,9 @@ export async function liveNetworkNames(): Promise<string[]> {
 }
 
 /**
- * Remove what a deploy just left behind on `serverId`: the app images it
- * superseded and the build cache past the host's ceiling, NOW rather than at the
- * nightly sweep. A day of builds can fill a disk before 04:00 (see
- * {@link deploySweepScopes}). Never the leftover scopes: an app deleted an hour
- * ago belongs on the schedule, past its grace window.
+ * Remove what a deploy just left on `serverId`: superseded app images and build
+ * cache past the host's ceiling, NOW rather than at the nightly sweep - a day of
+ * builds can fill a disk before 04:00. Never the leftover scopes.
  */
 export async function sweepSupersededAppImages(
   serverId: string,

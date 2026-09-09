@@ -488,13 +488,10 @@ export async function requireTeamWide(what: string): Promise<void> {
 }
 
 /**
- * Does the current principal hold `cap` across the WHOLE of `teamId` - a team that
- * is NOT necessarily the active one? The question a cross-team share has to ask of
- * every team it is offered to (ADR-0027).
- *
- * Four gates, all load-bearing, and `membershipFor` answers only the last two:
- * `clampToToken` deliberately bails out for a team other than the request's, so it
- * would hand back the MEMBER's capabilities and ignore the token's entirely.
+ * Does the current principal hold `cap` across the WHOLE of `teamId` - not
+ * necessarily the active one? The question a cross-team share asks of every team
+ * (ADR-0027). Four gates, all load-bearing: `clampToToken` bails out for another
+ * team, so it would hand back the MEMBER's capabilities and ignore the token's.
  */
 export async function holdsTeamWideCapability(
   teamId: string,

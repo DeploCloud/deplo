@@ -1154,12 +1154,9 @@ export type DomainEntrypoint = "websecure" | "web";
 
 /**
  * How a domain's TLS certificate is issued - the user's *choice*, distinct from
- * `ssl` (whether a cert is currently active, derived from DNS verification): -
- * letsencrypt the HTTP-01 ACME resolver baked into the proxy (resolved via
- * `certResolver()` / `DEPLO_CERT_RESOLVER`). - cloudflare Cloudflare fronts the
- * domain: it terminates TLS at its edge and presents the public certificate, so
- * the origin is served over HTTPS (`websecure`) with a DNS-01 resolver named
- * `cloudflare` when the proxy defines one.
+ * `ssl` (whether one is active). `letsencrypt` is the proxy's baked-in HTTP-01
+ * resolver; `cloudflare` terminates at the edge, so the origin is served over
+ * `websecure` with a DNS-01 resolver when the proxy defines one.
  */
 export type CertProvider = "letsencrypt" | "cloudflare" | "none" | "custom";
 

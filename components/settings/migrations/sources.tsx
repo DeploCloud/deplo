@@ -35,14 +35,10 @@ interface SourceArt {
 }
 
 /**
- * A mark is painted in its own brand colour when it has one, and in
- * `currentColor` when it is monochrome. Dokploy's upstream file is black - so
- * `currentColor` is the TRUE rendering of it, not a shortcut - and Coolify's is
- * three violet layers.
- *
- * Both are inlined rather than loaded from `public/`, for the reason
- * `components/logo.tsx` gives about Deplo's own: an `<image href>` renders the
- * file's baked-in fill.
+ * A mark is painted in its own brand colour when it has one, and in `currentColor`
+ * when it is monochrome. Both are inlined rather than loaded from `public/`, for
+ * the reason `components/logo.tsx` gives: an `<image href>` renders the file's
+ * baked-in fill.
  */
 export const SOURCE_ART: Record<SourceKind, SourceArt> = {
   // public/migrations/dokploy.svg

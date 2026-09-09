@@ -152,13 +152,9 @@ export function nameClashMessage(clash: NameClash): string {
 }
 
 /**
- * The hostnames a mounted CONFIG FILE points at, as `{where: host}` pairs the
- * cross-network detector can read like env vars.
- *
- * `usesAsHost` reads a whole VALUE - an env var is one - and a config file is a
- * document, so passing its text straight in matched nothing. An nginx
- * `proxy_pass http://db-shop:5432;` names a neighbour exactly as squarely as
- * `DATABASE_URL` does, and for those stacks the warning was silent.
+ * The hostnames a mounted CONFIG FILE points at, as `{where: host}` pairs. A
+ * config file is a document while `usesAsHost` reads a whole VALUE, so its text
+ * matched nothing - and an nginx `proxy_pass` names a neighbour just as squarely.
  */
 export function hostsInMountedFile(
   path: string,

@@ -109,24 +109,6 @@ export function serverLabel(server: { name: string }): string {
   return server.name;
 }
 
-/** Human label for a deploy source. */
-export function deploySourceLabel(source: string): string {
-  switch (source) {
-    case "github":
-      return "GitHub";
-    case "git":
-      return "Git repository";
-    case "docker-image":
-      return "Docker image";
-    case "upload":
-      return "Upload";
-    case "compose":
-      return "Docker Compose";
-    default:
-      return titleCase(source);
-  }
-}
-
 /**
  * Where each provider puts a commit under the repository's own URL. Kept here
  * rather than read off the provider adapters because this module is imported by

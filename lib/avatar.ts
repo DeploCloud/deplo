@@ -55,12 +55,8 @@ export type AvatarSource = {
 
 /**
  * Resolve many people in one go: reads the instance flag once and hands back a
- * SYNC mapper, so a batch builder (`listMembers`, `loadUserIdentities`) maps N
- * rows without N awaits.
- *
- * A person chooses their source (see `avatar-shared.ts`); nothing chosen falls to
- * their Gravatar when the instance allows it, and then to NULL - which the avatar
- * component draws as the letters of their name, exactly like a team's.
+ * SYNC mapper, so a batch builder maps N rows without N awaits. Nothing chosen
+ * falls to Gravatar when the instance allows it, then to NULL (drawn as letters).
  */
 export async function avatarResolver(): Promise<
   (row: AvatarSource) => string | null

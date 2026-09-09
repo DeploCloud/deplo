@@ -253,13 +253,9 @@ export async function hostPortsInUse(
     throw new Error("You don't have permission to publish ports");
   const server = await resolveTeamServer(teamId, serverId);
 
-  // One RPC per port, so the list is deduped and bounded. 50 is far above any
-  // real import (a source publishes a port on a handful of databases, not fifty)
-  // and well under anything that would hold the review open.
-  //
-  // ANY real TCP port, not only the ones a user may ask for: 80 and 443 belong to
-  // the proxy, so an imported reverse proxy is exactly what this has to catch, and
-  // `isValidExposePort` (which gates what may be WRITTEN) filtered both out.
+  // One RPC per port, deduped and bounded at 50 - far above any real import. ANY
+  // real TCP port, not only the ones a user may ask for: 80 and 443 belong to the
+  // proxy, so an imported reverse proxy is exactly what this has to catch.
   const wanted = [...new Set(ports)]
     .filter((p) => Number.isInteger(p) && p >= 1 && p <= MAX_PORT)
     .slice(0, 50);
@@ -523,11 +519,8 @@ export async function getDatabase(id: string): Promise<DatabaseDTO | null> {
 
 /**
  * How much disk this database's data volume occupies, measured on the host. null
- * when the owning agent is too old or unreachable - a dash on the card, never a
- * zero, which would read as an empty database.
- *
- * Also refreshes `databases.size_mb`, which is otherwise written 0 at create and
- * never again, so GraphQL and MCP stop answering 0 to everyone who asks.
+ * when the agent is too old or unreachable - a dash on the card, never a zero.
+ * Also refreshes `databases.size_mb`, else written 0 at create and never again.
  */
 export async function getDatabaseVolumeBytes(
   id: string,
@@ -962,13 +955,9 @@ export async function setDatabaseRunning(
       throw new Error(
         "Database is still provisioning - wait for it to finish before starting or stopping it.",
       );
-    // Lifecycle routes through the owning server's agent. Let a real failure
-    // surface to the caller; only update state on success.
-    // A start has to land on the network the placement owns TODAY. `compose start`
-    // returns the container to the network it was CREATED on, so starting first and
-    // rerouting after brought it up on the old one - and fails outright once that
-    // network has been reclaimed. Reroute first; only start when there was nothing
-    // to change. Same order `startApp` uses, and for the same reason.
+    // Lifecycle routes through the owning server's agent; only update state on
+    // success. Reroute BEFORE starting: `compose start` returns the container to
+    // the network it was CREATED on, and fails once that network is reclaimed.
     if (running && (await rerouteDatabase(id)) === "rerouted") {
       await getDb()
         .update(databasesTable)
@@ -1849,11 +1838,8 @@ async function rerouteDatabase(
 
 /**
  * Put moved databases onto the network their new placement owns - the database
- * twin of `reapplyNetworkAfterMove`. The CALLER has already gated the move, so
- * this asks for no capability of its own.
- *
- * Best-effort and sequential: an unreachable host leaves the row moved and the
- * container where it was, and the next redeploy finishes the job.
+ * twin of `reapplyNetworkAfterMove`. The CALLER has gated the move. Best-effort:
+ * an unreachable host leaves the row moved and the next redeploy finishes it.
  */
 export async function reapplyDatabaseNetwork(ids: string[]): Promise<number> {
   let failed = 0;
@@ -2019,14 +2005,10 @@ export async function rebuildDatabase(id: string): Promise<void> {
 }
 
 /**
- * The per-engine in-engine rotation step. postgres / mysql / mariadb / mongodb
- * persist their users INSIDE the data volume, so changing the compose env alone is
- * a silent no-op on an initialized volume - the engine must be told first, via an
- * exec in the running container. redis (command-carried `--requirepass`) and
- * clickhouse (config regenerated from env on every container start, outside the
- * data volume) rotate through the compose re-render alone. mysql/mariadb rotate
- * BOTH root and the scoped user: root's password == the connection-string password
- * is load-bearing for backups (`dumpUserFor` dumps as root with that password).
+ * The per-engine in-engine rotation step. postgres/mysql/mariadb/mongodb persist
+ * their users INSIDE the data volume, so the compose env alone is a silent no-op
+ * and the engine must be told by exec. redis and clickhouse rotate on re-render.
+ * mysql/mariadb rotate root too - backups dump as root with that password.
  */
 export function rotationExecCommand(
   db: Database,

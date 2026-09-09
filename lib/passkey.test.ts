@@ -262,14 +262,10 @@ test("removing the passkey puts the account back under the mandate", async () =>
 /* ------------------------------------------------------------------ */
 
 /**
- * The hole, and the thing that closes it without becoming a lockout.
- *
- * A passkey satisfies a mandate, so an account that merely OWNS one must not
- * clear a two-factor policy by typing a password - that would be one factor
- * doing the work of two. But refusing the sign-in outright would take away what
- * ADR-0014 §4 promises: a blocked member keeps their own account settings, which
- * is what lets them unblock themselves. So the password always opens a session,
- * and the session carries what it actually proved.
+ * The hole, and the thing that closes it without becoming a lockout. A passkey
+ * satisfies a mandate, so merely OWNING one must not clear a two-factor policy by
+ * typing a password. But ADR-0014 §4 promises a blocked member keeps their account
+ * settings, so the password always opens a session carrying what it proved.
  */
 
 test("a password session does not inherit the account's passkey", async () => {

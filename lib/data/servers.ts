@@ -318,13 +318,9 @@ export interface AddServerResult {
 }
 
 /**
- * Where the agent this command installs will call home to.
- *
- * On THIS host that is loopback, and it has to be: the panel is published on
- * 127.0.0.1 only, and during a takeover so is its proxy - so its public address
- * answers nothing and no certificate can be read for it. That refused every
- * install command at the one moment recovering from the panel was the only way
- * out. The installer bootstraps agent 0 over exactly this address.
+ * Where the agent this command installs will call home to. On THIS host that is
+ * loopback and has to be: the panel is published on 127.0.0.1 only, and during a
+ * takeover so is its proxy, so its public address answers nothing.
  */
 async function bootstrapBaseUrl(server: {
   ip?: string;

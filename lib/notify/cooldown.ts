@@ -1,25 +1,14 @@
 import type { AlertKey } from "../types";
 
 /**
- * One state machine for every repeated condition.
+ * One state machine for every repeated condition. Emitters report what they
+ * observed, good or bad, UNCONDITIONALLY, and this decides whether it is worth
+ * telling anybody - which is what makes the recovery alert free. It fires on a
+ * first observation, on any state change, and on the re-nag once cooled.
  *
- * Emitters call this UNCONDITIONALLY - they report what they observed, good or
- * bad, and this decides whether it is worth telling anybody. That is what makes
- * the recovery alert free: "server back online" is just a state change away from
- * "server offline", with no separate bookkeeping at the call site.
- *
- *   no entry            -> fire   (first observation)
- *   state changed       -> fire   (the recovery edge, and every other edge)
- *   same state, cooled  -> fire   (the re-nag)
- *   otherwise           -> stay quiet
- *
- * Fired first in the dispatcher, before any query: the hot emitters run twelve
- * times a minute per host, and a suppressed alert has to cost a `Map.get`.
- *
- * ponytail: per-process RAM. N control-plane instances = N copies of a repeated
- * alert, and a restart re-announces an ongoing outage once. Move the map into a
- * `notification_state` table if Deplo is ever run horizontally scaled; a single
- * instance is the shipped topology.
+ * ponytail: per-process RAM, so N instances mean N copies of a repeated alert and
+ * a restart re-announces an ongoing outage once. A `notification_state` table if
+ * Deplo is ever run horizontally scaled; a single instance is the shipped shape.
  */
 
 interface Seen {

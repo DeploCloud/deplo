@@ -89,13 +89,12 @@ const UNREACHABLE_SOURCE_HOST =
 const UNREACHABLE_SOURCE_AGENT = `Deplo cannot reach the agent on the machine this service's data is on, so nothing was stopped and no data was copied. Installing the agent is outbound and works behind any firewall; reading a volume is Deplo dialing that machine back, INBOUND. ${AGENT_PORT_NOTICE} Then check the machine's address under Servers and run the copy again.`;
 
 /**
- * Which of `names` that host actually HAS. `null` when it could not be asked at
- * all - an agent too old for the RPC answers that way too, and refusing a copy
- * over a question nobody could answer would be the worse mistake.
+ * Which of `names` that host actually HAS. `null` when it could not be asked -
+ * an agent too old answers that way too, and refusing a copy over a question
+ * nobody could answer is the worse mistake.
  *
- * ponytail: `volumeUsage` SIZES each volume (a `du`) to answer a yes/no. Fine
- * before a copy that is about to stream the same bytes; a dedicated exists-RPC if
- * this ever runs anywhere hot.
+ * ponytail: `volumeUsage` SIZES each volume (a `du`) to answer a yes/no. A
+ * dedicated exists-RPC if this ever runs anywhere hot.
  */
 async function volumesOnHost(
   serverId: string,
@@ -541,19 +540,13 @@ async function landedFor(
 /* ------------------------------------------------------------------ */
 
 /**
- * Every service THIS RUN imported whose data can still be moved.
+ * Every service THIS RUN imported whose data can still be moved. Scoped to the
+ * run: the copy wipes its target before writing, so the pairing has to be a fact
+ * the run recorded, never a name that happens to match. A service with nothing to
+ * pair is still listed, carrying the notes that say why.
  *
- * Scoped to the run on purpose. The plan drives a copy that wipes its target before
- * writing, so "which resource is this service's" has to be a fact the run recorded,
- * never a name that happens to match something in the team.
- *
- * A service with nothing to pair is still listed, carrying the notes that say why -
- * a volume that cannot be paired is the single most useful line in the whole report,
- * and dropping it silently is how a migration finishes "clean" with data left behind.
- *
- * ponytail: one container list + one inspect per container, per service. Fine for
- * the tens of services a migration has; a fleet with hundreds wants the container
- * list cached per HOST instead of per service.
+ * ponytail: one container list + one inspect per container, per service. A fleet
+ * with hundreds wants the container list cached per HOST.
  */
 export async function planMigrationDataMove(
   input: ConnectInput & { runId: string },
@@ -863,12 +856,10 @@ async function recordStoppedForCopy(
 }
 
 /**
- * Every machine behind the panel answers Deplo, or nothing starts.
- *
- * The wizard refuses to reach Review without this; the API did not, so a run
- * imported eleven objects and then found six of them with no way to read their
- * data. A LIVE hello, not the stored status: that one goes green on the agent's
- * own call-home and says nothing about the direction a copy needs.
+ * Every machine behind the panel answers Deplo, or nothing starts. The wizard
+ * refuses to reach Review without this; the API did not, and a run imported eleven
+ * objects with no way to read six. A LIVE hello - the stored status goes green on
+ * the agent's own call-home and says nothing about the direction a copy needs.
  */
 export async function assertMigrationMachinesReady(
   c: SourceCredential,
@@ -906,11 +897,9 @@ export interface RecopySource {
 }
 
 /**
- * The service this app or database was imported from.
- *
- * The report is the record: the run's key is wiped the moment it ends, so
- * copying the data again asks for it once more - and everything else it needs is
- * here rather than typed by whoever is trying to recover.
+ * The service this app or database was imported from. The report is the record:
+ * the run's key is wiped the moment it ends, so copying the data again asks for it
+ * once more and everything else it needs is here rather than typed by hand.
  */
 export async function recopySourceFor(
   kind: "app" | "database",
@@ -1600,13 +1589,10 @@ async function runMoveMigrationServiceData(
     if (dest !== source) dest.close();
   }
 
-  // A database is brought back up and CHECKED, because "the bytes are in the volume"
-  // is not the claim anyone cares about - "the engine reads them" is. It is brought
-  // back up even when NOTHING was copied: the copy stopped it, and a service that
-  // had no data to move is not a reason to leave somebody's database down.
-  // A service Deplo stopped over there for a copy that then moved NOTHING goes
-  // back up over there: it is the only place its data is, and "stopped on the
-  // old panel, empty on the new one" is the outcome this exists to prevent.
+  // A database is brought back up and CHECKED - the claim anyone cares about is
+  // "the engine reads them", not "the bytes are in the volume". Brought up on both
+  // sides even when NOTHING was copied: the copy stopped it, and an empty service
+  // is no reason to leave somebody's database down.
   if (stoppedThere && state.running && moved === 0 && failed + notCopied > 0)
     notes.push(await startAgainThere());
 

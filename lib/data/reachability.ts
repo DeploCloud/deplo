@@ -33,15 +33,9 @@ async function safeEnv(appId: string): Promise<Record<string, string>> {
 
 /**
  * What this app names TODAY, can reach today, and would stop reaching if it moved
- * to `to`.
- *
- * This is the question a placement change actually raises, and no check asked it:
- * "I have my apps and my Postgres at the top level, now I organise them into a
- * Project" moves the apps and leaves the database behind, and the app falls over
- * with `cannot resolve host` on a click whose tooltip promised nothing of the sort.
- *
- * Heuristic in the same way the deploy-time warning is (`usesAsHost`), so it
- * informs rather than refuses.
+ * to `to` - the question a placement change raises and no check asked: organising
+ * apps into a Project leaves the database behind. Heuristic like the deploy-time
+ * warning (`usesAsHost`), so it informs rather than refuses.
  */
 export async function neighboursLostByMove(
   appId: string,

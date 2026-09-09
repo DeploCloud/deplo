@@ -9,23 +9,13 @@ import type { GitRepo } from "../types";
 const CHECK_TIMEOUT_MS = 10_000;
 
 /**
- * Whether an error is an EXPLICIT refusal by the provider.
+ * Whether an error is an EXPLICIT refusal by the provider. Both families spell the
+ * HTTP status into the message at the throw site, so one regex reads all four. A
+ * timeout, a 5xx or a rate limit is NOT a refusal: this explains a failure that was
+ * going to happen anyway and must never invent one.
  *
- * Both families spell the HTTP status into the message at the throw site
- * (`GitHub repo check failed (404)`, `GitLab request failed (403): …`), so one
- * regex reads all four providers. A timeout, a 5xx, a rate limit, a DNS failure
- * or a message with no status at all is NOT a refusal: the deploy proceeds
- * exactly as it does today.
- *
- * The direction matters. This check exists to explain a failure that was going
- * to happen anyway - it must never invent one. A bad minute at GitHub failing a
- * deploy that would have worked is strictly worse than the opaque error this
- * replaces.
- *
- * ponytail: a regex over our own message text, because the alternative is
- * threading a `status` field through four adapters and their call sites. It
- * fails OPEN when it misses, which is the safe direction - give the adapters a
- * real status field if a fifth provider words its errors differently.
+ * ponytail: a regex over our own message text, and it fails OPEN when it misses.
+ * Give the adapters a real status field if a fifth provider words errors otherwise.
  */
 export function isRefusal(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e ?? "");

@@ -105,13 +105,9 @@ async function codeFor(totpURI: string): Promise<string> {
 }
 
 /**
- * `enableTwoFactor`, narrowed to the shape Deplo enrols.
- *
- * Since Better Auth 1.7.0 the endpoint answers a DISCRIMINATED union: an OTP
- * enrolment is `{ method: "otp" }` and carries no secret at all, because the
- * code is delivered rather than shown. Deplo enrols an authenticator app, so it
- * asks for TOTP by name (`lib/data/two-factor.ts` does the same) and this throws
- * on anything else - which is also what narrows the type for every reader below.
+ * `enableTwoFactor`, narrowed to the shape Deplo enrols. Since Better Auth 1.7.0
+ * the endpoint answers a DISCRIMINATED union, and an OTP enrolment carries no
+ * secret at all. Deplo asks for TOTP by name and this throws on anything else.
  */
 async function enableTotp(
   headers: Headers,

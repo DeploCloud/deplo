@@ -211,11 +211,10 @@ export async function assertPreviewBaseNotAnotherTeams(
 }
 
 /**
- * Whether `name` is unavailable. With a `pathPrefix` the stored uniqueness rule
- * applies - `(name, coalesce(path_prefix,''))` - so one team may serve `app.com`
- * on `/` and `app.com` on `/api` from two apps; another team's claim on the name
- * still refuses it at any path. Without one, any row with that name is a taken
- * name (what a generated host has to avoid).
+ * Whether `name` is unavailable. With a `pathPrefix` the stored rule applies -
+ * `(name, coalesce(path_prefix,''))` - so one team may serve `app.com` on `/` and
+ * on `/api`; another team's claim still refuses it at any path. Without one, any
+ * row with that name is a taken name (what a generated host has to avoid).
  */
 async function domainNameExists(
   name: string,
@@ -770,13 +769,10 @@ async function addDomainUnlocked(
   // A path-routed row is a SECOND row on a hostname that may already be verified
   // (`app.com` for `/`, `app.com` for `/api`).
   const sibling = existing.find((d) => d.name === clean && isRoutableDomain(d));
-  // No verified sibling ⇒ check DNS RIGHT NOW instead of parking the row at `pending`
-  // until someone finds the Verify button: a host whose record is already in place (a
-  // suggested nip.io domain, a pre-pointed custom domain) is born
-  // `valid`/`cloudflare` and the caller's routing re-apply makes it live in the same
-  // click - zero manual steps.
-  // Declared, never detected: a proxy that is not Cloudflare has no published
-  // address range to recognise, so the routing decision is the user's to make.
+  // No verified sibling ⇒ check DNS NOW instead of parking the row at `pending`
+  // until someone finds Verify: a host already pointed here is born valid and the
+  // caller's routing re-apply makes it live in the same click. Cloudflare is
+  // declared, never detected - another proxy publishes no address range.
   const proxied = config.proxied === true;
   const status =
     sibling?.status ?? (await checkDomainDns(clean, await appServerIp(appId)));
@@ -969,12 +965,9 @@ export interface DomainPatch {
    * current value, so an untouched dropdown is a no-op). */
   www?: WwwRedirect;
   /**
-   * The entrypoint, expressed as a tri-state because the Edit dialog always sends
-   * the full routing config: - a concrete value → manual mode: store it - `null` →
-   * auto mode: delete it (derived at deploy time) - absent (`undefined`) → leave
-   * whatever is stored unchanged This lets the "set entrypoint manually" checkbox
-   * round-trip (auto persists as a genuinely-absent field) without colliding with
-   * "field not in this edit".
+   * Tri-state, because the Edit dialog always sends the full routing config: a
+   * value → manual mode, `null` → auto (derived at deploy time, so delete it),
+   * absent → leave what is stored. Lets the checkbox round-trip.
    */
   entrypoint?: DomainEntrypoint | null;
   /** The "a proxy answers for this hostname" declaration - see
@@ -1321,11 +1314,9 @@ async function deleteDomainRow(id: string): Promise<void> {
 }
 
 /**
- * Create the other half of a `www` pair, cloned from the row the user is editing:
- * same container port, same compose service, same entrypoint and the same
- * certificate provider - a redirect that answers on `https://www.…` needs its own
- * valid certificate there, or the browser hits a certificate error BEFORE it is
- * ever told where to go.
+ * Create the other half of a `www` pair, cloned from the row being edited: same
+ * port, service, entrypoint and certificate provider - a redirect answering on
+ * `https://www.…` needs its own certificate, or the browser errors first.
  */
 async function insertPairedDomain(
   from: Domain,

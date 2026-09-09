@@ -7,13 +7,10 @@ import {
 import { readTextCapped } from "@/lib/http/body-cap";
 
 /**
- * The installer's end of a takeover. It runs on the host, holds
- * `DEPLO_HOST_BOOTSTRAP_TOKEN`, and cannot present a session cookie - so this is
- * a REST exception authenticated the way `agent/bootstrap` is.
- *
- * GET is the poll: how far the operator has got, and whether anything but the
- * installer has ever reached this panel (which is how a closed port is caught
- * instead of announced as a success).
+ * The installer's end of a takeover: it runs on the host, holds
+ * `DEPLO_HOST_BOOTSTRAP_TOKEN` and has no session cookie, so this is a REST
+ * exception authenticated the way `agent/bootstrap` is. GET is the poll - how far
+ * the operator got, and whether anything but the installer ever reached the panel.
  */
 
 function authorized(request: Request): boolean {

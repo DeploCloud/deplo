@@ -38,12 +38,9 @@ async function teamsWithWorkloads(serverId: string): Promise<string[]> {
 }
 
 /**
- * The teams an alert about `serverId` should reach.
- *
- * Whoever runs something on the host, and, when nobody does yet, whoever was
- * explicitly granted it. A server added five minutes ago that falls over
- * mid-setup is exactly when a new user needs telling, so an empty answer falls
- * back to the first team, the same last resort the activity log takes.
+ * The teams an alert about `serverId` should reach: whoever runs something on the
+ * host, else whoever was granted it, else the first team - a server added five
+ * minutes ago that falls over mid-setup is when a new user most needs telling.
  *
  * ponytail: a shared server nobody uses alerts the FIRST team, not all of them.
  * Per-team server subscriptions the day somebody asks.

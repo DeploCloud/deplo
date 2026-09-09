@@ -20,11 +20,8 @@ import { rerouteApp } from "./build";
  * migration from the single shared network.
  * https://deplo.build/docs/advanced/network-isolation
  *
- * Serial per host on purpose: this is a bring-up of every container on a machine,
- * and doing them at once would put an instance's whole fleet under load during an
- * upgrade. A stack that cannot be moved is LEFT WHERE IT IS - the old network still
- * exists and Traefik is still on it - so the failure is a delay, never an outage,
- * and the next deploy finishes the job.
+ * Serial per host: this brings up every container on a machine. A stack that
+ * cannot be moved is LEFT WHERE IT IS, so a failure is a delay, never an outage.
  */
 export async function runNetworkIsolationSweep(): Promise<void> {
   const db = getDb();

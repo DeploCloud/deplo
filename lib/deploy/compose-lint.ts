@@ -1,16 +1,7 @@
 /**
- * Client-safe docker-compose linter for the Compose editor.
- *
- * Deplo post-processes every compose file before it deploys it (see
- * `compose-stack.ts`): it joins the exposed service to the external `deplo`
- * network, adds Traefik routing labels (leaving published `ports:` intact), and
- * strips `container_name`. The linter's job is to catch the
- * mistakes that break that pipeline, and the everyday compose mistakes users
- * make - BEFORE they hit save, with a line number for each.
- *
- * It runs in the browser (no `server-only`, only `js-yaml`, which is already a
- * dependency). The server still validates authoritatively at deploy time; this
- * is fast feedback, not a security boundary.
+ * Client-safe docker-compose linter for the Compose editor: the mistakes that
+ * break Deplo's post-processing (see `compose-stack.ts`) plus the everyday ones,
+ * with a line number. Fast feedback, not a boundary - the deploy re-validates.
  */
 
 import yaml, { isMap, isScalar, Scalar, visit, type Document } from "../yaml";
@@ -19,11 +10,9 @@ import { isDatastoreImage } from "../databases/images";
 import { INFRA_NETWORK, PLATFORM_NETWORKS, isTenantNetwork } from "./network";
 
 /**
- * An `environment:` value is TEXT by the time the container reads it, so the text
- * the author typed IS the value. `UMASK: 022` parses to the number 22 and would
- * come back out as `22`; quoting it is what keeps it `022`. Same for `1.10`, which
- * re-serializes to `1.1`. Only `environment`, because everywhere else a number is
- * a number and quoting it would change what compose reads.
+ * An `environment:` value is TEXT by the time the container reads it: `UMASK: 022`
+ * parses to 22 and comes back `22`, `1.10` to `1.1`. Only `environment` - anywhere
+ * else quoting a number would change what compose reads.
  */
 export function keepAuthoredEnvText(doc: Document): boolean {
   let changed = false;
@@ -63,10 +52,8 @@ export function isInterpolated(v: unknown): boolean {
 
 /**
  * Whether compose would read this value as TRUE. It casts to a typed bool, so the
- * YAML 1.1 spellings (`yes`, `on`, `y`) and a quoted `"true"` all are, where the
- * YAML 1.2 parser here sees a plain string - which is how `privileged: yes` reached
- * the host past a gate testing `=== true`. `1` is in for good measure; compose
- * itself refuses that one.
+ * YAML 1.1 spellings (`yes`, `on`, `y`) and a quoted `"true"` count - which is how
+ * `privileged: yes` reached the host past a gate testing `=== true`.
  */
 export function composeTruthy(v: unknown): boolean {
   if (typeof v === "boolean") return v;
@@ -706,11 +693,9 @@ interface ComposeDocShape {
 }
 
 /**
- * Parse a compose YAML string and report whether ANY service bind-mounts a host
- * path (see {@link isHostBindSource}). Used server-side to gate compose edits
- * behind the `canMountHostVolumes` grant. Tolerant of malformed input: a YAML it
- * can't parse, or a doc with no services, simply has no detectable host mount
- * (the real deploy-time parse/validate is the authoritative check).
+ * Whether ANY service bind-mounts a host path ({@link isHostBindSource}) - the
+ * server-side gate for `canMountHostVolumes`. Tolerant of malformed input: the
+ * deploy-time parse is the authoritative check.
  */
 export function composeHasHostBindMount(composeYaml: string): boolean {
   let doc: ComposeDocShape | null;
@@ -743,16 +728,9 @@ export interface ComposeFileBinding {
 }
 
 /**
- * Every `./<x>` bind a stack's services declare: which file, which service,
- * where it lands, read-only or not.
- *
- * The compose is the ONLY thing that knows where a stack's config file is
- * mounted - the file itself just sits in the app's files dir - so this is what
- * lets Storage show a config file as a **File** entry with a real container path
- * instead of a name with nowhere attached to it. An import reads it to describe
- * a file mount the way the platform it came from described it.
- *
- * Tolerant like its neighbours: an unparseable document simply declares nothing.
+ * Every `./<x>` bind a stack's services declare: which file, which service, where
+ * it lands, read-only or not. The compose is the ONLY thing that knows where a
+ * config file is mounted, which is what lets Storage show it as a File entry.
  */
 export function composeFileBindings(composeYaml: string): ComposeFileBinding[] {
   let doc: ComposeDocShape | null;
@@ -802,23 +780,9 @@ export function volumeTarget(v: unknown): {
 }
 
 /**
- * The DNS names Deplo's own infrastructure answers to on the shared `deplo`
- * network. A container joining that network registers its SERVICE NAME as an
- * alias there, and Docker round-robins a name two containers both claim, so a
- * stack with one of these on that network takes over traffic meant for the
- * platform:
- *
- *  - `deplo` is where Traefik sends the PANEL (`DEFAULT_PANEL_TARGET` is
- *    `http://deplo:3000`), so claiming it collects admin session cookies;
- *  - `postgres` is the control plane's database on an install created before it
- *    moved to its own internal network, and what arrives on the first packet is
- *    the password in the connection string;
- *  - `traefik` / `deplo-traefik` are the proxy itself.
- *
- * The list is deliberately TINY, and the check only fires for a service that
- * actually joins the shared network: a stack with its own `postgres` service on
- * its own network is the most ordinary compose file there is, and refusing it
- * would be absurd.
+ * The DNS names Deplo's own infrastructure answers to on a shared network: a
+ * container registers its SERVICE NAME there and Docker round-robins a claimed
+ * one, so `deplo` collects the panel's admin cookies and `postgres` its password.
  */
 export const RESERVED_SHARED_NETWORK_NAMES = new Set([
   "deplo",
@@ -931,12 +895,9 @@ function resolvedNetworkName(key: string, raw: unknown): string | null {
 }
 
 /**
- * A network Deplo owns: the platform's own, or one it mints for a tenant.
- *
- * The platform's names are matched with an optional compose PROJECT PREFIX,
- * because that is how they exist on a host: `install-agent.sh` brings Traefik up
- * from `$AGENT_DATA/traefik` with no `-p`, so the socket-proxy network is really
- * `traefik_deplo-socket`. A bare-name check reads it as somebody's own network.
+ * A network Deplo owns: the platform's own, or one it mints for a tenant. The
+ * platform's names are matched with an optional compose PROJECT PREFIX - Traefik
+ * comes up from `$AGENT_DATA/traefik`, so its network is `traefik_deplo-socket`.
  */
 export function isDeploNetwork(name: string): boolean {
   const n = name.trim();
@@ -953,26 +914,9 @@ export function isDeploNetwork(name: string): boolean {
 }
 
 /**
- * Every top-level network KEY in this compose that resolves to a network DEPLO
- * owns - the platform's own, and every Environment / team / preview network,
- * none of which is this stack's to name.
- *
- * Compose lets a network be referenced under any key while pointing at another
- * network by `name:`, so
- *
- *     networks: { sneaky: { external: true, name: deplo } }
- *
- * is the platform's network under an alias of the author's choosing. Checking the
- * key alone is the same mistake as trusting an identifier that names itself:
- * every rule about these networks has to resolve them by NAME first, or the rule
- * is one rename away from being decorative.
- *
- * A TENANT network counts for the same reason, and that is the one that mattered:
- * `networks: {default: {external: true, name: deplo-env-…}}` put the whole stack
- * on another Environment's network, with no key of its own for any check to see.
- *
- * `buildComposeStack` collapses every key this returns onto the stack's OWN
- * network. Exported so the renderer and the editor agree on which keys those are.
+ * Every top-level network KEY resolving to a network DEPLO owns. Resolved by
+ * NAME, not by key: `{default: {external: true, name: deplo-env-…}}` put a whole
+ * stack on another Environment's network. `buildComposeStack` collapses them.
  */
 export function sharedNetworkKeys(doc: { networks?: unknown }): Set<string> {
   // Seeded with `deplo` ALONE, the key the renderer itself writes. The other
@@ -1017,13 +961,9 @@ function joinsSharedNetwork(
 }
 
 /**
- * The first service in this compose that would claim a reserved infrastructure
- * name on the shared network, or null. See {@link RESERVED_SHARED_NETWORK_NAMES}.
- *
- * Only an EXPLICIT join is visible here (the authored compose has no routing
- * yet); a service that ends up on the shared network because a domain routes to
- * it is caught by the same rule in `buildComposeStack`, which sees the final
- * wiring. Two checks, one list.
+ * The first service claiming a reserved infrastructure name on the shared
+ * network, or null. Only an EXPLICIT join is visible here; a service the router
+ * puts there is caught by the same list in `buildComposeStack`.
  */
 export function composeClaimsReservedName(composeYaml: string): string | null {
   let doc: { services?: Record<string, unknown>; networks?: unknown } | null;
@@ -1060,10 +1000,8 @@ export function reservedNameMessage(claimed: string): string {
 
 /**
  * The first service whose `hostname:` compose fills in from a variable, or null.
- * That value decides which name the container answers to on the network - `deplo`
- * included, which is where the panel lives - and it arrives from the env-file, so
- * no reading of the authored text can see it. Refused like an interpolated network
- * name, at the save AND at the render.
+ * That value decides which name the container answers to - `deplo` included - and
+ * arrives from the env-file, so no reading of the authored text can see it.
  */
 export function composeInterpolatedHostname(
   composeYaml: string,
@@ -1087,32 +1025,10 @@ export function interpolatedHostnameMessage(service: string): string {
 }
 
 /**
- * Whether a TOP-LEVEL `volumes:` entry points at storage Deplo did not create
- * for this app - the other half of the host-volume permission, and the half no
- * check used to look at.
- *
- * `composeHasHostBindMount` reads the SERVICE mount list and calls a source a
- * host bind when it starts with `/` or climbs with `..`. Neither is true of a
- * NAMED volume, so the whole of this block was ungated, and it carries two ways
- * out of the app's own storage:
- *
- *  - `external: true` (or a pinned `name:`) attaches an EXISTING docker volume
- *    by its host name. The names are deterministic (`deplo-<slug>-<volume>`, and
- *    the control plane's own `…_deplo-postgres`), so this reached another team's
- *    data and the control-plane DATABASE at rest - every ciphertext, every
- *    session row, and write access to `users.is_instance_admin`.
- *  - `driver_opts: {type: none, device: /, o: bind}` is a bind mount of any host
- *    path, declared one level up from where the bind check was looking.
- *
- * Both are legitimate operator things to do - `appMoveVolumeNames` already
- * treats an `external:` volume as "storage the operator owns, not ours" - which
- * is exactly why they belong behind `canMountHostVolumes` rather than being
- * refused outright.
- *
- * Read on the AUTHORED compose, never the rendered one: Deplo injects its own
- * `{ name: deplo-<deployKey>-<volume> }` entries at render time, well after this
- * runs, so a plain `volumes: { data: {} }` (an ordinary per-app volume) stays
- * free and only a user-pinned target counts.
+ * Whether a TOP-LEVEL `volumes:` entry points at storage Deplo did not create for
+ * this app: `external:`/a pinned `name:` attaches an existing volume by its
+ * deterministic host name, `driver_opts: {device: /}` is a bind one level up.
+ * Read on the AUTHORED compose - the renderer adds its own entries later.
  */
 function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -1133,12 +1049,9 @@ function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
 }
 
 /**
- * Top-level `secrets:`/`configs:` keys sourced from a file on the SERVER
- * (`file: /etc/…`, or one climbing out with `..`). Docker mounts it into the
- * container, so it is the same host-file read a service `env_file` is, one level
- * up, and it takes the same grant - by the same rule: a relative name resolves
- * inside the stack's own project directory and is the app's own file. An
- * `environment:`-sourced secret carries no path at all and is left alone.
+ * Top-level `secrets:`/`configs:` keys sourced from a file on the SERVER - the
+ * same host-file read an `env_file` is, one level up, so the same grant. A
+ * relative name is the app's own file; an `environment:` secret carries no path.
  */
 function fileSourcedKeys(entries: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -1229,10 +1142,7 @@ function healthCheckPort(svc: unknown): number | null {
 /**
  * The container port a route to ONE compose service should reach: what it
  * publishes, what its healthcheck dials, else the conventional web port - the
- * same answer the renderer reaches on its own (`portOf`), said out loud so an
- * imported domain carries a real port instead of nothing.
- *
- * Null only when the stack has no such service.
+ * renderer's own answer said out loud, so an imported domain carries a real port.
  */
 export function composeRoutePort(
   compose: string | null | undefined,
@@ -1330,15 +1240,9 @@ export function composeRouteCandidates(
 }
 
 /**
- * The volumes DEPLO itself creates for a stack: every top-level `volumes:` entry
- * that is neither `external:` nor pinned to a `name:` of its own, so compose
- * creates it as `<project>_<key>` and it belongs to this app alone.
- *
- * Used by the teardown to name what a `down -v` cannot reach - a stack that was
- * never deployed has no compose file on the host, so `down` has nothing to read
- * and the volumes an import already filled would survive the app that owned
- * them. A volume the user pointed elsewhere is deliberately NOT in this list:
- * Deplo does not own those and must never remove one.
+ * The volumes DEPLO itself creates for a stack: every top-level entry that is
+ * neither `external:` nor pinned to its own `name:`. Named for the teardown,
+ * which a `down -v` cannot reach on a stack that was never deployed.
  */
 export function composeOwnVolumeKeys(composeYaml: string): string[] {
   let doc: { volumes?: Record<string, unknown> } | null;
@@ -1361,14 +1265,9 @@ export function composeOwnVolumeKeys(composeYaml: string): string[] {
 }
 
 /**
- * Parse a compose YAML string and report whether it points at storage or host
- * FILES this app does not own: a top-level `volumes:` entry pinned to a foreign
- * volume/host path ({@link foreignVolumeKeys}), OR a top-level `secrets:`/
- * `configs:` entry sourced from a host `file:` ({@link fileSourcedKeys}). Gated
- * server-side behind `canMountHostVolumes`, beside its siblings.
- *
- * Tolerant of malformed input, like the others: the deploy-time parse is the
- * authoritative one.
+ * Whether a compose points at storage or host FILES this app does not own -
+ * {@link foreignVolumeKeys} or {@link fileSourcedKeys}. Gated server-side behind
+ * `canMountHostVolumes`. Tolerant of malformed input, like the others.
  */
 export function composeMountsForeignStorage(composeYaml: string): boolean {
   let doc: {
@@ -1393,31 +1292,10 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
 }
 
 /**
- * Top-level network KEYS this compose points at a network Deplo did not create
- * for this app - the network twin of {@link foreignVolumeKeys}, and the half no
- * check used to look at.
- *
- * A network is "foreign" on exactly the markers a volume is: `external: true`
- * (attach an EXISTING docker network by host name), a pinned `name:` (the same
- * thing spelled differently), or `driver_opts` / a host-reaching `driver`
- * (`macvlan`/`ipvlan` put the container on the host's own L2 segment). Compose
- * project names are deterministic (`deplo-<slug>`), so another team's default
- * network is `deplo-<their-slug>_default` - guessable from any app name.
- *
- * Joining it is worse than reading their storage:
- *
- *  - every unpublished service of that stack becomes reachable at L3 (their
- *    database, their redis, their internal HTTP), and
- *  - a container on a network registers its SERVICE NAME as a DNS alias there,
- *    and Docker round-robins a name two containers both claim, so a service
- *    called `postgres` or `redis` collects the victim's own internal lookups,
- *    password and all. The tenant-network protections (`aliases:` drop,
- *    RESERVED_SHARED_NETWORK_NAMES) only fire for the stack's own network, and
- *    `buildComposeStack` leaves every other network exactly as authored.
- *
- * A network DEPLO OWNS is not foreign here: the renderer collapses every key
- * naming one onto the stack's own network, so it reaches nothing. A plain per-app
- * network (`networks: {internal: {}}`) declares nothing pinned and stays free.
+ * Top-level network KEYS pointing at a network Deplo did not create for this app -
+ * the twin of {@link foreignVolumeKeys}. Project names are deterministic
+ * (`deplo-<slug>_default`), and joining one exposes every unpublished service AND
+ * lets a `postgres` service collect the victim's lookups by DNS round-robin.
  */
 function foreignNetworkKeys(networks: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -1447,16 +1325,9 @@ function foreignNetworkKeys(networks: Record<string, unknown>): string[] {
 }
 
 /**
- * Parse a compose YAML string and report whether ANY service joins a network this
- * app does not own (see {@link foreignNetworkKeys}) - another team's stack
- * network, or the host's L2 segment. Gated server-side behind
- * `canMountHostVolumes`, beside its storage sibling: both are a container
- * reaching past its own boundary, and a permission that stops one while allowing
- * the other stops nothing.
- *
- * Only a service that ACTUALLY joins one counts: declaring an external network
- * and never attaching it deploys nothing. Tolerant of malformed input, like its
- * siblings.
+ * Whether ANY service joins a network this app does not own ({@link
+ * foreignNetworkKeys}). Same `canMountHostVolumes` grant as its storage sibling:
+ * both reach past the container's boundary. Only an ACTUAL join counts.
  */
 export function composeJoinsForeignNetwork(composeYaml: string): boolean {
   let doc: { services?: Record<string, unknown>; networks?: unknown } | null;
@@ -1488,16 +1359,9 @@ export function composeJoinsForeignNetwork(composeYaml: string): boolean {
 }
 
 /**
- * Parse a compose YAML string and report whether any service's `build:` reaches
- * a host path the app does not own - an absolute or `..`-escaping build
- * `context`/`dockerfile`, an `additional_contexts` source that does the same, an
- * `ssh:` key (loads host SSH keys/agents into the build), or `privileged: true`
- * (a privileged BuildKit build runs on the host). Each bakes host bytes into the
- * image the tenant then runs, or escapes at build time - the same host reach a
- * bind mount has, so the same `canMountHostVolumes` grant. A project-relative
- * `./`-context (the normal case, rewritten to the isolated files dir) stays free.
- *
- * Tolerant of malformed input, like its siblings.
+ * Whether any service's `build:` reaches a host path the app does not own - an
+ * absolute or `..`-escaping context/dockerfile, an `additional_contexts` source,
+ * an `ssh:` key, or a privileged build. Same host reach as a bind, same grant.
  */
 export function composeBuildReachesHost(composeYaml: string): boolean {
   let doc: { services?: Record<string, unknown> } | null;
@@ -1542,18 +1406,10 @@ export function composeBuildReachesHost(composeYaml: string): boolean {
 }
 
 /**
- * The first compose key that MERGES configuration from a file the save-time
- * detectors cannot see, or null. `docker compose` resolves these on the host, so
- * the dangerous keys they pull in (`privileged`, host binds, published ports,
- * even `traefik.*` labels via `label_file`, past {@link buildComposeStack}'s
- * label strip) never appear in the authored YAML the gate, or a deploy-time
- * re-lint of it - parses. They cannot be denylisted key-by-key, so Deplo refuses
- * them: it owns the render, and an author who needs the merged config inlines it.
- *
- *  - a service `extends:` with a `file:` (a same-file `extends: {service: x}` is
- *    fine - x's own keys ARE linted);
- *  - a top-level `include:` (pulls whole other compose files);
- *  - a service `label_file:` (loads labels from a file, past the traefik strip).
+ * The first compose key that MERGES config from a file the save-time detectors
+ * cannot see (`extends: {file:}`, top-level `include:`, `label_file:`), or null.
+ * Compose resolves them on the host, so what they pull in never appears in the
+ * authored YAML a gate parses. Refused rather than denylisted key by key.
  */
 export function composeUsesExternalMerge(composeYaml: string): string | null {
   let doc: { services?: Record<string, unknown>; include?: unknown } | null;
@@ -1603,44 +1459,9 @@ export function externalMergeMessage(key: string): string {
 
 /**
  * Compose keys that hand a container the host, and how to tell they are ON.
- *
- * A bind mount of `/var/run/docker.sock` was already gated ({@link isHostBindSource});
- * every key here is another way to the same place, and none of them is a volume:
- * `privileged` alone is enough to mount the host's disk and chroot into it,
- * `pid: host` puts `nsenter -t 1` one command away, `devices` hands over a raw
- * disk, and `cap_add`/`security_opt`/`userns_mode` remove the boundary a step at
- * a time. They are therefore the same permission ({@link composeNeedsHostPrivileges}).
- *
- * `network_mode: host` is included: the host network namespace lets a container
- * bind arbitrary host ports and reach `127.0.0.1` host services (the control
- * plane, other stacks' internal ports), so it reaches past its own boundary like
- * the rest. `network_mode: container:<name>` joins another container's namespace
- * the same way. It ALSO costs the container its Traefik routing - the linter's
- * separate `network-mode-host` warning still says so; both fire.
- *
- * `cgroup: host` shares the host's cgroup namespace (like `pid`/`ipc`).
- * `volumes_from: "container:<name>"` mounts ANOTHER container's volumes on the
- * same daemon - the reference is by container NAME, so it ignores the network
- * split and reaches another tenant's data (and the control-plane database volume
- * at rest); a bare service name is same-stack and left alone. `env_file` reads a
- * host file into the container's environment, and its paths resolve against the
- * SHARED stack directory on the host (`/data/stacks`), so even a relative name
- * reaches another tenant's rendered env-file - any non-empty value is gated. The
- * `file:`-sourced half of the top-level `secrets:`/`configs:` blocks is the same
- * host-file read one level up, handled in {@link composeMountsForeignStorage}.
- *
- * A `post_start`/`pre_stop` HOOK runs `docker exec` on the container, and
- * `privileged: true` there gives that process every capability whatever the
- * container itself was given - `privileged:` one level down, on a key added to
- * compose long after this list was first written. `deploy:` is here for its
- * device RESERVATIONS alone (`compose up` honours those): they hand over host
- * hardware exactly as `devices:` does, and the rest of `deploy:` is ordinary.
- *
- * `oom_score_adj` is here for the same reason as `oom_kill_disable`, and only
- * when NEGATIVE: it tells the kernel to kill the neighbours first.
- * `group_add` adds supplementary HOST groups inside the container, and `logging`
- * with a non-default driver/options makes DOCKERD dial an address or host socket
- * the author chose - both reach outside the container without naming a path.
+ * Every one is another way to where a `/var/run/docker.sock` bind goes -
+ * `privileged` alone mounts the host disk, `pid: host` puts `nsenter -t 1` one
+ * command away - so they take the same grant ({@link composeNeedsHostPrivileges}).
  */
 const HOST_PRIVILEGE_KEYS = [
   "privileged",
@@ -1680,34 +1501,16 @@ const HOST_PRIVILEGE_KEYS = [
 const SAFE_NETWORK_MODE = /^(none|default)$/i;
 
 /**
- * `security_opt` entries that only ever make a container SAFER, and so are not
- * gated. Everything else there (`apparmor:unconfined`, `seccomp:unconfined`,
- * `label:disable`, a hand-written seccomp profile) removes a boundary.
- *
- * `no-new-privileges` is the one people actually write, and refusing it would
- * mean asking an admin for the host permission in order to HARDEN a container -
- * a gate that punishes the right thing teaches people to skip it. The VALUE is
- * read: `no-new-privileges:false` is the option turned off, and a prefix match
- * called it safe.
- *
- * `cap_drop` and `read_only` are not on the list at all, for the same reason.
+ * `security_opt` entries that only ever make a container SAFER, so are not gated:
+ * asking for the host permission in order to HARDEN one teaches people to skip it.
+ * The VALUE is read - `no-new-privileges:false` is the option turned off.
  */
 const SAFE_SECURITY_OPTS = /^no-new-privileges(?:[:=]\s*true)?$/i;
 
 /**
  * The keys of {@link HOST_PRIVILEGE_KEYS} this service actually sets, in
- * declaration order. Shared by the editor lint and the server-side gate so the
- * two can never disagree about what counts.
- *
- * A key present but empty (`cap_add: []`, `privileged: false`) declares nothing
- * and does not count - the same rule `composePublishesPorts` applies to `ports`.
- * `pid`/`ipc`/`uts`/`network_mode`/`cgroup` are namespace SELECTORS rather than
- * switches: `host` shares the host namespace, and `container:<name>`/
- * `service:<name>` join ANOTHER container's namespace on the same daemon (not
- * limited to this stack) - both escape, so both are flagged. An ordinary value (a
- * bridge network name, a real hostname for uts, `cgroup: private`) is left alone.
- * `volumes_from` flags only the `container:<name>` form (a foreign container's
- * volumes); `env_file` flags only a path that leaves the stack's own directory.
+ * declaration order. A key present but empty declares nothing. The namespace
+ * selectors flag `host` and `container:`/`service:` - both escape - not a real value.
  */
 function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -1875,14 +1678,9 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
 }
 
 /**
- * Parse a compose YAML string and report whether ANY service asks for host
- * privileges (see {@link HOST_PRIVILEGE_KEYS}). Used server-side to gate compose
- * edits behind `canMountHostVolumes`, exactly like {@link composeHasHostBindMount},
- * and for the same reason: both are a container reaching past its own boundary,
- * and a permission that stops one while allowing the other stops nothing.
- *
- * Tolerant of malformed input, like its two siblings: the deploy-time parse is
- * the authoritative one.
+ * Whether ANY service asks for host privileges ({@link HOST_PRIVILEGE_KEYS}),
+ * gated behind `canMountHostVolumes` like its two siblings. Tolerant of malformed
+ * input: the deploy-time parse is the authoritative one.
  */
 export function composeNeedsHostPrivileges(composeYaml: string): boolean {
   return composeHostPrivilegeKeys(composeYaml).length > 0;
@@ -1933,28 +1731,10 @@ export function composeHostReach(composeYaml: string): string[] {
 }
 
 /**
- * Parse a compose YAML string and report whether ANY service publishes a port
- * on the HOST - a `ports:` entry, which binds the server's own IP and port.
- * Used server-side to gate compose edits behind the `canExposePorts` grant.
- *
- * **`expose:` is NOT publishing and is deliberately not counted.** It binds
- * nothing: it advertises a container port to the same network, which compose
- * already allows without it, and it reaches the host through no path at all.
- * Gating it charged the grant for a declaration that opens nothing, and the
- * cost was not theoretical - measured against the 517 stacks in the other
- * platform's own catalogue, 310 of them declare `expose:` while binding ZERO
- * host ports, so two thirds of a fleet could only be created or migrated by
- * someone holding an instance-wide grant. {@link composeHostPorts}, which
- * answers WHICH host ports a stack binds, always agreed: it returns `[]` for
- * every one of them. The two now say the same thing.
- *
- * This is independent of Traefik routing: giving a service a public DOMAIN does
- * not publish a port and is never gated here.
- *
- * Tolerant of malformed input: YAML it can't parse, or a doc with no services,
- * has no detectable published port (the deploy-time parse is authoritative). A
- * `ports:` key present but empty (`[]`/null) declares nothing, so it does not
- * count.
+ * Whether ANY service publishes a port on the HOST - the `canExposePorts` gate.
+ * `expose:` is NOT publishing and is deliberately not counted: it binds nothing,
+ * and gating it charged the grant for two thirds of a measured fleet. Traefik
+ * routing is independent, and an empty `ports:` declares nothing.
  */
 export function composePublishesPorts(composeYaml: string): boolean {
   let doc: ComposeDocShape | null;
@@ -1974,16 +1754,9 @@ export function composePublishesPorts(composeYaml: string): boolean {
 }
 
 /**
- * The HOST ports a compose file would bind, deduped.
- *
- * `composePublishesPorts` answers whether a stack publishes at all (the grant
- * question); this answers WHICH, for the one caller that has to say something
- * useful before anything is created: an import, where a stack carrying `80:80`
- * is about to land on a machine whose 80 belongs to the proxy and the failure
- * would otherwise arrive as an unexplained `docker compose up` error.
- *
- * Both spellings, and the range form (`8000-8005:8000-8005`) expanded, bounded
- * so a wide range cannot turn one stack into a thousand probes.
+ * The HOST ports a compose file would bind, deduped - WHICH, where
+ * `composePublishesPorts` answers whether. For the import, which has to say a
+ * `80:80` will not land before anything is created. Ranges expanded, bounded.
  */
 export function composeHostPorts(composeYaml: string): number[] {
   let doc: ComposeDocShape | null;

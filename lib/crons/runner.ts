@@ -78,19 +78,14 @@ export function __resetCronConnector(): void {
 }
 
 /**
- * The pauses a launch waits out before handing its run to the reaper, in ms.
- *
- * Most commands are over in well under a second - an `echo`, a cache flush, a
- * curl - and without this pass every one of them reads as "Running" until the
- * scheduler's next reap: the button that started it answers "Started" for
- * something already finished, and the output lands on the page seconds later. The agent is milliseconds from the truth the whole time; nobody was
- * asking. The connection is already open and the ladder stops the moment the run
- * settles, so a quick command costs one extra poll.
+ * The pauses a launch waits out before handing its run to the reaper, in ms. Most
+ * commands are over in well under a second, and without this every one of them
+ * read as "Running" until the next reap. The connection is already open and the
+ * ladder stops the moment the run settles, so a quick command costs one poll.
  *
  * ponytail: serial in the fire phase - a job still going when the ladder runs out
- *   pushes the next job's launch back by this much. Small against the ~250ms
- *   handshake that loop already pays per job; if an instance ever fires dozens in
- *   one minute, launch them concurrently rather than dropping this.
+ *   pushes the next launch back by this much. Launch them concurrently if an
+ *   instance ever fires dozens in one minute.
  */
 let quickFinishPolls = [150, 250, 350, 500];
 

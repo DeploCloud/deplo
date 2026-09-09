@@ -328,16 +328,9 @@ test("an app cannot borrow another team's connection", async () => {
 
 /**
  * `base_url` was the one user-supplied outbound address that never went through
- * the shared guard. That mattered more than the usual blind-SSRF case: the
- * control plane dials it itself to prove the token, and `lib/git/providers.ts`
- * puts the provider's own response body into the error it surfaces - so
- * `http://169.254.169.254/latest/meta-data/` came back READABLE to anyone
- * holding `manage_git`, a team capability.
- *
- * The escape exists because a self-hosted GitLab or Gitea on the operator's LAN
- * is an ordinary thing to want, and it is gated exactly like a private bucket
- * endpoint: instance admin only, and recorded on the row so nobody has to
- * remember who made the exception.
+ * the shared guard - and the control plane dials it itself, putting the response
+ * body into the error, so `169.254.169.254` came back READABLE to `manage_git`.
+ * The escape (a LAN GitLab is ordinary) is instance-admin only and recorded.
  */
 
 const connectTo = (baseUrl: string, allowPrivateEndpoint = false) =>

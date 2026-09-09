@@ -96,23 +96,12 @@ export const twoFactor = pgTable(
 
 /**
  * The `@better-auth/passkey` plugin's table - one WebAuthn credential per row.
+ * `publicKey` and `credentialID` are LIBRARY-OWNED and never belong in a DTO:
+ * neither is a secret, but both correlate one person's device across accounts.
+ * `name` is nullable because the plugin writes `undefined` with no label.
  *
- * `publicKey` and `credentialID` are LIBRARY-OWNED and never belong in a DTO.
- * Neither is a secret the way `two_factor.secret` is (a public key is public by
- * construction, and the credential id is what the browser sends in the clear),
- * but both are the credential's identity: shipping them to a client hands an
- * attacker the exact material to correlate one person's device across every
- * account it protects. `PasskeyDTO` in lib/data/passkeys.ts carries `id`, `name`,
- * `createdAt` and whether the credential works on this address, and that is the
- * whole list.
- *
- * `name` is nullable because the plugin writes `undefined` when the client sent
- * no label; Deplo always sends one, but the column has to allow the shape.
- *
- * ponytail: `counter` is `integer` (2^31) while WebAuthn defines a uint32. It
- * matches what the Drizzle adapter hands over (a JS `number`) and the ceiling is
- * unreachable in practice - most authenticators report 0 forever and never
- * increment. Widen to `bigint` only if a real device ever gets close.
+ * ponytail: `counter` is `integer` (2^31) where WebAuthn defines a uint32 - it is
+ * what the Drizzle adapter hands over. Widen to `bigint` if a device nears it.
  */
 export const passkey = pgTable(
   "passkey",
@@ -204,11 +193,8 @@ export const oauthClient = pgTable(
     ),
     /**
      * Machine-to-machine scope authority, and it DENIES by construction: missing,
-     * NULL and empty all refuse `client_credentials`. Deplo does not advertise
-     * that grant at all (`grantTypes` in ../../auth/better-auth.ts lists
-     * authorization_code + refresh_token), so the empty default is the intended
-     * resting state and nothing should ever write here - an agent always acts for
-     * a person, and a token with no user could not resolve to a connection.
+     * NULL and empty all refuse `client_credentials`, which Deplo does not
+     * advertise at all. Nothing should ever write here.
      */
     clientCredentialsScopes: text("client_credentials_scopes")
       .array()
@@ -363,11 +349,9 @@ export const oauthResource = pgTable("oauth_resource", {
 });
 
 /**
- * Which clients may request which resources - `enforcePerClientResources` is ON
- * (1.7.0's default), so a client with no row here can request nothing. Deplo's
- * registration is open by necessity (claude.ai and ChatGPT cannot pre-register),
- * so every client that self-registers is linked to the one MCP resource
- * automatically via `clientRegistrationDefaultResources`.
+ * Which clients may request which resources - `enforcePerClientResources` is ON,
+ * so a client with no row here can request nothing. Registration is open by
+ * necessity, so a self-registering client is linked to the one MCP resource.
  */
 export const oauthClientResource = pgTable(
   "oauth_client_resource",

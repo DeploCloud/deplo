@@ -152,34 +152,15 @@ export function traefikCertificates(currentYaml: string): CustomCertificate[] {
 }
 
 /**
- * Install (or, with an empty list, remove) custom certificates on a host.
+ * Install (or, with an empty list, remove) custom certificates on a host. Traefik
+ * reads certificates only from its FILE provider, and the agent exposes no RPC
+ * that writes an arbitrary path (ADR-0006), so both ride in the stack file as a
+ * compose `configs` entry with inline content, mounted 0400. An operator's own
+ * file provider is respected; one pinned to a single `filename` is a refusal.
  *
- * Two pieces are needed and neither can come from a label: Traefik only reads
- * certificates from its FILE provider, and the file has to exist inside the
- * container. Both ride in the stack file itself - a compose `configs` entry with
- * inline `content`, which Docker materialises into the container on `up`. That
- * is deliberate: the agent has no RPC that writes an arbitrary path on the host
- * (ADR-0006 keeps host writes to the ones it exposes), and the stack file is
- * something Deplo is already allowed to rewrite. The PEM goes in verbatim -
- * Traefik's `certFile`/`keyFile` take either a path or the certificate itself.
- *
- * The operator's own file provider is respected when they have one: our file is
- * dropped into THEIR directory rather than a second provider being declared,
- * which Traefik would refuse. A provider pinned to a single `filename` has no
- * room for another file, and that is a refusal, not something to work around
- * by replacing the file they configured.
- *
- * The file is mounted 0400 rather than compose's default 0444, because it holds
- * private keys and every process in that container can read a 0444 file.
- *
- * ponytail: the KEY still sits in the host's compose file in cleartext, and
- * comes back into the control plane with the rest of the stack on every
- * `fetchHostInfo`. That is inherent to the shape available today - Traefik reads
- * certificates only from its file provider, and the agent exposes no RPC that
- * writes an arbitrary path (ADR-0006) - so the exposure is "whoever can read the
- * proxy's compose file", which is root on that host. Closing it properly needs
- * an agent RPC that writes a secret file directly, at which point the stack file
- * would carry a path instead of a PEM.
+ * ponytail: the KEY sits in the host's compose file in cleartext, so the exposure
+ * is "whoever can read it", i.e. root. Closing it needs an agent RPC that writes a
+ * secret file, at which point the stack would carry a path instead of a PEM.
  */
 export function withTraefikCertificates(
   currentYaml: string,

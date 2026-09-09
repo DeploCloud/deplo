@@ -135,13 +135,9 @@ DialogHeader.displayName = "DialogHeader";
 
 /**
  * A footer of exactly TWO controls is the one-primary-one-secondary shape, and
- * there the secondary (Cancel) sits at the far LEFT, apart from the action it
- * is not. Anything else - a third button, a hint beside the buttons - keeps
- * them together on the right, where a row of peers belongs.
- *
- * Counted with `toArray`, which drops the null a `{cond && <Button/>}` leaves
- * behind, so a conditional button that is absent does not split the row.
- * A caller that needs the other shape passes `sm:justify-end` and wins.
+ * there Cancel sits at the far LEFT, apart from the action it is not. Counted
+ * with `toArray`, so an absent `{cond && <Button/>}` does not split the row. A
+ * caller that needs the other shape passes `sm:justify-end` and wins.
  */
 const DialogFooter = ({
   className,

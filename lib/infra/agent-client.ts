@@ -702,13 +702,6 @@ export class AgentBackupUnsupportedError extends Error {}
 export class AgentBackupStoreUnsupportedError extends Error {}
 
 /**
- * The reachable agent does not (yet) implement the {@link
- * AgentConnection.containerStats} RPC - it predates the `"container-stats"`
- * capability, so it answers with gRPC UNIMPLEMENTED.
- */
-export class AgentContainerStatsUnsupportedError extends Error {}
-
-/**
  * The reachable agent does not (yet) implement {@link
  * AgentConnection.streamMetrics} - it predates the `"metrics-stream"` capability.
  */
@@ -737,12 +730,9 @@ export function mapCheckPortUnsupported(e: unknown): Error {
 }
 
 /**
- * The reachable agent does not (yet) implement the cross-host data-copy RPCs used
- * by a server move - the volume-copy pair ({@link AgentConnection.exportVolume} /
- * {@link AgentConnection.importVolume}, capability `"volume-copy"`) and/or the
- * files-dir pair ({@link AgentConnection.exportFiles} / {@link
- * AgentConnection.importFiles}, capability `"files-copy"`), or it answers with
- * gRPC UNIMPLEMENTED.
+ * The reachable agent does not implement the cross-host data-copy RPCs a server
+ * move uses - the volume-copy pair (capability `"volume-copy"`) and/or the
+ * files-dir pair (`"files-copy"`) - or it answers gRPC UNIMPLEMENTED.
  */
 export class AgentVolumeCopyUnsupportedError extends Error {}
 
@@ -777,10 +767,8 @@ const CLEANUP_UNSUPPORTED_MESSAGE =
 
 /**
  * Map a DockerCleanup RPC error to {@link AgentCleanupUnsupportedError} when it is
- * a gRPC UNIMPLEMENTED (the agent predates the RPC); every other error passes
- * through unchanged. {@link runAgentCleanup} preflights the capability via Hello
- * first, but an agent could advertise nothing yet still reject - this is the
- * belt-and-braces.
+ * a gRPC UNIMPLEMENTED; every other error passes through. Belt-and-braces behind
+ * {@link runAgentCleanup}'s Hello preflight - an agent can advertise and reject.
  */
 export function mapCleanupUnsupported(e: unknown): Error {
   if (e instanceof AgentCleanupUnsupportedError) return e;
@@ -802,10 +790,8 @@ const TRANSPORT_DOWN_CODES = new Set<number>([
 
 /**
  * Normalise an RPC error: a transport-down gRPC error becomes an
- * AgentUnreachableError (so the data-layer guards catch it); anything else (an
- * application error the agent deliberately returned - NOT_FOUND,
- * PERMISSION_DENIED, INVALID_ARGUMENT, FAILED_PRECONDITION) passes through
- * unchanged.
+ * AgentUnreachableError (so the data-layer guards catch it); an application error
+ * the agent deliberately returned passes through unchanged.
  */
 function toAgentError(err: unknown): Error {
   if (err instanceof AgentUnreachableError) return err;

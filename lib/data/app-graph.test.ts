@@ -658,16 +658,10 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
 /* ------------------------------------------------------------------ */
 
 /**
- * `pathPrefix` lets several rows share ONE hostname (`app.com` for `/`, `app.com`
- * for `/api`), which is the whole point of the "Internal path" option. Two things
- * used to silently kill it in the data layer:
- *
- *  1. the new row was inserted `pending`, and `routableRoutes` only routes
- *     `valid`/`cloudflare`, so the path row was filtered off the router even
- *     though its hostname's DNS was already proven by the sibling row. DNS is a
- *     property of the HOSTNAME, not of the path;
- *  2. the row's `pathPrefix`/`stripPrefix` had to survive the round trip into the
- *     route the router grammar is rendered from.
+ * `pathPrefix` lets several rows share ONE hostname, which the data layer used to
+ * kill twice: the new row was inserted `pending` while `routableRoutes` routes
+ * only `valid` (DNS is a property of the HOSTNAME, not the path), and the row's
+ * prefix had to survive the round trip into the rendered route.
  */
 
 test("a path row on an already-verified hostname inherits its DNS status (and routes)", async () => {

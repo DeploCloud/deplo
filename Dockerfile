@@ -61,16 +61,6 @@ ENV DEPLO_DATA_DIR=/data
 # in an internet-facing container for no one to use but an attacker.
 RUN apk add --no-cache git curl bash tar unzip
 
-# node-pty is a native module with NO linux prebuild, so it must be compiled
-# from source against THIS runtime (Node 22 + musl). The app build runs under
-# Bun and Next's standalone tracer doesn't reliably carry a serverExternalPackage's
-# native .node, so we install + build node-pty here and drop it into node_modules
-# below. python3/make/g++ are the node-gyp toolchain; removed after the build so
-# they don't bloat the final image.
-RUN apk add --no-cache --virtual .pty-build python3 make g++ \
- && npm install --no-save --build-from-source node-pty@1.1.0 --prefix /pty-build \
- && apk del .pty-build
-
 # Nixpacks build method: the control plane runs the host `nixpacks` binary to
 # generate a Dockerfile (the daemon-free step), then builds it over the socket.
 # Other build methods (buildpacks, railpack) run entirely in helper containers.
@@ -85,21 +75,10 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Replace the standalone tracer's node-pty (JS only - Next doesn't trace the
-# native .node) with the runtime-compiled one built above against Node 22/musl,
-# which carries build/Release/pty.node. node-addon-api is build-time-only
-# (header-only; no runtime require), so it isn't copied. The load check fails the
-# build loudly if the native module can't resolve.
-RUN rm -rf ./node_modules/node-pty \
- && cp -R /pty-build/node_modules/node-pty ./node_modules/node-pty \
- && node -e "require('node-pty'); console.log('node-pty native loads OK')" \
- && rm -rf /pty-build
-
-# npm is a BUILD-time tool here (it compiled node-pty above); the server itself
-# is `node server.js` and never shells out to it. Left installed it contributes
-# its own bundled dependency tree to this image's vulnerability surface - as of
-# node:22-alpine that is tar (critical), sigstore, ip-address and picomatch, none
-# of which belong to Deplo and none of which anything here loads.
+# npm ships with the base image and the server never shells out to it (`node
+# server.js`). Left installed it contributes its own bundled dependency tree to
+# this image's vulnerability surface - tar, sigstore, ip-address, picomatch -
+# none of which belong to Deplo and none of which anything here loads.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Still runs as root. It no longer holds a Docker socket, so the original reason

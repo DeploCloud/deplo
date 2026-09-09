@@ -167,13 +167,9 @@ export interface GithubAppAccessDTO {
 
 /**
  * What each connected GitHub App is missing, keyed by App id. Read LIVE from
- * GitHub (never stored) because the operator fixes it on github.com, and a cached
- * "needs update" badge would outlive the fix. An App GitHub would not answer for
- * simply gets no entry - and so no accusation.
- *
- * `previews` adds the pull-request half: the team uses previews somewhere, so an
- * App that cannot drive them is worth naming. Without it only the core half is
- * reported, and nobody reads about a feature they never turned on.
+ * GitHub (never stored): the operator fixes it on github.com, and a cached badge
+ * would outlive the fix. `previews` adds the pull-request half, so nobody reads
+ * about a feature they never turned on.
  */
 export async function githubAppsAccess(
   opts: { previews?: boolean } = {},

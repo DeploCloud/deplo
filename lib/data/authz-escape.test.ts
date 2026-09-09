@@ -721,17 +721,10 @@ test("the masked hook URL is a mask, not a prefix of the secret", async () => {
 /* ------------------------------------------------------------------ */
 
 /**
- * `memberships.role` is a RANK, and it is the one part of a membership the API
- * token clamp does NOT narrow: a token gets its creator's `role` verbatim and
- * only their capabilities intersected. So every place that used to read
- * `actor.role === "owner"` as "may hand out anything" was a door out of the
- * token's own capability set - the owner behind an ordinary token could mint an
- * all-powerful successor, re-scope the role every member holds, or promote a
- * member, from a token that was granted one administrative permission.
- *
- * The bound is the actor's CAPABILITIES everywhere now. A real owner holds all
- * of them, so nothing legitimate changed; what changed is that a token stops at
- * what it was given.
+ * `memberships.role` is a RANK, and the one part of a membership the API token
+ * clamp does NOT narrow. So every `actor.role === "owner"` read was a door out of
+ * the token's own capability set. The bound is the actor's CAPABILITIES now: a
+ * real owner holds all of them, and a token stops at what it was given.
  */
 
 /** An owner's token holding exactly one administrative capability. */

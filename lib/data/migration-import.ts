@@ -787,12 +787,8 @@ export async function scanMigrationSource(
   ]);
 
   // A source an earlier run registered belongs to THAT run's team, and a scan in
-  // another team could not see it: the Install step then offered to register a
-  // machine Deplo already stands on, and refused itself. A source is the
-  // migration's, not a team's, so this scan claims the ones at this panel's
-  // addresses - the same rule (and the same right) as handing them over.
-  // The remembered addresses too: behind a proxy the panel's own machine is
-  // known only by the IP somebody typed for it.
+  // another team could not see it - so the Install step offered to register a
+  // machine Deplo already stands on. A source is the migration's, not a team's.
   if (!opts.newTeam)
     await adoptMigrationSources(
       teamId,
@@ -1753,13 +1749,10 @@ async function removeMigrationSources(
 }
 
 /**
- * Data this run could not bring across. Its bytes are still on the source host and
- * the agent is the only way to fetch them, so nothing may take that agent off
- * until a person says so.
- *
- * A failed VOLUME line is one signal; `data_copy_error` on what the run created is
- * the other, and the only one a service the data phase never reached has - one
- * machine of several would not answer, so it has no volume line at all.
+ * Data this run could not bring across: the bytes are still on the source host and
+ * its agent is the only way to fetch them, so nothing may take that agent off
+ * until a person says so. A failed volume line is one signal, `data_copy_error`
+ * the other - a service the data phase never reached has only the second.
  */
 async function hasStrandedVolume(runId: string): Promise<boolean> {
   const failedVolume = await getDb()
@@ -4552,10 +4545,9 @@ async function importBackupDestinations(
 }
 
 /**
- * Every shared variable an app of this import can be linked to, by KEY: the row a
- * link points at, and the value a reference to it stands for. Flat, because Deplo
- * keeps one shared variable per team and name - so the FIRST level that carries a
- * key wins, exactly as the database already decides on a re-run.
+ * Every shared variable an app of this import can be linked to, by KEY. Flat,
+ * because Deplo keeps one shared variable per team and name - so the FIRST level
+ * carrying a key wins, exactly as the database decides on a re-run.
  * `ponytail: first-level-wins; compare values if a report line naming the winner is asked for.`
  */
 type SharedIndex = Map<string, { varId: string; value: string }>;
