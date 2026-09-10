@@ -107,6 +107,9 @@ export const DOCS = {
   "logs.overview": "guides/observability/logs",
   "logs.where": "guides/observability/logs#where-to-look",
   "logs.retention": "guides/observability/logs#retention",
+  "health.overview": "guides/observability/health-checks",
+  "health.timings": "guides/observability/health-checks#turn-one-on",
+  "health.verdict": "guides/observability/health-checks#reading-the-verdict",
   "monitoring.overview": "guides/observability/monitoring",
   "monitoring.saveMetrics":
     "guides/observability/monitoring#save-metrics-on-server",

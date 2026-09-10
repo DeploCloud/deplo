@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { FieldLabel } from "@/components/ui/info-tip";
+import { DocsLink } from "@/components/ui/docs-link";
 import {
   Select,
   SelectContent,
@@ -83,7 +84,8 @@ export function HealthCheckForm({
             Health check
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Ask the app whether it is really working, not just running.
+            Ask the app whether it is really working, not just running.{" "}
+            <DocsLink topic="health.overview" />
           </p>
         </div>
         <Switch
@@ -113,6 +115,7 @@ export function HealthCheckForm({
               <FieldLabel
                 htmlFor="health-check-type"
                 info="HTTP asks the app for a path, from the server, so it works on any image. Command runs a shell line inside the container and reads its exit code."
+                docs="health.overview"
               >
                 Check
               </FieldLabel>
