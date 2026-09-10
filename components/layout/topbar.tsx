@@ -15,6 +15,7 @@ import { SidebarNav } from "./sidebar-nav";
 import { SidebarExpandButton } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { MigrationChip } from "./migration-activity";
+import { UpdateChip } from "./update-chip";
 import { UserMenu } from "./user-menu";
 import { openPalette } from "@/components/command-palette/palette-open";
 import { TeamSwitcher } from "./team-switcher";
@@ -126,6 +127,7 @@ export function Topbar({
          * (theme + account).
          */}
         <MigrationChip canOpen={isAdmin} />
+        <UpdateChip />
         <ThemeToggle />
         <UserMenu user={user} />
       </div>

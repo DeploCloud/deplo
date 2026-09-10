@@ -3,7 +3,6 @@ import { Sidebar } from "./sidebar";
 import { SidebarProvider } from "./sidebar-state";
 import { Topbar } from "./topbar";
 import { ShellFrame } from "./shell-frame";
-import { UpdateBanner } from "./update-banner";
 import { UpdateProvider } from "./update-state";
 import { NavigationHistoryTracker } from "./navigation-history";
 import { NavProgress } from "./nav-progress";
@@ -79,17 +78,14 @@ export function AppShell({
                 </>
               }
               header={
-                <>
-                  <Topbar
-                    user={user}
-                    team={team}
-                    teams={teams}
-                    breadcrumb={breadcrumb}
-                    capabilities={capabilities}
-                    isAdmin={isAdmin}
-                  />
-                  <UpdateBanner />
-                </>
+                <Topbar
+                  user={user}
+                  team={team}
+                  teams={teams}
+                  breadcrumb={breadcrumb}
+                  capabilities={capabilities}
+                  isAdmin={isAdmin}
+                />
               }
             >
               {children}
