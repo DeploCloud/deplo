@@ -603,6 +603,15 @@ test("setup key: an instance without one is unchanged", async () => {
   });
 });
 
+/** What `install.sh --public-setup` leaves in the environment. */
+test("setup key: an empty one is no key at all", async () => {
+  await withSetupKey("", async () => {
+    assert.equal(checkSetupKey(null), "ok");
+    assert.equal(await setupRefusal(WIZARD), null);
+    assert.equal((await db.select().from(usersTable)).length, 1);
+  });
+});
+
 test("setup key: the installer's link creates the first account", async () => {
   await withSetupKey(SETUP_KEY, async () => {
     assert.equal(checkSetupKey(SETUP_KEY), "ok");

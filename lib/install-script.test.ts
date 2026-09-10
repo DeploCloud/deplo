@@ -41,3 +41,13 @@ test("the installer's only question is the takeover", async () => {
     "the one-liner must ask nothing but the takeover - a domain goes on --domain",
   );
 });
+
+test("--public-setup writes an empty key and prints a bare link", async () => {
+  const script = await readFile(join(process.cwd(), "install.sh"), "utf8");
+  assert.match(script, /--public-setup\) PUBLIC_SETUP=true/);
+  assert.match(script, /echo "DEPLO_SETUP_KEY="/);
+  assert.match(script, /--public-setup {3}no setup key/);
+  // Without this the link would end in a bare `?key=`, which reads as a broken
+  // URL to whoever the host hands it to.
+  assert.match(script, /\[ -n "\$SETUP_KEY" \] \|\| \{ printf '%s\/setup'/);
+});

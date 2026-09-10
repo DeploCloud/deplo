@@ -309,6 +309,7 @@ usage() {
   printf '   --domain <d>     serve the dashboard on this domain over HTTPS\n'
   printf '   --email <e>      Let'"'"'s Encrypt contact address\n'
   printf '   --version <v>    install this Deplo version instead of latest\n'
+  printf '   --public-setup   no setup key: anyone with the link creates the first account\n'
   printf '   --yes            take every default\n'
   printf '   --force          continue even if the preflight failed\n'
   printf '   --plain          ASCII output, no colour, no spinners\n'
@@ -328,6 +329,7 @@ CHECK_ONLY=false
 ASSUME_YES=false
 FORCE=false
 WANT_HELP=false
+PUBLIC_SETUP=false
 # The background half of a takeover, run by deplo-takeover.service: same script,
 # same steps, and at the end it waits for the dashboard instead of a person.
 TAKEOVER_WORKER=false
@@ -338,6 +340,7 @@ while [ $# -gt 0 ]; do
     --check)     CHECK_ONLY=true ;;
     --yes|-y)    ASSUME_YES=true ;;
     --force)     FORCE=true ;;
+    --public-setup) PUBLIC_SETUP=true ;;
     --plain)     UI_FORCE_PLAIN=1 ;;
     --no-color)  UI_FORCE_NOCOLOR=1 ;;
     --quiet|-q)  UI_QUIET=1 ;;
@@ -1220,8 +1223,15 @@ trace_on
 # ran this script rather than by whoever reaches /setup first. Appended like the
 # token above, so a re-run gives one to an instance installed before it existed
 # and an update never rotates it. It stops mattering once an account exists.
+
+# `--public-setup` writes it EMPTY instead, which Deplo already reads as no key:
+# the link is then the bare panel address, for a host that hands it to a customer.
 trace_off
-if ! grep -q '^DEPLO_SETUP_KEY=' "$ENV_FILE"; then
+if $PUBLIC_SETUP; then
+  umask 077; SETUP_TMP="$(mktemp)"
+  { grep -v '^DEPLO_SETUP_KEY=' "$ENV_FILE" || true; echo "DEPLO_SETUP_KEY="; } >"$SETUP_TMP"
+  install -m 0600 "$SETUP_TMP" "$ENV_FILE"; rm -f "$SETUP_TMP"
+elif ! grep -q '^DEPLO_SETUP_KEY=' "$ENV_FILE"; then
   umask 077
   echo "DEPLO_SETUP_KEY=$(openssl rand -hex 16)" >> "$ENV_FILE"
 fi
@@ -1296,7 +1306,11 @@ PUBLIC_URL="$(panel_url)"
 
 # The first-account link. Takes the base as an argument because during a takeover
 # the way in is the side door.
-setup_url() { printf '%s/setup?key=%s' "${1:-$PUBLIC_URL}" "$SETUP_KEY"; }
+setup_url() {
+  local base="${1:-$PUBLIC_URL}"
+  [ -n "$SETUP_KEY" ] || { printf '%s/setup' "$base"; return; }
+  printf '%s/setup?key=%s' "$base" "$SETUP_KEY"
+}
 
 # Is there still a first account to create? The link stops working the moment one
 # exists, so an update of a claimed instance must not print it. Unreadable
