@@ -1,4 +1,4 @@
-[![Deplo](https://deplo.build/api/media/file/readme_cover.png)](https://deplo.build)
+[![Deplo](https://deplo.build/api/media/file/readme_cover.png)](https://deplo.build/api/media/file/readme_cover.png)
 <p align="center">
   <h1 align="center">Deplo</h1>
   <p align="center">
