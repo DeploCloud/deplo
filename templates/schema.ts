@@ -51,6 +51,14 @@ const apiTemplateLinksSchema = z
   .strict()
   .refine((links) => Object.values(links).some(Boolean));
 
+const apiTemplateAlertSchema = z
+  .object({
+    type: z.enum(["info", "warning", "destructive"]),
+    message: z.string().trim().min(1).max(2_000),
+    link: httpsUrlSchema.optional(),
+  })
+  .strict();
+
 const apiTemplateVariantFilesSchema = z
   .object({
     config: z
@@ -74,6 +82,7 @@ export const apiTemplateVariantSchema = z
     developedBy: apiLinkSchema,
     submittedBy: apiLinkSchema,
     links: apiTemplateLinksSchema,
+    alerts: z.array(apiTemplateAlertSchema).default([]),
     lastUpdate: z.iso.datetime(),
     createdAt: z.iso.datetime(),
     description: z.string().min(20).max(20_000),
