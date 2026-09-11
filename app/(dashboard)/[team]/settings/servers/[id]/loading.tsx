@@ -17,11 +17,11 @@ export default function Loading() {
         {/* Back to Servers */}
         <Skeleton className="-ml-2 h-8 w-28 rounded-md" />
         {/* Name + host badge + health chip, with Check status pinned right */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Skeleton className="h-8 w-56" />
-          <Skeleton className="h-5 w-24 rounded-md" />
-          <Skeleton className="h-5 w-20 rounded-md" />
-          <Skeleton className="ml-auto h-8 w-32 rounded-md" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-56 shrink" />
+          <Skeleton className="h-5 w-24 shrink-0 rounded-md" />
+          <Skeleton className="h-5 w-20 shrink-0 rounded-md" />
+          <Skeleton className="ml-auto h-8 w-32 shrink-0 rounded-md" />
         </div>
         {/* IP */}
         <Skeleton className="mt-1 h-4 w-32" />

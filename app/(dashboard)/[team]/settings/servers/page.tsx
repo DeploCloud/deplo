@@ -165,48 +165,59 @@ function ServerCard({
   return (
     <Card className="transition-colors hover:border-foreground/20">
       <CardHeader className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* The chip owns BOTH the dot and the label: the status and its age are one
-              fact, and splitting them across two elements is how a page ends up
-              rendering a confident green dot next to a status nobody has verified. */}
-          <CardTitle className="truncate">{serverLabel(server)}</CardTitle>
-          {/* Health leads every card: whether the host answers is the one thing an
+        {/* The actions never wrap: the name and its chips share a lane that gives
+            ground, or a long name pushes Refresh and Manage onto a line of their
+            own on one card and not the next. */}
+        <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {/* The chip owns BOTH the dot and the label: the status and its age are
+                one fact, and splitting them across two elements is how a page ends
+                up rendering a confident green dot next to a status nobody has
+                verified. */}
+            <CardTitle className="min-w-0 truncate" title={serverLabel(server)}>
+              {serverLabel(server)}
+            </CardTitle>
+            {/* Health leads every card: whether the host answers is the one thing an
               operator opens this page for, and the only chip allowed to be green. */}
-          <ServerHealthChip
-            serverId={server.id}
-            fallback={{
-              status: server.status,
-              checkedAt: server.statusCheckedAt ?? null,
-              message: server.statusMessage ?? null,
-              traefikEnabled: server.traefikEnabled,
-              lastReachedAt: server.lastSeenAt ?? null,
-            }}
-          />
-          {/* Only the control-plane host is badged: everything else is a remote, and
+            <ServerHealthChip
+              serverId={server.id}
+              fallback={{
+                status: server.status,
+                checkedAt: server.statusCheckedAt ?? null,
+                message: server.statusMessage ?? null,
+                traefikEnabled: server.traefikEnabled,
+                lastReachedAt: server.lastSeenAt ?? null,
+              }}
+            />
+            {/* Only the control-plane host is badged: everything else is a remote, and
               a chip every other row wears says nothing. */}
-          {isDeploHost && (
-            <Badge
-              className="shrink-0 gap-1"
-              title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
-            >
-              {/* The Deplo mark itself (currentColor, so it takes the badge's
+            {isDeploHost && (
+              <Badge
+                className="shrink-0 gap-1"
+                title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
+              >
+                {/* The Deplo mark itself (currentColor, so it takes the badge's
                   primary-foreground) - this IS the control-plane host, so brand it. */}
-              <DeploMark size={12} className="text-current" />
-              Deplo host
-            </Badge>
-          )}
-          {/* What the host is FOR, in its own colour. Without it the page reads as
+                <DeploMark size={12} className="text-current" />
+                Deplo host
+              </Badge>
+            )}
+            {/* What the host is FOR, in its own colour. Without it the page reads as
               a list of interchangeable servers, and the one that runs nothing
               looks like the one that is broken. */}
-          <ServerUseBadge use={serverUse(server)} />
-          <Badge variant="muted" title="Which teams can deploy to this server">
-            {accessLabel}
-          </Badge>
+            <ServerUseBadge use={serverUse(server)} />
+            <Badge
+              variant="muted"
+              title="Which teams can deploy to this server"
+            >
+              {accessLabel}
+            </Badge>
+          </div>
           {/* Every server is a bootstrapped agent now (the host running Deplo
               included), so the management page applies to all of them. The card
               stays a summary: everything you can DO to a server lives on its own
               page, where each action has room to say what it interrupts. */}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex shrink-0 items-center gap-1">
             <CheckStatusButton
               serverId={server.id}
               serverName={serverLabel(server)}
