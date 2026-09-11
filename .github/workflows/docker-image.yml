@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 
+# The release tag is MOVED, not minted: a second push while a build is starting
+# left checkout on a commit the ref no longer pointed at (a 14-second red), and
+# two overlapping builds raced for `:latest`. The newer tag wins.
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
