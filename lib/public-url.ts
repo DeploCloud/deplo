@@ -16,11 +16,16 @@ export const PUBLIC_URL_PLACEHOLDER = "https://your-deplo-host";
  * The address stored in `instance_settings`, cached in memory. Set at boot
  * (instrumentation) and again whenever the address or its scheme is written, so it
  * is never staler than the row it mirrors.
+ *
+ * On `globalThis` like `lib/db/client.ts`: instrumentation, the RSC graph and the
+ * route-handler graph are separate module registries, so a module-level `let` left
+ * every page on the `DEPLO_PUBLIC_URL` fallback the rpID is derived from.
  */
-let storedBaseUrl: string | null = null;
+const BASE_URL_KEY = Symbol.for("deplo.public-url.stored");
+const g = globalThis as unknown as { [BASE_URL_KEY]?: string | null };
 
 export function setStoredPublicBaseUrl(url: string | null): void {
-  storedBaseUrl = url ? url.replace(/\/+$/, "") : null;
+  g[BASE_URL_KEY] = url ? url.replace(/\/+$/, "") : null;
 }
 
 /**
@@ -28,7 +33,8 @@ export function setStoredPublicBaseUrl(url: string | null): void {
  * one it was installed with.
  */
 export function publicBaseUrl(): string | null {
-  if (storedBaseUrl) return storedBaseUrl;
+  const stored = g[BASE_URL_KEY];
+  if (stored) return stored;
   const configured = process.env.DEPLO_PUBLIC_URL?.trim();
   return configured ? configured.replace(/\/+$/, "") : null;
 }

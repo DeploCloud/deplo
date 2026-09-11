@@ -140,3 +140,25 @@ test("with no request to read, the instance's own answer stands", async () => {
   setStoredPublicBaseUrl("http://198.51.100.7:3000");
   assert.equal(await requestIsHttps(), false);
 });
+
+/**
+ * The stored address has to survive the module registry it was written in: only
+ * one registry runs the boot hydration, and a module-local `let` left every page
+ * on the `DEPLO_PUBLIC_URL` fallback - which is where the rpID comes from.
+ */
+test("the stored address is shared across module registries", () => {
+  const slot = Symbol.for("deplo.public-url.stored");
+  const shared = globalThis as unknown as Record<symbol, unknown>;
+  process.env.DEPLO_PUBLIC_URL = "https://deplo-c6336407.nip.io";
+
+  setStoredPublicBaseUrl("https://panel.example.com/");
+  assert.equal(shared[slot], "https://panel.example.com");
+
+  // What a SECOND registry sees: this slot and nothing else.
+  shared[slot] = "https://panel.example.com";
+  assert.equal(publicBaseUrl(), "https://panel.example.com");
+  assert.deepEqual(passkeyRelyingParty(), {
+    rpId: "panel.example.com",
+    origin: "https://panel.example.com",
+  });
+});

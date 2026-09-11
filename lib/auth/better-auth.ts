@@ -317,6 +317,15 @@ function createAuth(db: DrizzleClient) {
 
 let instance: ReturnType<typeof createAuth> | null = null;
 let instanceDb: DrizzleClient | null = null;
+let instanceEpoch = -1;
+
+/**
+ * How many times the address behind this config has moved. Shared across module
+ * registries, so a `resetAuth()` in one rebuilds the memo in all of them instead
+ * of leaving the other holding the old rpID, baseURL and `useSecureCookies`.
+ */
+const EPOCH_KEY = Symbol.for("deplo.auth.epoch");
+const ge = globalThis as unknown as { [EPOCH_KEY]?: number };
 
 /**
  * The auth instance, or null when there is no database to back it. Comparing
@@ -326,17 +335,21 @@ let instanceDb: DrizzleClient | null = null;
 export function getAuth(): ReturnType<typeof createAuth> | null {
   if (!isPostgresEnabled() && !hasTestDb()) return null;
   const db = getDb();
-  if (!instance || instanceDb !== db) {
+  const epoch = ge[EPOCH_KEY] ?? 0;
+  if (!instance || instanceDb !== db || instanceEpoch !== epoch) {
     instanceDb = db;
+    instanceEpoch = epoch;
     instance = createAuth(db);
   }
   return instance;
 }
 
 /**
- * Drop the memoized instance so the next {@link getAuth} rebuilds it.
+ * Drop the memoized instance so the next {@link getAuth} rebuilds it - in THIS
+ * module registry and in every other one.
  */
 export function resetAuth(): void {
+  ge[EPOCH_KEY] = (ge[EPOCH_KEY] ?? 0) + 1;
   instance = null;
   instanceDb = null;
 }
