@@ -251,6 +251,11 @@
     var(--background)
   );
   --color-info-wash: color-mix(in srgb, var(--info) 8%, var(--background));
+  --color-info-wash-strong: color-mix(
+    in srgb,
+    var(--info) 15%,
+    var(--background)
+  );
   --color-violet-wash: color-mix(in srgb, var(--violet) 15%, var(--background));
   --color-primary-hover: color-mix(
     in srgb,

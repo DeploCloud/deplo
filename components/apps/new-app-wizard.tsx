@@ -101,7 +101,7 @@ import { archiveExt } from "@/lib/deploy/upload-shared";
 import type { BuildConfig, DeploySource, GitProviderChoice } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
-import { serverLabel } from "@/lib/utils";
+import { cn, serverLabel } from "@/lib/utils";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
 import type { GithubInstallationDTO } from "@/lib/data/github";
@@ -1226,37 +1226,41 @@ function TemplateAlerts({ alerts }: { alerts: WizardTemplate["alerts"] }) {
   const styles = {
     info: {
       icon: Info,
-      className: "border-info/40 bg-info/10 text-info",
+      className: "border-info/40 bg-info-wash-strong text-info",
     },
     warning: {
       icon: TriangleAlert,
-      className: "border-warning/40 bg-warning/10 text-warning",
+      className: "border-warning/40 bg-warning-wash-strong text-warning",
     },
     destructive: {
       icon: OctagonAlert,
-      className: "border-destructive/40 bg-destructive/10 text-destructive",
+      className:
+        "border-destructive/40 bg-destructive-wash-strong text-destructive",
     },
   } as const;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {alerts.map((alert, index) => {
         const style = styles[alert.type];
         const Icon = style.icon;
         return (
           <div
             key={`${alert.type}-${index}`}
-            className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${style.className}`}
+            className={cn(
+              "flex items-start gap-2 rounded-lg border px-3.5 py-2.5 text-sm",
+              style.className,
+            )}
           >
             <Icon className="mt-0.5 size-4 shrink-0" />
-            <p className="min-w-0 flex-1">
+            <p className="min-w-0">
               {alert.message}{" "}
               {alert.link && (
                 <a
                   href={alert.link}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-medium text-foreground underline underline-offset-4"
+                  className="font-medium text-foreground underline underline-offset-2 hover:no-underline"
                 >
                   Learn more
                 </a>
