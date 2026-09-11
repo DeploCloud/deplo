@@ -45,8 +45,8 @@ Whether you're running a VPS, a dedicated server, or your own hardware, Deplo tu
 
 ### Installation guides
 
-- [Install Deplo on a Linux server](https://deplo.build/docs)
-- [Deploy your first application](https://deplo.build/docs)
+- [Install Deplo on a Linux server](https://deplo.build/docs/getting-started/install)
+- [Deploy your first application](https://deplo.build/docs/getting-started/first-app)
 - [Migrate from Coolify](https://deplo.build/docs/migrations/move-from-coolify)
 - [Migrate from Dokploy](https://deplo.build/docs/migrations/move-from-dokploy)
 
