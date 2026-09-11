@@ -64,7 +64,7 @@ For more information, see the [Deplo documentation](https://deplo.build/docs).
 
 ## Thanks to our sponsors
 
-<a href="https://deplo.build/api/media/file/deluxhost_logo.webp">
+<a href="https://deluxhost.net">
   <img src="https://deplo.build/api/media/file/deluxhost_logo.webp" width="35px" />
 </a>
 
