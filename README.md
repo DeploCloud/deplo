@@ -68,6 +68,8 @@ For more information, see the [Deplo documentation](https://deplo.build/docs).
   <img src="https://deplo.build/api/media/file/deluxhost_logo.webp" width="35px" />
 </a>
 
+You can sponsor us [here](https://github.com/sponsors/IdraDev)
+
 ## Contributing
 
 Deplo is open source, and contributions are welcome.
