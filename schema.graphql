@@ -3978,6 +3978,23 @@ input NodeGrantInput {
   projectIds: [String!]
 }
 
+type OverviewAppState {
+  appId: ID!
+  neverDeployed: Boolean!
+  runtime: OverviewRuntime
+  status: AppStatus!
+}
+
+type OverviewRuntime {
+  maxRestartCount: Int!
+  restarting: Int!
+  running: Int!
+  total: Int!
+  unhealthy: Int!
+  unhealthyContainers: [String!]!
+  unreachable: Boolean!
+}
+
 """
 What moving the panel to a given address would break, counted live and instance-wide. Every number is a fact about right now, so a dialog can name what is lost instead of warning in the abstract. Read-only: nothing here changes anything.
 """
@@ -4480,6 +4497,11 @@ type Query {
   Open pull requests on the app's repository, for the deploy picker. Needs only `pull_requests: read`, which every Deplo GitHub App has.
   """
   openPullRequests(appId: ID!): [GithubPullRequest!]
+
+  """
+  Batch runtime state for the visible Overview apps. Unknown or inaccessible IDs are omitted.
+  """
+  overviewAppStates(appIds: [ID!]!): [OverviewAppState!]!
 
   """
   What moving the panel to this address would break: passkeys welded to the current hostname, sessions, deploy hooks already pasted into someone's CI, connected AI clients, invite links, servers still waiting for their install command, notification subscriptions. Counted live and instance-wide, and only meaningful when the address actually moves - an unchanged address answers all zeroes. A query, not a mutation: it reads the database and dials nothing.

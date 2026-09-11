@@ -36,12 +36,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
-import {
-  AppLiveStatusProvider,
-  useLiveStatus,
-  useNeverDeployed,
-} from "@/components/apps/app-live-status";
-import { AppStatusDot } from "@/components/apps/app-status-dot";
+import { AppStatusIndicator } from "@/components/apps/app-status-dot/status-renderer";
+import type { OverviewAppStateView } from "./apps-grid/overview-state";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import {
   appTypeLabel,
@@ -51,7 +47,7 @@ import {
 } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppSummary } from "@/lib/data/apps";
-import type { AppStatus, Capability } from "@/lib/types";
+import type { Capability } from "@/lib/types";
 
 /**
  * The menu-primitive set used to render the card's action list once and reuse it
@@ -74,36 +70,18 @@ const DROPDOWN_KIT: MenuKit = {
   Separator: DropdownMenuSeparator,
 };
 
-/**
- * The card's status dot on the LIVE path the app header uses: an {@link
- * AppLiveStatusProvider} seeded from the server-rendered summary feeds {@link
- * AppStatusDot}, which folds the appStatus subscription with the agent runtime
- */
-function LiveCardStatusDot({ project }: { project: AppSummary }) {
-  return (
-    <AppLiveStatusProvider
-      initial={{
-        id: project.id,
-        slug: project.slug,
-        status: project.status,
-        productionUrl: project.productionUrl,
-        latestDeploymentId: project.latestDeployment?.id ?? null,
-        latestDeploymentStatus: project.latestDeployment?.status ?? null,
-      }}
-    >
-      <LiveCardDotInner fallback={project.status} />
-    </AppLiveStatusProvider>
-  );
-}
-
-/** Inside the provider: the dot plus a hover word that tracks the LIVE status
- *  (the dot's colour carries the state; this only spells it out on hover). */
-function LiveCardDotInner({ fallback }: { fallback: AppStatus }) {
-  const status = useLiveStatus(fallback);
-  // Never built ⇒ "Not deployed", never "Stopped": nobody stopped it. Same fold
-  // the dot itself runs (lib/apps/display-status.ts) - the word on hover and the
-  // colour under it have to agree.
-  const neverDeployed = useNeverDeployed();
+/** The grid supplies the same status state used by the app header. */
+function LiveCardStatusDot({
+  project,
+  liveState,
+}: {
+  project: AppSummary;
+  liveState?: OverviewAppStateView;
+}) {
+  const status = liveState?.status ?? project.status;
+  const neverDeployed =
+    liveState?.neverDeployed ??
+    (project.status === "idle" && project.latestDeployment == null);
   const statusLabel = neverDeployed
     ? "Not deployed"
     : status === "idle"
@@ -113,13 +91,18 @@ function LiveCardDotInner({ fallback }: { fallback: AppStatus }) {
         : status.charAt(0).toUpperCase() + status.slice(1);
   return (
     <span title={statusLabel} className="inline-flex items-center">
-      <AppStatusDot status={status} />
+      <AppStatusIndicator
+        status={status}
+        runtime={liveState?.runtime ?? null}
+        neverDeployed={neverDeployed}
+      />
     </span>
   );
 }
 
 export function AppCard({
   project,
+  liveState,
   view = "grid",
   dragHandle,
   dragActive = false,
@@ -131,6 +114,7 @@ export function AppCard({
   onMoveFailed,
 }: {
   project: AppSummary;
+  liveState?: OverviewAppStateView;
   view?: "grid" | "list";
   /** Optional drag-to-reorder handle, rendered with the card's controls. */
   dragHandle?: React.ReactNode;
@@ -515,7 +499,7 @@ export function AppCard({
        * App status as a bare dot (green / amber / red / grey), no label - the dot's
        * colour is the status; hovering it shows the word.
        */}
-      <LiveCardStatusDot project={project} />
+      <LiveCardStatusDot project={project} liveState={liveState} />
       {/**
        * Drag handle is taken out of the flow at rest (display:none) so it leaves no empty
        * gap; it appears on hover / keyboard focus.
