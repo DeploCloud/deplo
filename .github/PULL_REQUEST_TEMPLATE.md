@@ -15,3 +15,4 @@
 - [ ] I regenerated `schema.graphql` if I touched `lib/graphql/types/*`
 - [ ] I read [CONTRIBUTING.md](../CONTRIBUTING.md) and signed the [CLA](../CLA.md) (the bot asks below on your first pull request)
 - [ ] This does not make the control plane touch Docker or a host directly (see [AGENTS.md](../AGENTS.md))
+- [ ] I made the pull request for the [docs](https://github.com/DeploCloud/docs) changes where needed
