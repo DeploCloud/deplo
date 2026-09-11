@@ -195,6 +195,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
                     ? template.variant.name
                     : undefined,
                 description: template.variant.shortDescription,
+                alerts: template.variant.alerts,
                 logo,
                 veil,
                 compose: blueprint?.compose ?? "",

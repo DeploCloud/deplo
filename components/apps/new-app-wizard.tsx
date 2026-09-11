@@ -7,9 +7,12 @@ import { toast } from "sonner";
 import {
   GitBranch,
   FileText,
+  Info,
+  OctagonAlert,
   Server as ServerIcon,
   Pencil,
   ShieldAlert,
+  TriangleAlert,
   Variable,
 } from "lucide-react";
 
@@ -132,6 +135,11 @@ export interface WizardTemplate {
   name: string;
   variantName?: string;
   description: string;
+  alerts: {
+    type: "info" | "warning" | "destructive";
+    message: string;
+    link?: string;
+  }[];
   logo: string | null;
   /** What the logo's pixels said: the hue to wash its tile in, the plate it
    *  needs to be visible. Read server-side, same as the template store's. */
@@ -1062,6 +1070,8 @@ export function NewAppWizard({
               </div>
             )}
 
+            {isTemplate && <TemplateAlerts alerts={template!.alerts} />}
+
             {useCompose && !isTemplate && (
               <ComposeSummary
                 services={composeServices}
@@ -1207,6 +1217,55 @@ function detailsDescription(source: DeploySource): string {
   return (
     SOURCE_TABS.find((t) => t.id === source)?.blurb ??
     "Where your code or image comes from."
+  );
+}
+
+function TemplateAlerts({ alerts }: { alerts: WizardTemplate["alerts"] }) {
+  if (!alerts.length) return null;
+
+  const styles = {
+    info: {
+      icon: Info,
+      className: "border-info/40 bg-info/10 text-info",
+    },
+    warning: {
+      icon: TriangleAlert,
+      className: "border-warning/40 bg-warning/10 text-warning",
+    },
+    destructive: {
+      icon: OctagonAlert,
+      className: "border-destructive/40 bg-destructive/10 text-destructive",
+    },
+  } as const;
+
+  return (
+    <div className="space-y-3">
+      {alerts.map((alert, index) => {
+        const style = styles[alert.type];
+        const Icon = style.icon;
+        return (
+          <div
+            key={`${alert.type}-${index}`}
+            className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${style.className}`}
+          >
+            <Icon className="mt-0.5 size-4 shrink-0" />
+            <p className="min-w-0 flex-1">
+              {alert.message}{" "}
+              {alert.link && (
+                <a
+                  href={alert.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-foreground underline underline-offset-4"
+                >
+                  Learn more
+                </a>
+              )}
+            </p>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
