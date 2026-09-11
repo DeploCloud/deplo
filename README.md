@@ -1,14 +1,3 @@
-<div align="center">
-
-# Deplo
-
-**Self-hosted deploy platform.**
-
-Work in progress. Nothing to see yet.
-
-[AGPL-3.0-only](LICENSE) © 2026 DeploCloud
-
-</div>
 [![Deplo](https://deplo.build/api/media/file/readme_cover.png)](https://deplo.build)
 <p align="center">
   <h1 align="center">Deplo</h1>
