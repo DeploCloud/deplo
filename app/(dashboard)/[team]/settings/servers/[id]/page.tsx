@@ -104,16 +104,28 @@ export default async function ServerDetailPage(
               Servers
             </Link>
           </Button>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className={titleClass.page}>{serverLabel(hydrated)}</h1>
-            <ServerHealthChip serverId={server.id} fallback={seed[server.id]} />
+          {/* One line: only the name gives ground, or a long one wraps the h1
+              and drops the chip, the badge and the button onto their own. */}
+          <div className="flex items-center gap-2">
+            <h1
+              className={`${titleClass.page} min-w-0 truncate`}
+              title={serverLabel(hydrated)}
+            >
+              {serverLabel(hydrated)}
+            </h1>
+            <span className="shrink-0">
+              <ServerHealthChip
+                serverId={server.id}
+                fallback={seed[server.id]}
+              />
+            </span>
             {isDeploHost && (
-              <Badge className="shrink-0 gap-1">
+              <Badge className="shrink-0 gap-1 whitespace-nowrap">
                 <DeploMark size={12} className="text-current" />
                 Deplo host
               </Badge>
             )}
-            <div className="ml-auto">
+            <div className="ml-auto shrink-0">
               <CheckStatusButton
                 serverId={server.id}
                 serverName={serverLabel(hydrated)}

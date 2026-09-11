@@ -54,10 +54,10 @@ export function ServerPicker({
           role="combobox"
           aria-expanded={open}
           aria-label="Server"
-          className="gap-2"
+          className="max-w-full gap-2"
         >
           <StatusDot status={selected.status} />
-          <span className="font-medium">{serverLabel(selected)}</span>
+          <span className="truncate font-medium">{serverLabel(selected)}</span>
           <ChevronsUpDown className="size-3.5 text-muted-foreground" />
         </Button>
       </PopoverTrigger>

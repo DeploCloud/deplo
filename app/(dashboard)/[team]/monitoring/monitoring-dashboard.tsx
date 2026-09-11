@@ -237,7 +237,10 @@ export function MonitoringDashboard({
             // One host: there is nothing to pick, so the name is just a name -
             // and its Manage link has no row to live on.
             <>
-              <span className="text-sm font-medium">
+              <span
+                className="max-w-full truncate text-sm font-medium"
+                title={serverLabel(selected)}
+              >
                 {serverLabel(selected)}
               </span>
               {canManageServers && (
