@@ -701,8 +701,7 @@ language - reconsider, or note the gap.
   follow its own `AGENTS.md` for how a page is written.
 - **Commits = Conventional Commits with a scope**: `type(scope): imperative lowercase summary`
   (`feat(apps): redeploy a stack from the app page`). **Title 50 characters or fewer, no trailing
-  period.** Body only when the why does not fit the title, 2-3 lines at most. Commit straight to
-  `main`; never create a branch.
+  period.** Body only when the why does not fit the title, 2-3 lines at most.
 - **Comments are few and short - hard cap about 3 lines per block.** No file-header essays, no
   design narratives, no numbered rationale lists, no art direction above an illustration. Where a
   feature has a docs page, one link replaces the explanation
