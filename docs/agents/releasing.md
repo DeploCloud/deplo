@@ -13,18 +13,13 @@ The reason is not ceremony. A version number that nobody chose is a number that 
 and several sessions share this checkout: two of them bumping `package.json` in the same hour
 produces a merge conflict on the one line where a conflict is worst.
 
-### When the owner asks for one number on both repos
+### A published tag is never moved
 
-The owner sometimes wants the control plane and the agent to carry the **same** version, including
-re-cutting a number that already has a tag and a release behind it. **While Deplo is still on
-`0.1.0`, do it and do not ask a second time.** Nothing downstream has pinned a number yet, and
-`releases/latest` is the only thing that decides what the fleet installs - so moving a tag costs
-nothing but the minute it takes. Say what moved, do not open a question about it.
-
-**From `0.1.1` onwards, warn and refuse.** Past the first release the number is a promise somebody
-has already read: running instances poll `releases/latest` for the update banner, images carry the
-tag, and moving a published tag rewrites what an operator has already installed. At that point the
-answer is a new number, and the two repos go back to moving on their own clocks.
+The owner sometimes asks for the control plane and the agent to carry the **same** version, which
+means re-cutting a number that already has a tag and a release behind it. **Warn and refuse.** The
+number is a promise somebody has already read: running instances poll `releases/latest` for the
+update banner, images carry the tag, and moving a published tag rewrites what an operator has
+already installed. The answer is a new number, and the two repos keep their own clocks.
 
 ## Which digit
 
@@ -93,10 +88,6 @@ about 11 minutes. `next typegen` before `tsc` is not optional on a clean tree, s
   on the **0.x line too** since 24 Aug 2026, when its 1.x numbering was reset alongside the control
   plane. The same two buckets apply, and its offline fallback (`FALLBACK_AGENT_VERSION`,
   `lib/agent/release.ts`) follows the fleet in its own `chore(agent):` commit.
-  **Until `0.1.1`, the re-cut rule above covers the agent as well** (owner, 2 Sep 2026): while both
-  repos are still on `0.1.0`, a number the agent has already published is re-cut rather than bumped,
-  and a higher tag that was cut in the meantime is deleted so `releases/latest` has one answer. The
-  clocks separate again from `0.1.1` onwards.
 - **The fleet only ever moves forward.** `updateServerAgent` has no version argument anywhere in the
   path: it installs `releases/latest`, whatever that resolves to. So a control-plane release that
   needs a newer agent ships the agent **first**, and the reset above was a deliberate one-off, not a

@@ -187,11 +187,11 @@ scripts from the repo root with:
 ```
 
 - `--dry-run` touches no agent. Run it first, every time: it also prints the order.
-- **`--expect=<capability>` is mandatory while the tag is pinned** (see the rule in the memory
-  and §1). Two different binaries both report `0.1.0`, so the version can never prove the swap
-  took; the capability the new commit adds is the only evidence. **If the commit adds none,
-  adding one is part of the rollout, not an extra** - without it the script's confirm loop
-  compares `0.1.0` to `0.1.0`, decides nothing changed, and reports the host as already done.
+- **`--expect=<capability>` is mandatory whenever the new binary reports the same version as the
+  old one** - a re-cut tag, or a build off a tag that already shipped. The version then proves
+  nothing about the swap; the capability the new commit adds is the only evidence. **If the commit
+  adds none, adding one is part of the rollout, not an extra** - without it the script's confirm
+  loop compares a version to itself, decides nothing changed, and reports the host as already done.
 - `--only=<server id>` restricts the run to one server, which is how you drive §4's order by
   hand. The script sorts remotes by App count on its own, so the plain run is already
   canary-first; `--only` is for pausing between hosts.
