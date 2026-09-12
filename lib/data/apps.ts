@@ -568,11 +568,7 @@ export interface CreateAppInput {
   folderId?: string | null;
   projectId?: string | null;
   environmentId?: string | null;
-  /**
-   * Start the first deployment. Default TRUE. `false` is for a BULK import: the
-   * source still serves those hostnames, so the app is born `idle` instead. Not
-   * exposed over GraphQL - a property of the import, not a choice about one app.
-   */
+  /** Start the first deployment. Defaults to true; false leaves the app idle. */
   deploy?: boolean;
 }
 

@@ -222,6 +222,7 @@ export function NewAppWizard({
   connections,
   providers,
   isInstanceAdmin,
+  shouldDeploy = true,
   placement,
   exitHref,
 }: {
@@ -241,6 +242,8 @@ export function NewAppWizard({
   providers: GitProviderChoice[];
   /** Gates the connect dialog's "on my own network" option. */
   isInstanceAdmin: boolean;
+  /** Whether to start the app's first deployment after creation. */
+  shouldDeploy?: boolean;
   placement?: WizardPlacement | null;
   /** Where Cancel goes - the Overview drill-in, or the template catalog. */
   exitHref: string;
@@ -608,6 +611,7 @@ export function NewAppWizard({
         port: payloadBuild.port,
       },
       autoDeploy: usesGit ? autoDeploy : false,
+      deploy: shouldDeploy,
       // Where the first domain points: what a template declares, else what
       // the wizard showed the user for their own stack.
       composeService: templateCompose

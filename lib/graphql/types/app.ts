@@ -602,6 +602,10 @@ const CreateAppInputType = builder.inputType("CreateAppInput", {
     }),
     build: t.field({ type: BuildConfigInput, required: false }),
     autoDeploy: t.boolean({ required: false }),
+    deploy: t.boolean({
+      required: false,
+      description: "Whether to start the first deployment. Defaults to true.",
+    }),
     // Template/compose deploys carry these so a one-click template keeps its
     // env, routing, baked domain and config-file mounts (audit-restored: these
     // were silently dropped in the first rewiring pass).
@@ -987,6 +991,7 @@ builder.mutationFields((t) => ({
           ? (remapBuildInput(input.build) as never)
           : undefined,
         autoDeploy: input.autoDeploy ?? undefined,
+        deploy: input.deploy ?? undefined,
         env: input.env?.map((e) => ({
           key: e.key,
           value: e.value,
