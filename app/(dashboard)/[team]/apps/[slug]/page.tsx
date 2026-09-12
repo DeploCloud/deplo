@@ -7,6 +7,7 @@ import {
   ScrollText,
   ExternalLink,
   ArrowRight,
+  Plus,
 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
@@ -93,7 +94,7 @@ export default async function AppOverview(
               <div className="space-y-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Domain</p>
-                  {project.productionUrl && (
+                  {project.productionUrl ? (
                     <a
                       href={project.productionUrl}
                       target="_blank"
@@ -102,6 +103,8 @@ export default async function AppOverview(
                     >
                       {project.productionUrl.replace(/^https?:\/\//, "")}
                     </a>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No domain</p>
                   )}
                 </div>
                 <div>
@@ -182,7 +185,7 @@ export default async function AppOverview(
                       Build Logs
                     </Link>
                   </Button>
-                  {project.productionUrl && (
+                  {project.productionUrl ? (
                     <Button size="sm" variant="outline" asChild>
                       <a
                         href={project.productionUrl}
@@ -192,6 +195,13 @@ export default async function AppOverview(
                         <ExternalLink className="size-4" />
                         Visit
                       </a>
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href={`/apps/${slug}/domains`}>
+                        <Plus className="size-4" />
+                        Add domain
+                      </Link>
                     </Button>
                   )}
                 </div>
