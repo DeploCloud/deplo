@@ -4,6 +4,7 @@ import {
   getLogsInfo,
   getShellLabel,
   getAppRuntime,
+  getOverviewAppStates,
   execInContainer,
   setConsoleEnabled,
   type ConsoleInfo,
@@ -11,7 +12,10 @@ import {
   type ConsoleInstance,
   type AppRuntime,
   type RuntimeContainer,
+  type OverviewAppState,
+  type OverviewRuntime,
 } from "@/lib/data/console";
+import { AppStatusEnum } from "./enums";
 import {
   getDatabaseRuntime,
   getDatabaseConsoleInfo,
@@ -158,6 +162,41 @@ const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
   }),
 });
 
+const OverviewRuntimeRef = builder
+  .objectRef<OverviewRuntime>("OverviewRuntime")
+  .implement({
+    fields: (t) => ({
+      total: t.exposeInt("total", { nullable: false }),
+      running: t.exposeInt("running", { nullable: false }),
+      restarting: t.exposeInt("restarting", { nullable: false }),
+      unhealthy: t.exposeInt("unhealthy", { nullable: false }),
+      maxRestartCount: t.exposeInt("maxRestartCount", { nullable: false }),
+      unhealthyContainers: t.exposeStringList("unhealthyContainers", {
+        nullable: false,
+      }),
+      unreachable: t.exposeBoolean("unreachable", { nullable: false }),
+    }),
+  });
+
+const OverviewAppStateRef = builder
+  .objectRef<OverviewAppState>("OverviewAppState")
+  .implement({
+    fields: (t) => ({
+      appId: t.exposeID("appId", { nullable: false }),
+      status: t.field({
+        type: AppStatusEnum,
+        nullable: false,
+        resolve: (state) => state.status,
+      }),
+      neverDeployed: t.exposeBoolean("neverDeployed", { nullable: false }),
+      runtime: t.field({
+        type: OverviewRuntimeRef,
+        nullable: true,
+        resolve: (state) => state.runtime,
+      }),
+    }),
+  });
+
 /** Result of running a command in the live container. */
 interface ExecResult {
   output: string;
@@ -233,6 +272,15 @@ builder.queryFields((t) => ({
       "truth behind the stored status. Polled by the app's status badge.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => getAppRuntime(appId),
+  }),
+  overviewAppStates: t.field({
+    type: [OverviewAppStateRef],
+    nullable: false,
+    authScopes: { loggedIn: true },
+    description:
+      "Batch runtime state for the visible Overview apps. Unknown or inaccessible IDs are omitted.",
+    args: { appIds: t.arg.idList({ required: true }) },
+    resolve: (_r, { appIds }) => getOverviewAppStates(appIds.map(String)),
   }),
   databaseRuntime: t.field({
     type: AppRuntimeRef,

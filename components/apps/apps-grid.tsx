@@ -51,6 +51,8 @@ import { useCardSelection } from "@/components/shared/use-card-selection";
 import { MARQUEE_BOX } from "@/components/shared/card-selection";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
+import { useOverviewAppStates } from "./apps-grid/overview-runtime";
+import type { OverviewAppStateView } from "./apps-grid/overview-state";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -302,13 +304,16 @@ export function AppsGrid(props: AppsGridProps) {
       return next;
     });
   }, []);
+  const visibleServices = props.services.filter((p) => !deleted.has(p.id));
+  const liveStates = useOverviewAppStates(visibleServices);
   // The parent re-keys the grid whenever the server's answer stops listing them
   // (see `gridKey`), so a successful hide never has to be cleaned up.
   const grid: GridProps = {
     ...props,
-    services: props.services.filter((p) => !deleted.has(p.id)),
+    services: visibleServices,
     folders: props.folders.filter((f) => !deleted.has(f.id)),
     projects: props.projects.filter((p) => !deleted.has(p.id)),
+    liveStates,
     onDeleted: hide,
     onRestored: unhide,
   };
@@ -319,6 +324,7 @@ export function AppsGrid(props: AppsGridProps) {
 /** What both grids get: the props minus whatever the user just deleted, plus
  *  the callbacks that hide the next one and put back a refused delete. */
 type GridProps = AppsGridProps & {
+  liveStates: ReadonlyMap<string, OverviewAppStateView>;
   onDeleted: (ids: string[]) => void;
   onRestored: (ids: string[]) => void;
 };
@@ -340,6 +346,7 @@ function StaticGrid({
   canManageAllFolders,
   canManageProjects,
   environments,
+  liveStates,
   onDeleted,
   onRestored,
 }: GridProps) {
@@ -386,6 +393,7 @@ function StaticGrid({
             <AppCard
               key={p.id}
               project={p}
+              liveState={liveStates.get(p.id)}
               view={view}
               folders={allFolders}
               canMoveApps={canMoveApps}
@@ -460,6 +468,7 @@ function SortableGrid({
   canManageAllFolders,
   canManageProjects,
   environments,
+  liveStates,
   onDeleted,
   onRestored,
 }: GridProps) {
@@ -1249,6 +1258,7 @@ function SortableGrid({
                   {({ handle, dragActive }) => (
                     <AppCard
                       project={p}
+                      liveState={liveStates.get(p.id)}
                       view={view}
                       dragHandle={handle}
                       dragActive={dragActive}
@@ -1305,6 +1315,7 @@ function SortableGrid({
           >
             <AppCard
               project={activeApp}
+              liveState={liveStates.get(activeApp.id)}
               view={view}
               folders={allFolders}
               canMoveApps={canMoveApps}
