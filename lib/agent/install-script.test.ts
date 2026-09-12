@@ -456,6 +456,121 @@ HTTPS_PORT=443; panel_router deplo-panel deplo-cb00710b.nip.io
   assert.match(live, /certResolver: letsencrypt/);
 });
 
+/* ------------------------------------------------------------------ */
+/* An update re-renders the proxy's stack file: what it must not lose  */
+/* ------------------------------------------------------------------ */
+
+/** The stack file a panel that has been moved onto its own domain is serving. */
+const LIVE_STACK = `services:
+  traefik:
+    command:
+      - --certificatesresolvers.letsencrypt.acme.email=ops@acme.com
+configs:
+  deplo-panel:
+    content: |
+      http:
+        routers:
+          deplo-panel:
+            rule: Host(\`panel.acme.com\`)
+            entryPoints:
+              - websecure
+            service: deplo-panel
+            priority: 2
+            tls:
+              certResolver: letsencrypt
+          deplo-panel-fallback:
+            rule: Host(\`deplo-cb00710b.nip.io\`)
+            entryPoints:
+              - websecure
+            service: deplo-panel
+            priority: 2
+        services:
+          deplo-panel:
+            loadBalancer:
+              servers:
+                - url: http://deplo:3000
+              passHostHeader: true
+  deplo-certificates:
+    content: |
+      tls:
+        certificates:
+          - certFile: /deplo-certs/custom-0.pem
+            keyFile: /deplo-certs/custom-0-key.pem
+networks:
+  deplo:
+    external: true
+`;
+
+/** A host mid-update: the stack file above, and a .env from before the move. */
+async function updatedHost(stack = LIVE_STACK) {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-update-"));
+  await writeFile(join(dir, "docker-compose.yml"), stack);
+  await writeFile(
+    join(dir, ".env"),
+    "DEPLO_DOMAIN=\nACME_EMAIL=admin@old.example\n",
+  );
+  return dir;
+}
+
+/** The update's view of the panel: what `adopt_live_panel_route` resolves to. */
+async function adopt(dir: string) {
+  return bash(`set -euo pipefail
+MODE=update; DEPLO_DOMAIN=""; PANEL_HTTPS=true; FALLBACK_HOST=deplo-cb00710b.nip.io
+ENV_FILE=${dir}/.env; TRAEFIK_COMPOSE=${dir}/docker-compose.yml
+${await shellFn("install.sh", "live_panel_route")}
+${await shellFn("install.sh", "adopt_live_panel_route")}
+adopt_live_panel_route
+echo "$DEPLO_DOMAIN $PANEL_HTTPS"
+`);
+}
+
+test("an update keeps the address the panel moved itself to", async () => {
+  // The panel writes its own route; .env only seeded it. Re-rendering from .env
+  // took the custom domain's route away and left nip.io as the only way in.
+  const dir = await updatedHost();
+  const out = await adopt(dir);
+  await rm(dir, { recursive: true, force: true });
+  assert.equal(out, "panel.acme.com true\n");
+});
+
+test("an update leaves a panel on plain http on plain http", async () => {
+  const dir = await updatedHost(
+    LIVE_STACK.replace("- websecure", "- web").replace(
+      "            tls:\n              certResolver: letsencrypt\n",
+      "",
+    ),
+  );
+  const out = await adopt(dir);
+  await rm(dir, { recursive: true, force: true });
+  assert.equal(out, "panel.acme.com false\n");
+
+  const rendered = await bash(`set -euo pipefail
+HTTPS_PORT=443; PANEL_HTTPS=false
+${await shellFn("install.sh", "panel_router")}
+panel_router deplo-panel panel.acme.com
+`);
+  assert.match(rendered, /- web\n/);
+  assert.doesNotMatch(rendered, /tls/);
+});
+
+test("an update carries over the certificates the panel installed", async () => {
+  // They live in a config this script does not render, in the file it rewrites.
+  const dir = await updatedHost();
+  const out = await bash(`set -euo pipefail
+TRAEFIK_COMPOSE=${dir}/docker-compose.yml
+DEFAULT_CERT_PEM=${dir}/missing.pem
+${(await readFile(join(process.cwd(), "install.sh"), "utf8")).match(/^TRAEFIK_CUSTOM_CERTS="\$\([\s\S]*?^\)"$/m)![0]}
+${(await readFile(join(process.cwd(), "install.sh"), "utf8")).match(/^TRAEFIK_CONFIG_MOUNT="\$\([\s\S]*?^\)"$/m)![0]}
+printf '%s\n---\n%s\n' "$TRAEFIK_CUSTOM_CERTS" "$TRAEFIK_CONFIG_MOUNT"
+`);
+  await rm(dir, { recursive: true, force: true });
+  const [carried, mount] = out.split("\n---\n");
+  assert.match(carried, /^ {2}deplo-certificates:$/m);
+  assert.match(carried, /certFile: \/deplo-certs\/custom-0\.pem/);
+  assert.doesNotMatch(carried, /networks:/);
+  assert.match(mount, /- source: deplo-certificates/);
+});
+
 test("the cutover moves the proxy and leaves the panel's container alone", async () => {
   const out = await bash(`set -euo pipefail
 exec 9>/dev/null

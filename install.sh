@@ -41,6 +41,7 @@ ENV_FILE="$DEPLO_DIR/.env"
 STATE_FILE="$DEPLO_DIR/.install-state"
 INSTALLER_URL="https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh"
 BACKUP_DIR="$DEPLO_DIR/backups"
+TRAEFIK_COMPOSE="$DEPLO_DIR/traefik/docker-compose.yml"
 CERT_DIR="$DEPLO_DIR/traefik/certs"
 DEFAULT_CERT_PEM="$CERT_DIR/default.pem"
 DEFAULT_CERT_KEY="$CERT_DIR/default-key.pem"
@@ -899,12 +900,42 @@ fi
 # apps, so the panel and the apps on it read alike.
 FALLBACK_HOST="deplo-$(ip_hex "$TARGET_IP" || ip_hex 127.0.0.1).nip.io"
 
+# What the panel serves RIGHT NOW. Its settings page moves the panel's address and
+# its certificate contact by rewriting the proxy's stack file, never this .env, so
+# re-rendering from .env put a panel on its own domain back on the generated host.
+live_panel_route() { # "<host> <web|websecure>" of the deplo-panel router
+  [ -f "$TRAEFIK_COMPOSE" ] || return 0
+  awk '
+    /Host\(`/ && host == "" { host = $0; sub(/^.*Host\(`/, "", host); sub(/`\).*$/, "", host); next }
+    host != "" && /^[[:space:]]*-[[:space:]]*websecure[[:space:]]*$/ { print host, "websecure"; exit }
+    host != "" && /^[[:space:]]*-[[:space:]]*web[[:space:]]*$/ { print host, "web"; exit }
+  ' "$TRAEFIK_COMPOSE"
+}
+live_acme_email() {
+  [ -f "$TRAEFIK_COMPOSE" ] || return 0
+  sed -n 's/.*--certificatesresolvers\.letsencrypt\.acme\.email=//p' "$TRAEFIK_COMPOSE" | head -1
+}
+
 # The domain, before Let's Encrypt is asked for anything -------------------------
 # A certificate ordered for a name that does not point here fails the HTTP-01
 # challenge and eats a rate limit that lasts an hour. Resolve it first.
-if [ "$MODE" = update ] && [ -z "${DEPLO_DOMAIN:-}" ] && [ -f "$ENV_FILE" ]; then
-  DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
-fi
+PANEL_HTTPS=true
+adopt_live_panel_route() {
+  [ "$MODE" = update ] && [ -z "${DEPLO_DOMAIN:-}" ] && [ -f "$ENV_FILE" ] || return 0
+  local host="" entry=""
+  read -r host entry <<<"$(live_panel_route)" || true
+  # Nothing to read from: an instance installed before the panel owned its route.
+  if [ -z "$host" ]; then
+    DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
+    return 0
+  fi
+  # The generated host is not a domain: storing it as one would pin the panel to
+  # an IP that moves.
+  [ "$host" = "$FALLBACK_HOST" ] || DEPLO_DOMAIN="$host"
+  # Plain http is the operator's advanced opt-out, made from the panel itself.
+  [ "$entry" != web ] || PANEL_HTTPS=false
+}
+adopt_live_panel_route
 
 # A bare address reads as a domain to the lexical check below, and no certificate
 # authority issues for one. The generated host is the better answer.
@@ -1163,6 +1194,13 @@ touch "$DEPLO_DIR/acme/acme.json"
 chmod 600 "$DEPLO_DIR/acme/acme.json"
 ensure_default_cert || warn "Could not mint the fallback certificate; Traefik will use its own, which changes at every restart."
 
+# The contact is editable from the panel, which writes it into the proxy's command
+# line: read it back, or an update resets it to admin@<host> behind the operator.
+if [ -z "${ACME_EMAIL:-}" ] && [ -f "$ENV_FILE" ]; then
+  ACME_EMAIL="$(live_acme_email)"
+  [ -n "$ACME_EMAIL" ] || ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
+fi
+
 # Let's Encrypt sends expiry notices here, so admin@<the panel's own host> beats
 # a placeholder nobody reads - and beats admin@example.com, which Let's Encrypt
 # refuses as a contact, taking ACME registration and every certificate on this
@@ -1260,9 +1298,8 @@ if [ -n "$TAKEOVER" ]; then
   fi
 fi
 
-# Resolve how the dashboard is exposed.
-DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
-ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
+# The domain and the contact are NOT re-read from .env here: both were resolved
+# above, off the proxy's own file, which is the one actually serving.
 
 # The panel publishes :3000 on 127.0.0.1 ONLY. Never on the server's address: an
 # open port is a login page on the internet with no TLS in front of it, and every
@@ -1301,7 +1338,7 @@ fi
 # still holds 443 Deplo's proxy sits on a loopback port nobody opens: the way in
 # is the same host over http, through that panel's proxy (takeover_side_door),
 # and the cutover changes nothing about the panel but who answers on 443.
-panel_url() { printf 'https://%s' "$PANEL_HOST"; }
+panel_url() { local s=https; [ "${PANEL_HTTPS:-true}" = true ] || s=http; printf '%s://%s' "$s" "$PANEL_HOST"; }
 PUBLIC_URL="$(panel_url)"
 
 # The first-account link. Takes the base as an argument because during a takeover
@@ -1339,14 +1376,25 @@ setup_pending() {
 # an hour - exactly the hour the cutover then needs it. The default certificate
 # serves the loopback port meanwhile; the cutover re-renders with the resolver.
 panel_router() { # $1 router name, $2 host
-  local tls='            tls:\n              certResolver: letsencrypt\n'
+  local tls='            tls:\n              certResolver: letsencrypt\n' entry=websecure
   [ "$HTTPS_PORT" = 443 ] || tls='            tls: {}\n'
-  printf '          %s:\n            rule: Host(`%s`)\n            entryPoints:\n              - websecure\n            service: deplo-panel\n            priority: 2\n'"$tls" "$1" "$2"
+  # No `tls` key at all is what makes a route plain http - the opt-out the panel
+  # writes, and which an update re-rendering it as websecure took away.
+  [ "${PANEL_HTTPS:-true}" = true ] || { tls=''; entry=web; }
+  printf '          %s:\n            rule: Host(`%s`)\n            entryPoints:\n              - %s\n            service: deplo-panel\n            priority: 2\n'"$tls" "$1" "$2" "$entry"
 }
+
+# The certificates the operator installed from the panel live in this same file,
+# in a config nothing here renders: carried over, or an update deletes them.
+TRAEFIK_CUSTOM_CERTS="$(
+  [ -f "$TRAEFIK_COMPOSE" ] || exit 0
+  awk '$0 == "  deplo-certificates:" { f = 1; print; next } f && !/^    / { exit } f' "$TRAEFIK_COMPOSE"
+)"
 
 TRAEFIK_CONFIG_MOUNT="$(
   printf '    configs:\n      - source: deplo-panel\n        target: /deplo-dynamic/deplo-panel.yml\n        mode: 256'
-  [ -s "$DEFAULT_CERT_PEM" ] && printf '\n      - source: deplo-default-cert\n        target: /deplo-dynamic/deplo-default-cert.yml\n        mode: 256'
+  [ -n "$TRAEFIK_CUSTOM_CERTS" ] && printf '\n      - source: deplo-certificates\n        target: /deplo-dynamic/deplo-certificates.yml\n        mode: 256' || true
+  [ -s "$DEFAULT_CERT_PEM" ] && printf '\n      - source: deplo-default-cert\n        target: /deplo-dynamic/deplo-default-cert.yml\n        mode: 256' || true
 )"
 # Read from the mount below rather than inlined: a PEM nested two block scalars
 # deep is a file nobody can edit by hand without breaking it.
@@ -1367,6 +1415,7 @@ render_traefik_panel_config() {
     panel_router deplo-panel "$PANEL_HOST"
     [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || panel_router deplo-panel-fallback "$FALLBACK_HOST"
     printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true\n'
+    [ -z "$TRAEFIK_CUSTOM_CERTS" ] || printf '%s\n' "$TRAEFIK_CUSTOM_CERTS"
     printf '%s' "$TRAEFIK_DEFAULT_CERT_CONFIG"
   )"
 }
@@ -1383,7 +1432,7 @@ phase "Reverse proxy"
 # refuses to manage this stack and the panel's own settings go read-only.
 # One renderer, called again by the takeover when the real ports come free.
 write_traefik_compose() {
-cat > "$DEPLO_DIR/traefik/docker-compose.yml" <<YAML
+cat > "$TRAEFIK_COMPOSE" <<YAML
 services:
   traefik:
     image: traefik:v3.7
@@ -1459,7 +1508,7 @@ networks:
 YAML
 # Blank lines from an empty block above are harmless YAML, but strip them so the
 # file an operator opens on the host reads like one somebody wrote.
-sed -i '/^$/d' "$DEPLO_DIR/traefik/docker-compose.yml"
+sed -i '/^$/d' "$TRAEFIK_COMPOSE"
 }
 
 # The interim ports were picked at preflight and are bound only now, minutes
@@ -1490,7 +1539,7 @@ takeover_repick_ports
 write_traefik_compose
 TRAEFIK_NOTE="$HTTP_PORT/$HTTPS_PORT, Let's Encrypt for $PANEL_HOST"
 spin_start "Starting Traefik and its socket proxy"
-docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null
+docker compose -f "$TRAEFIK_COMPOSE" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null
 spin_ok "Traefik running" "$TRAEFIK_NOTE"
 
 # The server agent manages the proxy at $AGENT_DATA/traefik - that is the one
@@ -2080,7 +2129,7 @@ wait_for_proxy() {
 }
 
 takeover_up_stacks() {
-  docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
+  docker compose -f "$TRAEFIK_COMPOSE" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
   docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
 }
 
@@ -2405,7 +2454,7 @@ takeover_uninstall() {
     docker rm -fv $ours >&9 2>&9 || true
   fi
   docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" down -v >&9 2>&9 || true
-  docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" down >&9 2>&9 || true
+  docker compose -f "$TRAEFIK_COMPOSE" --env-file "$ENV_FILE" down >&9 2>&9 || true
   docker network rm deplo >&9 2>&9 || true
   # After Traefik is down: it sits on every Environment network, and a `network rm`
   # before that failed on its endpoint and left the network behind.
