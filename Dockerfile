@@ -7,7 +7,8 @@
 # checksum), bootstraps via call-home, and is dialed over mTLS. So there is no Go
 # binary to ship here; the dashboard's agent badge surfaces version drift.
 
-FROM oven/bun:1.3 AS deps
+# Base images are pinned by digest (supply chain); dependabot bumps them weekly.
+FROM oven/bun:1.3@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
@@ -22,7 +23,7 @@ RUN bun install --frozen-lockfile
 # class of "bun crashed on our tree" from the release path. Keep the deps stage on
 # bun - bun.lock is the lockfile, and its node_modules layout is npm-compatible.
 # Same debian/glibc family as the bun image, so sharp's prebuild still resolves.
-FROM node:22-bookworm-slim AS builder
+FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -46,7 +47,7 @@ RUN node node_modules/next/dist/bin/next build
 RUN node scripts/build-recover.mjs
 
 # --- Runtime: minimal standalone server ---
-FROM node:22-alpine AS runner
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 # A larger young generation halves scavenge GC on a busy panel (measured 4% of CPU).

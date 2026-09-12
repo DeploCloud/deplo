@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Actions only. The npm tree is bumped by hand in batches and the lockfile is
+  # No npm entry: the tree is bumped by hand in batches and the lockfile is
   # bun.lock, which dependabot does not update.
   - package-ecosystem: github-actions
     directory: "/"
@@ -9,4 +9,13 @@ updates:
     commit-message:
       prefix: "build(deps)"
     # One label per PR; the default adds an ecosystem label too.
+    labels: ["dependencies"]
+
+  # The Dockerfile's base images are pinned by digest; this is what un-freezes them.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"
     labels: ["dependencies"]
