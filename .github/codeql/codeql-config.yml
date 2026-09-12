@@ -1,0 +1,9 @@
+name: Deplo CodeQL
+
+# Tests ship nowhere and take no untrusted input: an assertion that matches on a
+# substring of a URL is the test doing its job, not a sanitizer that is too loose.
+paths-ignore:
+  - "**/*.test.ts"
+  - "lib/test/**"
+  - "lib/agent/gen/**"
+  - "lib/db/migrations/**"

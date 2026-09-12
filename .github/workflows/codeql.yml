@@ -34,6 +34,7 @@ jobs:
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
         with:
           languages: javascript-typescript
+          config-file: ./.github/codeql/codeql-config.yml
           # Nothing to compile: the queries read the TypeScript directly.
           build-mode: none
 
