@@ -37,6 +37,8 @@ The cloud experience, without being locked into the cloud.
 
 <br />
 
+[![Deplo Bento](https://deplo.build/api/media/file/readme_bento.png)](https://deplo.build)
+
 ## Installing Deplo
 
 Deplo is designed to run on your own infrastructure, giving you complete control over where your applications live and how they're managed.
@@ -49,8 +51,6 @@ Whether you're running a VPS, a dedicated server, or your own hardware, Deplo tu
 - [Deploy your first application](https://deplo.build/docs/getting-started/first-app)
 - [Migrate from Coolify](https://deplo.build/docs/migrations/move-from-coolify)
 - [Migrate from Dokploy](https://deplo.build/docs/migrations/move-from-dokploy)
-
-[![Deplo Bento](https://deplo.build/api/media/file/readme_bento.png)](https://deplo.build)
 
 ## Building with Deplo
 
