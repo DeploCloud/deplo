@@ -989,6 +989,9 @@ input CreateAppInput {
   Extra flags appended to `docker compose up` for a compose stack. Validated against the same allow-list the app's settings use.
   """
   composeUpArgs: String
+
+  """Whether to start the first deployment. Defaults to true."""
+  deploy: Boolean
   dockerImage: String
   env: [AppEnvInput!]
   environmentId: String

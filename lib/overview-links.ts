@@ -64,13 +64,19 @@ function placementParams(
 /** Link to the new-app wizard, carrying the drill-in it was opened from. */
 export function newAppHref(
   p?: OverviewPlacement | null,
-  opts?: { template?: string; variant?: string; source?: string },
+  opts?: {
+    template?: string;
+    variant?: string;
+    source?: string;
+    deploy?: boolean;
+  },
 ): string {
   const params = placementParams(p);
   if (opts?.template) params.set("template", opts.template);
   if (opts?.variant) params.set("variant", opts.variant);
   // The wizard opens straight on this source - what a dropped archive needs.
   if (opts?.source) params.set("source", opts.source);
+  if (opts?.deploy === false) params.set("deploy", "false");
   const qs = params.toString();
   return qs ? `/new?${qs}` : "/new";
 }
