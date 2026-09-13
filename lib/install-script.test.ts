@@ -51,3 +51,10 @@ test("--public-setup writes an empty key and prints a bare link", async () => {
   // URL to whoever the host hands it to.
   assert.match(script, /\[ -n "\$SETUP_KEY" \] \|\| \{ printf '%s\/setup'/);
 });
+
+test("install.sh runs with no domain given", async () => {
+  const script = await readFile(join(process.cwd(), "install.sh"), "utf8");
+  // Without the default, `set -u` kills the common case on the first bare read:
+  // "DEPLO_DOMAIN: unbound variable".
+  assert.match(script, /^DEPLO_DOMAIN="\$\{DEPLO_DOMAIN:-\}"$/m);
+});

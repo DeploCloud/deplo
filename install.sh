@@ -370,6 +370,10 @@ trap 'on_err $LINENO' ERR
 DEPLO_VERSION="${DEPLO_VERSION:-latest}"
 DEPLO_VERSION="${DEPLO_VERSION#v}"
 
+# No domain is the common case, and `set -u` makes every later bare read of an
+# unset one fatal - the empty string is what the rest of the script branches on.
+DEPLO_DOMAIN="${DEPLO_DOMAIN:-}"
+
 $WANT_HELP && { usage; exit 0; }
 
 # --- small helpers ------------------------------------------------------------
