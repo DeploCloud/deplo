@@ -997,8 +997,10 @@ export function NewAppWizard({
             backLabel={isTemplate ? "Back to templates" : "Back"}
             onBack={onBack}
             onNext={onNext}
-            nextLabel={usesGit ? "Next" : "Deploy"}
-            deploy={!usesGit}
+            nextLabel={
+              usesGit ? "Next" : shouldDeploy ? "Deploy" : "Create app"
+            }
+            deploy={!usesGit && shouldDeploy}
             nextDisabled={nextDisabled}
             pending={pending}
           >
@@ -1117,8 +1119,8 @@ export function NewAppWizard({
             meta={meta}
             onBack={onBack}
             onNext={onNext}
-            nextLabel="Deploy"
-            deploy
+            nextLabel={shouldDeploy ? "Deploy" : "Create app"}
+            deploy={shouldDeploy}
             nextDisabled={nextDisabled}
             pending={pending}
           >

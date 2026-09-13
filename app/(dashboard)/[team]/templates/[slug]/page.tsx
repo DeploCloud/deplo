@@ -286,18 +286,25 @@ function DeployButton({
 }) {
   if (canDeploy)
     return (
+      // The caret sits AFTER the action it qualifies, like every split button.
       <div
         role="group"
         aria-label="Deployment actions"
         className="inline-flex shrink-0 overflow-hidden rounded-md shadow-sm"
       >
+        <Button asChild className="rounded-none sm:w-32">
+          <Link href={href}>
+            Deploy
+            <ArrowUpRight className="size-4" />
+          </Link>
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
               size="icon"
               aria-label="More deployment options"
-              className="rounded-none border-r border-primary-foreground/20 px-2 shadow-none"
+              className="rounded-none border-l border-primary-foreground/20 px-2 shadow-none"
             >
               <ChevronDown className="size-4" />
             </Button>
@@ -311,12 +318,6 @@ function DeployButton({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button asChild className="rounded-none sm:w-32">
-          <Link href={href}>
-            Deploy
-            <ArrowUpRight className="size-4" />
-          </Link>
-        </Button>
       </div>
     );
   return (
