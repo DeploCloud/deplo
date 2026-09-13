@@ -379,9 +379,9 @@ function TakeoverWaiting({
       // This page leaves its origin ONLY once the old panel is gone - the removal
       // restarts Docker, and a page that moved onto the final address a moment
       // earlier died with it - or when nothing here answers any more. Then the
-      // final address has to answer over its own https first: `no-cors` on
-      // purpose, the only thing asked is whether the connection, certificate
-      // included, works. A certificate that never comes stops nobody for long.
+      // final address has to say it is DEPLO first: until the ports move, the old
+      // panel answers that very address with a 404, and an opaque `no-cors` probe
+      // read that as "it works" and dropped the operator on it.
       const since = removedAt ?? deadSince;
       const leave =
         since != null && (removedAt != null || Date.now() - since > DEAD_MS);
@@ -390,22 +390,22 @@ function TakeoverWaiting({
           removedAt != null
             ? takeoverLandingUrl(finalUrl, platformLabel)
             : `${finalUrl}/takeover`;
-        try {
-          await fetch(`${finalUrl}/api/health`, {
-            mode: "no-cors",
-            cache: "no-store",
-          });
-          if (live) window.location.replace(target);
-          return;
-        } catch {
-          // A certificate still being issued fails this probe exactly like
-          // nothing listening does, so only a cutover KNOWN to have succeeded
-          // goes anyway: a silent origin may be a rollback under way, and its
-          // Try again is on this page, not on a dead https address.
-          if (live && removedAt != null && Date.now() - since > CERT_GRACE_MS)
-            window.location.replace(target);
-          return;
-        }
+        const answers = await fetch(`${finalUrl}/api/health`, {
+          cache: "no-store",
+        })
+          .then((r) => r.ok)
+          // A certificate still being issued fails exactly like nothing
+          // listening does, so only a cutover KNOWN to have succeeded goes
+          // anyway: a silent origin may be a rollback under way, and its Try
+          // again is on this page, not on a dead https address.
+          .catch(() => false);
+        if (!live) return;
+        if (
+          answers ||
+          (removedAt != null && Date.now() - since > CERT_GRACE_MS)
+        )
+          window.location.replace(target);
+        return;
       }
       if (live && Date.now() - started > SLOW_MS) setSlow(true);
     }, POLL_MS);

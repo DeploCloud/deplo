@@ -12,8 +12,16 @@ export async function GET() {
   await connection();
   return Response.json(
     { ok: true },
-    // no-store keeps intermediaries (e.g. Cloudflare in front of the panel)
-    // from serving a cached 200 while the origin is actually down.
-    { headers: { "cache-control": "no-store" } },
+    {
+      headers: {
+        // no-store keeps intermediaries (e.g. Cloudflare in front of the panel)
+        // from serving a cached 200 while the origin is actually down.
+        "cache-control": "no-store",
+        // Readable cross-origin so the takeover screen, served through the old
+        // panel's proxy, can tell Deplo from that panel's 404 on the same
+        // address. It answers one bit and reads nothing.
+        "access-control-allow-origin": "*",
+      },
+    },
   );
 }
