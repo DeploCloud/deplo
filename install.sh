@@ -279,7 +279,14 @@ card_close() {
   printf ' %b%s%s%s%b\n\n' "$C_ACC" "$G_BL" "$(ui_rule "$CARD_W")" "$G_BR" "$C_OFF"
 }
 
-ui_cleanup() { spin_kill; [ "$UI_TTY" = 1 ] && printf '\033[?25h'; return 0; }
+# A fatal shell error (`set -u`, a bad redirect) never reaches the ERR trap, so
+# the exit trap is the last place left to name the transcript.
+ui_cleanup() {
+  local code=$?
+  spin_kill; [ "$UI_TTY" = 1 ] && printf '\033[?25h'
+  [ "$code" = 0 ] || [ "${UI_ERR_SEEN:-0}" = 1 ] || on_err "" "$code"
+  return 0
+}
 
 # "1 warning" / "2 warnings" - a count the reader has to decode is a count that
 # looks machine-generated.
@@ -289,12 +296,14 @@ plural() {
 
 UI_ERR_SEEN=0
 on_err() {
-  local code=$? line="${1:-?}"
+  local code=${2:-$?} line="${1:-}" where
+  where="exit $code"
+  [ -z "$line" ] || where="line $line, exit $code"
   [ "$UI_ERR_SEEN" = 1 ] && exit "$code"
   UI_ERR_SEEN=1
   spin_kill
   blank
-  err "The ${UI_ACTION:-install} failed${UI_PHASE:+ during: $UI_PHASE} (line $line, exit $code)."
+  err "The ${UI_ACTION:-install} failed${UI_PHASE:+ during: $UI_PHASE} ($where)."
   [ "$UI_LOG" = /dev/null ] || note "Full transcript: $UI_LOG"
   note "Re-running this script picks up where it stopped."
   exit "$code"
