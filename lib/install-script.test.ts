@@ -58,3 +58,16 @@ test("install.sh runs with no domain given", async () => {
   // "DEPLO_DOMAIN: unbound variable".
   assert.match(script, /^DEPLO_DOMAIN="\$\{DEPLO_DOMAIN:-\}"$/m);
 });
+
+test("the setup link is never printed inside the summary card", async () => {
+  const script = await readFile(join(process.cwd(), "install.sh"), "utf8");
+  // card_kv truncates to keep the box closed, and a truncated setup link is dead.
+  assert.ok(
+    !script.includes('card_kv "Set up"'),
+    "the card would cut the key off the link",
+  );
+  assert.ok(
+    script.includes("Open %b%s%b and create your account"),
+    "nothing prints it whole",
+  );
+});

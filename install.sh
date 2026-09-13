@@ -2630,17 +2630,12 @@ if [ -n "$TAKEOVER" ] && [ "$TAKEOVER_PAST" = 0 ]; then
   FOREIGN_LABEL="$(platform_label "$TAKEOVER")"
   TAKEOVER_DOOR="$(takeover_side_door)"
 fi
+# The setup link carries a 32-character key and never fits this box, and a
+# truncated link is a dead one: it is printed whole under "Next" instead.
 if [ -n "$TAKEOVER_DOOR" ]; then
   card_kv "Dashboard" "$PUBLIC_URL, once the machine is Deplo's"
-  case "$TAKEOVER_DOOR" in
-    http://*) card_kv "Set up" "$(setup_url "$TAKEOVER_DOOR")" ;;
-    *) card_kv "Set up" "over SSH, see below" ;;
-  esac
 else
   card_kv "Dashboard" "$PUBLIC_URL"
-  # The setup link is dead the moment an account exists, so printing it on an
-  # update of a claimed instance is a secret-looking URL that does nothing.
-  setup_pending && card_kv "Set up" "$(setup_url)"
 fi
 [ "$USE_DOMAIN" = true ] && card_kv "Backup address" "https://$FALLBACK_HOST"
 card_kv "Version" "$VERSION_LABEL"
@@ -2712,9 +2707,8 @@ if [ "$MODE" != update ]; then
   printf '   3  Deploy your first app.\n\n'
 else
   printf '   Open %b%s%b - your apps kept running throughout.\n\n' "$C_ACC" "$PUBLIC_URL" "$C_OFF"
-  # The card above truncates a long address, and an update is exactly when
-  # somebody is re-running this to find a setup link they lost - but only while
-  # there is still an account to create.
+  # An update is exactly when somebody is re-running this to find the setup link
+  # they lost - but only while there is still an account to create.
   setup_pending && note "No account yet? Create it at $(setup_url)"
 fi
 
