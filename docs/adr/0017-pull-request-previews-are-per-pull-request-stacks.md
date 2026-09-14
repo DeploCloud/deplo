@@ -216,7 +216,7 @@ deploy/redeploy/destroy of a preview, and approving a fork.
 
 The real gate is `requireAppCapability(appId, "manage_previews")`, which resolves team, folder
 and per-node grants together (ADR-0016) and answers "App not found" to all three, so it is
-never an oracle for which ids exist. `lib/deploy/preview-lifecycle.ts` stays session-free; the
+never an oracle for which ids exist. `lib/deploy/preview-lifecycle/` stays session-free; the
 gate belongs to its callers.
 
 ### 13. Previews may run on a different server than production

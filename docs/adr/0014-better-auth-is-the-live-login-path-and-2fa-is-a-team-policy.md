@@ -4,7 +4,7 @@
 - **Replaces**: the hand-rolled stateless HMAC session (`deplo_session`) that `lib/auth.ts` owned
   since the first commit. The cookie, `SessionPayload`, `signSession`/`verifySession` and the
   `users.token_version` revocation scheme are all retired by this decision.
-- **Constrains**: `lib/auth.ts`, `lib/auth/better-auth.ts`, `lib/membership.ts`, `proxy.ts`,
+- **Constrains**: `lib/auth/`, `lib/auth/better-auth.ts`, `lib/membership.ts`, `proxy.ts`,
   migration `0055_two_factor_on_better_auth.sql`.
 
 ## Context

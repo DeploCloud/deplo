@@ -21,7 +21,7 @@
 Today the tenancy tree is **Team → Folder(s) → Project**, where a **Project** is the _deployable
 app_ (server, framework, source, one production stack + one dev container, deployments, domains,
 env vars). "Environment" is **not an entity** - it is the fixed enum
-`EnvTarget = production | preview | development` ([lib/types.ts:750](../../lib/types.ts#L750)) woven
+`EnvTarget = production | preview | development` ([lib/types/env.ts](../../lib/types/env.ts)) woven
 through three pure seams - env selection ([env-resolve.ts](../../lib/deploy/env-resolve.ts)),
 ports ([ports.ts](../../lib/deploy/ports.ts)), and the deployment axis
 (`deployments.environment`), plus the dev-container renderer ([dev.ts](../../lib/deploy/dev.ts)).
@@ -39,7 +39,7 @@ its glossary) is militantly precise about naming. The new container needs that w
 
 ### 1. Rename the deployable app: **Project → Service**
 
-Everywhere - DB tables/columns, `lib/types.ts`, `lib/data/*`, `lib/graphql/*`, UI routes/components,
+Everywhere - DB tables/columns, `lib/types/*`, `lib/data/*`, `lib/graphql/*`, UI routes/components,
 and the glossary. The target tree is **Team → Project (container) → Folder(s) → Service(s)**.
 
 - **IDs stay.** `newId("prj")` keeps minting Service ids ([lib/ids.ts](../../lib/ids.ts) prefixes are
@@ -52,7 +52,7 @@ and the glossary. The target tree is **Team → Project (container) → Folder(s
 
 ### 2. New entity: **Project** (the container)
 
-A top-level, team-scoped, **folder-like** grouping - modeled on [`folders`](../../lib/db/schema/control-plane.ts#L159)
+A top-level, team-scoped, **folder-like** grouping - modeled on [`folders`](../../lib/db/schema/control-plane/projects.ts)
 (name, `color`, `owner_user_id` + per-container **grants**, team-wide ordering) - that additionally
 **owns Environments**. New tables `projects`, `project_grants`, `team_project_order` (the names are
 _reclaimed_ after the Service rename frees them). New id prefix **`prc`**. A Project has **no

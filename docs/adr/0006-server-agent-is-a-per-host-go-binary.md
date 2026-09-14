@@ -3,7 +3,7 @@
 ## Context
 
 Deplo **models** multiple servers - a project carries a `serverId`, the dashboard has a server
-picker, `addServer()` ([`lib/data/servers.ts`](../../lib/data/servers.ts)) registers a remote
+picker, `addServer()` ([`lib/data/servers/enrollment.ts`](../../lib/data/servers/enrollment.ts)) registers a remote
 in a `provisioning` state, but it does **not deploy to them**. `serverId` only resolves an IP
 for the domain/Traefik labels (`resolveServerIp`, [`lib/deploy/domains.ts`](../../lib/deploy/domains.ts));
 every `docker build` / `docker compose up` runs against the **local** daemon
@@ -161,13 +161,13 @@ the gateway-config sentinel substitution.
    claim the first phase unifies localhost and remote; it unifies only _deploy_.
 
 6. **The control plane renders the compose; the agent receives opaque YAML (D2).**
-   `renderCompose` ([`lib/deploy/build.ts`](../../lib/deploy/build.ts)) stays the single source
+   `renderCompose` ([`lib/deploy/build/compose-render.ts`](../../lib/deploy/build/compose-render.ts)) stays the single source
    of truth in TS, including the byte-identical-reroute contract. The deploy request carries the
    **rendered YAML**, not the inputs to render it; the agent never re-implements routing/label
    logic in Go.
 
 7. **Decrypted env crosses the wire; the agent never holds the encryption key (D4).** The
-   control plane decrypts at the deploy edge ([`lib/deploy/build.ts`](../../lib/deploy/build.ts)) and sends
+   control plane decrypts at the deploy edge ([`lib/deploy/build/deploy-env.ts`](../../lib/deploy/build/deploy-env.ts)) and sends
    the resolved plaintext map inside the deploy request over mTLS. The master key lives in
    exactly one place. The container needs plaintext to run regardless, so the only real variable
    is _where the master key lives_ - one place beats every-server, on both simplicity and blast
@@ -256,7 +256,7 @@ the gateway-config sentinel substitution.
 
 - A new in-repo `agent/` Go module and `proto/agent.proto` join the build; CI becomes
   bilingual (Node + Go). Accepted - it is what keeps the contract and both sides in one commit.
-- The deploy path gains a choke point (`lib/infra/agent-client.ts`) that replaces direct
+- The deploy path gains a choke point (`lib/infra/agent-client/connect.ts`) that replaces direct
   `lib/infra/docker.ts` calls; `runDeployment` streams `DeployEvent`s into the existing
   log/status writes and `publishProjectChanged`, so the UI's subscriptions light up unchanged.
 - A stable deploy id ships from the first phase. Early on the deploy is fire-and-forget and a

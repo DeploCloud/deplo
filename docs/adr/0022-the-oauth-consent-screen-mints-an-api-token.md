@@ -7,7 +7,7 @@
 - **Builds on**: [ADR-0015](0015-an-api-token-is-a-principal-with-its-own-capabilities.md) and
   [ADR-0014](0014-better-auth-is-the-live-auth-path.md).
 - **Constrains**: `lib/auth/better-auth.ts`, `lib/auth/oauth-*.ts`, `lib/data/mcp-clients.ts`,
-  `lib/data/tokens.ts`, `app/.well-known/*`, `app/oauth/consent/*`, `proxy.ts`.
+  `lib/data/tokens/`, `app/.well-known/*`, `app/oauth/consent/*`, `proxy.ts`.
 
 ## Context
 
@@ -37,7 +37,7 @@ brings zero new transitive packages.
    policy, the fail-closed check that the minter is still a member, `lastUsedAt`, revocation.
    ADR-0021 §2's "there is no second authorization path, and there must never be one" is kept true
    by not building one. A static test asserts the consent path mints only through `createToken`,
-   and another asserts nothing outside `lib/data/tokens.ts` builds a bearer identity.
+   and another asserts nothing outside `lib/data/tokens/authenticate.ts` builds a bearer identity.
 
    The corollary is that an OAuth connection reaches `/api/graphql` and the deploy hook too. It is
    an API token; pretending otherwise would mean a second kind of principal, which is the thing this

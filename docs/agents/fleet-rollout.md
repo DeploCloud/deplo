@@ -66,7 +66,7 @@ one arch survives.
 ## 3. There is no "update all servers"
 
 Only **`updateServerAgent(id: String!): String`** exists (`schema.graphql:1594`,
-`lib/graphql/types/server.ts`, `lib/data/servers.ts`). One server per call. There is no batch
+`lib/graphql/types/server/enrollment.ts`, `lib/data/servers/agent-maintenance.ts`). One server per call. There is no batch
 mutation, no queue, no "update fleet" button - a rollout is N deliberate calls.
 
 Contrast health, which _does_ have a fleet-wide action: `checkAllServerHealth(force: Boolean)` probes
@@ -133,12 +133,12 @@ docker exec postgres psql "$DEPLO_DATABASE_URL" -c \
 ```
 
 `('queued','building')` is the in-progress set the control plane itself uses (`IN_PROGRESS` in
-`lib/data/deployments.ts`). Non-empty → do not update that server yet.
+`lib/data/deployments/cancel-and-delete.ts`). Non-empty → do not update that server yet.
 
 **Do not simplify that to a bare `where d.server_id = …`.** `deployments.server_id` is nullable by
-design (schema comment in `lib/db/schema/control-plane.ts`: it is a denormalized mirror of
+design (schema comment in `lib/db/schema/control-plane/deployments.ts`: it is a denormalized mirror of
 `apps.server_id`, "backfilled for rows that predate the queue"). The control plane never reads it
-bare either - `onServer` in `lib/data/deployments.ts` is exactly
+bare either - `onServer` in `lib/data/deployments/cancel-and-delete.ts` is exactly
 `coalesce(deployments.server_id, apps.server_id)`, and the queue-position query uses the same. A
 bare read makes a null-`server_id` deploy _invisible_, so the check returns zero rows, you read it
 as all-clear, and the self-update `syscall.Exec`s 750ms later straight through the live `Deploy`
@@ -198,9 +198,9 @@ scripts from the repo root with:
 
 ## 7. The footgun: the infra seam does not write `agent_version`
 
-`selfUpdateServerAgent(serverId)` in `lib/infra/agent-client.ts` returns `{ version, restarting }`
+`selfUpdateServerAgent(serverId)` in `lib/infra/agent-client/agent-lifecycle.ts` returns `{ version, restarting }`
 and writes **nothing** to the database. The version badge is updated one layer up, by
-`updateServerAgent(id)` in `lib/data/servers.ts`, which sets `servers.agent_version` optimistically
+`updateServerAgent(id)` in `lib/data/servers/agent-maintenance.ts`, which sets `servers.agent_version` optimistically
 after the seam returns (and records the activity entry).
 
 So the UI path is fine. A **script that calls the infra seam directly** - the usual shape, because
@@ -209,7 +209,7 @@ itself:
 
 ```ts
 const { version } = await selfUpdateServerAgent(id);
-await markServerSeen(id, version); // lib/data/servers.ts - ungated, best-effort
+await markServerSeen(id, version); // lib/data/servers/agent-handshake.ts - ungated, best-effort
 ```
 
 Skip it and the badge lags. Note _what_ corrects it, because it is not the health prober:

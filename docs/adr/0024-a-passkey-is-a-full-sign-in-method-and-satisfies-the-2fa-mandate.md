@@ -1,7 +1,7 @@
 # ADR-0024: A passkey is a full sign-in method, and it satisfies the two-factor mandate
 
 - **Status**: Accepted - 2026-08-15.
-- **Constrains**: `lib/auth/better-auth.ts`, `lib/auth.ts`, `lib/passkey-policy.ts`,
+- **Constrains**: `lib/auth/better-auth.ts`, `lib/auth/sign-in.ts`, `lib/passkey-policy.ts`,
   `lib/membership.ts`, `lib/data/passkeys.ts`, `lib/data/two-factor.ts`,
   `lib/graphql/types/{passkey,auth,member}.ts`, `app/(auth)/login/*`,
   `app/(dashboard)/settings/security/*`, and the `passkey` / `session` tables (migrations 0102, 0103 and 0104).
