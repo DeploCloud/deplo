@@ -222,7 +222,6 @@ export function NewAppWizard({
   connections,
   providers,
   isInstanceAdmin,
-  shouldDeploy = true,
   placement,
   exitHref,
 }: {
@@ -242,8 +241,6 @@ export function NewAppWizard({
   providers: GitProviderChoice[];
   /** Gates the connect dialog's "on my own network" option. */
   isInstanceAdmin: boolean;
-  /** Whether to start the app's first deployment after creation. */
-  shouldDeploy?: boolean;
   placement?: WizardPlacement | null;
   /** Where Cancel goes - the Overview drill-in, or the template catalog. */
   exitHref: string;
@@ -487,7 +484,7 @@ export function NewAppWizard({
   }
 
   // ── Deploy ───────────────────────────────────────────────────────────────
-  function deploy() {
+  function deploy(startDeployment = true) {
     if (!name.trim()) {
       toast.error("Enter an app name");
       return;
@@ -611,7 +608,7 @@ export function NewAppWizard({
         port: payloadBuild.port,
       },
       autoDeploy: usesGit ? autoDeploy : false,
-      deploy: shouldDeploy,
+      deploy: startDeployment,
       // Where the first domain points: what a template declares, else what
       // the wizard showed the user for their own stack.
       composeService: templateCompose
@@ -997,10 +994,9 @@ export function NewAppWizard({
             backLabel={isTemplate ? "Back to templates" : "Back"}
             onBack={onBack}
             onNext={onNext}
-            nextLabel={
-              usesGit ? "Next" : shouldDeploy ? "Deploy" : "Create app"
-            }
-            deploy={!usesGit && shouldDeploy}
+            nextLabel={usesGit ? "Next" : "Deploy"}
+            deploy={!usesGit}
+            onCreateWithoutDeploy={isTemplate ? () => deploy(false) : undefined}
             nextDisabled={nextDisabled}
             pending={pending}
           >
@@ -1119,8 +1115,8 @@ export function NewAppWizard({
             meta={meta}
             onBack={onBack}
             onNext={onNext}
-            nextLabel={shouldDeploy ? "Deploy" : "Create app"}
-            deploy={shouldDeploy}
+            nextLabel="Deploy"
+            deploy
             nextDisabled={nextDisabled}
             pending={pending}
           >

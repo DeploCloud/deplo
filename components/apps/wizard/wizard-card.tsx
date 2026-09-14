@@ -1,10 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { ArrowLeft, ArrowRight, Loader2, Rocket } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  Loader2,
+  Plus,
+  Rocket,
+} from "lucide-react";
 
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export type StepDirection = "forward" | "back";
@@ -102,6 +115,7 @@ export function WizardCard({
   onNext,
   nextDisabled = false,
   deploy = false,
+  onCreateWithoutDeploy,
   pending = false,
 }: {
   title: string;
@@ -122,8 +136,40 @@ export function WizardCard({
   nextDisabled?: boolean;
   /** The last step: the button becomes the rocket. */
   deploy?: boolean;
+  /** An alternate action for template creation without the first deployment. */
+  onCreateWithoutDeploy?: () => void;
   pending?: boolean;
 }) {
+  const nextButton = onNext && (
+    <Button
+      type="button"
+      onClick={onNext}
+      disabled={nextDisabled || pending}
+      className={onCreateWithoutDeploy ? "rounded-none" : undefined}
+    >
+      {/* The label stays mounted while pending so the button keeps its
+        width and the footer doesn't jump. */}
+      <span className="grid place-items-center">
+        <span
+          className={cn(
+            "col-start-1 row-start-1 flex items-center gap-2",
+            pending && "invisible",
+          )}
+        >
+          {deploy ? (
+            <Rocket className="size-4" />
+          ) : (
+            <ArrowRight className="order-last size-4" />
+          )}
+          {nextLabel}
+        </span>
+        {pending && (
+          <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+        )}
+      </span>
+    </Button>
+  );
+
   return (
     // The card caps ITSELF and scrolls its own body, so its header and footer
     // hold their place instead of scrolling away with the fields.
@@ -155,34 +201,37 @@ export function WizardCard({
           ) : (
             <span />
           )}
-          {onNext && (
-            <Button
-              type="button"
-              onClick={onNext}
-              disabled={nextDisabled || pending}
-            >
-              {/* The label stays mounted while pending so the button keeps its
-                width and the footer doesn't jump. */}
-              <span className="grid place-items-center">
-                <span
-                  className={cn(
-                    "col-start-1 row-start-1 flex items-center gap-2",
-                    pending && "invisible",
-                  )}
-                >
-                  {deploy ? (
-                    <Rocket className="size-4" />
-                  ) : (
-                    <ArrowRight className="order-last size-4" />
-                  )}
-                  {nextLabel}
-                </span>
-                {pending && (
-                  <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
-                )}
-              </span>
-            </Button>
-          )}
+          {nextButton &&
+            (onCreateWithoutDeploy ? (
+              <div
+                role="group"
+                aria-label="Deployment actions"
+                className="inline-flex overflow-hidden rounded-md shadow-sm"
+              >
+                {nextButton}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      aria-label="More deployment options"
+                      disabled={nextDisabled || pending}
+                      className="rounded-none border-l border-primary-foreground/20 px-2 shadow-none"
+                    >
+                      <ChevronDown className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onSelect={onCreateWithoutDeploy}>
+                      <Plus className="size-4" />
+                      Create without deploying
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : (
+              nextButton
+            ))}
         </div>
       )}
     </div>

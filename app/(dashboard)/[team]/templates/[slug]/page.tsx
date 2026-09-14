@@ -3,18 +3,10 @@ import {
   ArrowLeft,
   ArrowUpRight,
   BookOpen,
-  ChevronDown,
   CloudOff,
   Globe,
-  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { GitHubIcon } from "@/components/shared/brand-icons";
@@ -128,11 +120,6 @@ export default async function TemplatePage(
     template: template.slug,
     variant: variant.slug,
   });
-  const createHref = newAppHref(placement, {
-    template: template.slug,
-    variant: variant.slug,
-    deploy: false,
-  });
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
@@ -166,11 +153,7 @@ export default async function TemplatePage(
               }))}
             />
           )}
-          <DeployButton
-            canDeploy={canDeploy}
-            href={deployHref}
-            createHref={createHref}
-          />
+          <DeployButton canDeploy={canDeploy} href={deployHref} />
         </div>
       </div>
 
@@ -278,47 +261,18 @@ function TopBar({ placement }: { placement: OverviewPlacement | null }) {
 function DeployButton({
   canDeploy,
   href,
-  createHref,
 }: {
   canDeploy: boolean;
   href: string;
-  createHref: string;
 }) {
   if (canDeploy)
     return (
-      // The caret sits AFTER the action it qualifies, like every split button.
-      <div
-        role="group"
-        aria-label="Deployment actions"
-        className="inline-flex shrink-0 overflow-hidden rounded-md shadow-sm"
-      >
-        <Button asChild className="rounded-none sm:w-32">
-          <Link href={href}>
-            Deploy
-            <ArrowUpRight className="size-4" />
-          </Link>
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              size="icon"
-              aria-label="More deployment options"
-              className="rounded-none border-l border-primary-foreground/20 px-2 shadow-none"
-            >
-              <ChevronDown className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem asChild>
-              <Link href={createHref} className="cursor-pointer">
-                <Plus className="size-4" />
-                Create without deploying
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <Button asChild className="shrink-0 sm:w-32">
+        <Link href={href}>
+          Deploy
+          <ArrowUpRight className="size-4" />
+        </Link>
+      </Button>
     );
   return (
     // A disabled button swallows pointer events, so the tooltip needs a

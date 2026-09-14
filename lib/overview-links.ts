@@ -68,7 +68,6 @@ export function newAppHref(
     template?: string;
     variant?: string;
     source?: string;
-    deploy?: boolean;
   },
 ): string {
   const params = placementParams(p);
@@ -76,7 +75,6 @@ export function newAppHref(
   if (opts?.variant) params.set("variant", opts.variant);
   // The wizard opens straight on this source - what a dropped archive needs.
   if (opts?.source) params.set("source", opts.source);
-  if (opts?.deploy === false) params.set("deploy", "false");
   const qs = params.toString();
   return qs ? `/new?${qs}` : "/new";
 }
