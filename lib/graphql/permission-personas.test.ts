@@ -6,17 +6,25 @@ import { and, eq } from "drizzle-orm";
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import {
-  apiTokens as apiTokensTable,
   appGrants as appGrantsTable,
   folderGrants as folderGrantsTable,
-  folders as foldersTable,
   memberships as membershipsTable,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { apiTokens as apiTokensTable } from "../db/schema/control-plane/api-tokens";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { reachableCapabilities } from "../membership";
-import { authenticateToken } from "../data/tokens";
+import { authenticateToken } from "../data/tokens/authenticate";
 import { capabilitiesForRole } from "../membership-shared";
+import {
+  appLookup,
+  gql,
+  ids,
+  passed,
+  refused,
+  throwawayApp,
+} from "./permission-lab-test-helpers/drive-schema";
 import {
   APP_A_PROD,
   APP_A_STG,
@@ -41,7 +49,6 @@ import {
   FOLDERDEV,
   GRANTEE,
   HR,
-  M,
   MEMBER,
   NEWBIE,
   OPS,
@@ -49,38 +56,22 @@ import {
   OWNER,
   PRJ_A,
   PRJ_B,
-  Q,
   ROLE_PRJ,
   SOLO,
   STAGER,
   STRANGER,
   TEAM,
   VIEWER,
-  appLookup,
-  envInput,
-  gql,
-  ids,
+} from "./permission-lab-test-helpers/fixture-ids";
+import { M, envInput, newApp } from "./permission-lab-test-helpers/mutations";
+import { Q } from "./permission-lab-test-helpers/queries";
+import {
   installLab,
   lab,
-  newApp,
-  passed,
-  refused,
   settle,
-  throwawayApp,
-} from "./permission-lab-test-helpers";
-
-/**
- * The permission system as a TEAM uses it, end to end through the schema: the
- * field's `authScopes`, the resolver and the data-layer gate together, for the
- * people a real team is made of. Every probe is a document the dashboard or an
- * API client would send, and every persona is one an admin would actually set up.
- */
+} from "./permission-lab-test-helpers/seed-lab";
 
 installLab();
-
-/* ------------------------------------------------------------------ */
-/* The built-in roles                                                  */
-/* ------------------------------------------------------------------ */
 
 test("a Viewer reads everything public and changes nothing", async () => {
   assert.deepEqual(
@@ -160,8 +151,7 @@ test("a Member ships and configures apps, and stops at the team's administration
     }),
     "databases are infrastructure, not part of Member",
   );
-  // Member carries reveal_secrets (variables are theirs to read back), and a
-  // connection string is what they paste into an app's variables.
+  // Member carries reveal_secrets: a connection string is what they paste into their variables.
   passed(await gql(MEMBER, M.revealConnection, { id: DB_1 }), "reveal");
   refused(
     await gql(MEMBER, M.addMember, {
@@ -195,10 +185,6 @@ test("a Member cannot mint a token until the team lets tokens in, and is told wh
     "the refusal names the permission to ask for, not a bare no",
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* Custom roles a team would author                                    */
-/* ------------------------------------------------------------------ */
 
 test("a Deployer redeploys and nothing else", async () => {
   passed(await gql(DEPLOYER, M.redeploy, { appId: APP_TOP }), "deploy");
@@ -289,8 +275,7 @@ test("a team administrator manages people within what they hold themselves", asy
 });
 
 test("the team can never lose its last administrator, through any door", async () => {
-  // HR is the only non-owner administrator; OWNER is the founder and untouchable,
-  // so the only way to zero admins is to strip both, which every path refuses.
+  // HR is the only non-owner administrator, and OWNER is the untouchable founder.
   refused(await gql(OWNER, M.removeMember, { userId: OWNER }), "self-removal");
   refused(
     await gql(OWNER, M.updateMember, {
@@ -307,10 +292,6 @@ test("the team can never lose its last administrator, through any door", async (
     "a role still held cannot be deleted",
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* Contractors: a role limited to part of the team                     */
-/* ------------------------------------------------------------------ */
 
 test("a contractor limited to one project sees and ships that project alone", async () => {
   assert.deepEqual(ids(await gql(CONTRACTOR, Q.apps), "apps"), [
@@ -398,10 +379,6 @@ test("a contractor limited to one folder reaches its whole subtree and nothing b
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* One person, one corner: node grants                                 */
-/* ------------------------------------------------------------------ */
-
 test("a member given one app holds exactly that app", async () => {
   assert.deepEqual(ids(await gql(SOLO, Q.apps), "apps"), [APP_X]);
   passed(await gql(SOLO, M.redeploy, { appId: APP_X }), "deploy their app");
@@ -464,8 +441,7 @@ test("saving a member's page keeps the folders that were shared with them", asyn
   );
   passed(await gql(MEMBER, M.redeploy, { appId: APP_P }), "reachable");
 
-  // An admin trims one permission from the member page, which sends the
-  // shares it did not touch along, exactly as the page does.
+  // The member page sends along the shares it did not touch, exactly as this does.
   const roleId = lab.roles.get("member")!;
   const own = capabilitiesForRole("member").filter((c) => c !== "delete_apps");
   const saved = await gql(OWNER, M.setMemberAccess, {
@@ -480,18 +456,13 @@ test("saving a member's page keeps the folders that were shared with them", asyn
   assert.equal(saved.error, undefined, saved.error);
   passed(await gql(MEMBER, M.redeploy, { appId: APP_P }), "the share survived");
 
-  // An API client that sends no grants at all is leaving them alone, not
-  // revoking every share the member has.
+  // No grants at all means leave them alone, not revoke every share the member has.
   const bare = await gql(OWNER, M.setMemberAccess, {
     input: { userId: MEMBER, roleId, granular: false, capabilities: own },
   });
   assert.equal(bare.error, undefined, bare.error);
   passed(await gql(MEMBER, M.redeploy, { appId: APP_P }), "still shared");
 });
-
-/* ------------------------------------------------------------------ */
-/* API tokens                                                          */
-/* ------------------------------------------------------------------ */
 
 test("an owner's token holds only what it was minted with, and only where", async () => {
   const minted = await gql(OWNER, M.createToken, {
@@ -572,10 +543,6 @@ test("an expired token and a removed member's token both stop resolving", async 
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Roles as a living thing                                             */
-/* ------------------------------------------------------------------ */
-
 test("editing a role changes what its holders can do, immediately", async () => {
   const created = await gql(OWNER, M.createRole, {
     input: { name: "Dev", capabilities: ["view", "deploy_apps"] },
@@ -614,7 +581,6 @@ test("re-assigning a role from the roster hands the member back to the role", as
     await gql(OWNER, M.addMember, { input: { userId: NEWBIE, roleId } }),
     "add",
   );
-  // An admin trims one permission from NEWBIE: their set is now their own.
   const own = capabilitiesForRole("member").filter((c) => c !== "delete_apps");
   const trimmed = await gql(OWNER, M.setMemberAccess, {
     input: { userId: NEWBIE, roleId, granular: false, capabilities: own },
@@ -622,7 +588,6 @@ test("re-assigning a role from the roster hands the member back to the role", as
   assert.equal(trimmed.error, undefined, trimmed.error);
   refused(await gql(NEWBIE, M.deleteApp, { id: APP_TOP }), "trimmed");
 
-  // Later the role is edited: the customised member is deliberately left alone.
   passed(
     await gql(OWNER, M.updateRole, {
       input: {
@@ -636,8 +601,6 @@ test("re-assigning a role from the roster hands the member back to the role", as
   const stillOwn = await gql(NEWBIE, M.deleteApp, { id: APP_TOP });
   refused(stillOwn, "a customised set does not follow the role");
 
-  // The admin puts NEWBIE back on the role from the roster's dropdown: from
-  // here on they are the role again, and the next edit has to reach them.
   passed(
     await gql(OWNER, M.updateMember, { input: { userId: NEWBIE, roleId } }),
     "re-assign",
@@ -682,10 +645,6 @@ test("re-assigning a role from the roster hands the member back to the role", as
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Leaving                                                             */
-/* ------------------------------------------------------------------ */
-
 test("removing a member takes every corner they were given with them", async () => {
   passed(await gql(OWNER, M.removeMember, { userId: SOLO }), "remove SOLO");
   passed(
@@ -706,7 +665,6 @@ test("removing a member takes every corner they were given with them", async () 
     "a grant hangs off the node, not the membership: removal has to clear it",
   );
 
-  // Re-added as a plain Viewer, neither gets their old corner back.
   for (const userId of [SOLO, GRANTEE])
     passed(
       await gql(OWNER, M.addMember, {
@@ -763,10 +721,6 @@ test("removing a member hands the folders they owned to the primary owner", asyn
   passed(await gql(VIEWER, M.redeploy, { appId: APP_TOP }), "and it works");
 });
 
-/* ------------------------------------------------------------------ */
-/* Two-factor as a policy                                              */
-/* ------------------------------------------------------------------ */
-
 test("a team that requires two-factor locks every unenrolled member out, tokens included", async () => {
   await lab.db
     .update(teamsTable)
@@ -780,10 +734,6 @@ test("a team that requires two-factor locks every unenrolled member out, tokens 
     .where(eq(teamsTable.id, TEAM));
   passed(await gql(VIEWER, Q.apps), "policy lifted");
 });
-
-/* ------------------------------------------------------------------ */
-/* Another team's ids                                                  */
-/* ------------------------------------------------------------------ */
 
 test("an owner of another team reaches nothing here, by id or by header", async () => {
   refused(

@@ -3,24 +3,17 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-  migrationRunItems as runItemsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
+import { migrationRunItems as runItemsTable } from "../db/schema/control-plane/migration";
 import { nowIso } from "../ids";
 import { recordActivity } from "./activity";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { requireCapability } from "../membership";
 import { loadAppGraph } from "./app-graph-load";
 import { requireAppCapability } from "./node-access";
 import { appOwnVolumeNames } from "./project-backup-descriptor";
 import { teardownOrQueue } from "./teardown-queue";
-
-/**
- * The one column that says "this workload's data did not arrive", and the refusal
- * every way of starting it goes through.
- */
 
 /** What a refused start says, everywhere it is refused. */
 export function assertDataCopyIntact(
@@ -38,16 +31,10 @@ export function assertDataCopyIntact(
 /** Which of the two tables a marker lives on. */
 export type DataCopyTarget = { kind: "app" | "database"; id: string };
 
-/**
- * Record why a copy did not land, on the row itself. It never throws: a marker
- * that could not be written must not turn one failed volume into a failed import,
- * and the report line is written either way.
- */
+// markDataCopyFailed records why a copy did not land; it never throws.
 export async function markDataCopyFailed(
   target: DataCopyTarget,
   message: string,
-  /** The run whose earlier pass may already have delivered the bytes. Given, a
-   *  failure that touched nothing leaves a landed copy alone. */
   opts?: { unlessCopiedIn?: string },
 ): Promise<void> {
   if (
@@ -68,15 +55,11 @@ export async function markDataCopyFailed(
         .set({ dataCopyError: text })
         .where(eq(databasesTable.id, target.id));
   } catch {
-    // Deliberately swallowed: see above.
+    // Swallowed: a marker that could not be written must not fail the whole import.
   }
 }
 
-/**
- * Whether this run already put bytes into that row. The report is the record: a
- * `created` volume line names the target it copied into. The verdict has to be
- * about whether the data is there, not about how the last attempt went.
- */
+// dataAlreadyCopiedInto reports whether this run already put bytes into that row.
 export async function dataAlreadyCopiedInto(
   runId: string,
   targetId: string,
@@ -96,11 +79,7 @@ export async function dataAlreadyCopiedInto(
   return rows.length > 0;
 }
 
-/**
- * Clear the marker because the data IS here now - a second copy that worked, or a
- * factory reset that made the empty volume the intended state. Same
- * no-gate/no-throw contract as {@link markDataCopyFailed}.
- */
+// clearDataCopyError clears the marker because the data IS here now; never throws.
 export async function clearDataCopyError(
   target: DataCopyTarget,
 ): Promise<void> {
@@ -116,14 +95,11 @@ export async function clearDataCopyError(
         .set({ dataCopyError: "" })
         .where(eq(databasesTable.id, target.id));
   } catch {
-    // Deliberately swallowed: see above.
+    // Swallowed: a marker that could not be written must not fail the whole import.
   }
 }
 
-/**
- * "Deploy anyway": the owner accepts starting without the data that did not
- * arrive, and the block goes.
- */
+// acceptDataCopyLoss is "Deploy anyway": start without the data that did not arrive.
 export async function acceptDataCopyLoss(
   target: DataCopyTarget,
 ): Promise<void> {
@@ -131,8 +107,7 @@ export async function acceptDataCopyLoss(
   if (target.kind === "app") {
     const { membership } = await requireAppCapability(target.id, "deploy_apps");
     const app = await loadAppGraph(target.id);
-    // A held MOVE: accepting the loss also ends the move, and what the old host
-    // still holds goes the way a deleted app's data does.
+    // A held MOVE: accepting the loss also ends the move.
     const heldMove =
       app?.teamId === membership.teamId ? app.migrateFromServerId : null;
     const [row] = await getDb()
@@ -182,8 +157,7 @@ export async function acceptDataCopyLoss(
     "database",
     `Started ${row.name} without the data a migration could not copy`,
     user.name,
-    // A database id in the `app_id` slot violates that column's FK, so the row
-    // was never written at all - it only bumped the dropped-entries counter.
+    // A database id in the `app_id` slot violates that column's FK.
     null,
     teamId,
     null,

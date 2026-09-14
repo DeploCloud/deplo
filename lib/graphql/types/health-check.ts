@@ -1,10 +1,5 @@
 import { builder } from "../builder";
-import type { HealthCheck } from "@/lib/types";
-
-/**
- * The App health check object/input pair. Kept beside `resource-limits` for the
- * same reason: one shape, two places (the field on App and the save).
- */
+import type { HealthCheck } from "@/lib/types/container";
 
 const HealthCheckTypeEnum = builder.enumType("HealthCheckType", {
   description:

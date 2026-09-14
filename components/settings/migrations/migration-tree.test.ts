@@ -4,7 +4,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { MigrationTree, visible, type PortConflict } from "./migration-tree";
+import { MigrationTree } from "./migration-tree/migration-tree";
+import type { PortConflict } from "./migration-tree/port-conflict-row";
+import { visible } from "./migration-tree/search";
 import type {
   Placement,
   PlanProject,

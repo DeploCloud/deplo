@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Network } from "lucide-react";
-import { getDatabase } from "@/lib/data/databases";
-import { listServersForCurrentTeam } from "@/lib/data/servers";
+import { getDatabase } from "@/lib/data/databases/rows";
+import { listServersForCurrentTeam } from "@/lib/data/servers/roster";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
@@ -12,10 +12,6 @@ import { DatabaseConnectionSettings } from "@/components/storage/database-connec
 
 export const metadata = { title: "Connection" };
 
-/**
- * Connection: how clients reach this database and authenticate - public exposure
- * and its host port, the server it runs on, and password rotation.
- */
 export default async function DatabaseConnectionSettingsPage(
   props: PageProps<"/[team]/storage/databases/[id]/settings/connection">,
 ) {
@@ -28,9 +24,7 @@ export default async function DatabaseConnectionSettingsPage(
   ]);
   if (!db) notFound();
 
-  // Only provisioned servers can host a database (provisioning routes through a
-  // live agent), so those are the only move targets, and neither a storage-only
-  // host (runs nothing) nor a migration source (not our machine) is ever one.
+  // Only a provisioned server can host a database: a storage-only host runs nothing, a migration source is not our machine.
   const selfAddrs = deploHostSelfAddresses();
   const dbServers = servers
     .filter(

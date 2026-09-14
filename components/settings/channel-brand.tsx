@@ -10,23 +10,17 @@ import {
   TelegramIcon,
 } from "@/components/shared/brand-icons";
 import { cn } from "@/lib/utils";
-import type { NotificationChannel } from "@/lib/types";
+import type { NotificationChannel } from "@/lib/types/notification";
 
-/**
- * How each channel presents itself: its name, its one-line pitch, and its own
- * brand colour.
- */
+// ChannelBrand - how a channel presents itself: name, one-line pitch, brand colour.
 export interface ChannelBrand {
   label: string;
-  /** One line, what the channel does. */
   description: string;
   beta?: boolean;
-  /** Brand background. A literal, not a token: a brand colour is not themeable. */
+  // A literal, not a token: a brand colour is not themeable.
   bg: string;
-  /** Foreground on that background, picked for contrast. */
   fg: string;
   icon?: React.ComponentType<{ className?: string }>;
-  /** Used when the brand has no mark we can render truthfully. */
   initial?: string;
 }
 
@@ -126,7 +120,7 @@ export const CHANNEL_BRAND: Record<NotificationChannel, ChannelBrand> = {
   },
 };
 
-/** The brand tile: the mark on its own colour, or the initial when there is none. */
+// ChannelMark - the mark on its own colour, or the initial when there is none.
 export function ChannelMark({
   channel,
   className,

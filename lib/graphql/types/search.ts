@@ -1,7 +1,7 @@
 import { builder } from "../builder";
 import { AppStatusEnum, DatabaseTypeEnum, DomainStatusEnum } from "./enums";
 import { DatabaseStatusEnum } from "./database";
-import { ServerStatusEnum } from "./server";
+import { ServerStatusEnum } from "./server/server-ref";
 import {
   search,
   type SearchApp,
@@ -19,10 +19,6 @@ import {
   type SearchTemplate,
 } from "@/lib/data/search";
 
-/* ------------------------------------------------------------------ */
-/* Enums                                                               */
-/* ------------------------------------------------------------------ */
-
 const SearchKindEnum = builder.enumType("SearchKind", {
   description: "One kind of thing a search can return.",
   values: [
@@ -39,10 +35,6 @@ const SearchKindEnum = builder.enumType("SearchKind", {
     "template",
   ] as const,
 });
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 const SearchTeamRef = builder.objectRef<SearchTeam>("SearchTeam").implement({
   description: "The team a search hit was found in.",
@@ -240,10 +232,6 @@ const SearchResultsRef = builder
       }),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Query                                                               */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   search: t.field({

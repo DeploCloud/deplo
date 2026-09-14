@@ -1,7 +1,7 @@
 import { reachesWholeTeam, requireActiveTeamId } from "@/lib/membership";
-import { listTokens } from "@/lib/data/tokens";
-import { listProjects } from "@/lib/data/projects";
-import { listApps } from "@/lib/data/apps";
+import { listTokens } from "@/lib/data/tokens/listing";
+import { listProjects } from "@/lib/data/projects/read";
+import { listApps } from "@/lib/data/apps/listing";
 import { listFolders } from "@/lib/data/folders";
 import { listMyTeams } from "@/lib/data/teams";
 import { PageHeader } from "@/components/shared/page-header";

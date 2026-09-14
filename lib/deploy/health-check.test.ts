@@ -7,12 +7,7 @@ import {
   healthCheckToComposeKeys,
   renderHealthCheckYaml,
 } from "./health-check";
-import type { HealthCheck } from "../types";
-
-/**
- * The block Deplo writes into an app's compose. Only a COMMAND check renders one:
- * an http check is asked from the agent instead (`lib/apps/http-health.ts`).
- */
+import type { HealthCheck } from "../types/container";
 
 const HTTP: HealthCheck = {
   type: "http",
@@ -30,10 +25,7 @@ test("an app with no check renders nothing at all", () => {
   assert.equal(renderHealthCheckYaml(null, 4), "");
 });
 
-// The whole reason the http probe moved out of the stack: a `healthcheck:` runs
-// inside the image, and a Railpack build, a distroless image or `traefik/whoami`
-// has neither curl nor wget - so the container sat unhealthy and Traefik, which
-// drops an unhealthy container, took the app off the internet.
+// A `healthcheck:` runs inside the image, and a distroless one has neither curl nor wget.
 test("an http check renders NO healthcheck - Deplo asks the app itself", () => {
   assert.deepEqual(healthCheckToComposeKeys(HTTP), {});
   assert.equal(renderHealthCheckYaml(HTTP, 4), "");
@@ -66,8 +58,6 @@ test("a command check runs through a shell, verbatim", () => {
   ]);
 });
 
-// A command check with nothing to run would sit unhealthy forever; nothing is
-// better than a check that cannot pass.
 test("a command check with no command renders nothing", () => {
   assert.deepEqual(
     healthCheckToComposeKeys({ ...HTTP, type: "command", command: "  " }),

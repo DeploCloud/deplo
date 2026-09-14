@@ -1,14 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { compensateKeepPerSlug, dropUnsupportedScopes } from "./agent-client";
+import {
+  compensateKeepPerSlug,
+  dropUnsupportedScopes,
+} from "./agent-client/docker-cleanup";
 import { CleanupScope, ContractVersion } from "../agent/gen/agent";
 import type { DockerCleanupRequest, HelloResponse } from "../agent/gen/agent";
-
-/**
- * Per-app image retention across an agent that predates it. The compensation
- * trades disk for that, and only in the direction that cannot lose anything.
- */
 
 const hello = (caps: string[]): HelloResponse => ({
   contractVersion: ContractVersion.CONTRACT_VERSION_V1,
@@ -45,9 +43,7 @@ test("an old agent gets the map dropped and the scalar raised to its deepest val
     req({ keepPerSlug: { web: 4, api: 2 } }),
     hello(["docker-cleanup"]),
   );
-  // 4, not 1: over-keeping for `api` costs disk on a host nobody has updated yet.
-  // Under-keeping for `web` would delete the image its rollback needs, and that
-  // is unrecoverable - Deplo pushes to no registry.
+  // Under-keeping deletes the image a rollback needs, and Deplo pushes to no registry.
   assert.equal(out.keepImagesPerApp, 4);
   assert.deepEqual(out.keepPerSlug, {});
 });
@@ -78,15 +74,7 @@ test("an agent that advertises no capabilities at all is treated as old", async 
   assert.deepEqual(out.keepPerSlug, {});
 });
 
-/* ------------------------------------------------------------------ */
-/* dropUnsupportedScopes - the opposite failure mode                    */
-/* ------------------------------------------------------------------ */
-
-/**
- * An unknown SCOPE is not ignored the way an unknown field is: the agent answers
- * INVALID_ARGUMENT, which fails the whole sweep. So an operator who ticks the new
- * scope must not lose the other four on every host that is a version behind.
- */
+// An unknown SCOPE is refused with INVALID_ARGUMENT, which fails the whole sweep.
 test("an old agent keeps the scopes it knows and loses only the new ones", () => {
   const out = dropUnsupportedScopes(
     req({
@@ -101,8 +89,6 @@ test("an old agent keeps the scopes it knows and loses only the new ones", () =>
     hello(["docker-cleanup"]),
   );
   assert.deepEqual(out.scopes, [CleanupScope.CLEANUP_SCOPE_BUILD_CACHE]);
-  // The inventory stays: the images scope reads it on a newer agent, and an
-  // agent that cannot read it ignores it.
   assert.deepEqual(out.liveSlugs, ["web", "db-shop"]);
 });
 

@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getDb } from "@/lib/db/client";
-import { deployments as deploymentsTable } from "@/lib/db/schema/control-plane";
-import { getAppById, setAppUpload } from "@/lib/data/apps";
+import { deployments as deploymentsTable } from "@/lib/db/schema/control-plane/deployments";
+import { getAppById } from "@/lib/data/apps/listing";
+import { setAppUpload } from "@/lib/data/apps/settings";
 import { requireAppCapability } from "@/lib/data/node-access";
 import {
   storeUpload,
@@ -13,17 +14,10 @@ import {
   ARCHIVE_TOO_LARGE,
 } from "@/lib/deploy/upload";
 
-/**
- * Upload a code archive for an "upload"-source project.
- */
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Belt-and-braces CSRF check: refuse a state-changing request whose `Origin`
- * points at another site.
- */
+// CSRF: refuse a state-changing request whose `Origin` points at another site.
 function isCrossSite(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
@@ -40,11 +34,7 @@ function isCrossSite(request: NextRequest): boolean {
   return originHost !== host;
 }
 
-/**
- * App ids with an upload streaming right now. Sufficient because the app runs as a
- * single Node process (see next.config standalone); a multi-process deploy would
- * need to move this into the store.
- */
+// Single Node process (next.config standalone); a multi-process deploy must move this into the store.
 const uploadsInFlight = new Set<string>();
 
 export async function POST(
@@ -65,9 +55,7 @@ export async function POST(
   if (!project)
     return Response.json({ error: "App not found" }, { status: 404 });
 
-  // Gate BEFORE any bytes hit disk: setAppUpload re-checks `deploy` (plus the
-  // folder gate), but only after a potentially 512 MiB stream has already been
-  // written. A viewer-only member must be refused here, not after the write.
+  // Gate BEFORE any bytes hit disk: setAppUpload re-checks deploy only after a 512 MiB stream is written, so a viewer-only member must be refused here.
   try {
     await requireAppCapability(appId, "deploy_apps");
   } catch (err) {
@@ -78,9 +66,7 @@ export async function POST(
     return Response.json({ error: message }, { status: 403 });
   }
 
-  // Refuse to clobber an archive a build is still extracting: one deploy at a
-  // time per project. The client surfaces this 409 message. Deployments are
-  // relational now - query the in-flight statuses directly.
+  // Refuse to clobber an archive a build is still extracting: one deploy at a time per app; the client surfaces this 409 message.
   const inFlightRows = await getDb()
     .select({ id: deploymentsTable.id })
     .from(deploymentsTable)
@@ -98,8 +84,7 @@ export async function POST(
     );
   }
 
-  // Serialise concurrent uploads to the same project (the deploy guard above
-  // can't see an upload that hasn't created its deployment yet).
+  // The deploy guard above cannot see an upload that has not created its deployment yet.
   if (uploadsInFlight.has(appId)) {
     return Response.json(
       { error: "An upload is already in progress - wait for it to finish" },
@@ -118,9 +103,7 @@ export async function POST(
       );
     }
 
-    // Cheap fast-fail when the client declares an oversized length; the
-    // streaming cap in storeUpload is the real guard (Content-Length can be
-    // absent or lie).
+    // Fast-fail only; the streaming cap in storeUpload is the real guard (Content-Length can be absent or lie).
     const declared = Number(request.headers.get("content-length") || "0");
     if (declared > MAX_UPLOAD_BYTES) {
       return Response.json({ error: "Archive too large" }, { status: 413 });
@@ -141,9 +124,7 @@ export async function POST(
       return Response.json({ error: "Empty archive" }, { status: 400 });
     }
 
-    // Commit the new pointer FIRST, then prune older upload dirs - the app never points
-    // at a deleted archive, and a rejected upload above leaves the previous one intact
-    // (its subdir was pruned only on success here).
+    // Commit the pointer FIRST, then prune: the app must never point at a deleted archive, and a rejected upload leaves the previous one intact.
     try {
       await setAppUpload(appId, upload);
     } catch {
@@ -152,9 +133,7 @@ export async function POST(
     }
     await pruneUploads(appId, upload.id).catch(() => {});
 
-    // No deploy here - the archive is stored and the app points at it. The caller
-    // deploys on demand (Save & Deploy), which is what lets the server be chosen before
-    // the first build runs.
+    // No deploy here: the caller deploys on demand, so the server can be chosen before the first build.
     return Response.json({
       ok: true,
       upload: {

@@ -1,15 +1,9 @@
-import type { Capability, Role } from "./types";
-import { ALL_CAPABILITIES } from "./types";
+import type { Capability, Role } from "./types/identity";
+import { ALL_CAPABILITIES } from "./types/identity";
 import {
   LEGACY_CAPABILITY_EXPANSION,
   expandLegacyCapabilities,
 } from "./capabilities";
-
-/**
- * Pure capability/role helpers with no server-only or request-context deps, so
- * they are safe to import from the store hydration path (migrations) and from
- * client components (the role editor) alike.
- */
 
 export {
   CAPABILITY_META,
@@ -23,20 +17,14 @@ export {
   type CapabilityMeta,
 } from "./capabilities";
 
-/**
- * Capability sets the three built-in roles are born with.
- */
+// CAPABILITY_PRESETS - the capability sets the three built-in roles are born with.
 export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
   owner: [...ALL_CAPABILITIES],
   member: presetOf("view", "deploy", "manage_domains", "manage_env"),
   viewer: presetOf("view"),
 };
 
-/**
- * Build a preset from the coarse names it used to be, through the MIGRATION's
- * mapping, so a team that never touched its Member or Viewer role comes out of
- * the split matching its preset exactly, and reads as unmodified.
- */
+// Built from the coarse names through the MIGRATION's own mapping, so an untouched role still reads as unmodified.
 function presetOf(...legacy: string[]): Capability[] {
   const set = new Set(
     legacy.flatMap((n) => LEGACY_CAPABILITY_EXPANSION[n] ?? []),
@@ -45,11 +33,7 @@ function presetOf(...legacy: string[]): Capability[] {
   return ALL_CAPABILITIES.filter((c) => set.has(c));
 }
 
-/**
- * Name + description each built-in role is born with (and reverts to). Kept
- * beside {@link CAPABILITY_PRESETS} so "reset to default" restores the whole row,
- * not only its capabilities.
- */
+// ROLE_DEFAULTS - the name and description each built-in role is born with, and reverts to.
 export const ROLE_DEFAULTS: Record<
   Role,
   { name: string; description: string }
@@ -68,13 +52,10 @@ export const ROLE_DEFAULTS: Record<
   },
 };
 
-/** The three built-in roles, in the order they are shown. */
+// BUILTIN_ROLE_KEYS - the three built-in roles, in the order they are shown.
 export const BUILTIN_ROLE_KEYS: Role[] = ["owner", "member", "viewer"];
 
-/**
- * Intersect `caps` with `bound`, in canonical {@link ALL_CAPABILITIES} order and
- * de-duplicated.
- */
+// boundedBy - intersect `caps` with `bound`, in canonical `ALL_CAPABILITIES` order and de-duplicated.
 export function boundedBy(
   caps: Capability[],
   bound: Capability[],
@@ -84,25 +65,16 @@ export function boundedBy(
   return ALL_CAPABILITIES.filter((c) => wanted.has(c) && allowed.has(c));
 }
 
-/**
- * The capabilities that can mean anything INSIDE a single Project. Folder
- * capabilities are absent for a simpler reason: a Folder never lives inside a
- * Project, so a project-scoped token has no folder story.
- */
+// PROJECT_SCOPED_CAPABILITIES - the capabilities that can mean anything INSIDE a single Project.
 export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "view",
   "create_apps",
   "deploy_apps",
-  // A rollback targets ONE app's own deployment history, so it means something
-  // inside a Project exactly as much as deploying does.
   "rollback_apps",
   "control_apps",
   "configure_apps",
   "delete_apps",
   "open_app_console",
-  // A cron job hangs off ONE app, so it is meaningful inside a Project - and it sits
-  // next to `open_app_console` for the same reason it does everywhere else: both are
-  // "run a command in this container", one at a keystroke and one on a timer.
   "manage_crons",
   "manage_domains",
   "manage_basic_auth",
@@ -110,19 +82,13 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "reveal_secrets",
   "manage_backups",
   "restore_backups",
-  // A backup belongs to ONE app, so deleting one means something inside a
-  // Project - and a per-app grant is exactly how "you look after this app, its
-  // backups included" is expressed.
   "delete_backups",
   "view_logs",
   "view_metrics",
   "view_activity",
 ];
 
-/**
- * The capabilities that may be handed out ON A SINGLE NODE - an App, a Folder or a
- * Project container (ADR-0016).
- */
+// NODE_GRANTABLE_CAPABILITIES - what may be handed out ON A SINGLE NODE: an App, a Folder or a Project (ADR-0016).
 export const NODE_GRANTABLE_CAPABILITIES: Capability[] =
   ALL_CAPABILITIES.filter(
     (c) =>
@@ -132,24 +98,14 @@ export const NODE_GRANTABLE_CAPABILITIES: Capability[] =
       c === "delete_folders",
   );
 
-/**
- * How one member's access compares with the role they hold: `null` when they are
- * exactly their role. One function, so the tile, the header chip and the live
- * preview can never disagree. Narrower wins over wider when both are true.
- *
- * ponytail: compares TICKED node ids, not their subtrees. Compare expanded reach
- * if that ever needs to be exact.
- */
+// accessDelta - how a member's access compares with the role they hold, `null` when they are exactly it.
+// ponytail: compares TICKED node ids, not their subtrees. Compare expanded reach
+// if that ever needs to be exact.
 export function accessDelta(input: {
-  /** The member's effective capability set. */
   capabilities: Capability[];
-  /** The role's effective set - what they would hold by following it. */
   roleCapabilities: Capability[];
-  /** Their reach is the nodes they name, not the role's. */
   granular: boolean;
-  /** Every node they hold: their reach when `granular`, their shares otherwise. */
   nodeIds: string[];
-  /** The nodes the role names, or null when it reaches the whole team. */
   roleNodeIds: string[] | null;
 }): "less" | "more" | null {
   const caps = new Set(input.capabilities);
@@ -164,28 +120,23 @@ export function accessDelta(input: {
   const roleNodes = input.roleNodeIds;
   const wider =
     [...caps].some((c) => !roleCaps.has(c)) ||
-    // A node their role doesn't name - an admin ticked it here, or somebody
-    // shared it with them. An unrestricted role names everything, so nothing can
-    // be beyond it.
     (roleNodes !== null && input.nodeIds.some((id) => !roleNodes.includes(id)));
   return wider ? "more" : null;
 }
 
-/** True if two capability sets grant exactly the same thing (order-blind). */
+// sameCapabilities - true if two capability sets grant exactly the same thing, order-blind.
 export function sameCapabilities(a: Capability[], b: Capability[]): boolean {
   const left = new Set(a);
   const right = new Set(b);
   return left.size === right.size && [...left].every((c) => right.has(c));
 }
 
-/** Effective capabilities for a role preset (used when seeding a membership). */
+// capabilitiesForRole - the effective capabilities for a role preset.
 export function capabilitiesForRole(role: Role): Capability[] {
   return [...CAPABILITY_PRESETS[role]];
 }
 
-/**
- * Sanitize an arbitrary capability list to known values, always implying `view`.
- */
+// cleanCapabilities - sanitize an arbitrary capability list to known values, always implying `view`.
 export function cleanCapabilities(
   caps: Capability[] | undefined,
   role: Role,
@@ -197,7 +148,7 @@ export function cleanCapabilities(
   return ALL_CAPABILITIES.filter((c) => set.has(c));
 }
 
-/** The role whose preset exactly matches a capability set, else "custom". */
+// roleLabelForCapabilities - the role whose preset exactly matches a capability set, else "custom".
 export function roleLabelForCapabilities(caps: Capability[]): Role | "custom" {
   const set = new Set(caps);
   for (const role of ["owner", "member", "viewer"] as Role[]) {

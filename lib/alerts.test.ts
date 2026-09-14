@@ -8,11 +8,7 @@ import {
   alertSearchText,
   searchAlerts,
 } from "./alerts";
-import { ALL_ALERTS, type AlertKey } from "./types";
-
-/**
- * The alert catalog's own invariants.
- */
+import { ALL_ALERTS, type AlertKey } from "./types/notification";
 
 test("every alert has a label and a one-line description", () => {
   for (const key of ALL_ALERTS) {

@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { MemberDTO } from "@/lib/data/members";
+import type { MemberDTO } from "@/lib/data/members/roster";
 
 export function MembersManager({
   members,
@@ -47,7 +47,7 @@ export function MembersManager({
   members: MemberDTO[];
   currentUserId: string;
   canManage: boolean;
-  /** Instance admin: can create a brand-new user from the add-member modal. */
+  // Instance admin: can create a brand-new user from the add-member modal.
   isAdmin?: boolean;
 }) {
   const [addOpen, setAddOpen] = React.useState(false);
@@ -55,15 +55,11 @@ export function MembersManager({
   const [query, setQuery] = React.useState("");
   const [role, setRole] = React.useState("all");
   const [view, setView] = React.useState<ListView>("grid");
-  // The viewer's own rank in this team. Owners (the founder OR an assigned
-  // owner) may grant the owner role and act on other owners; everyone else is
-  // capped at member/viewer. Derived from the member list, no extra query.
+  // Only an owner (founder or assigned) may grant the owner role; derived from the list, no extra query.
   const viewerIsOwner = members.some(
     (m) => m.userId === currentUserId && m.role === "owner",
   );
 
-  // The roles this team actually uses - a filter listing roles nobody holds is
-  // a list of dead ends. A hand-picked set shows as "Custom", like the cards.
   const roleNames = [
     ...new Set(members.map((m) => m.roleName ?? "Custom")),
   ].sort();
@@ -77,8 +73,7 @@ export function MembersManager({
   );
   const actions = (isAdmin || canManage) && (
     <>
-      {/* Instance admins get a shortcut into instance-wide user
-          administration, sitting just before the team-scoped add. */}
+      {/* Instance-wide user administration, before the team-scoped add. */}
       {isAdmin && (
         <Button variant="outline" size="sm" asChild>
           <Link href="/settings/users">
@@ -108,8 +103,6 @@ export function MembersManager({
     </>
   );
 
-  // No wrapper card: the members ARE the tiles, and a card holding tiles is two
-  // surfaces - and a second "Members" heading - for one list.
   return (
     <div className="space-y-6">
       <PageHeader
@@ -200,10 +193,6 @@ export function MembersManager({
   );
 }
 
-/**
- * The same member as one table row: rank and reach, which is what a roster is
- * scanned for, with the same page one click away.
- */
 function MemberTableRow({
   member,
   isSelf,
@@ -303,11 +292,6 @@ function MemberTableRow({
   );
 }
 
-/**
- * One member, as a tile that opens their page. Every action lives on that page,
- * so the card carries no menu: a two-item dropdown that only led somewhere else
- * was a stop on the way, not a shortcut.
- */
 function MemberCard({
   member,
   isSelf,
@@ -315,7 +299,7 @@ function MemberCard({
 }: {
   member: MemberDTO;
   isSelf: boolean;
-  /** `manage_members` - the same gate the member page itself keeps. */
+  // `manage_members` - the same gate the member page itself keeps.
   canManage: boolean;
 }) {
   const isFounder = member.isPrimaryOwner;
@@ -333,8 +317,7 @@ function MemberCard({
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 text-sm font-medium">
             <span className="truncate">@{member.username}</span>
-            {/* Discord-style crown next to the nickname for the absolute owner,
-                and a shield for an instance admin - both can show at once. */}
+            {/* Crown for the primary owner, shield for an instance admin; both can show at once. */}
             {isFounder && (
               <SimpleTooltip content="Primary owner - created this team; can't be removed or demoted">
                 <span className="shrink-0 leading-none">
@@ -372,8 +355,7 @@ function MemberCard({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        {/* The absolute owner reads as "Primary owner"; an assigned owner is a
-            plain "Owner". This is the functional rank, not just decoration. */}
+        {/* The founder reads as "Primary owner"; an assigned owner is a plain "Owner". */}
         {isFounder ? (
           <Badge className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
             <Crown className="size-3" />
@@ -382,16 +364,13 @@ function MemberCard({
         ) : (
           <Badge variant="outline">{member.roleName ?? "Custom"}</Badge>
         )}
-        {/* Counted the same way the Roles page counts a role: the always-on
-            `view` floor is not a permission you granted. */}
+        {/* The always-on `view` floor is not a granted permission, so it is not counted. */}
         <Badge variant="outline">
           {granted === 0
             ? "View only"
             : `${granted} permission${granted === 1 ? "" : "s"}`}
         </Badge>
-        {/* Half of "what can this person do" is the count beside this, and half
-            is this: a member with every permission and a scope touches less
-            than one with two permissions and none. */}
+        {/* A role that reaches part of the team narrows access as much as the count does. */}
         {member.roleScoped && (
           <SimpleTooltip
             content={`Their ${member.roleName ?? "assigned"} role only reaches part of this team`}
@@ -402,9 +381,7 @@ function MemberCard({
             </Badge>
           </SimpleTooltip>
         )}
-        {/* And the third thing: whether an admin moved THIS person away from
-            what their role gives. Coloured, because it is the only one of the
-            three that says "somebody made an exception here". */}
+        {/* Coloured: the only badge that says somebody made an exception. */}
         <AccessDeltaBadge
           delta={member.accessDelta}
           roleName={member.roleName}
@@ -413,9 +390,7 @@ function MemberCard({
     </div>
   );
 
-  // Without `manage_members` there is no page to open - the roster stays
-  // readable, the tiles just aren't links. Your own tile IS one: the page shows
-  // you what you hold and says who can change it.
+  // Without `manage_members` there is no member page to open, so the tile is not a link.
   if (!canManage) return inner;
 
   return (
@@ -429,15 +404,7 @@ function MemberCard({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Edit member permissions                                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * How many of a member's personal tokens and AI agents reach this team. A
- * number, never a credential: the lever is the member's permissions, not the
- * token.
- */
+// A count, never a credential: the lever is the member's permissions, not the token.
 function TokenCountBadge({ member }: { member: MemberDTO }) {
   if (member.tokenCount === 0) return null;
   const tokens = `${member.tokenCount} token${member.tokenCount === 1 ? "" : "s"}`;

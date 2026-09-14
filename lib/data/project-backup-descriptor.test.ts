@@ -7,13 +7,10 @@ import {
   appMoveVolumeNames,
   assertSafeVolumeNames,
 } from "./project-backup-descriptor";
-import type { VolumeMount } from "../types";
+import type { VolumeMount } from "../types/container";
 
-/**
- * The descriptor's volume-name resolution is the load-bearing correctness point of
- * project backup: the agent tars/wipes each name VERBATIM (`-v <name>:/v`), so a
- * wrong name silently backs up nothing, or, on restore, wipes the wrong volume.
- */
+// The agent tars and wipes each resolved name VERBATIM (`-v <name>:/v`): a wrong
+// name silently backs up nothing, or wipes the wrong volume on restore.
 
 const vol = (v: Partial<VolumeMount>): VolumeMount => ({
   id: "vol_x",
@@ -26,7 +23,7 @@ const vol = (v: Partial<VolumeMount>): VolumeMount => ({
 test("named volumes → deplo-<slug>-<name>, host + project mounts excluded", () => {
   const volumes: VolumeMount[] = [
     vol({ name: "pgdata", type: "named" }),
-    vol({ name: "cache" }), // type absent ⇒ named (back-compat)
+    vol({ name: "cache" }),
     vol({ type: "host", name: "ignored", hostPath: "/srv/shared" }),
     vol({ type: "app", name: "cfg", projectPath: "config" }),
   ];
@@ -57,7 +54,6 @@ volumes:
 });
 
 test("compose-stack: a null volume spec → deplo-<slug>_<key>", () => {
-  // `volumes:\n  dbdata:` parses dbdata as null, the most common shape.
   const yaml = `
 volumes:
   dbdata:
@@ -89,7 +85,6 @@ volumes:
     external:
       name: legacy-vol
 `;
-  // `external: true` with no name ⇒ the bare key; `external: { name }` ⇒ that name.
   assert.deepEqual(composeStackVolumeHostNames("shop", yaml), [
     "shared",
     "legacy-vol",
@@ -106,9 +101,6 @@ volumes:
 });
 
 test("compose-stack: the app's OWN Storage volume is enumerated, not refused", () => {
-  // What the renderer emits for a Storage-settings volume on a compose stack:
-  // a top-level alias pinned to Deplo's per-app host name. It lives inside the
-  // reserved namespace legitimately - the guard exempts exactly these.
   const yaml = `
 volumes:
   uploads:
@@ -119,7 +111,6 @@ volumes:
     composeStackVolumeHostNames("shop", yaml, ["deplo-shop-uploads"]),
     ["deplo-shop-uploads", "deplo-shop_dbdata"],
   );
-  // …and the exemption is name-scoped: another app's volume still throws.
   assert.throws(
     () => composeStackVolumeHostNames("shop", yaml, ["deplo-shop-other"]),
     /reserved/i,
@@ -135,12 +126,6 @@ services:
   assert.deepEqual(composeStackVolumeHostNames("shop", yaml), []);
 });
 
-/* ------------------------------------------------------------------ */
-/* App MOVE volume enumeration (excludes external volumes)         */
-/* ------------------------------------------------------------------ */
-
-// A minimal App shaped just enough for appMoveVolumeNames (usesComposeStack
-// + slug + volumes). Cast keeps the test focused on the enumeration logic.
 const composeService = (slug: string) =>
   ({
     slug,
@@ -174,8 +159,7 @@ volumes:
   pinned:
     name: my-pinned-volume
 `;
-  // Contrast with backup (composeStackVolumeHostNames) which INCLUDES externals: a
-  // move must NOT relocate a volume Deplo doesn't own.
+  // Unlike the backup enumeration, a move must NOT relocate a volume Deplo does not own.
   assert.deepEqual(appMoveVolumeNames(composeService("shop"), yaml), [
     "deplo-shop_dbdata",
     "deplo-shop_cache",
@@ -188,8 +172,6 @@ test("appMoveVolumeNames (single-container): named volumes, host mounts excluded
     vol({ name: "pgdata", type: "named" }),
     vol({ name: "hostbind", type: "host", hostPath: "/srv/x" }),
   ];
-  // The rendered YAML is irrelevant for a single-container service (no compose
-  // volumes:), so pass "".
   assert.deepEqual(appMoveVolumeNames(singleImageApp("api", volumes), ""), [
     "deplo-api-pgdata",
   ]);
@@ -230,17 +212,13 @@ test("compose-stack: malformed YAML → empty (never throws)", () => {
   assert.deepEqual(composeStackVolumeHostNames("shop", ""), []);
 });
 
-/* ------------------------------------------------------------------ */
-/* Volume-name safety (mirrors the agent's volumeNamePattern)          */
-/* ------------------------------------------------------------------ */
-
 test("assertSafeVolumeNames accepts the names the renderers actually produce", () => {
   assert.doesNotThrow(() =>
     assertSafeVolumeNames("my-app", [
-      "deplo-my-app-pgdata", // single-container (hyphens)
-      "deplo-my-app_dbdata", // compose-stack default (underscore)
-      "my-pinned-volume", // explicit name
-      "legacy.vol", // dots allowed
+      "deplo-my-app-pgdata",
+      "deplo-my-app_dbdata",
+      "my-pinned-volume",
+      "legacy.vol",
     ]),
   );
 });
@@ -257,7 +235,7 @@ test("assertSafeVolumeNames rejects an interpolated compose name with guidance",
 });
 
 test("assertSafeVolumeNames rejects names the agent's pattern forbids", () => {
-  // Leading _/-/. and '..' are all rejected by ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$.
+  // Mirrors the agent's volumeNamePattern ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$.
   assert.throws(
     () => assertSafeVolumeNames("shop", ["_shared"]),
     /valid Docker volume name/i,

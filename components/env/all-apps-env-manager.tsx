@@ -17,12 +17,12 @@ import {
   SearchX,
 } from "lucide-react";
 import { AppLogo } from "@/components/shared/project-logo";
-import {
-  SharedVarDialog,
-  type AppRef,
-  type ProjectRef,
-  type TeamRef,
-} from "@/components/env/shared-var-wizard";
+import { SharedVarDialog } from "@/components/env/shared-var-wizard/dialog";
+import type {
+  AppRef,
+  ProjectRef,
+  TeamRef,
+} from "@/components/env/shared-var-wizard/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Table,
@@ -46,16 +46,15 @@ import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
 import { EnvEditButton } from "@/components/env/env-edit-button";
+import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
 import {
-  EnvFilters,
-  useEnvFilters,
   editorFacet,
   sourceFacet,
   typeFacet,
   updatedFacet,
-  FACET_NONE,
-  type EnvFacet,
-} from "@/components/env/env-filters";
+} from "@/components/env/env-filters/facets";
+import { FACET_NONE, type EnvFacet } from "@/components/env/env-filters/types";
+import { useEnvFilters } from "@/components/env/env-filters/use-env-filters";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, readableTextColor } from "@/lib/utils";
 import {
@@ -64,9 +63,10 @@ import {
   type AppBucket,
   type ProjectBucket,
 } from "@/lib/env-grouping";
-import type { EnvVarDTO } from "@/lib/types";
+import type { EnvVarDTO } from "@/lib/types/env";
 import type { AppEnvGroup } from "@/lib/data/env";
-import type { AppliedSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
+import type { AppliedSharedVarDTO } from "@/lib/data/shared-vars/app-view";
+import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
 /** The app a row belongs to - what the Project / Environment filters read. */

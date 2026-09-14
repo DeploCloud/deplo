@@ -7,8 +7,7 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
-// Set BEFORE the module loads: with a configured public URL the hook never has
-// to reach for request headers, which is also what makes it testable here.
+// Set BEFORE the module loads, so the hook never reaches for request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -20,8 +19,8 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { projects as projectsTable } from "../db/schema/control-plane";
-import { createToken } from "./tokens";
+import { projects as projectsTable } from "../db/schema/control-plane/projects";
+import { createToken } from "./tokens/mint";
 
 const T0 = "2026-01-01T00:00:00.000Z";
 import {
@@ -31,10 +30,6 @@ import {
   setDeployHookEnabled,
   verifyDeployHookToken,
 } from "./deploy-hook";
-
-/**
- * The deploy hook: the URL that lets something outside Deplo trigger a deploy.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -56,7 +51,6 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
-      // In TEAM_A, but read-only: the hook is a `configure_apps` surface.
       {
         id: "user_viewer",
         teamId: TEAM_A,
@@ -73,14 +67,12 @@ const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
 const asUser2 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: "user_2", teamId: TEAM_B }, fn);
 
-/** The secret last segment of a hook URL. */
 const tokenOf = (url: string) => url.slice(url.lastIndexOf("/") + 1);
 
 test("no app carries a live hook token until someone opens it", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
 
-  // Nothing minted yet, so no URL can be valid for this app, not even an empty
-  // one, which is what a naive compare against a missing token would accept.
+  // Not even an empty token passes, which a naive compare against a missing one would accept.
   assert.deepEqual(await verifyDeployHookToken("prj_1", ""), {
     ok: false,
     reason: "bad-token",
@@ -134,8 +126,6 @@ test("the kill switch refuses the RIGHT token too", async () => {
     reason: "disabled",
   });
 
-  // And back: turning it on again restores the same URL, so a temporary
-  // shutdown doesn't force every caller to be re-configured.
   await asUser1(() => setDeployHookEnabled("prj_1", true));
   assert.deepEqual(await verifyDeployHookToken("prj_1", tokenOf(url)), {
     ok: true,
@@ -173,7 +163,6 @@ test("another team's app has no hook to read, rotate or switch off", async () =>
     /not found/i,
   );
 
-  // And the app is untouched: still no token, still enabled.
   assert.deepEqual(await verifyDeployHookToken("prj_1", ""), {
     ok: false,
     reason: "bad-token",
@@ -192,14 +181,7 @@ test("a member without configure_apps can't open the hook", async () => {
   );
 });
 
-/**
- * The route's own 404/403 parity, which the data layer alone can't show.
- *
- * `verifyDeployHookToken` answers 403 "the hook is turned off" and 404 "not
- * found" for two different reasons, so the reachability check has to run BEFORE
- * it, otherwise the 403 tells a caller that an app it may not see exists, and
- * whether its hook is switched on.
- */
+// The reachability check runs BEFORE the 403, or a 403 tells a caller an app it may not see exists.
 test("an app outside the token's project scope answers the same 404 as an unknown app", async () => {
   const { POST } =
     await import("../../app/api/apps/[id]/deploy-hook/[token]/route");
@@ -222,7 +204,6 @@ test("an app outside the token's project scope answers the same 404 as an unknow
     },
   ]);
   await seedApp(db, { id: "prj_out", slug: "out-app", projectId: "prc_out" });
-  // The hook is deliberately OFF: that is the branch that used to answer 403.
   const url = await asUser1(async () => {
     await setDeployHookEnabled("prj_out", false);
     return revealDeployHook("prj_out");
@@ -254,8 +235,6 @@ test("an app outside the token's project scope answers the same 404 as an unknow
   assert.equal(unknown.status, 404);
   assert.deepEqual(await outOfScope.json(), await unknown.json());
 
-  // And the test has teeth: an app the token CAN see, with its hook off, still
-  // gets the honest 403, so the 404 above is the scope talking, not a blanket.
   await seedApp(db, { id: "prj_in", slug: "in-app", projectId: "prc_in" });
   const inUrl = await asUser1(async () => {
     await setDeployHookEnabled("prj_in", false);

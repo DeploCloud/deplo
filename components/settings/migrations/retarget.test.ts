@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { reconcilePlacements } from "./migration-wizard";
+import { reconcilePlacements } from "./migration-wizard/landing";
 import type { Placement, ServerChoice } from "./types";
 
 /**

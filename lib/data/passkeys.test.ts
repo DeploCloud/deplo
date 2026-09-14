@@ -7,13 +7,13 @@ import { and, eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { passkey as passkeyTable } from "../db/schema/auth";
+import { memberships as membershipsTable } from "../db/schema/control-plane/access-control";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import {
-  activities as activitiesTable,
   teams as teamsTable,
-  instanceSettings,
-  memberships as membershipsTable,
   users as usersTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/identity";
+import { instanceSettings } from "../db/schema/control-plane/instance";
 import { runWithIdentity } from "../auth/request-context";
 import { setStoredPublicBaseUrl } from "../public-url";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
@@ -24,13 +24,7 @@ import {
   renamePasskey,
   startPasskeyRegistration,
 } from "./passkeys";
-import { resetUserPasskeys } from "./members";
-
-/**
- * The data layer around passkeys: who may touch one, what it costs to, and what is
- * written down afterwards. Split from `lib/passkey.test.ts`, which owns the POLICY
- * half (the mandate, the login path, the network gate).
- */
+import { resetUserPasskeys } from "./members/instance-users";
 
 let db: TestDb;
 let pg: PGlite;
@@ -68,7 +62,6 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/** The same account, reached with a bearer token instead of a cookie session. */
 const asToken = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity(
     {
@@ -107,7 +100,6 @@ async function seedPasskey(
 }
 
 test("the kind comes from the authenticator, not from the name", async () => {
-  // A name is whatever the person typed; these three answers are the platform's.
   await seedPasskey(USER_1, "pk-phone", "Anything", RP_ID, {
     backedUp: true,
     transports: "internal,hybrid",
@@ -132,16 +124,8 @@ const passkeyRows = (userId: string) =>
     .from(passkeyTable)
     .where(eq(passkeyTable.userId, userId));
 
-/* ------------------------------------------------------------------ */
-/* 1. An API token administers nobody's credentials                    */
-/* ------------------------------------------------------------------ */
-
-/**
- * `requirePersonalSession` on every entry point, not just the mutating ones.
- * A token that could merely ENUMERATE its creator's devices would already be
- * telling its holder which second factors to go after, and the token's holder
- * is not necessarily the person who minted it.
- */
+// The READ paths are in the list too: a token that could merely enumerate its creator's devices
+// tells its holder - not necessarily the person who minted it - which second factors to go after.
 test("every passkey function refuses a bearer token", async () => {
   await seedPasskey(USER_1);
   const calls: [string, () => Promise<unknown>][] = [
@@ -168,10 +152,6 @@ test("every passkey function refuses a bearer token", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* 2. Step-up: the password is really checked                          */
-/* ------------------------------------------------------------------ */
-
 test("a wrong password reaches neither registration nor removal", async () => {
   await seedPasskey(USER_1);
   await asUser(USER_1, async () => {
@@ -197,12 +177,6 @@ test("another account's password is not this account's password", async () => {
   );
 });
 
-/**
- * The limiter is SHARED with two-factor step-up on purpose (one bucket per
- * account), so a burst of guesses at one credential buys the same pause at the
- * other. Six attempts, then the pause - and the seventh must be refused for the
- * RIGHT reason, not just refused.
- */
 test("six wrong passwords buy a pause, and it is the limiter that says so", async () => {
   await asUser(USER_1, async () => {
     for (let i = 0; i < 6; i++)
@@ -216,7 +190,6 @@ test("six wrong passwords buy a pause, and it is the limiter that says so", asyn
       /Too many attempts/,
       "the seventh is the limiter, not the password check",
     );
-    // And the pause is not bypassed by suddenly knowing the password.
     await assert.rejects(
       () => startPasskeyRegistration(PASSWORD),
       /Too many attempts/,
@@ -230,7 +203,6 @@ test("the limiter is per account, not global", async () => {
     for (let i = 0; i < 7; i++)
       await startPasskeyRegistration("not-it").catch(() => undefined);
   });
-  // USER_2 has burnt nothing, so their own attempt reads as a password error.
   await asUser(USER_2, () =>
     assert.rejects(
       () => startPasskeyRegistration("not-it"),
@@ -240,10 +212,6 @@ test("the limiter is per account, not global", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* 3. One account never touches another's                              */
-/* ------------------------------------------------------------------ */
-
 test("the list is scoped to the caller", async () => {
   await seedPasskey(USER_1, "pk-mine", "Mine");
   await seedPasskey(USER_2, "pk-theirs", "Theirs");
@@ -252,9 +220,6 @@ test("the list is scoped to the caller", async () => {
     mine.map((p) => p.id),
     ["pk-mine"],
   );
-  // Asked again as somebody else, because `listMyPasskeys` is `cache()`d: if
-  // that memo ever survived the caller, this is where it would show, and every
-  // other assertion in this file about scoping would be worth nothing.
   const theirs = await asUser(USER_2, () => listMyPasskeys());
   assert.deepEqual(
     theirs.map((p) => p.id),
@@ -290,10 +255,6 @@ test("renaming another account's passkey changes nothing", async () => {
   assert.equal(row?.name, "Theirs");
 });
 
-/* ------------------------------------------------------------------ */
-/* 4. Names                                                            */
-/* ------------------------------------------------------------------ */
-
 test("a name is trimmed, capped and never empty", async () => {
   await seedPasskey(USER_1);
   await asUser(USER_1, async () => {
@@ -311,24 +272,13 @@ test("a name is trimmed, capped and never empty", async () => {
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* 5. The audit trail                                                  */
-/* ------------------------------------------------------------------ */
-
 const activityFor = (teamId: string) =>
   db
     .select({ message: activitiesTable.message, actor: activitiesTable.actor })
     .from(activitiesTable)
     .where(eq(activitiesTable.teamId, teamId));
 
-/**
- * "Who welded a permanent credential onto an account with access to our fleet"
- * has to be answerable in the UI, and Activity is team-scoped while a passkey is
- * not - hence one row per team the person belongs to. A member of two teams is
- * the case that catches a single-row implementation.
- */
 test("removing a passkey is recorded in every team the person is in", async () => {
-  // TEAM_B is already seeded; USER_1 just needs a second membership in it.
   await db.insert(membershipsTable).values({
     id: "mem_user_1_b",
     userId: USER_1,
@@ -360,13 +310,7 @@ test("a refused removal writes nothing", async () => {
   assert.equal((await activityFor(TEAM_A)).length, 0);
 });
 
-/* ------------------------------------------------------------------ */
-/* 6. The ceiling                                                      */
-/* ------------------------------------------------------------------ */
-
 test("the ceiling counts every passkey, usable here or not", async () => {
-  // 19 for another address plus one for this one is still 20 rows, and the point
-  // of the ceiling is the size of the list, not how many of them work.
   for (let i = 0; i < 19; i++)
     await seedPasskey(USER_1, `pk-old-${i}`, `Old ${i}`, "old.example.com");
   await seedPasskey(USER_1, "pk-here");
@@ -377,10 +321,6 @@ test("the ceiling counts every passkey, usable here or not", async () => {
     ),
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* 7. The admin hatch                                                  */
-/* ------------------------------------------------------------------ */
 
 const claimOwner = (userId: string) =>
   db
@@ -438,10 +378,6 @@ test("clearing someone's passkeys touches nothing else", async () => {
   assert.match(rows[0]!.message, /2 passkeys/);
 });
 
-/* ------------------------------------------------------------------ */
-/* 8. Deleting the account takes the credentials with it               */
-/* ------------------------------------------------------------------ */
-
 test("a passkey does not outlive its user", async () => {
   await seedPasskey(USER_2, "pk-theirs");
   await db.delete(usersTable).where(eq(usersTable.id, USER_2));
@@ -452,10 +388,6 @@ test("a passkey does not outlive its user", async () => {
   assert.equal(left.length, 0, "the FK cascade is what makes this true");
 });
 
-/* ------------------------------------------------------------------ */
-/* 10. Registration cannot be forged                                   */
-/* ------------------------------------------------------------------ */
-
 test("finishing a registration nobody started creates nothing", async () => {
   await asUser(USER_1, async () => {
     await assert.rejects(
@@ -464,17 +396,12 @@ test("finishing a registration nobody started creates nothing", async () => {
           response: { id: "made-up", rawId: "made-up", type: "public-key" },
           name: "Forged",
         }),
-      // Whatever the plugin calls it, the point is that it refuses: the challenge
-      // is a server-minted, single-use, cookie-bound row and there is not one.
+      // Whatever the plugin calls it, the point is that it refuses.
       /.+/,
     );
   });
   assert.equal((await passkeyRows(USER_1)).length, 0);
 });
-
-/* ------------------------------------------------------------------ */
-/* 11. Removing when nothing is at stake                               */
-/* ------------------------------------------------------------------ */
 
 test("with no policy in force, the last passkey goes without argument", async () => {
   await seedPasskey(USER_1);
@@ -483,9 +410,7 @@ test("with no policy in force, the last passkey goes without argument", async ()
 });
 
 test("two removals racing each other cannot both win", async () => {
-  // The guard reads the account's passkeys and then deletes one; without the row lock
-  // both readers would see two, both would pass, and an account under a policy would
-  // end up with none.
+  // Without the row lock both readers see two passkeys and both deletes land.
   await db
     .update(teamsTable)
     .set({ requireTwoFactor: true })
@@ -505,10 +430,6 @@ test("two removals racing each other cannot both win", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* 9. The list projects nothing it should not                          */
-/* ------------------------------------------------------------------ */
-
 test("no query in this module ever selects key material", async () => {
   await seedPasskey(USER_1);
   const rows = await asUser(USER_1, () => listMyPasskeys());
@@ -519,7 +440,6 @@ test("no query in this module ever selects key material", async () => {
       false,
       `${secret} must not be reachable from a DTO`,
     );
-  // And the row really does hold them, so the assertion above is not vacuous.
   const [raw] = await db
     .select({ pk: passkeyTable.publicKey, cid: passkeyTable.credentialID })
     .from(passkeyTable)

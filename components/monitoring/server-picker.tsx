@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/popover";
 import { StatusDot } from "@/components/shared/status-badge";
 import type { FleetRow } from "@/components/monitoring/fleet-list";
-import type { ServerStatus } from "@/lib/types";
+import type { ServerStatus } from "@/lib/types/server";
 import { cn, serverLabel } from "@/lib/utils";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
 
@@ -24,11 +24,7 @@ export interface PickableServer {
   isDeploHost: boolean;
 }
 
-/**
- * Which host the panels below belong to, and how to change it. It replaces the
- * plain name that used to sit here rather than adding a control: the list below
- * stays the fleet's overview, this is the jump.
- */
+// ServerPicker - which host the panels below belong to, and how to change it.
 export function ServerPicker({
   servers,
   rows,
@@ -36,7 +32,6 @@ export function ServerPicker({
   onSelect,
 }: {
   servers: PickableServer[];
-  /** Live readings, so a host can be picked on how it is doing, not just its name. */
   rows: Record<string, FleetRow>;
   selectedId: string;
   onSelect: (id: string) => void;

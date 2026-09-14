@@ -19,13 +19,10 @@ import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RoleSelect } from "@/components/members/role-select";
 import { gqlAction } from "@/lib/graphql-client";
-import type { UserSearchResult } from "@/lib/data/members";
-import type { TeamRoleDTO } from "@/lib/data/roles";
+import type { UserSearchResult } from "@/lib/data/members/user-search";
+import type { TeamRoleDTO } from "@/lib/data/roles/role-list";
 
-/**
- * Add a registered user to the active team. Controlled, so it opens from the
- * Members header or the overview "Add new" menu.
- */
+// AddMemberDialog adds a registered user to the active team; controlled, opened from more than one place.
 export function AddMemberDialog({
   open,
   onOpenChange,
@@ -35,27 +32,21 @@ export function AddMemberDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  /** Show the "create a new user" shortcut (instance admins only). */
+  // The "create a new user" shortcut is for instance admins only.
   canCreateUser?: boolean;
-  /**
-   * Offer "Owner". Only an existing owner may add another; the data layer
-   * enforces it too, this just hides an option that would be rejected.
-   */
+  // Only an existing owner may add another; the data layer enforces it too, this only hides the option.
   canAssignOwner?: boolean;
-  /** Called after closing this dialog, to open the create-user dialog. */
+  // Called after this dialog closes, to open the create-user dialog.
   onCreateUser?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<UserSearchResult[]>([]);
-  // Start true so the dialog shows "Searching…" on its first render rather than
-  // flashing the empty-state before the initial roster fetch resolves.
+  // Starts true so the first render shows the skeleton instead of flashing the empty state.
   const [searching, setSearching] = React.useState(true);
   const [picked, setPicked] = React.useState<UserSearchResult | null>(null);
-  // The team's roles are read here rather than passed in, so the dialog shows the
-  // real list wherever it is opened from (the Members page AND the Overview "Add
-  // New" menu) and picks up a role created a moment ago in another tab.
+  // Roles are fetched here, not passed in, so every entry point shows the team's live list.
   const [roles, setRoles] = React.useState<TeamRoleDTO[]>([]);
   const [roleId, setRoleId] = React.useState<string | null>(null);
 
@@ -82,9 +73,6 @@ export function AddMemberDialog({
       );
       if (cancelled || !res.ok || !res.data) return;
       setRoles(res.data);
-      // Default to the team's Member role - what a new teammate almost always
-      // gets - falling back to the first assignable role for a team that
-      // reworked its defaults.
       const assignable = res.data.filter(
         (r) => canAssignOwner || r.builtinKey !== "owner",
       );
@@ -101,7 +89,6 @@ export function AddMemberDialog({
     };
   }, [open, canAssignOwner]);
 
-  // Debounced username search.
   React.useEffect(() => {
     if (!open || picked) return;
     const q = query.trim();
@@ -155,8 +142,7 @@ export function AddMemberDialog({
 
   function add() {
     if (!picked || !roleId) return;
-    // The dialog closes on the click; the member list re-reads behind it. The
-    // pick is kept so a refusal can reopen on the same person.
+    // Snapshotted because the dialog closes first, so a refusal can reopen on the same person.
     const chosen = { picked, roleId };
     onOpenChange(false);
     startTransition(async () => {
@@ -210,8 +196,7 @@ export function AddMemberDialog({
                     autoFocus
                   />
                 </div>
-                {/* Shows ~3 rows (the most recent users) and scrolls for the rest.
-                  focus-safe-scroll keeps the rows' focus ring out of the clip. */}
+                {/* focus-safe-scroll keeps the rows' focus ring out of the overflow clip. */}
                 <div className="focus-safe-scroll max-h-44 min-h-24 space-y-1 overflow-y-auto">
                   {searching && (
                     <div className="space-y-1" aria-hidden>

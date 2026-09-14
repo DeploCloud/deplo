@@ -7,11 +7,9 @@ import {
   setDefaultEnvironment,
   deleteEnvironment,
 } from "@/lib/data/environments";
-import type { Environment } from "@/lib/types";
+import type { Environment } from "@/lib/types/team";
 
-/* ------------------------------------------------------------------ */
-/* Object type - an Environment (ADR-0008 Phase 3)                     */
-/* ------------------------------------------------------------------ */
+// An Environment (ADR-0008 Phase 3).
 
 export const EnvironmentRef = builder
   .objectRef<Environment>("Environment")
@@ -34,10 +32,6 @@ export const EnvironmentRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Query                                                               */
-/* ------------------------------------------------------------------ */
-
 builder.queryFields((t) => ({
   environments: t.field({
     type: [EnvironmentRef],
@@ -48,10 +42,6 @@ builder.queryFields((t) => ({
       listEnvironmentsForProject(String(projectId)),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 const environmentScope = { capability: "manage_environments" } as const;
 

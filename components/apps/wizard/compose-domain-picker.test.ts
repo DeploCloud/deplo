@@ -4,13 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ComposeDomainPicker } from "./compose-domain-picker";
-import type { ComposeRouteCandidate } from "@/lib/deploy/compose-lint";
-
-/**
- * What the wizard offers for a hand-written stack: the front door is decided and
- * shown as such, a database is offered but never pre-selected, and a name the
- * platform answers to cannot be picked at all.
- */
+import type { ComposeRouteCandidate } from "@/lib/deploy/compose-lint/routing";
 
 const CANDIDATES: ComposeRouteCandidate[] = [
   {
@@ -53,8 +47,7 @@ function render(selected: string[] = []): string {
   );
 }
 
-/** The checkbox tag for one service row. `disabled` is read as the ATTRIBUTE:
- *  the class list carries `disabled:cursor-not-allowed` on every box. */
+// `disabled` is read as the ATTRIBUTE: every box's class list carries disabled:cursor-not-allowed.
 function boxOf(html: string, service: string): string {
   const i = html.indexOf(`id="route-${service}"`);
   assert.notEqual(i, -1, `no row for ${service}`);

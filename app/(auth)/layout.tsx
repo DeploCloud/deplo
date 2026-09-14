@@ -1,6 +1,7 @@
 import Link from "@/components/ui/link";
 import { redirect } from "next/navigation";
-import { getCurrentUser, isSetupNeeded } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { isSetupNeeded } from "@/lib/auth/setup";
 import { AuthChrome } from "@/components/auth/auth-chrome";
 import { DeploLogo } from "@/components/logo";
 

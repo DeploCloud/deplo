@@ -1,14 +1,14 @@
 import { revalidateTag } from "next/cache";
-import { assertUser } from "@/lib/auth";
+import { assertUser } from "@/lib/auth/current-user";
 import { rateLimit } from "@/lib/security";
 import { builder } from "../builder";
 import { matchesQuery } from "@/lib/match-query";
 import {
   createAppFromTemplate,
   type CreateAppFromTemplateInput,
-} from "@/lib/data/apps";
+} from "@/lib/data/apps/create";
 import { listCatalog } from "@/templates/catalog";
-import { AppRef } from "./app";
+import { AppRef } from "./app/app-object";
 
 interface TemplateVariantSummary {
   templateSlug: string;
@@ -130,20 +130,15 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Mutations                                                          */
-/* ------------------------------------------------------------------ */
-
 builder.mutationFields((t) => ({
   refreshTemplates: t.boolean({
-    // `loggedIn`, not a capability: this only drops the hour-long cache in front of
-    // a PUBLIC catalog, and every member sees the same store.
+    // `loggedIn`, not a capability: it only drops the hour-long cache in front of a PUBLIC catalog.
     authScopes: { loggedIn: true },
     description:
       "Drop the cached template catalog so the next read hits the catalog service.",
     resolve: async () => {
-      // A drop costs the whole instance a catalog fetch, and the catalog is
-      // rate-limited per instance: a few per person per minute is plenty.
+      // A drop costs the whole instance a catalog fetch, and the catalog service
+      // rate-limits per instance.
       const { id } = await assertUser();
       const limit = await rateLimit(`refresh-templates:${id}`, {
         limit: 3,
@@ -153,8 +148,8 @@ builder.mutationFields((t) => ({
         throw new Error(
           `Too many refreshes. Try again in ${limit.retryAfterSec}s.`,
         );
-      // The tag `templates/catalog.ts` stamps on every catalog fetch. `expire: 0`
-      // because a Refresh button that answers with stale content is a lie.
+      // The tag `templates/catalog.ts` stamps on every catalog fetch; `expire: 0`
+      // so a Refresh never answers from the stale copy.
       revalidateTag("templates", { expire: 0 });
       return true;
     },

@@ -7,19 +7,15 @@ import { webcrypto } from "node:crypto";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { servers as serversTable } from "../db/schema/control-plane";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { mintBootstrap } from "../agent/bootstrap";
 import { serverToRow } from "./infra-rows";
-import { completeBootstrap, getServerById } from "./servers";
+import { completeBootstrap } from "./servers/agent-handshake";
+import { getServerById } from "./servers/roster";
 
 x509.cryptoProvider.set(webcrypto as unknown as Crypto);
 // The PKI (signBootstrapCsr) derives its CA from DEPLO_SECRET; pin one.
 process.env.DEPLO_SECRET = "test-secret-for-agent-mtls-pki-aaaaaaaa";
-
-/**
- * `completeBootstrap` consume-single-use under concurrency (relational-store PLAN
- * Step 6 - servers are relational now).
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -38,7 +34,6 @@ beforeEach(async () => {
   await pg.exec(`truncate table servers restart identity cascade;`);
 });
 
-/** An agent-side Ed25519 key pair + PKCS#10 CSR (its key never leaves the agent). */
 async function makeCsr(): Promise<string> {
   const keys = (await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
     "sign",
@@ -109,7 +104,6 @@ test("completeBootstrap is single-use: two concurrent call-homes, exactly one wi
   await seedProvisioning(stored.tokenHash, stored.expiresAt);
   const [csr1, csr2] = await Promise.all([makeCsr(), makeCsr()]);
 
-  // Fire both consumes concurrently against the same single-use token.
   const results = await Promise.allSettled([
     completeBootstrap({ token: rawToken, csrPem: csr1, agentPort: 9443 }),
     completeBootstrap({ token: rawToken, csrPem: csr2, agentPort: 9443 }),
@@ -123,7 +117,6 @@ test("completeBootstrap is single-use: two concurrent call-homes, exactly one wi
     /already consumed/,
   );
 
-  // The server is provisioned exactly once.
   const srv = (await getServerById("srv_p"))!;
   assert.equal(srv.status, "online");
   assert.equal(srv.bootstrap?.usedAt !== null, true);

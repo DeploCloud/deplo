@@ -6,24 +6,19 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { apps as appsTable } from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
 import { runWithIdentity, type TokenGrant } from "../auth/request-context";
-import { ALL_CAPABILITIES } from "../types";
-import { listApps } from "./apps";
+import { ALL_CAPABILITIES } from "../types/identity";
+import { listApps } from "./apps/listing";
 import { search, type SearchKind } from "./search";
-
-/**
- * The one read that spans teams.
- */
 
 let db: TestDb;
 let pg: PGlite;
 
-/** Every kind but `template`: the catalogue is a real HTTP fetch, and the suite
- *  must not go to the network. */
+// Every kind but `template`: the catalogue is a real HTTP fetch and the suite must not go to the network.
 const KINDS: SearchKind[] = [
   "app",
   "database",
@@ -36,7 +31,6 @@ const KINDS: SearchKind[] = [
   "cron",
 ];
 
-/** Seeded, with an app in it, and USER_1 is not a member. */
 const TEAM_C = "team_c";
 
 before(async () => {
@@ -58,8 +52,8 @@ beforeEach(async () => {
       { id: TEAM_C, slug: "gamma" },
     ],
   });
-  // The same person in two of the three teams. Without the second membership
-  // every assertion below would pass for the wrong reason.
+  // The same person in two of the three teams: without this second membership
+  // every cross-team assertion below would pass for the wrong reason.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
      values ('mem_user_1_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,
@@ -79,8 +73,6 @@ beforeEach(async () => {
     teamId: TEAM_C,
     slug: "better-auth-private",
   });
-  // `seedApp` names an app after its id; the display name is what a person
-  // actually types, so give one app a real one.
   await db
     .update(appsTable)
     .set({ name: "Better Auth Docs" })
@@ -111,8 +103,6 @@ test("finds hits in another team and stamps each with the team it is in", async 
 });
 
 test("a team the caller is not a member of contributes nothing", async () => {
-  // `better-auth-private` matches the query as well as anything in alpha does.
-  // It must be absent because the search never enters gamma at all.
   const found = await asUser1(() => search("better", KINDS));
   const ids = found.apps.map((a) => a.id);
 
@@ -127,7 +117,6 @@ test("case, separators and ids are all one match rule", async () => {
     ["prj_a1"],
   );
 
-  // A pasted id finds its app in whichever team holds it.
   const byId = await asUser1(() => search("prj_b1", KINDS));
   assert.deepEqual(
     byId.apps.map((a) => [a.id, a.team.slug]),
@@ -143,8 +132,6 @@ test("case, separators and ids are all one match rule", async () => {
 });
 
 test("the same match filters one team's list", async () => {
-  // `listApps(q)` and `search` have to agree about what a hit is, so the
-  // in-team filter is the same rule and not a second one.
   const here = await asUser1(() => listApps("better auth"));
   assert.deepEqual(
     here.map((a) => a.id),
@@ -170,8 +157,6 @@ test("hits are ranked exact, then prefix, then substring", async () => {
   }
 
   const found = await asUser1(() => search("api", ["app"]));
-  // Alpha's three by how well they matched, and only then beta's `quotedb-api`:
-  // the active team wins before the rank is even consulted.
   assert.deepEqual(
     found.apps.map((a) => a.id),
     ["prj_api", "prj_gw", "prj_leg", "prj_b1"],
@@ -179,8 +164,6 @@ test("hits are ranked exact, then prefix, then substring", async () => {
 });
 
 test("the active team outranks a closer match in another one", async () => {
-  // `prj_a1` is "Better Auth Docs" in alpha; `db_b1` is "better-auth-store" in
-  // beta. Whichever team the caller is IN comes first.
   const fromAlpha = await asUser1(() =>
     search("better auth", ["app", "database"]),
   );
@@ -205,8 +188,6 @@ test("the active team outranks a closer match in another one", async () => {
 });
 
 test("a team-wide gate that refuses costs its kind, not the search", async () => {
-  // A token narrowed to one app reaches no server, member or database list -
-  // every one of those reads throws `requireTeamWide`. The app must still land.
   const grant: TokenGrant = {
     id: "tok_search",
     capabilities: [...ALL_CAPABILITIES],
@@ -236,8 +217,6 @@ test("a team-wide gate that refuses costs its kind, not the search", async () =>
 });
 
 test("a role is found by name, in whichever team holds it", () => {
-  // `ensureTeamRoles` seeds Owner/Member/Viewer lazily on the first read, so
-  // the roles a team has are the ones a person actually sees on its Roles page.
   return asUser1(async () => {
     const found = await search("owner", ["role"]);
     assert.ok(found.roles.length >= 1, "the default Owner role");
@@ -245,8 +224,6 @@ test("a role is found by name, in whichever team holds it", () => {
       found.roles.every((r) => r.name.toLowerCase().includes("owner")),
       found.roles.map((r) => r.name).join(),
     );
-    // USER_1 is in alpha and beta, not gamma - and a role is a team's own row,
-    // so both teams answer with their own.
     const teams = new Set(found.roles.map((r) => r.team.slug));
     assert.deepEqual([...teams].sort(), ["alpha", "beta"]);
   });

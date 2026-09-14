@@ -2,18 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 
-import type { AgentConnection } from "../infra/agent-client";
+import type { AgentConnection } from "../infra/agent-client/connection";
 import { EMPTY_TAR_GZ, tarGz } from "../test/tar-fixture";
 import { copyVolumeBetween } from "./volume-migration";
 
-/**
- * The byte relay, on its own. The fixtures are REAL gzipped tars: emptiness is
- * read from the archive's entries, so a stand-in buffer would prove nothing.
- */
-
 const EMPTY = EMPTY_TAR_GZ;
 const REAL = tarGz([["./blob", Buffer.alloc(200_000, 3)]]);
-/** Ten bytes. Under any size threshold, and somebody's redis dump. */
 const TINY = tarGz([["./dump.rdb", Buffer.from("0123456789")]]);
 
 interface FakeSource {
@@ -120,8 +114,6 @@ test("progress is reported as the bytes cross, and a throwing listener cannot fa
     "data",
     (n) => {
       seen.push(n);
-      // The caller writes its progress line from here. If that write can take the
-      // copy down with it, the counter is worse than no counter at all.
       throw new Error("the progress line blew up");
     },
   );
@@ -140,15 +132,12 @@ test("the probe reads a chunk and no more, then the copy re-reads the whole volu
 
   await copyVolumeBetween(from.conn, to.conn, "data");
 
-  // Twice on purpose: the probe cancels its stream after the first chunk, which is
-  // what makes it cost one chunk rather than a second full transfer.
   assert.deepEqual(from.exports, ["data", "data"]);
   assert.equal(to.received.data.length, REAL.length * 2);
 });
 
 test("an agent too old to report a byte count is not treated as having written none", async () => {
   const from = source({ data: REAL });
-  // What every agent below the version answers: zero and empty string.
   const to = dest(() => ({ ok: true, error: "", bytesWritten: 0, sha256: "" }));
 
   const res = await copyVolumeBetween(from.conn, to.conn, "data");
@@ -185,8 +174,6 @@ test("a source that stops answering after the probe never reads as success", asy
   let first = true;
   const conn = {
     async *exportVolume() {
-      // Full the first time (the probe), empty the second (the copy itself) - the
-      // volume was removed underneath us between the two reads.
       if (first) {
         first = false;
         yield REAL;
@@ -226,8 +213,6 @@ test("a volume that is not on that host is told apart from an empty one", async 
   const to = dest();
 
   const absent = await copyVolumeBetween(conn, to.conn, "gone", "target");
-  // Nothing to copy either way, but only one of the two means "this workload
-  // never ran here" - and the callers that tear the SOURCE down read that flag.
   assert.equal(absent.empty, true);
   assert.equal(absent.missing, true);
 
@@ -237,11 +222,6 @@ test("a volume that is not on that host is told apart from an empty one", async 
   assert.deepEqual(to.calls, [], "neither one may wipe the destination");
 });
 
-/**
- * The agent counts links and specials apart but names them in ONE list, so a
- * parenthesis after the last kind labelled a symlink a block device. With two
- * kinds the names stand on their own.
- */
 function droppingDest(dropped: {
   links: number;
   special: number;

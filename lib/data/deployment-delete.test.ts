@@ -5,11 +5,11 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   deployments as deploymentsTable,
   deploymentLogs,
-  apps as appsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/deployments";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -23,11 +23,10 @@ import {
   seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { deleteDeployments, deleteAllDeployments } from "./deployments";
-
-/**
- * `deleteDeployments` / `deleteAllDeployments` against pglite.
- */
+import {
+  deleteDeployments,
+  deleteAllDeployments,
+} from "./deployments/cancel-and-delete";
 
 let db: TestDb;
 let pg: PGlite;

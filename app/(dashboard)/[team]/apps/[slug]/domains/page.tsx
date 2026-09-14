@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
-import { getAppBySlug } from "@/lib/data/apps";
-import { serverIpForApp } from "@/lib/data/servers";
-import { listDomains } from "@/lib/data/domains";
+import { getAppBySlug } from "@/lib/data/apps/listing";
+import { serverIpForApp } from "@/lib/data/servers/roster";
+import { listDomains } from "@/lib/data/domains/crud";
 import { productionDomain } from "@/lib/deploy/domains";
 import { isRoutableDomain } from "@/lib/deploy/cloudflare";
-import { composeServiceNames } from "@/lib/deploy/compose-stack";
+import { composeServiceNames } from "@/lib/deploy/compose-stack/compose-read";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
 import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -35,20 +35,14 @@ export default async function AppDomainsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The ADDRESS of the host this app runs on, asked about the app, not the fleet.
   const [domains, serverIp] = await Promise.all([
     listDomains(project.id),
     serverIpForApp(project.id),
   ]);
-  // A zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`) the
-  // user can drop into the Domain field with one click - resolved here so the
-  // server-only IP detection never reaches the client bundle.
+  // Resolved here so the server-only IP detection never reaches the client bundle.
   const suggestedDomain = productionDomain(project.slug, serverIp);
-  // Whether each row routes to a compose service or to the app's single
-  // container - the authoritative source check, not "does the app carry compose
-  // text" (an app can keep leftover YAML while deploying a repo or an image).
+  // Not "does the app carry compose text": an app can keep leftover YAML while deploying a repo or an image.
   const isComposeStack = usesComposeStack(project);
-  // The Container column only says something when there is a choice to say it about.
   const containerCount = isComposeStack
     ? composeServiceNames(project.compose).length
     : 1;
@@ -56,28 +50,20 @@ export default async function AppDomainsPage(
     containerCount > 1 ||
     (isComposeStack && domains.some((d) => !(d.service ?? "").trim()));
 
-  // Every domain mutation now re-applies routing to the running container itself (see
-  // `applyRouting` in lib/graphql/types/domain.ts), so a settled domain is genuinely
-  // live and needs no nagging.
+  // `applyRouting` (lib/graphql/types/domain.ts) runs on every domain mutation, so a settled domain is already live.
   const unsettledDomains = domains
     .filter((d) => !isRoutableDomain(d))
     .map((d) => ({ id: d.id, name: d.name, status: d.status }));
 
-  // Rows that answer on a different name than they did on the platform this app
-  // was imported from. Empty for every app that was not imported, and for an
-  // imported one whose notice has been dismissed.
   const importedDomains = domains
     .filter((d) => (d.importedFrom ?? "").trim())
     .map((d) => ({ id: d.id, name: d.name, importedFrom: d.importedFrom! }));
 
-  // The client components only read service names from it, and the values a
-  // compose inlines are not the view floor's to see.
+  // The values a compose inlines are not the `view` floor's to see; the client only reads service names.
   const composeForBrowser =
     project.compose == null ? null : redactComposeForDisplay(project.compose);
   return (
-    // Adding a domain closes its dialog at once and puts the hostname in the
-    // table as a pulsing row while the DNS check and the reroute run - the
-    // provider holds that row, so it wraps both the dialog and the table.
+    // The provider holds the pending row, so it wraps both the dialog and the table.
     <PendingCreateProvider count={domains.length}>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -98,16 +84,10 @@ export default async function AppDomainsPage(
           />
         </div>
 
-        {/**
-         * The addresses a migration could not keep. Above the DNS callout on purpose: it
-         * explains WHY the hostnames in the table are not the ones the app used to answer
-         * on, which is the first question the table raises for someone who just imported.
-         */}
+        {/* Above the DNS callout on purpose: it explains why the table's hostnames are not the imported ones. */}
         <ImportedDomainsNotice appId={project.id} domains={importedDomains} />
 
-        {/**
-         * Only a host that has NOT checked out is off the router (see `unsettledDomains`).
-         */}
+        {/* Only a host that has not checked out is off the router. */}
         {unsettledDomains.length > 0 && (
           <DomainDnsAutoCheck domains={unsettledDomains} serverIp={serverIp} />
         )}
@@ -128,10 +108,7 @@ export default async function AppDomainsPage(
               <TableHeader>
                 <TableRow>
                   <TableHead>Domain</TableHead>
-                  {/**
-                   * What the hostname reaches, not who owns it: the owning App is the page you are
-                   * already on, so its name was the same on every row.
-                   */}
+                  {/* What the hostname reaches, not who owns it: every row here is this same app. */}
                   {showContainer && (
                     <TableHead className="w-56">Container</TableHead>
                   )}
@@ -140,8 +117,7 @@ export default async function AppDomainsPage(
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {/* A removed domain leaves the table on the click; the row is
-                    dropped server-side before the routing is re-applied. */}
+                {/* The row is dropped server-side before the routing is re-applied. */}
                 <OptimisticList>
                   {domains.map((d) => (
                     <DomainRow
@@ -151,8 +127,7 @@ export default async function AppDomainsPage(
                       isCompose={isComposeStack}
                       showContainer={showContainer}
                       serverIp={serverIp}
-                      // Every row of THIS app, so each Edit dialog can derive the
-                      // hostname's www pairing from the rows that exist.
+                      // So each Edit dialog can derive the hostname's www pairing from the rows that exist.
                       siblings={domains}
                     />
                   ))}

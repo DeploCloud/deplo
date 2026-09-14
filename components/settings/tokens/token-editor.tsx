@@ -32,14 +32,12 @@ import {
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { PermissionPicker } from "@/components/settings/permission-picker";
-import {
-  ScopePicker,
-  type ScopeSelection,
-} from "@/components/settings/tokens/scope-picker";
+import { ScopePicker } from "@/components/settings/tokens/scope-picker/picker";
+import type { ScopeSelection } from "@/components/settings/tokens/scope-picker/selection";
 import { TokenCreated } from "@/components/settings/tokens/token-created";
 import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
 import { gqlAction } from "@/lib/graphql-client";
-import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
+import { ALL_CAPABILITIES, type Capability } from "@/lib/types/identity";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
 import { sameCapabilities } from "@/lib/membership-shared";
 import {
@@ -47,20 +45,16 @@ import {
   presetIdFor,
   type TokenPreset,
 } from "@/lib/token-presets";
+import type { ApiTokenDTO } from "@/lib/data/tokens/listing";
 import type {
-  ApiTokenDTO,
   ScopeTreeFolder,
   ScopeTreeTeam,
-} from "@/lib/data/tokens";
+} from "@/lib/data/tokens/scope-tree";
 
-/** The Select needs a value for "matches no template"; it is never selectable. */
+// The Select needs a value for "matches no template"; it is never selectable.
 const CUSTOM = "custom";
 
-/**
- * The API-token editor: a full-width page, reached from the token LIST. A page and
- * not a dialog because forty permissions, a search box, a project scope and a
- * summary of what the credential ends up able to do do not fit in a modal.
- */
+// The API-token editor: a page and not a dialog - forty permissions, a search box and a scope do not fit a modal.
 export function TokenEditor({
   mode,
   token,
@@ -71,17 +65,14 @@ export function TokenEditor({
   publicUrl,
 }: {
   mode: "create" | "edit";
-  /** The token being edited. */
   token?: ApiTokenDTO;
-  /** Revoking takes away THIS team's access, so the dialog has to name it. */
+  // Revoking takes away THIS team's access, so the dialog has to name it.
   activeTeamId: string;
-  /** The template a new token was started from (chosen in the "New token" menu). */
   preset?: TokenPreset | null;
-  /** Every team, project and app the actor can reach - the scope picker's tree. */
+  // Every team, project and app the actor can reach - the scope picker's tree.
   tree: ScopeTreeTeam[];
-  /** Only an instance admin may hand out instance administration. */
+  // Only an instance admin may hand out instance administration.
   canGrantInstanceAdmin: boolean;
-  /** This Deplo's public URL, for the copy-paste curl after minting. */
   publicUrl: string;
 }) {
   const router = useRouter();
@@ -103,9 +94,7 @@ export function TokenEditor({
         appIds: token?.appIds ?? [],
       } as ScopeSelection,
       instanceAdmin: token?.instanceAdmin ?? false,
-      // A token that already has one keeps it unless the picker is touched; a new one
-      // defaults to 90 days rather than forever, because the credential nobody ever
-      // revokes is the one nobody ever chose an end for.
+      // An existing token keeps its date unless touched; a new one defaults to 90 days.
       expiry: token ? "keep" : "90",
     }),
     [token, preset],
@@ -139,9 +128,7 @@ export function TokenEditor({
     !sameScope(scope, initial.scope) ||
     !sameCapabilities(caps, initial.capabilities);
 
-  // The two are mutually exclusive by rule (the server refuses the pair), so the
-  // UI never lets them disagree: narrowing the scope turns the bit off rather
-  // than leaving a switch on screen that would be ignored.
+  // The server refuses scope + instanceAdmin together, so narrowing turns the bit off.
   function changeScope(next: ScopeSelection) {
     if (
       next.teamIds.length +
@@ -167,9 +154,7 @@ export function TokenEditor({
       folderIds: scope.folderIds,
       appIds: scope.appIds,
       instanceAdmin,
-      // `undefined` (omitted) means "leave it as it is", which is the only
-      // thing "keep" can mean; `null` clears it. The server refuses a date in
-      // the past, so the instant is computed at submit and not at render.
+      // `undefined` (omitted) leaves it as it is; `null` clears it.
       expiresAt: expiresAtFor(expiry),
     };
     startTransition(async () => {
@@ -203,9 +188,7 @@ export function TokenEditor({
     });
   }
 
-  // The secret takes over the page rather than opening a dialog: a modal is
-  // dismissible by Escape and by clicking away, and this is the one screen in Deplo
-  // that must not be dismissible by accident.
+  // Not a dialog: Escape or a click away would dismiss the one screen that must not be.
   if (created)
     return (
       <TokenCreated
@@ -362,8 +345,7 @@ export function TokenEditor({
         </Card>
       </div>
 
-      {/* Right rail: what this token will be able to do, and the primary action -
-          sticky on desktop so it stays reachable while scrolling the list. */}
+      {/* Right rail: the summary and the primary action. */}
       <aside className="h-fit space-y-4 lg:sticky lg:top-20">
         <Card>
           <CardHeader>
@@ -535,7 +517,7 @@ export function TokenEditor({
   );
 }
 
-/** Order-blind equality, so re-ticking the same boxes isn't "dirty". */
+// Order-blind equality, so re-ticking the same boxes isn't "dirty".
 function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
   const eq = (x: string[], y: string[]) =>
     x.length === y.length && x.every((v) => y.includes(v));
@@ -547,7 +529,6 @@ function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
   );
 }
 
-/** One short line for the summary rail: name one node, else count them. */
 function describeScope(scope: ScopeSelection, tree: ScopeTreeTeam[]): string {
   const total =
     scope.teamIds.length +
@@ -573,7 +554,6 @@ function describeScope(scope: ScopeSelection, tree: ScopeTreeTeam[]): string {
   return parts.join(", ");
 }
 
-/** Find any node in the tree by id - teams, projects, folders (nested) or apps. */
 function nameOf(tree: ScopeTreeTeam[], id: string): string | null {
   const inFolder = (f: ScopeTreeFolder): string | null => {
     if (f.id === id) return f.name;
@@ -599,11 +579,7 @@ function nameOf(tree: ScopeTreeTeam[], id: string): string | null {
   return null;
 }
 
-/**
- * The instant a picked span lands on, in the shape the API takes. Computed at
- * submit rather than at render so a form left open overnight cannot post a date
- * the server has already decided is in the past.
- */
+// Computed at submit, not at render: the server refuses a date already in the past.
 function expiresAtFor(choice: string): string | null | undefined {
   if (choice === "keep") return undefined;
   if (choice === "never") return null;

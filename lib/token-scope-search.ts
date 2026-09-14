@@ -1,10 +1,4 @@
-import type { ScopeTreeFolder, ScopeTreeTeam } from "./data/tokens";
-
-/**
- * The scope picker's search, as a pure function over the tree. A node survives
- * when anything UNDER it matches, otherwise a hit three folders deep is
- * unreachable.
- */
+import type { ScopeTreeFolder, ScopeTreeTeam } from "./data/tokens/scope-tree";
 
 const hit = (name: string, terms: string[]) =>
   terms.every((t) => name.toLowerCase().includes(t));
@@ -33,8 +27,6 @@ export function filterScopeTree(
       const projects = team.projects
         .map((p) => {
           if (hit(p.name, terms)) return p;
-          // An environment survives on its own name (keeping all its apps, the
-          // same rule a folder follows) or on one of its apps.
           const environments = p.environments
             .map((e) =>
               hit(e.name, terms)

@@ -2,21 +2,18 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
-import { DeploSettingsPanel } from "@/components/settings/deplo-settings-panel";
-import { getInstanceSettings } from "@/lib/data/instance-settings";
+import { DeploSettingsPanel } from "@/components/settings/deplo-settings-panel/settings-tabs";
+import { getInstanceSettings } from "@/lib/data/instance-settings/settings-store";
 import { viewerIsInstanceOwner } from "@/lib/data/instance-owner";
-import { listAllUsers } from "@/lib/data/members";
-import { listAllServers } from "@/lib/data/servers";
-import { getCurrentUser } from "@/lib/auth";
+import { listAllUsers } from "@/lib/data/members/instance-users";
+import { listAllServers } from "@/lib/data/servers/roster";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { isInstanceAdmin } from "@/lib/membership";
 import { agentUpdateAvailable, reportedAgentVersion } from "@/lib/version";
 import { resolveExpectedAgentVersion } from "@/lib/agent/release";
 
 export const metadata = { title: "Settings · Deplo" };
 
-/**
- * Settings → Deplo: the instance itself.
- */
 export default async function DeploSettingsPage() {
   if (!(await isInstanceAdmin())) notFound();
   const [
@@ -35,8 +32,7 @@ export default async function DeploSettingsPage() {
     getCurrentUser(),
   ]);
 
-  // Who the crown could go to, narrowed to exactly what the server would accept: an
-  // active instance admin who isn't already the owner.
+  // Narrowed to exactly what the server accepts for an ownership transfer.
   const ownerCandidates = users
     .filter((u) => u.isInstanceAdmin && !u.isInstanceOwner && !u.suspended)
     .map((u) => ({
@@ -46,8 +42,7 @@ export default async function DeploSettingsPage() {
       avatarUrl: u.avatarUrl,
     }));
 
-  // A migration source hosts nothing and takes its own agent off when it is done
-  // (ADR-0025), so counting it would report a host nobody has to keep current.
+  // A migration source takes its own agent off when done (ADR-0025), so it is not fleet.
   const fleetHosts = servers.filter((s) => !s.importOnly);
   const fleet = {
     total: fleetHosts.length,
@@ -71,8 +66,7 @@ export default async function DeploSettingsPage() {
         description={
           <>
             <span className="font-mono">v{settings.version}</span>
-            {/* Derived from the version, not a flag: the badge disappears on its
-                own the day 1.0.0 ships. */}
+            {/* Derived from the version, not a flag: the badge goes on its own at 1.0.0. */}
             {settings.version.startsWith("0.") ? (
               <Badge variant="secondary" className="ml-2 align-middle">
                 Beta

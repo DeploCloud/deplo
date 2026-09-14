@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { getDatabase, getDatabaseVolumeBytes } from "@/lib/data/databases";
-import { getDatabaseBackupSummary } from "@/lib/data/backups";
+import { getDatabase } from "@/lib/data/databases/rows";
+import { getDatabaseVolumeBytes } from "@/lib/data/databases/stack";
+import { getDatabaseBackupSummary } from "@/lib/data/backups/run-listing";
 import { getDatabaseMetrics } from "@/lib/data/container-metrics";
-import { getServerById } from "@/lib/data/servers";
+import { getServerById } from "@/lib/data/servers/roster";
 import { canExposePorts, currentCapabilities } from "@/lib/membership";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { DatabaseOverview } from "@/components/storage/database-overview";
@@ -11,7 +12,7 @@ import { DataStat } from "@/components/storage/database-stats";
 import { DatabaseRelabelNotice } from "@/components/storage/database-health-stat";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
 import type { ContainerMetrics } from "@/lib/data/container-metrics";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
 export default async function DatabaseOverviewPage(
   props: PageProps<"/[team]/storage/databases/[id]">,

@@ -34,27 +34,23 @@ import { CAPABILITY_META } from "@/lib/capabilities";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
 import { scopeLabel } from "@/components/settings/tokens/scope-label";
 import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
-import type { ApiTokenDTO } from "@/lib/data/tokens";
+import type { ApiTokenDTO } from "@/lib/data/tokens/listing";
 
-/**
- * Your API tokens. Every row is yours: nobody else can see or touch it.
- */
+// Your API tokens. Every row is yours: nobody else can see or touch it.
 export function TokensList({
   tokens,
   names,
   activeTeamId,
 }: {
   tokens: ApiTokenDTO[];
-  /** Team / project / app id → name, as far as this team can resolve them. */
+  // Team / project / app id → name, as far as this team can resolve them.
   names: Record<string, string>;
-  /** The Revoke dialog names the OTHER teams the token also reaches. */
+  // The Revoke dialog names the OTHER teams the token also reaches.
   activeTeamId: string;
 }) {
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<ApiTokenDTO | null>(null);
-  // A revoked token leaves the table on the click: the row is gone server-side
-  // by the time the mutation answers, and a live Revoke button under the cursor
-  // is one stray second click away from a red "Not found".
+  // The row is gone server-side by then; a live Revoke button is one stray click from "Not found".
   const {
     visible: rows,
     remove,
@@ -137,9 +133,7 @@ export function TokensList({
                             : "This token drives an AI agent over MCP. Edit or revoke it here."
                         }
                       >
-                        {/* The name is whatever the app called itself at
-                            registration - free text, any length. Bounded here so
-                            a 200-character one cannot stretch the row. */}
+                        {/* The client name is free text of any length, so the badge is bounded. */}
                         <Badge variant="outline" className="max-w-40 gap-1">
                           <Bot className="size-3 shrink-0" aria-hidden />
                           <span className="truncate">
@@ -227,8 +221,7 @@ export function TokensList({
         successMessage="Token revoked"
         optimistic
         onConfirm={async () => {
-          // `revoke` is this render's value: the dialog has already closed
-          // itself (and cleared it) by the time this runs.
+          // This render's value: the dialog has already closed and cleared it by now.
           const id = revoke!.id;
           remove(id);
           const res = await gqlAction(

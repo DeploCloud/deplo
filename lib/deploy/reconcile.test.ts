@@ -7,18 +7,16 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { asc, eq } from "drizzle-orm";
 
-// DEPLO_DATA_DIR points build staging at a throwaway dir, set BEFORE the store +
-// build modules load. The relational backend is pglite (the in-memory store mode
-// is gone for the project graph - cut-set (c) reads/writes Postgres).
+// DEPLO_DATA_DIR points build staging at a throwaway dir, set BEFORE the build modules load.
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-reconcile-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   deployments as deploymentsTable,
   deploymentLogs,
-  apps as appsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/deployments";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import {
   seedServer,
@@ -26,13 +24,11 @@ import {
   seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
-import { isInFlightStatus, reconcileInFlightDeployments } from "./build";
+import {
+  isInFlightStatus,
+  reconcileInFlightDeployments,
+} from "./build/deployment-state";
 import { __resetDeploymentLogBuffers } from "../data/deployment-logs";
-
-/**
- * Step 4 deployment-reconcile test (relational-store PLAN §8 "Rewrite the
- * store-coupled tests inside the cut-sets").
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -66,8 +62,6 @@ test("isInFlightStatus identifies non-terminal deploy states", () => {
 });
 
 test("reconcile errors orphaned building deploys but leaves queued durable", async () => {
-  // prj_1 is mid-BUILD (its latest deploy dpl_a was building); prj_2 only has a
-  // QUEUED deploy dpl_b (never started) - that one must survive the restart.
   await seedApp(db, { id: "prj_1", status: "building" });
   await seedApp(db, { id: "prj_2", status: "queued" });
   await seedDeployment(db, { id: "dpl_a", appId: "prj_1", status: "building" });
@@ -113,7 +107,6 @@ test("reconcile errors orphaned building deploys but leaves queued durable", asy
     "the queued project stays queued for re-drain",
   );
 
-  // Only the errored (building) deployment got an interrupted-log line.
   const logsA = await db
     .select()
     .from(deploymentLogs)

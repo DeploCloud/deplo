@@ -4,8 +4,10 @@ import { readFileSync } from "node:fs";
 
 import { buildSchema, parse, validate } from "graphql";
 
-import { NAV, SETTINGS_NAV, canSee } from "@/components/layout/nav-config";
-import { ALL_CAPABILITIES } from "@/lib/types";
+import { NAV } from "@/components/layout/nav-config/main-nav";
+import { canSee } from "@/components/layout/nav-config/nav-item";
+import { SETTINGS_NAV } from "@/components/layout/nav-config/settings-nav";
+import { ALL_CAPABILITIES } from "@/lib/types/identity";
 import { SEARCH_QUERY } from "./search-query";
 import {
   teamPageEntries,
@@ -88,7 +90,6 @@ test("matching prefers a label prefix, then a word, then the hint", () => {
     "a hint-only match still lands, further down",
   );
 
-  // Separators fold, so two words find one hyphenated label.
   assert.ok(
     matchEntries(staticEntries(), "api tokens").some(
       (e) => e.label === "API tokens",
@@ -131,8 +132,7 @@ test("a feature switched off is not offered; switched on it is", () => {
 });
 
 test("an app's own switches decide which of its pages are reachable", () => {
-  // The palette used to assume every switch was off, so a console someone had
-  // turned on could not be searched for at all.
+  // The palette used to assume every switch was off, so a console someone had turned on was unsearchable.
   const pagesOf = (features: {
     pullRequests: boolean;
     cronJobs: boolean;
@@ -162,16 +162,14 @@ test("an app's own switches decide which of its pages are reachable", () => {
 });
 
 test("no two rows wear the same label", () => {
-  // An alias earns its place by being a word nav-config does NOT use. Repeating
-  // one just puts the same row on screen twice.
+  // An alias repeating a word nav-config already uses puts the same row on screen twice.
   const labels = staticEntries().map((e) => e.label);
   const twice = labels.filter((l, i) => labels.indexOf(l) !== i);
   assert.deepEqual(twice, [], `duplicated: ${twice.join(", ")}`);
 });
 
 test("the palette's own query is valid against the schema", () => {
-  // Nothing else catches a renamed field here: the document is a string, so it
-  // would only fail on a keystroke, in front of a user.
+  // Nothing else catches a renamed field: the document is a string, so it would only fail on a keystroke.
   const errors = validate(
     buildSchema(readFileSync("schema.graphql", "utf8")),
     parse(SEARCH_QUERY),
@@ -181,8 +179,6 @@ test("the palette's own query is valid against the schema", () => {
     [],
   );
 });
-
-/* ---- One resource's pages, from the root ------------------------- */
 
 const KNOWN_APPS = [
   { id: "prj_1", slug: "deplo-web", name: "deplo-web", logo: null },
@@ -202,8 +198,7 @@ test("every owned page names its owner and has a unique id", () => {
 });
 
 test("two words reach one app's page: 'Deplo variables'", () => {
-  // nav-config calls that page "Environment" and nobody types that, so the
-  // match has to read its description too. This is the case that motivated it.
+  // nav-config calls that page "Environment" and nobody types that, so the match reads its description too.
   assert.deepEqual(
     matchOwnedPages(OWNED, "Deplo variables").map((e) => [
       e.owner?.name,
@@ -239,8 +234,7 @@ test("one word naming a page reaches every app's copy of it", () => {
 });
 
 test("a word that names the app is spent on the app, not on its pages", () => {
-  // "deplo" is a prefix of "deployments", so without that rule typing an app's
-  // name would bury the app under its own fourteen pages.
+  // "deplo" is a prefix of "deployments", so typing an app's name used to bury it under its own pages.
   assert.deepEqual(
     matchOwnedPages(OWNED, "deplo").map((e) => e.owner?.name),
     [],
@@ -301,8 +295,7 @@ test("an app is named by its slug too, as it is on the server", () => {
 });
 
 test("the palette navigates and nothing else", () => {
-  // Every row is a destination: no Redeploy, no Copy URL, no group called
-  // "Actions" - and the wizard, which no nav row of its own points at.
+  // Every row is a destination: no Redeploy, no Copy URL, no group called "Actions".
   const stat = staticEntries();
   assert.deepEqual(
     stat.filter((e) => e.group === "Actions"),
@@ -314,8 +307,7 @@ test("the palette navigates and nothing else", () => {
 });
 
 test("a row is findable by what its capability is called", () => {
-  // "manage" is nowhere on the MCP row - it lives only in `manage_mcp`, whose
-  // catalogue entry is called "Manage MCP access" and lists the agents by name.
+  // "manage" is nowhere on the MCP row - it lives only in `manage_mcp`'s catalogue entry.
   const all = staticEntries();
   const label = (q: string) => matchEntries(all, q).map((e) => e.label);
 
@@ -324,7 +316,6 @@ test("a row is findable by what its capability is called", () => {
   assert.deepEqual(label("secrets"), ["Variables"]);
   assert.deepEqual(label("discord"), ["Notifications"]);
 
-  // The same corpus reaches one app's pages, where nav-config gates them.
   const owned = ownedPageEntries(
     [{ id: "p1", slug: "blog", name: "blog", logo: null }],
     [],
@@ -334,8 +325,6 @@ test("a row is findable by what its capability is called", () => {
     ["Access"],
   );
 });
-
-/* ---- The rules that keep one odd name from breaking the rest ---- */
 
 test("two apps may share a display name - the same app in two environments", () => {
   const owned = ownedPageEntries(
@@ -356,8 +345,7 @@ test("two apps may share a display name - the same app in two environments", () 
 });
 
 test("an app called after a page does not take that word away from everyone", () => {
-  // Someone WILL name an app "logs". Before, that made `logs` unable to reach
-  // any app's Logs page at all, for the whole team.
+  // Someone WILL name an app "logs", and that used to stop `logs` reaching any app's Logs page.
   const owned = ownedPageEntries(
     [
       { id: "p1", slug: "logs", name: "logs", logo: null },
@@ -399,8 +387,7 @@ test("a word that only PREFIXES a page name still names the app", () => {
 });
 
 test("every gate names a capability that exists", () => {
-  // A typo here is invisible twice over: `canSee` hides the row for everyone,
-  // and the capability's own words never join what the row can be found by.
+  // A typo is invisible twice over: `canSee` hides the row, and its capability words never join the search corpus.
   const rows = [
     ...staticEntries(),
     ...appPageEntries("blog"),
@@ -461,8 +448,7 @@ test("a database's switched-off tabs are not offered either", () => {
 });
 
 test("folding never invents a word across two real ones", () => {
-  // "access login" folded to one string reads "...accesSSLogin...", so the
-  // Access page answered to "ssl". Certificates live on Domains, not there.
+  // "access login" folded to one string reads "accesSSLogin", so the Access page answered to "ssl".
   const pages = appPageEntries("blog");
   assert.deepEqual(
     matchEntries(pages, "ssl").map((e) => e.label),
@@ -470,8 +456,7 @@ test("folding never invents a word across two real ones", () => {
     "and not Access, which only spelled it across a word boundary",
   );
 
-  // ...and the hyphen inside ONE word still folds away, which is the whole
-  // reason the rule ignores separators.
+  // The hyphen inside ONE word still folds away, which is why the rule ignores separators.
   const rows = [
     {
       id: "x",
@@ -508,7 +493,6 @@ test("the words people type reach the page that answers them", () => {
     );
   }
 
-  // And the per-app tabs, which carry the slug in their href.
   const tabs = appPageEntries("blog");
   for (const typed of ["ssl", "https", "certificate"]) {
     assert.deepEqual(

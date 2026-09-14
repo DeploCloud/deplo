@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { composePublishesPorts } from "./compose-lint";
+import { composePublishesPorts } from "./compose-lint/host-ports";
 
-/**
- * The server gates compose stacks that publish ports behind the `canExposePorts`
- * grant. "Publishing a port" means one thing: a service declares host-mapped
- * `ports:`.
- */
+// The `canExposePorts` grant gates exactly one thing: a service declaring host-mapped `ports:`.
 
 test("composePublishesPorts: true for a short-form host port", () => {
   const yaml = `services:

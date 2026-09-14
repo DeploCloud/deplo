@@ -1,6 +1,6 @@
-import { PROVIDERS, tokenHelpUrl } from "./providers";
+import { PROVIDERS, tokenHelpUrl } from "./providers/registry";
 import { tokenScopesLine } from "./provider-access";
-import type { GitProviderChoice, GitProviderId } from "../types";
+import type { GitProviderChoice, GitProviderId } from "../types/git";
 
 /** The connectable hosts, for every screen that offers the Connect dialog. Static,
  *  so it is passed down from a page rather than fetched. */

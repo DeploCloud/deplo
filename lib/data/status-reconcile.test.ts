@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { reconcileStatus } from "./apps";
-import { BACKUP_RUN_MAX_MS } from "../infra/agent-client";
+import { reconcileStatus } from "./apps/summary";
+import { BACKUP_RUN_MAX_MS } from "../infra/agent-client/deadlines";
 
 const NOW = Date.UTC(2026, 0, 1, 12, 0, 0); // fixed clock for deterministic age
 const at = (msAgo: number) => new Date(NOW - msAgo).toISOString();

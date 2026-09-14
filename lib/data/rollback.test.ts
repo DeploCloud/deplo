@@ -21,19 +21,14 @@ import {
 } from "./app-graph-test-helpers";
 import {
   listDeployments,
-  rollbackDeployment,
   getDeployment,
-} from "./deployments";
+} from "./deployments/deployment-queries";
+import { rollbackDeployment } from "./deployments/rollback";
 import { loadDeploymentsForApp } from "./app-graph-load";
 import { getDb } from "../db/client";
-import { apps as appsTable } from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { eq } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
-
-/**
- * Rollback, at the data layer: which deployments an app can be put back on, and
- * every way a target that LOOKS eligible is not.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -63,11 +58,9 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** `<n>` minutes before a fixed base, so "newest first" is unambiguous. */
 const at = (minutesAgo: number) =>
   new Date(Date.UTC(2026, 0, 1, 12, 0, 0) - minutesAgo * 60_000).toISOString();
 
-/** One app with `count` successful builds, newest first: dpl_0 is live. */
 async function seedBuilds(count: number, rollbackKeep = 3) {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web", rollbackKeep });
   for (let i = 0; i < count; i++) {
@@ -89,12 +82,10 @@ const rollbackable = async () =>
 
 test("the live build is not a rollback target, the ones behind it are", async () => {
   await seedBuilds(3);
-  // dpl_0 is what the container is running - going "back" to it is a no-op.
   assert.deepEqual(await rollbackable(), ["dpl_1", "dpl_2"]);
 });
 
 test("the window is rollback_keep deep, and nothing older is offered", async () => {
-  // Six builds, keep 2: the live one plus two behind it are on the host.
   await seedBuilds(6, 2);
   assert.deepEqual(await rollbackable(), ["dpl_1", "dpl_2"]);
 });
@@ -105,8 +96,6 @@ test("rollback_keep 0 turns the feature off for that app", async () => {
 });
 
 test("a deployment with no image of ours is never a target", async () => {
-  // What a compose stack or a prebuilt `docker-image` source leaves behind: a
-  // successful deployment that minted nothing this host can re-run.
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web" });
   await seedDeployment(db, {
     id: "dpl_0",
@@ -200,7 +189,6 @@ test("rolling back re-runs the target's image and records what it went back to",
   const dep = await asUser1(() => rollbackDeployment("dpl_2"));
 
   assert.equal(dep.rollbackOf, "dpl_2");
-  // The IMAGE is the target's, not a new one - that is the whole feature.
   assert.equal(dep.imageRef, "deplo/web:dpl_2");
   assert.equal(dep.status, "queued");
   assert.equal(dep.environment, "production");
@@ -209,24 +197,17 @@ test("rolling back re-runs the target's image and records what it went back to",
 test("a queued rollback has not moved the live image yet", async () => {
   await seedBuilds(3, 2);
   await asUser1(() => rollbackDeployment("dpl_2"));
-  // Still dpl_0 running until the deploy lands, so the offer is unchanged - the
-  // window must follow what the container HAS, not what it was asked to become.
   assert.deepEqual(await rollbackable(), ["dpl_1", "dpl_2"]);
 });
 
 test("a rollback row occupies no retention slot, so rolling FORWARD still works", async () => {
   await seedBuilds(3, 2);
   const back = await asUser1(() => rollbackDeployment("dpl_2"));
-  // What the deploy pipeline writes when the stack comes up (commitOutcome).
   await pg.exec(
     `update deployments set status = 'ready' where id = '${back.id}';`,
   );
 
-  // dpl_2's image is live now, so it drops off; dpl_0 and dpl_1 are the way back
-  // up. If the rollback row had counted as a build, the window would have slid by
-  // one and dpl_1 would have vanished with nothing having been built.
   assert.deepEqual(await rollbackable(), ["dpl_0", "dpl_1"]);
-  // And the rollback row itself is never a target: it built no image.
   const rows = await asUser1(() => listDeployments({ appId: "prj_1" }));
   assert.equal(rows.find((d) => d.rollbackOf === "dpl_2")?.canRollback, false);
 });
@@ -265,8 +246,6 @@ test("a failed build is refused by name, not by the window", async () => {
 
 test("a deployment of another team's app is not found, not refused", async () => {
   await seedBuilds(3);
-  // Same answer as a nonexistent id: a cross-team caller learns nothing about
-  // whether the deployment exists.
   await assert.rejects(
     () =>
       runWithIdentity({ userId: "user_2", teamId: TEAM_B }, () =>
@@ -274,7 +253,6 @@ test("a deployment of another team's app is not found, not refused", async () =>
       ),
     /not found/i,
   );
-  // …and nothing was queued for it.
   assert.equal((await loadDeploymentsForApp("prj_1")).length, 3);
 });
 
@@ -289,18 +267,6 @@ test("a member without rollback_apps cannot roll back", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The app as it is NOW, not as it was                                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * An app can CHANGE SOURCE, and its old rows keep the `image_ref` they were built
- * with. Offering one is offering a deploy the pipeline answers differently: a
- * compose app is handled by its own branch of `runDeployment`, which would bring
- * the CURRENT stack up and report success while the row claimed to be a rollback
- * of an old commit. That is the one failure shape worth a test of its own - it
- * does not error, it lies.
- */
 test("an app that has SINCE become a compose stack offers none of its old builds", async () => {
   await seedApp(db, {
     id: "prj_1",
@@ -321,8 +287,6 @@ test("an app that has SINCE become a compose stack offers none of its old builds
       imageRef: `deplo/web:${id}`,
     });
   }
-  // Switched to a compose stack and deployed as one; a compose deploy mints no
-  // image, so its row carries image_ref NULL.
   await getDb()
     .update(appsTable)
     .set({
@@ -365,7 +329,6 @@ test("an app that has SINCE become a prebuilt image offers none of its old build
       imageRef: `deplo/web:${id}`,
     });
   }
-  // A registry tag pins nothing: "back" would land on whatever it points at today.
   await getDb()
     .update(appsTable)
     .set({
@@ -386,16 +349,6 @@ test("an app that has SINCE become a prebuilt image offers none of its old build
   assert.deepEqual(await rollbackable(), []);
 });
 
-/* ------------------------------------------------------------------ */
-/* The single-row path                                                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * `getDeployment` answers `canRollback` for ONE row (the deployment page, and any
- * GraphQL path that did not come through a list). It shares the ranking with the
- * list but reads its own bounded slice of history, so the two have to agree - a
- * page that offers a button the list would not is the same lie either way round.
- */
 test("the single-row read agrees with the list, over a history long enough to bound", async () => {
   await seedApp(db, {
     id: "prj_1",
@@ -422,7 +375,6 @@ test("the single-row read agrees with the list, over a history long enough to bo
       `${id}: the deployment page and the list disagree`,
     );
   }
-  // And the window is still exactly rollback_keep deep, 40 rows of history later.
   assert.deepEqual(
     listed.filter((d) => d.canRollback).map((d) => d.id),
     ["dpl_001", "dpl_002"],
@@ -430,15 +382,14 @@ test("the single-row read agrees with the list, over a history long enough to bo
 });
 
 test("the alert for a rollback does not announce a new version", async () => {
-  // The notification goes to a channel the whole team reads. "The new version is
-  // live" at the exact moment somebody undid a deploy is the wrong sentence, and
-  // it is the only place the direction of a deploy is ever spelled out.
-  const src = await readFile(
-    new URL("../deploy/build.ts", import.meta.url),
-    "utf8",
-  );
+  const src = (
+    await Promise.all(
+      ["deployment-state.ts", "deploy-run.ts"].map((f) =>
+        readFile(new URL(`../deploy/build/${f}`, import.meta.url), "utf8"),
+      ),
+    )
+  ).join("\n");
   assert.match(src, /rolled back/);
   assert.match(src, /An earlier version is live again\./);
-  // And it is driven by the ROW, not by a caller remembering to pass a flag.
   assert.match(src, /\{ rollback: Boolean\(dep\.rollbackOf\) \}/);
 });

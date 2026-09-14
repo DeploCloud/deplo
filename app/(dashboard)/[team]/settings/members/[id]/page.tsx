@@ -3,20 +3,20 @@ import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   hasCapability,
   isInstanceAdmin,
   reachesWholeTeam,
 } from "@/lib/membership";
-import { listMembers } from "@/lib/data/members";
+import { listMembers } from "@/lib/data/members/roster";
 import { getMemberAccess } from "@/lib/data/user-access";
-import { listRoles } from "@/lib/data/roles";
-import { listTeamScopeTree } from "@/lib/data/tokens";
-import { listApps } from "@/lib/data/apps";
-import { listDatabases } from "@/lib/data/databases";
+import { listRoles } from "@/lib/data/roles/role-list";
+import { listTeamScopeTree } from "@/lib/data/tokens/scope-tree";
+import { listApps } from "@/lib/data/apps/listing";
+import { listDatabases } from "@/lib/data/databases/rows";
 import { listFolders } from "@/lib/data/folders";
-import { listProjects } from "@/lib/data/projects";
+import { listProjects } from "@/lib/data/projects/read";
 import { ScopedActivity } from "@/components/activity/scoped-activity";
 import { ActivitySkeleton } from "@/components/activity/activity-skeleton";
 import {
@@ -36,18 +36,13 @@ export async function generateMetadata(
   };
 }
 
-/**
- * One member's permissions and reach, in the team you are acting in.
- */
 export default async function MemberPage(
   props: PageProps<"/[team]/settings/members/[id]">,
 ) {
   if (!(await hasCapability("manage_members"))) notFound();
   const { id } = await props.params;
 
-  // The FULL role rows, not a stripped summary: the picker shows each role's
-  // permission count and hides Owner from anyone who can't hand out the rank,
-  // and both read fields a summary doesn't carry.
+  // Full role rows, not a summary: the picker reads each role's permission count and the Owner rank.
   const [viewer, members, access, roles, tree, isAdmin] = await Promise.all([
     getCurrentUser(),
     listMembers(),
@@ -57,18 +52,14 @@ export default async function MemberPage(
     isInstanceAdmin(),
   ]);
   const member = members.find((m) => m.userId === id);
-  // Not a member of the team you are acting in: there is no id to guess your
-  // way into, exactly as on the role and token pages.
+  // Not a member of the team you are acting in: no id to guess your way into.
   if (!member || !access) notFound();
 
-  // The VIEWER's rank, not the target's: only an owner may hand out the owner
-  // role, and reading it off the member you are editing answered "is this person
-  // already an owner", which is a different question.
+  // The VIEWER's rank, not the target's: reading it off the edited member answers a different question.
   const viewerIsOwner = members.some(
     (m) => m.role === "owner" && m.userId === viewer?.id,
   );
-  // The crown, not the rank: an assigned owner may hand out the owner role but
-  // may not hand over the team itself (lib/data/team-ownership.ts).
+  // The crown, not the rank: an assigned owner may not hand over the team (lib/data/team-ownership.ts).
   const viewerIsPrimaryOwner = members.some(
     (m) => m.isPrimaryOwner && m.userId === viewer?.id,
   );
@@ -106,10 +97,6 @@ export default async function MemberPage(
   );
 }
 
-/**
- * Their trail: the same feed, filters and counts as /activity, with the User
- * facet fixed to them and left out.
- */
 async function MemberActivity({
   userId,
   username,
@@ -119,9 +106,7 @@ async function MemberActivity({
   username: string;
   searchParams: Record<string, string | string[] | undefined>;
 }) {
-  // A database belongs to the team and to no project, so `listDatabases` refuses a
-  // role that only reaches part of it - and such a role reaches no database row in
-  // the feed either, so there is nothing to name.
+  // listDatabases refuses a role that reaches only part of the team, and such a role sees no database row anyway.
   const [apps, folders, projects, teamWide] = await Promise.all([
     listApps(),
     listFolders(),

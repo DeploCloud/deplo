@@ -7,14 +7,10 @@ import { DatabaseHealthStat } from "@/components/storage/database-health-stat";
 import { BackupsStat } from "@/components/storage/database-stats";
 import { timeAgoShort } from "@/lib/utils";
 import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
-import type { DatabaseBackupSummary } from "@/lib/data/backups";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseBackupSummary } from "@/lib/data/backups/run-listing";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/**
- * The database Overview: what it is and how to reach it, side by side, with the
- * one control worth having here (publishing the port) inline.
- * https://deplo.build/docs/guides/data/databases
- */
+// DatabaseOverview - what the database is and how to reach it. https://deplo.build/docs/guides/data/databases
 export function DatabaseOverview({
   db,
   serverName,
@@ -31,18 +27,16 @@ export function DatabaseOverview({
   db: DatabaseDTO;
   serverName: string;
   serverHost: string;
-  /** Where the database lives (`Project / Environment`), or null for the team's
-   *  top level - which apps its internal address answers for. */
+  // Where the database lives; null = the team's top level. It decides which apps its internal address answers for.
   environmentLabel?: string | null;
-  /** Every Environment this team has, for the move on the Networking card. */
   environments?: { id: string; label: string }[];
-  /** The viewer holds `reveal_secrets` - what `revealConnection` needs. */
+  // The viewer holds `reveal_secrets` - what `revealConnection` needs.
   canReveal: boolean;
   canConfigure: boolean;
   canExposePorts: boolean;
   canViewBackups: boolean;
   backups: DatabaseBackupSummary;
-  /** Streamed in its own boundary: measuring a volume walks it. */
+  // Streamed in its own boundary: measuring a volume walks it.
   dataStat: React.ReactNode;
 }) {
   const creds = ENGINE_CREDS[db.type];
@@ -62,8 +56,7 @@ export function DatabaseOverview({
             />
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <Field label="Engine">
-                {/* Display name, not the raw id - `capitalize` used to render
-                    "Mysql · V8.4" (it title-cases the version's "v" too). */}
+                {/* Not the raw id: `capitalize` rendered "Mysql · V8.4", title-casing the version's "v". */}
                 <span>
                   {DB_NAMES[db.type] ?? db.type} · v{db.version}
                 </span>

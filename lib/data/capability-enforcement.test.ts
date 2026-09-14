@@ -6,21 +6,20 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
-// Set BEFORE the modules load: with a configured public URL the deploy hook
-// never reaches for request headers, which is what makes it testable here.
+// Set BEFORE the modules load: the deploy hook then never reaches for request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   deployments as deploymentsTable,
   deploymentLogs as deploymentLogsTable,
-  folders as foldersTable,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/deployments";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity, type TokenGrant } from "../auth/request-context";
-import { ALL_CAPABILITIES, type Capability } from "../types";
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import {
   seedApp,
@@ -34,8 +33,9 @@ import {
   __setRunnerForTest,
 } from "../deploy/deploy-queue";
 
-import { createApp } from "./apps";
-import { getLogs, redeploy } from "./deployments";
+import { createApp } from "./apps/create";
+import { getLogs } from "./deployments/build-progress";
+import { redeploy } from "./deployments/stack-actions";
 import { listActivity, recordActivity } from "./activity";
 import { getAppMetrics, getAppMetricsHistory } from "./container-metrics";
 import {
@@ -48,7 +48,8 @@ import { resolveDatabaseLogsTarget } from "./database-console";
 import { listEnv, upsertEnv } from "./env";
 import { deleteTeam } from "./team-delete";
 import { setFolderGrant } from "./folder-access";
-import { authenticateToken, createToken } from "./tokens";
+import { authenticateToken } from "./tokens/authenticate";
+import { createToken } from "./tokens/mint";
 import {
   verifyDeployHookToken,
   revealDeployHook,
@@ -56,25 +57,15 @@ import {
 } from "./deploy-hook";
 import { appInTeam } from "./app-graph-load";
 
-/**
- * Does a permission actually PERMIT anything? The recurring bug class it exists to
- * catch is a capability that is offered but never consulted - a checkbox that
- * changes nothing.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
 const T0 = "2026-01-01T00:00:00.000Z";
 
 const OWNER = "u_owner";
-/** Everything except the four read permissions under test. */
 const NO_READS = "u_no_reads";
-/** Can add an app, but not ship one. */
 const CREATOR = "u_creator";
-/** Can add AND ship. */
 const DEPLOYER = "u_deployer";
-/** Writes variables but must not be able to read one back. */
 const ENV_ONLY = "u_env";
 
 const APP = "prj_1";
@@ -83,8 +74,6 @@ const DEP = "dpl_1";
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // A deploy started by a test must never dial a host: swap the queue's runner
-  // for a no-op, so `createApp`/`redeploy` write their rows and stop there.
   __setRunnerForTest(async () => {});
 });
 
@@ -95,7 +84,6 @@ after(async () => {
 });
 
 const READ_CAPS: Capability[] = ["view_logs", "view_metrics", "view_activity"];
-/** Every capability but the ones a test wants withheld. */
 const allBut = (...without: Capability[]): Capability[] =>
   ALL_CAPABILITIES.filter((c) => !without.includes(c));
 
@@ -154,7 +142,6 @@ beforeEach(async () => {
 const as = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/** As `userId`, but through an API token holding exactly `capabilities`. */
 const asToken = <T>(
   userId: string,
   capabilities: Capability[],
@@ -176,7 +163,6 @@ const asToken = <T>(
     fn,
   );
 
-/** Collapse a call into "refused" / "allowed" without caring how it said so. */
 async function outcome(
   fn: () => Promise<unknown>,
 ): Promise<"refused" | "allowed"> {
@@ -185,22 +171,14 @@ async function outcome(
     return "allowed";
   } catch (e) {
     const m = (e as Error).message;
-    // `only …` covers the refusals that name WHO may act instead of what is
-    // missing ("Only the folder owner can share this folder") - a refusal that
-    // says so plainly, which a caller who can SEE the folder should get instead
-    // of a pretend "not found". Same set the sibling helper in
-    // authz-escape.test.ts recognises.
+    // `only ` catches refusals that name WHO may act ("Only the folder owner can share
+    // this folder"); same set the sibling helper in authz-escape.test.ts recognises.
     if (/permission|not found|Unauthorized|can't|cannot|only /i.test(m))
       return "refused";
     throw e;
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* The static backstop: no decorative capabilities                     */
-/* ------------------------------------------------------------------ */
-
-/** Every `.ts` under a directory, recursively, minus tests. */
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
@@ -214,12 +192,9 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 test("every capability is enforced in the data layer", () => {
-  // The catalog, the presets and the type list all NAME every capability; none
-  // of them gates anything. So they are excluded, and what is left is the code
-  // that actually decides - `lib/data/*` plus the membership gates themselves.
   const CATALOG = [
     "lib/capabilities.ts",
-    "lib/types.ts",
+    "lib/types/identity.ts",
     "lib/token-presets.ts",
     "lib/membership-shared.ts",
   ];
@@ -238,10 +213,6 @@ test("every capability is enforced in the data layer", () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Roles - the read permissions the "Viewer" role is built from        */
-/* ------------------------------------------------------------------ */
-
 test("view_logs gates a deployment's build log", async () => {
   const forOwner = await as(OWNER, () => getLogs(DEP));
   assert.equal(forOwner.length, 1, "the control: a full member reads the log");
@@ -254,7 +225,6 @@ test("view_logs gates a deployment's build log", async () => {
 });
 
 test("the console switch gates attach, not only the sidebar chip", async () => {
-  // Off is the default, so even the owner is answered like the route isn't there.
   assert.deepEqual(await as(OWNER, () => resolveAttachTarget(APP)), {
     ok: false,
     reason: "not-found",
@@ -276,8 +246,6 @@ test("the console switch gates attach, not only the sidebar chip", async () => {
 });
 
 test("view_logs gates the live container log stream", async () => {
-  // The gate runs BEFORE the agent dial, so "forbidden" is unambiguous: an
-  // allowed caller gets as far as the (absent) host and reports unreachable.
   const denied = await as(NO_READS, () => resolveLogsTarget(APP));
   assert.deepEqual(denied, { ok: false, reason: "forbidden" });
 
@@ -322,10 +290,6 @@ test("view_metrics gates the monitoring reads", async () => {
     assert.deepEqual(await getAppMetricsHistory(APP), []);
   });
 });
-
-/* ------------------------------------------------------------------ */
-/* Roles - create is not deploy                                        */
-/* ------------------------------------------------------------------ */
 
 const deploymentsOf = async (appId: string) =>
   db.select().from(deploymentsTable).where(eq(deploymentsTable.appId, appId));
@@ -398,8 +362,6 @@ test("create_apps is not permission to claim a hostname", async () => {
       "refused",
       "and the extras go the same way the primary does",
     );
-    // A template's own generated host is not a claim, so the first-run path is
-    // untouched by the gate.
     const fromTemplate = await createApp({
       name: "From template",
       source: "docker-image",
@@ -422,18 +384,11 @@ test("a member without create_apps cannot create at all", async () => {
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* Secrets are write-only, for EVERY role                              */
-/* ------------------------------------------------------------------ */
-
 test("nobody reads a secret back, not even the owner", async () => {
   await as(OWNER, () =>
     upsertEnv({ appId: APP, key: "API_KEY", value: "s3cr3t", type: "secret" }),
   );
 
-  // There is no reveal mutation left, so the only read is the list, and the list
-  // masks. The owner is the control: this is not a capability the actor lacks,
-  // it is a value the system will not hand to anyone.
   for (const actor of [OWNER, ENV_ONLY]) {
     const [row] = await as(actor, () => listEnv(APP));
     assert.equal(row!.masked, true);
@@ -444,8 +399,6 @@ test("nobody reads a secret back, not even the owner", async () => {
     );
   }
 
-  // And the door that used to open it: relabel the row plain, keeping the
-  // ciphertext, then read it off the list. `manage_env` was all it took.
   await assert.rejects(
     () =>
       as(ENV_ONLY, () =>
@@ -461,12 +414,7 @@ test("nobody reads a secret back, not even the owner", async () => {
   assert.equal((await as(OWNER, () => listEnv(APP)))[0]!.masked, true);
 });
 
-/* ------------------------------------------------------------------ */
-/* Roles - delete_team                                                 */
-/* ------------------------------------------------------------------ */
-
 test("delete_team gates deleting the team, even for the founder", async () => {
-  // A second team, so the only-team guard isn't what refuses.
   await db.insert(teamsTable).values({
     id: "team_second",
     name: "Second",
@@ -476,7 +424,9 @@ test("delete_team gates deleting the team, even for the founder", async () => {
     createdAt: T0,
   });
   await db
-    .insert((await import("../db/schema/control-plane")).memberships)
+    .insert(
+      (await import("../db/schema/control-plane/access-control")).memberships,
+    )
     .values({
       id: "mem_second",
       userId: OWNER,
@@ -484,7 +434,6 @@ test("delete_team gates deleting the team, even for the founder", async () => {
       role: "owner",
       createdAt: T0,
     });
-  // TEAM_A's founder, stripped of delete_team by a role edit.
   await db
     .update(teamsTable)
     .set({ founderUserId: OWNER })
@@ -510,12 +459,7 @@ test("delete_team gates deleting the team, even for the founder", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* API tokens                                                          */
-/* ------------------------------------------------------------------ */
-
 test("a token can never exceed its own capability set", async () => {
-  // The creator is the team owner - the token is not.
   await asToken(OWNER, ["view"], async () => {
     assert.equal(await outcome(() => redeploy(APP)), "refused");
     assert.deepEqual(await getLogs(DEP), []);
@@ -538,7 +482,9 @@ test("a read-only token cannot delete its creator's team", async () => {
     createdAt: T0,
   });
   await db
-    .insert((await import("../db/schema/control-plane")).memberships)
+    .insert(
+      (await import("../db/schema/control-plane/access-control")).memberships,
+    )
     .values({
       id: "mem_third",
       userId: OWNER,
@@ -568,9 +514,6 @@ test("a read-only token cannot delete its creator's team", async () => {
 });
 
 test("instance-admin is per-token: a plain token minted by an admin is not an admin", async () => {
-  // Someone ELSE's folder, shared with nobody. Its owner may re-share it, and so
-  // may an instance admin - as a PERSON. The question here is whether that admin
-  // power rides along on a token that was never given it.
   await db.insert(foldersTable).values({
     id: "fld_private",
     teamId: TEAM_A,
@@ -582,13 +525,12 @@ test("instance-admin is per-token: a plain token minted by an admin is not an ad
     updatedAt: T0,
   });
 
-  // The control: over a session the instance admin administers it.
   await as(OWNER, () =>
     setFolderGrant("fld_private", CREATOR, ["deploy_apps"]),
   );
 
-  // Everything EXCEPT manage_team, which makes any member a folder super-user in
-  // its own right and would mask the question being asked.
+  // Everything EXCEPT manage_team, which makes any member a folder super-user in its own
+  // right and would mask the question being asked.
   await asToken(OWNER, allBut("manage_team"), async () => {
     assert.equal(
       await outcome(() =>
@@ -599,7 +541,6 @@ test("instance-admin is per-token: a plain token minted by an admin is not an ad
     );
   });
 
-  // A token that WAS given it still can.
   await asToken(
     OWNER,
     allBut("manage_team"),
@@ -609,8 +550,6 @@ test("instance-admin is per-token: a plain token minted by an admin is not an ad
 });
 
 test("a token holding a capability its creator has lost is refused", async () => {
-  // The token names deploy_apps; the member no longer holds it. The live
-  // intersection, not the mint-time snapshot, is what decides.
   await asToken(ENV_ONLY, ["view", "deploy_apps"], async () => {
     assert.equal(await outcome(() => redeploy(APP)), "refused");
   });
@@ -635,9 +574,7 @@ test("a node grant reaches a token only through the token's own set", async () =
     setFolderGrant("fld_shared", ENV_ONLY, ["deploy_apps", "view_logs"]),
   );
 
-  // Over a session the grant applies in full.
   assert.equal((await as(ENV_ONLY, () => getLogs(DEP))).length, 1);
-  // Through a token that was not given view_logs, it does not.
   assert.deepEqual(
     await asToken(ENV_ONLY, ["view"], () => getLogs(DEP)),
     [],
@@ -658,9 +595,7 @@ test("a project-scoped token loses the team-wide capabilities", async () => {
     OWNER,
     [...ALL_CAPABILITIES],
     async () => {
-      // The app is at the team top level, so no narrowed scope reaches it.
       assert.equal(await outcome(() => redeploy(APP)), "refused");
-      // A read out of scope answers exactly like one that isn't there.
       assert.deepEqual(await getLogs(DEP), []);
     },
     { scope },
@@ -671,8 +606,6 @@ test("a minted token's capabilities are clamped to its creator at mint time", as
   const { raw } = await as(ENV_ONLY, () =>
     createToken({ name: "over-reaching", capabilities: [...ALL_CAPABILITIES] }),
   ).catch(() => ({ raw: "" }));
-  // ENV_ONLY has no manage_tokens, so it cannot mint at all - that is the first
-  // clamp. The owner's mint is the one that must be narrowed, not refused.
   assert.equal(raw, "", "minting a token needs manage_tokens");
 
   const minted = await as(OWNER, () =>
@@ -686,18 +619,11 @@ test("a minted token's capabilities are clamped to its creator at mint time", as
   assert.deepEqual(principal!.token!.capabilities, ["view", "deploy_apps"]);
 });
 
-/* ------------------------------------------------------------------ */
-/* Deploy hooks                                                        */
-/* ------------------------------------------------------------------ */
-
-/** Everything `app/api/apps/[id]/deploy-hook/[token]/route.ts` does, minus HTTP. */
 async function hookCall(
   raw: string,
   appId: string,
   urlToken: string,
 ): Promise<"401" | "404" | "403-disabled" | "refused" | "deployed"> {
-  // The route catches this throw and answers 401 with the reason (an unmet
-  // two-factor policy is a refusal, not a crash).
   const principal = await authenticateToken(
     raw,
     await owningTeamId(appId),
@@ -792,7 +718,6 @@ test("a suspended member's token stops working everywhere", async () => {
   );
   await runWithIdentity(principal!, async () => {
     assert.equal(await outcome(() => redeploy(APP)), "refused");
-    // And reads fail closed too, rather than answering as the suspended member.
     await assert.rejects(() => listActivity());
   });
 });
@@ -811,6 +736,5 @@ test("an unmet two-factor policy refuses a token, with a reason", async () => {
     /two-factor/i,
     "the credential is refused, and says why - a CI job must not get a bare 500",
   );
-  // The deploy hook maps that refusal onto 401 rather than crashing.
   assert.equal(await hookCall(ci.raw, APP, "whatever"), "401");
 });

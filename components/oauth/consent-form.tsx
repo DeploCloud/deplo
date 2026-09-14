@@ -25,15 +25,13 @@ import {
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConsentShell } from "@/components/oauth/consent-shell";
 import { PermissionPicker } from "@/components/settings/permission-picker";
-import {
-  ScopePicker,
-  type ScopeSelection,
-} from "@/components/settings/tokens/scope-picker";
+import { ScopePicker } from "@/components/settings/tokens/scope-picker/picker";
+import type { ScopeSelection } from "@/components/settings/tokens/scope-picker/selection";
 import { gqlAction } from "@/lib/graphql-client";
 import { scopeLabel } from "@/components/settings/tokens/scope-label";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
-import type { Capability } from "@/lib/types";
-import type { ScopeTreeTeam } from "@/lib/data/tokens";
+import type { Capability } from "@/lib/types/identity";
+import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import type { ConsentClientDTO } from "@/lib/data/mcp-clients";
 
 const AUTHORIZE = /* GraphQL */ `
@@ -58,10 +56,8 @@ const AUTHORIZE = /* GraphQL */ `
   }
 `;
 
-/**
- * Finish the OAuth handshake from the BROWSER: the provider's
- * `authorizeEndpoint` throws without `ctx.request`, which an in-process call
- * cannot supply. Refusals arrive in `error_description`, not `message`. */
+// Better Auth's authorizeEndpoint throws without ctx.request, so this POSTs from the browser.
+// Refusals arrive in error_description, not message.
 async function postConsent(body: {
   accept: boolean;
   scope?: string;
@@ -92,9 +88,6 @@ async function postConsent(body: {
   }
 }
 
-/**
- * The consent screen's form.
- */
 export function ConsentForm({
   client,
   scope,
@@ -109,36 +102,25 @@ export function ConsentForm({
   scope: string;
   oauthQuery: string;
   tree: ScopeTreeTeam[];
-  /** The team the mint will actually use - the dropdown must start here. */
   activeTeamId: string;
-  /**
-   * The teams an unscoped connection acts in, right now - named on the form.
-   */
   connectableTeamIds: string[];
-  /** The origin Deplo publishes, which the consent POST must come from. */
   publicOrigin: string | null;
-  /** Whose account the minted token will act as - worth saying before the click. */
   username: string;
 }) {
   const mcpPreset = TOKEN_PRESETS.find((p) => p.id === "mcp");
   const [capabilities, setCapabilities] = useState<Capability[]>(
     mcpPreset?.capabilities ?? ["view"],
   );
-  // Unscoped to begin with: every team this person may connect agents to, read
-  // live on each call, so a team they join later is reached without re-approving.
+  // Empty means unscoped: resolved live on each call, so a team joined later needs no re-approval.
   const [selection, setSelection] = useState<ScopeSelection>({
     teamIds: [],
     projectIds: [],
     folderIds: [],
     appIds: [],
   });
-  // Which half of "what it gets" is being edited. Two dialogs, not one: the row
-  // you press is the question you wanted to answer, and answering the other one
-  // was never the reason you clicked.
   const [editing, setEditing] = useState<null | "access" | "permissions">(null);
 
-  // Better Auth refuses a cookie-carrying POST whose Origin is not the address Deplo
-  // publishes - the CSRF defence the consent posts through.
+  // Better Auth refuses a cookie-carrying POST whose Origin is not the published address (CSRF defence).
   const wrongOrigin =
     typeof window !== "undefined" &&
     !!publicOrigin &&
@@ -154,16 +136,11 @@ export function ConsentForm({
       selection.folderIds.length +
       selection.appIds.length >
     0;
-  // Named where we can name it: one ticked team reads "Idra Arts", not
-  // "1 team". Teams only - a mixed selection is honestly a count, and the
-  // deeper nodes are what the Advanced screen is for.
   const teamNames = useMemo(
     () => Object.fromEntries(tree.map((t) => [t.id, t.name])),
     [tree],
   );
-  // "Access" is what this repo calls a token's reach and "Permissions" what it
-  // calls its capabilities (token-editor.tsx's own summary rows) - same words
-  // here, so the two screens do not name one thing twice.
+  // Same wording as token-editor.tsx's summary rows: "Access" is reach, "Permissions" is capabilities.
   const accessLabel = scoped
     ? scopeLabel({ scoped: true, ...selection }, teamNames)
     : {
@@ -173,9 +150,6 @@ export function ConsentForm({
             : `Every team you can connect (${connectableTeamIds.length})`,
         empty: false,
       };
-  // A team wears its initials everywhere else in Deplo (the team switcher), so it
-  // wears them here too - the reach of a connection is the one place a name in plain
-  // text is easiest to skim past.
   const accessTeams = (
     selection.teamIds.length
       ? selection.teamIds
@@ -187,10 +161,7 @@ export function ConsentForm({
     .filter((t): t is ScopeTreeTeam => !!t)
     .slice(0, 3);
 
-  /**
-   * Consent FIRST, mint second, navigate last. The order is the security property.
-   * Minting first answered to a URL.
-   */
+  // Consent first, mint second, navigate last: minting first answered to a URL.
   async function onApprove(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
@@ -211,8 +182,7 @@ export function ConsentForm({
       projectIds: selection.projectIds,
       folderIds: selection.folderIds,
       appIds: selection.appIds,
-      // What this screen is showing. The server decides the team; this only
-      // lets it refuse when the two have drifted apart.
+      // The server decides the team; this only lets it refuse when the two have drifted apart.
       expectedTeamId: activeTeamId,
     });
     if (!minted.ok) {
@@ -220,16 +190,11 @@ export function ConsentForm({
       toast.error(minted.error || "Deplo refused the connection");
       return;
     }
-    // A full-page navigation, not router.push: the destination is the client's
-    // own site.
+    // Full-page navigation, not router.push: the destination is the client's own site.
     window.location.assign(done.url);
   }
 
-  /**
-   * Signed in as the wrong person - the one thing this screen can be right about
-   * and still be wrong, because the token it mints acts as whoever is looking at
-   * it.
-   */
+  // The minted token acts as whoever is signed in here.
   async function onSwitchAccount() {
     setPending(true);
     await gqlAction(`mutation { logout }`, {});
@@ -261,14 +226,10 @@ export function ConsentForm({
       ) : null}
 
       <Card>
-        {/* One column, centred: the app asking, then the two lines that say
-            what it gets, then the choice. Everything else is behind a row. */}
+        {/* One column, centred: the app, then what it gets, then the choice. */}
         <form className="grid gap-6 p-6" onSubmit={onApprove}>
           <div className="grid justify-items-center gap-4 text-center">
-            {/**
-             * Remote icons never render, the CSP is `img-src 'self' blob: data:`, so this is
-             * initials for almost every client, and the `src` is here for the rare `data:` one.
-             */}
+            {/* CSP is img-src 'self' blob: data:, so a remote icon never renders and src only serves a data: one. */}
             <Avatar className="size-14">
               <AvatarImage src={client.icon ?? undefined} alt="" />
               <AvatarFallback className="bg-muted text-base font-semibold">
@@ -303,8 +264,7 @@ export function ConsentForm({
             >
               What it gets
             </FieldLabel>
-            {/* One row, one dialog: press the half of the sentence you want to
-                change and that is the only thing you are asked about. */}
+            {/* One row per half of the sentence, each opening its own dialog. */}
             <div className="divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
               <SummaryRow
                 label="Access"
@@ -367,18 +327,14 @@ export function ConsentForm({
         </button>
       </p>
 
-      {/**
-       * Where the app may work, opened on demand so the default path is reading two lines
-       * and pressing Authorize.
-       */}
+      {/* Where the app may work, opened on demand. */}
       <Dialog
         open={editing === "access"}
         onOpenChange={(open) => setEditing(open ? "access" : null)}
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            {/* Not titled "Access": the picker below brings its own heading, and
-                the word printed twice one line apart reads as a bug. */}
+            {/* Not titled "Access": the picker below brings its own heading, so the word would print twice. */}
             <DialogTitle>What {client.name} can reach</DialogTitle>
             <DialogDescription className="mt-1">
               Nothing ticked means every team you can connect, now and later.
@@ -392,9 +348,7 @@ export function ConsentForm({
               setEditing(null);
             }}
           >
-            {/**
-             * ONE control for "where".
-             */}
+            {/* One control for "where". */}
             <ScopePicker
               tree={tree}
               selection={selection}
@@ -467,9 +421,7 @@ export function ConsentForm({
                   </p>
                 ) : null}
               </div>
-              {/* Bounded and scrolled, like the scope tree next door: forty-odd
-                  permissions growing the dialog past its own cap put Done below
-                  the fold, reachable only by scrolling the whole modal. */}
+              {/* scroll: forty-odd permissions grew the dialog past its cap and put Done below the fold. */}
               <PermissionPicker
                 capabilities={capabilities}
                 onChange={setCapabilities}
@@ -488,10 +440,9 @@ export function ConsentForm({
   );
 }
 
-/** Radix needs a value for the "matches no preset" state; it is never chosen. */
+// Radix needs a value for the "matches no preset" state; it is never chosen.
 const CUSTOM = "custom";
 
-/** One line of the summary - a label, what it currently says, and a way in. */
 function SummaryRow({
   label,
   children,

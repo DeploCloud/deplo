@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { titleCase, truncate } from "@/lib/utils";
 import { DB_NAMES } from "@/components/storage/db-engines";
 import { DatabaseLogo } from "@/components/storage/database-logo";

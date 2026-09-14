@@ -1,10 +1,10 @@
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   hasCapability,
   isInstanceAdmin,
   reachesWholeTeam,
 } from "@/lib/membership";
-import { listMembers } from "@/lib/data/members";
+import { listMembers } from "@/lib/data/members/roster";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { MembersManager } from "@/components/members/members-manager";
 

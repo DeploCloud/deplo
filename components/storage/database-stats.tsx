@@ -5,11 +5,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import { formatBytes, timeAgoShort, cn } from "@/lib/utils";
-import type { DatabaseBackupSummary } from "@/lib/data/backups";
+import type { DatabaseBackupSummary } from "@/lib/data/backups/run-listing";
 import type { ContainerMetrics } from "@/lib/data/container-metrics";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/** One tile of the overview's bottom row. */
+// StatCard - one tile of the overview's bottom row.
 export function StatCard({
   icon: Icon,
   label,
@@ -42,10 +42,7 @@ export function StatCard({
   );
 }
 
-/**
- * Data on disk, measured live. `bytes === null` means the owning agent cannot
- * answer yet - a dash, never a zero, which would read as an empty database.
- */
+// DataStat - `bytes === null` means the agent cannot answer yet: a dash, never a zero that reads as an empty database.
 export function DataStat({
   db,
   metrics,
@@ -57,8 +54,7 @@ export function DataStat({
   bytes: number | null | undefined;
   href: string;
 }) {
-  // The docker limit is the HOST's RAM when nothing caps the container, so the
-  // denominator comes from the stored cap or there is none.
+  // Docker reports the HOST's RAM as the limit when nothing caps the container, so the denominator is the stored cap.
   const capMb = db.resources?.memoryMb ?? null;
   const ram =
     metrics?.online && metrics.memUsed > 0

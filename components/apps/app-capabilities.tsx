@@ -8,12 +8,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { Capability } from "@/lib/types";
+import type { Capability } from "@/lib/types/identity";
 
-/**
- * What the current viewer may do to the app they are looking at - published by the
- * app layout, read by every control inside it.
- */
 const AppCapabilitiesContext = React.createContext<ReadonlySet<Capability>>(
   new Set<Capability>(),
 );
@@ -25,8 +21,6 @@ export function AppCapabilitiesProvider({
   capabilities: Capability[];
   children: React.ReactNode;
 }) {
-  // The array identity changes on every RSC payload; its contents don't, so key
-  // the memo on the contents and every consumer below stops re-rendering.
   const key = capabilities.join(",");
   const value = React.useMemo(
     () => new Set<Capability>(key ? (key.split(",") as Capability[]) : []),
@@ -39,21 +33,17 @@ export function AppCapabilitiesProvider({
   );
 }
 
-/** True when the viewer holds `cap` on the app currently open. */
+// useAppCan - true when the viewer holds `cap` on the app currently open.
 export function useAppCan(cap: Capability): boolean {
   return React.useContext(AppCapabilitiesContext).has(cap);
 }
 
-/** The one-line reason a control is closed, named after the permission itself. */
+// needsCapability - the one-line reason a control is closed.
 export function needsCapability(cap: Capability): string {
   return `Needs the “${CAPABILITY_META[cap].label}” permission`;
 }
 
-/**
- * Makes a whole section read-only when the viewer lacks `cap`: a native `<fieldset
- * disabled>` (which disables every control inside it, however deeply nested) plus
- * one line saying why.
- */
+// CapabilityFieldset - makes a whole section read-only when the viewer lacks `cap`.
 export function CapabilityFieldset({
   cap,
   children,
@@ -75,9 +65,7 @@ export function CapabilityFieldset({
   );
 }
 
-/**
- * Wraps a control that is disabled for lack of `cap` so hovering still says why.
- */
+// CapabilityTip - wraps a control disabled for lack of `cap` so hovering says why.
 export function CapabilityTip({
   cap,
   children,
@@ -85,8 +73,6 @@ export function CapabilityTip({
 }: {
   cap: Capability;
   children: React.ReactNode;
-  /** Layout for the wrapper - pass the row's own classes when wrapping several
-   *  controls at once, so their spacing survives. */
   className?: string;
 }) {
   const can = useAppCan(cap);

@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { Cpu } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { getAppMetricsHistory } from "@/lib/data/container-metrics";
 import { hasAppCapability } from "@/lib/data/node-access";
-import { listServers } from "@/lib/data/servers";
+import { listServers } from "@/lib/data/servers/roster";
 import { canMountHostVolumes } from "@/lib/membership";
 import { serverLabel, usesComposeStack } from "@/lib/utils";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
-import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-form";
+import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-form/resource-limits-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 
 export const metadata = { title: "Resources" };

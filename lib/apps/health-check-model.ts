@@ -1,11 +1,5 @@
-import type { HealthCheck } from "../types";
+import type { HealthCheck } from "../types/container";
 import { HEALTH_CHECK_DEFAULTS } from "../deploy/health-check";
-
-/**
- * The pure data model behind the Health check settings card - the string ⇄ number
- * mapping and the one validation rule, with NO React so it unit-tests directly
- * (the same split as `resource-limits-model`).
- */
 
 export interface HealthCheckForm {
   enabled: boolean;
@@ -31,7 +25,7 @@ export const EMPTY_HEALTH_CHECK_FORM: HealthCheckForm = {
   startPeriodS: String(HEALTH_CHECK_DEFAULTS.startPeriodS),
 };
 
-/** The saved check → the editable form (null ⇒ the defaults, switched off). */
+// healthCheckToForm maps the saved check to the editable form (null ⇒ defaults, off).
 export function healthCheckToForm(h: HealthCheck | null): HealthCheckForm {
   if (!h) return { ...EMPTY_HEALTH_CHECK_FORM };
   return {
@@ -53,7 +47,7 @@ function num(v: string, fallback: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
-/** The form → what a save sends. Null when the switch is off. */
+// healthCheckFromForm is what a save sends, or null when the switch is off.
 export function healthCheckFromForm(f: HealthCheckForm): HealthCheck | null {
   if (!f.enabled) return null;
   const port = f.port.trim() ? num(f.port, 0, 1, 65535) : null;
@@ -74,10 +68,7 @@ export function healthCheckFromForm(f: HealthCheckForm): HealthCheck | null {
   };
 }
 
-/**
- * Why this check cannot be saved, or null. A check that never passes is worse
- * than none: the app would sit unhealthy forever.
- */
+// healthCheckProblem is why this check cannot be saved, or null.
 export function healthCheckProblem(h: HealthCheck | null): string | null {
   if (!h) return null;
   if (h.type === "command" && !h.command?.trim())

@@ -1,16 +1,5 @@
-import type { LogLevel } from "./types";
+import type { LogLevel } from "./types/deployment";
 
-/**
- * Level detection for RAW log lines that arrive without a level tag - a
- * container's stdout/stderr from `docker logs -f`, and a build's output, which the
- * agent forwards verbatim under a blanket `info` (only the lines Deplo itself
- * writes into a build's sink carry an authored level, so `loadDeploymentLogs`
- * re-reads the rest through here).
- */
-
-/**
- * Level words as every mainstream logger spells them, folded onto Deplo's five.
- */
 const LEVEL_WORDS: Record<string, LogLevel> = {
   trc: "debug",
   trace: "debug",
@@ -42,10 +31,7 @@ function levelWord(word: string | undefined): LogLevel | null {
   return word ? (LEVEL_WORDS[word.toLowerCase()] ?? null) : null;
 }
 
-/**
- * A numeric level, on whichever of the two scales the number can only belong to.
- * pino/bunyan use 10/20/30/40/50/60; syslog uses 0-7.
- */
+// pino/bunyan use 10/20/30/40/50/60; syslog uses 0-7.
 function levelFromNumber(n: number): LogLevel | null {
   if (n >= 10) {
     if (n >= 50) return "error";
@@ -54,9 +40,9 @@ function levelFromNumber(n: number): LogLevel | null {
     return "debug";
   }
   if (n <= 7) {
-    if (n <= 3) return "error"; // emerg / alert / crit / err
+    if (n <= 3) return "error";
     if (n === 4) return "warn";
-    if (n <= 6) return "info"; // notice / info
+    if (n <= 6) return "info";
     return "debug";
   }
   return null;
@@ -64,37 +50,29 @@ function levelFromNumber(n: number): LogLevel | null {
 
 const LEVEL_KEY = "level|severity|levelname|loglevel|log\\.level|lvl";
 
-/** `"level":"error"` / `"severity":"WARN"` / `"log.level":"debug"` - JSON. */
 const JSON_LEVEL = new RegExp(
   `"(?:${LEVEL_KEY})"\\s*:\\s*"([A-Za-z]{3,11})"`,
   "i",
 );
 
-/** `"level":50` - pino's numeric scale, or syslog's, inside a JSON log line. */
+// `"level":50` - pino's numeric scale, or syslog's, inside a JSON log line.
 const JSON_LEVEL_NUM = new RegExp(
   `"(?:${LEVEL_KEY})"\\s*:\\s*(\\d{1,2})(?![\\d.])`,
   "i",
 );
 
-/** logfmt, as Go's slog / zap's console encoder / Traefik's text mode print it. */
+// logfmt, as Go's slog / zap's console encoder / Traefik's text mode print it.
 const LOGFMT_LEVEL = new RegExp(
   `(?:^|\\s)(?:${LEVEL_KEY})\\s*=\\s*"?([A-Za-z]{3,11})"?(?=[\\s,;}\\])]|$)`,
   "i",
 );
 
-/**
- * Every `[bracketed]` word in the line, in order. Scanned as a LIST rather than
- * matched once because the level is routinely not the first bracket: logback
- * prints `[main] INFO com.acme - up`, and Postgres prints `[1] LOG: ready`.
- */
+// A LIST because the level is routinely not the first bracket: logback prints `[main] INFO`, Postgres `[1] LOG:`.
 const BRACKET_WORDS = /\[\s*([A-Za-z]{3,11})\s*\]/g;
 
-/**
- * A `word:` tag, wherever it sits on the line.
- */
 const TAGGED_WORDS = /(?:^|[\s\]|>])([A-Za-z]{3,11})\s*:(?!\/)/g;
 
-/** glog / klog, which is what Go core tooling, kubelet and containerd emit. */
+// glog / klog, which is what Go core tooling, kubelet and containerd emit.
 const GLOG = /^([EWIF])\d{4}\s+\d{2}:\d{2}:\d{2}/;
 const GLOG_LEVEL: Record<string, LogLevel> = {
   E: "error",
@@ -103,26 +81,17 @@ const GLOG_LEVEL: Record<string, LogLevel> = {
   I: "info",
 };
 
-/**
- * A bare UPPERCASE level word standing as its own column - how logback, log4j,
- * Serilog and Spring Boot lay a line out: `2026-08-24 10:00:00.000 INFO 1 ---
- * [main] c.a.App : started`.
- */
+// A bare UPPERCASE level word as its own column, how logback, log4j, Serilog and Spring Boot lay a line out.
 const COLUMN_LEVEL =
   /(?:^|\s)(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|SEVERE|NOTICE)(?=\s)/;
 const COLUMN_LEVEL_WINDOW = 64;
 
-/** A syslog priority frame, `<11>Aug 24 ...`. severity = PRI mod 8. */
+// A syslog priority frame, `<11>Aug 24 ...`: severity = PRI mod 8.
 const SYSLOG_PRI = /^<(\d{1,3})>/;
 
-/** npm/pnpm/yarn write their level as a literal prefix, not a tag. */
-// `\b` is wrong after `ERR!`: `!` and the space that follows are both
-// non-word characters, so there is no boundary between them.
+// npm/pnpm/yarn write their level as a literal prefix; `\b` is wrong after `ERR!`, both sides are non-word.
 const NPM_PREFIX = /^\s*(?:npm|pnpm|yarn)\s+(ERR!|WARN|warning|notice)(?=\s|$)/;
 
-/**
- * Tier 1 - the producer stated the level.
- */
 function declaredLevel(m: string): LogLevel | null {
   const glog = GLOG.exec(m);
   if (glog) return GLOG_LEVEL[glog[1]] ?? null;
@@ -158,8 +127,6 @@ function declaredLevel(m: string): LogLevel | null {
   );
 }
 
-/** Walk a global regex over the line and return the first capture that is a
- *  known level word, ignoring the ones that are not. */
 function firstLevelWord(m: string, re: RegExp): LogLevel | null {
   re.lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -170,13 +137,8 @@ function firstLevelWord(m: string, re: RegExp): LogLevel | null {
   return null;
 }
 
-/**
- * Tier 2 - shapes that mean one thing and nothing else.
- */
 const KNOWN_ERROR_SHAPES: RegExp[] = [
-  // JS/Java stack frame. Every quantifier after the anchor is bounded: the
-  // unbounded form backtracked O(n^2) on an adversarial `at aaaa...` line with
-  // no `:<digit>`, and this runs per raw log line, client-side.
+  // Bounded quantifiers on purpose: the unbounded form backtracked O(n^2) on an adversarial `at aaaa...` line.
   /^\s*at\s+[\w.$<>[\]]{1,200}\s{0,8}\(?[^\n]{0,256}:\d+(?::\d+)?\)?/,
   /^\s*File\s+"[^"\n]{0,256}",\s+line\s+\d+/, // Python traceback frame
   /^\s*Caused by:\s/, // Java
@@ -190,15 +152,11 @@ const KNOWN_ERROR_SHAPES: RegExp[] = [
   /\bsignal:\s*killed\b/i,
   /\bexit(?:ed with)?\s+(?:status|code)\s+[1-9]\d*\b/i,
   /\bexit\s+code\s+[1-9]\d*\b/i,
-  // errno / a POSIX error constant. Restricted to a NON-ZERO errno and to the
-  // `E[A-Z]+` form of `code`, because the old `code\s*[:=]\s*\d+` turned every
-  // `code: 200` into an error.
+  // A NON-ZERO errno and the `E[A-Z]+` form only: `code\s*[:=]\s*\d+` turned every `code: 200` into an error.
   /\berrno\s*[:=]\s*-?[1-9]\d*\b/i,
   /\bcode\s*[:=]\s*['"]?(E[A-Z]{2,})\b/,
 ];
 
-/** Tier 4 - success is claimed, not inferred. A completion marker the producer
- *  printed on purpose, and nothing that merely sounds healthy. */
 const SUCCESS_SHAPES: RegExp[] = [
   /\[\s*(?:ok|success|succeeded|done|pass(?:ed)?)\s*\]/i,
   /[✓✔√✅]/,
@@ -207,31 +165,22 @@ const SUCCESS_SHAPES: RegExp[] = [
   /\bready in\s+\d/i,
 ];
 
-/** Warn shapes that are not a level tag: a deprecation notice, and a producer
- *  COUNTING the warnings it found (BuildKit's `7 warnings found (use docker
- *  --debug to expand):`, which led its own list while reading as info). */
+// A producer COUNTING its warnings (BuildKit's `7 warnings found`) is a warn, though it carries no level tag.
 const WARN_SHAPES: RegExp[] = [
   /\bdeprecat(?:ed|ion|ing)\b/i,
   /[‼⚠]/,
   /\b[1-9]\d*\s+warnings?\s+found\b/i,
 ];
 
-/**
- * An HTTP method somewhere on the line followed by a 3-digit token - the shape of
- * every access log, and the ONLY context in which a bare number is read as a
- * status.
- */
+// An access log's shape, and the ONLY context in which a bare number is read as a status.
 const ACCESS_LOG =
   /\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\b[^\n]{0,512}?\s(\d{3})(?=\s|$)/;
 
-/** A status carried in a NAMED field is structured evidence on its own, so it
- *  needs no method: `"status":500`, `status_code=404`, Traefik's DownstreamStatus. */
+// A status in a NAMED field is structured evidence on its own, so it needs no method.
 const NAMED_STATUS =
   /["']?(?:status|statuscode|status_code|http_status|downstreamstatus|response_code)["']?\s*[:=]\s*["']?([1-5]\d{2})\b/i;
 
-/** Tier 3 - a status code, mapped conservatively. 2xx/3xx stay INFO rather than
- *  going green: a busy access log is thousands of 200s, and a pane that is a
- *  wall of green says as little as one that is a wall of grey. */
+// 2xx/3xx stay INFO rather than going green: a busy access log is thousands of 200s.
 function levelFromStatus(m: string): LogLevel | null {
   const code = Number(NAMED_STATUS.exec(m)?.[1] ?? ACCESS_LOG.exec(m)?.[1]);
   if (!code) return null;
@@ -240,11 +189,7 @@ function levelFromStatus(m: string): LogLevel | null {
   return "info";
 }
 
-/**
- * Classify a single raw log line. Pass the PLAIN line (ANSI already stripped) -
- * escape codes would otherwise leak into the patterns, e.g. a `[0m` reset
- * masquerading as a `[…]`-bracketed tag.
- */
+// detectLogLevel - classify one raw log line; pass it ANSI-stripped, or a `[0m` reset masquerades as a bracketed tag.
 export function detectLogLevel(message: string): LogLevel {
   const declared = declaredLevel(message);
   if (declared) return declared;
@@ -260,10 +205,7 @@ export function detectLogLevel(message: string): LogLevel {
   return "info";
 }
 
-/**
- * Is this line the CONTINUATION of the one above it rather than a record of its
- * own?
- */
+// isLogContinuation - is this line the CONTINUATION of the one above it rather than a record of its own?
 export function isLogContinuation(line: string): boolean {
   return (
     /^(?:\s{2,}|\t)/.test(line) ||

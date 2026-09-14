@@ -6,7 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import { __setAgentConnectorForTest } from "../infra/agent-client";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
   seedApp,
@@ -18,14 +18,10 @@ import { seedRun, seedS3, TRUNCATE_BACKUPS } from "./backup-test-helpers";
 import {
   environments as environmentsTable,
   projects as projectsTable,
-} from "../db/schema/control-plane";
-import { restoreBackup } from "./backups";
+} from "../db/schema/control-plane/projects";
+import { restoreBackup } from "./backups/restore";
 
-/**
- * A restore ends in the agent's own Reroute, and the agent prefers the compose
- * inside the ARCHIVE - which names the network the app had when the backup ran.
- * https://deplo.build/docs/advanced/network-isolation
- */
+// The agent's Reroute prefers the compose inside the ARCHIVE - https://deplo.build/docs/advanced/network-isolation
 
 let db: TestDb;
 let pg: PGlite;
@@ -90,7 +86,6 @@ beforeEach(async () => {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
   await seedServer(db);
-  // A provisioned host: the backup path refuses one whose agent never called home.
   await db.execute(
     `update servers set agent_cert_fingerprint = 'sha256:pinned',
        agent_cert_pem = 'x', agent_port = 9443, agent_version = '1.31.0'

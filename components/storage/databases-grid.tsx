@@ -62,8 +62,8 @@ import { DatabaseLogo } from "@/components/storage/database-logo";
 import { gqlAction } from "@/lib/graphql-client";
 import { reorderBlock } from "@/lib/reorder-block";
 import { cn } from "@/lib/utils";
-import type { DatabaseDTO } from "@/lib/data/databases";
-import type { DatabaseStatus, DatabaseType } from "@/lib/types";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import type { DatabaseStatus, DatabaseType } from "@/lib/types/database";
 
 type View = ListView;
 
@@ -74,11 +74,7 @@ const STATUS_LABELS: Record<DatabaseStatus, string> = {
   error: "Error",
 };
 
-/**
- * The Storage databases grid - the databases analogue of the Overview apps grid:
- * search, engine + status filters, a grid/list view toggle, and drag-to-reorder
- * (persisted team-wide via reorderDatabases).
- */
+// DatabasesGrid - search, engine + status filters, grid/list toggle and drag-to-reorder (persisted via reorderDatabases).
 export function DatabasesGrid({
   databases,
   serverNames,
@@ -92,23 +88,19 @@ export function DatabasesGrid({
 }: {
   databases: DatabaseDTO[];
   serverNames: Record<string, string>;
-  /** The team's Environments, so a card can offer "Move to environment". */
   environments?: { id: string; label: string }[];
-  /** `configure_databases` - what the move is gated on. */
+  // `configure_databases` - what the move is gated on.
   canConfigure?: boolean;
   canReorder: boolean;
-  /** The viewer holds `manage_infra` - the capability `revealConnection` needs. */
+  // `manage_infra` - the capability `revealConnection` needs.
   canReveal: boolean;
-  /** `control_databases` - gates the bulk Start / Stop / Restart. */
+  // `control_databases` - gates the bulk Start / Stop / Restart.
   canControl: boolean;
-  /** `delete_databases` - gates the bulk Delete. */
+  // `delete_databases` - gates the bulk Delete.
   canDelete: boolean;
-  /** The create button, rendered at the end of the toolbar. */
   createButton: React.ReactNode;
 }) {
   const router = useRouter();
-  // Databases being created right now: their dialog already closed, and each
-  // holds its place in the grid as a pulsing card until the row exists.
   const { pending } = usePendingCreate();
   const [query, setQuery] = React.useState("");
   const [engine, setEngine] = React.useState<DatabaseType | "all">("all");
@@ -141,16 +133,11 @@ export function DatabasesGrid({
     );
   });
 
-  // Reorder only when nothing is filtering the view (else a drop would persist a
-  // partial order) and the caller may manage order.
+  // Only when nothing is filtering: a drop on a filtered view would persist a partial order.
   const reorderable = canReorder && !filtering;
 
-  /* ---- Multi-selection (marquee + ctrl/shift-click) + bulk actions ------- */
-  // Only what is ON SCREEN is selectable, in display order, so a shift-click
-  // range spans the grid exactly as it reads and a filtered-out database can
-  // never become a bulk target.
-  // A database a migration is still writing is not selectable: its card is inert,
-  // and selection is what feeds the bulk delete.
+  // Only what is on screen is selectable, so a filtered-out database can never become a bulk target.
+  // A database a migration is still writing stays out too: selection is what feeds the bulk delete.
   const visibleIds = filtered.filter((d) => !d.migrationRunId).map((d) => d.id);
   const selection = useCardSelection(visibleIds);
   const {
@@ -164,9 +151,7 @@ export function DatabasesGrid({
   const selectedIds = visibleIds.filter((id) => selected.has(id));
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
 
-  // One mutation per selected database - there is no bulk endpoint, and each
-  // one is its own teardown/lifecycle on its own host. The first refusal is
-  // surfaced verbatim and the selection SURVIVES it, so re-confirming retries.
+  // No bulk endpoint: one mutation each, and the selection survives a refusal so re-confirming retries.
   async function bulkRun(mutation: string, success: string) {
     const ids = selectedIds;
     const results = await Promise.all(
@@ -182,12 +167,9 @@ export function DatabasesGrid({
     return failed ?? { ok: true as const, data: undefined };
   }
 
-  // "1 database" / "3 databases" - every bulk toast and the confirm name what
-  // is actually selected, so nothing reads "Databases deleted" for one.
   const selectionNoun = `${selectedIds.length} database${selectedIds.length === 1 ? "" : "s"}`;
 
   const selectionCount = selectedIds.length;
-  // ⌘/Ctrl+A, Esc and Delete, same as every other selectable list.
   useSelectionShortcuts({
     count: selectionCount,
     selectAll,
@@ -195,8 +177,6 @@ export function DatabasesGrid({
     onDelete: canDelete ? () => setBulkDeleteOpen(true) : undefined,
   });
 
-  // The card under the cursor, and the block travelling with it: a selection of
-  // ≥2 that the lifted card belongs to moves together.
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const dragGroup = (id: string) =>
     selectedIds.length >= 2 && selectedIds.includes(id) ? selectedIds : [id];
@@ -216,8 +196,6 @@ export function DatabasesGrid({
     const { active, over } = e;
     setActiveId(null);
     if (!over || active.id === over.id) return;
-    // The lifted card carries its whole multi-selection; a card outside the
-    // selection moves alone.
     const next = reorderBlock(
       order,
       String(active.id),
@@ -338,8 +316,7 @@ export function DatabasesGrid({
                 <PendingCards />
               </div>
             </SortableContext>
-            {/* The lifted card that follows the cursor, portalled above the grid
-                so it is never clipped; the original stays as a dimmed slot. */}
+            {/* Portalled above the grid so the lifted card is never clipped. */}
             <DragOverlay dropAnimation={DRAG_DROP_ANIMATION}>
               {activeDb ? (
                 <DragStack count={activeGroup.length}>
@@ -411,9 +388,7 @@ export function DatabasesGrid({
         />
       </SelectionBar>
 
-      {/* The bulk delete is the plain one: no "delete it anyway" force option,
-          which stays on the single-card dialog where it belongs (it is the
-          escape hatch for one database on a host that is never coming back). */}
+      {/* No force option here: "delete it anyway" stays on the single-card dialog, the escape hatch for a host that is never coming back. */}
       <ConfirmAction
         open={bulkDeleteOpen}
         onOpenChange={setBulkDeleteOpen}
@@ -428,15 +403,12 @@ export function DatabasesGrid({
 
 const DELETE_DATABASE = `mutation($id: String!) { deleteDatabase(id: $id) }`;
 
-// The lifted clone eases back into the settled slot while the placeholder
-// (held at opacity-40) cross-fades back in.
 const DRAG_DROP_ANIMATION: DropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({
     styles: { active: { opacity: "0.4" } },
   }),
 };
 
-/** The three lifecycle verbs + Delete, for the shared selection bar. */
 function DatabaseBulkActions({
   canControl,
   canDelete,
@@ -485,18 +457,13 @@ function DatabaseBulkActions({
   );
 }
 
-/** 1 / 2 / 3 cols + a list mode; database cards fit 3-up earlier than app cards. */
 function gridClass(view: View): string {
   return view === "list"
     ? "flex flex-col gap-3"
     : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3";
 }
 
-/**
- * A minimal sortable wrapper providing the whole-card drag (pointer listeners on
- * the wrapper) + a keyboard-accessible handle, and swallowing the trailing click
- * dnd-kit emits after a drop so a drag never navigates.
- */
+// Whole-card drag + a keyboard handle, swallowing the trailing click dnd-kit emits after a drop so a drag never navigates.
 function SortableCard({
   id,
   selected,
@@ -507,9 +474,8 @@ function SortableCard({
 }: {
   id: string;
   selected: boolean;
-  /** This card travels with the lifted one (multi-selection drag) → dim it too. */
   groupDragging?: boolean;
-  /** A migration is still writing this row: no drag, no modifier-select. */
+  // A migration is still writing this row: no drag, no modifier-select.
   locked?: boolean;
   onSelect: (e: {
     metaKey: boolean;
@@ -538,9 +504,7 @@ function SortableCard({
 
   const { onKeyDown: keyboardListener, ...rawPointerListeners } =
     listeners ?? {};
-  // Scoped to this card's own DOM: a press inside a menu or modal the card
-  // rendered reaches these through the React tree even though the portal put it
-  // elsewhere in the page, and must not start a drag under a backdrop.
+  // Scoped to this card's DOM: a press inside a menu the card portalled still reaches these, and must not start a drag under a backdrop.
   const pointerListeners = scopeListenersToSubtree(rawPointerListeners);
   const {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -565,14 +529,12 @@ function SortableCard({
   }, [isDragging]);
 
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
-    // A menu/modal this card opened is portalled out of the card's DOM but not
-    // out of its React tree, and capture runs before the surface ever sees it - drop
-    // anything that isn't physically inside this card (see lib/portal-event-scope.ts).
+    // A portalled menu is still in this card's React tree, so drop anything not physically inside the card (lib/portal-event-scope.ts).
     if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(
       (e.target as HTMLElement).closest?.("[data-card-actions]"),
     );
-    // 1) Swallow the click dnd-kit emits on the dragged card after a drop.
+    // Swallow the click dnd-kit emits on the dragged card after a drop.
     if (draggedRef.current) {
       draggedRef.current = false;
       if (onControls) return;
@@ -580,7 +542,6 @@ function SortableCard({
       e.stopPropagation();
       return;
     }
-    // 2) Modifier-click selects this card instead of opening it (spare the ⋯).
     if ((e.metaKey || e.ctrlKey || e.shiftKey) && !locked && !onControls) {
       e.preventDefault();
       e.stopPropagation();
@@ -611,8 +572,6 @@ function SortableCard({
       className={cn(
         "touch-manipulation rounded-xl select-none [-webkit-touch-callout:none]",
         selected && SELECTED_RING,
-        // The lifted card and every sibling moving with it dim in place, so the
-        // whole group reads as picked up.
         (isDragging || groupDragging) &&
           "opacity-40 transition-opacity duration-150",
         isDragging && "relative z-10",

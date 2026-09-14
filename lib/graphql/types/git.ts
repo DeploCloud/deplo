@@ -9,18 +9,11 @@ import {
   updateGitConnection,
   type GitConnectionDTO,
 } from "@/lib/data/git-connections";
-import { assertUser } from "@/lib/auth";
-import { PROVIDERS, tokenHelpUrl, type RepoSummary } from "@/lib/git/providers";
+import { assertUser } from "@/lib/auth/current-user";
+import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers/registry";
+import type { RepoSummary } from "@/lib/git/providers/types";
 import { tokenScopesLine } from "@/lib/git/provider-access";
-import type { GitProviderId } from "@/lib/types";
-
-/**
- * Git providers other than GitHub (GitLab, Bitbucket, Gitea/Forgejo, plain git).
- */
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
+import type { GitProviderId } from "@/lib/types/git";
 
 const GitConnectionRef = builder
   .objectRef<GitConnectionDTO>("GitConnection")
@@ -61,7 +54,6 @@ const GitConnectionRef = builder
     }),
   });
 
-/** Static description of a supported provider, so the UI holds no catalogue. */
 interface GitProviderInfo {
   id: GitProviderId;
   label: string;
@@ -108,10 +100,6 @@ const GitRepoSummaryRef = builder
       updatedAt: t.exposeString("updatedAt"),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   gitProviders: t.field({
@@ -160,10 +148,6 @@ builder.queryFields((t) => ({
     },
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 const ConnectGitProviderInputRef = builder.inputType(
   "ConnectGitProviderInput",

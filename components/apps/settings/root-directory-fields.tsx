@@ -3,11 +3,9 @@
 import { FolderTree } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
-import type { BuildConfig } from "@/lib/types";
+import type { BuildConfig } from "@/lib/types/build";
 
-/**
- * The "Root Directory" section: which sub-path of the repo the build runs from.
- */
+// RootDirectoryFields - which sub-path of the repo the build runs from.
 export function RootDirectoryFields({
   build,
   onBuildChange,
@@ -17,7 +15,7 @@ export function RootDirectoryFields({
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
   disabled?: boolean;
-  /** Just the field: the caller's row already carries the label. */
+  // Just the field: the caller's row already carries the label.
   bare?: boolean;
 }) {
   const field = (

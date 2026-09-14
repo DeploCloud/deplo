@@ -5,14 +5,10 @@ import {
   buildGrants,
   groupNodes,
 } from "@/app/(dashboard)/[team]/settings/members/[id]/member-detail-tabs";
-import type { Capability } from "./types";
+import type { Capability } from "./types/identity";
 
-/**
- * The marshalling behind the member page's Save, which is a WHOLE-SET REPLACE:
- * a node left out of the payload is a node revoked. Two bugs lived here, and
- * both destroyed data rather than merely misreporting it.
- */
-
+// Save is a WHOLE-SET REPLACE: a node left out of the payload is a node
+// revoked, so a bug here destroys grants rather than misreporting them.
 const node = (
   kind: "project" | "folder" | "app",
   nodeId: string,
@@ -68,8 +64,6 @@ test("a node the admin just ticked carries the set the picker shows", () => {
     ["view", "manage_env"],
     false,
   );
-  // The new app joins the authored group (the picker's set, which is group 0),
-  // so it is one entry rather than two identical ones.
   assert.equal(out.length, 1);
   assert.deepEqual(out[0].folderIds, ["fld_prod"]);
   assert.deepEqual(out[0].appIds, ["prj_new"]);

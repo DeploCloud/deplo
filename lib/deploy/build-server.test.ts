@@ -8,12 +8,7 @@ import {
   canBuildFor,
   buildPlanLines,
 } from "./build-server";
-import type { Server } from "../types";
-
-/**
- * The build-server CHOICE, tested without a database or an agent - the whole point
- * of splitting the pure `pickBuildServer` out of `resolveBuildPlan`.
- */
+import type { Server } from "../types/server";
 
 function srv(over: Partial<Server> & { id: string }): Server {
   return {
@@ -46,7 +41,6 @@ const app = (buildServerId: string | null = null) => ({
   serverId: "srv_app",
   buildServerId,
 });
-/** The app plus the per-app fallback switch, which defaults on like the column. */
 const plannedApp = (
   buildServerId: string | null = null,
   buildFallback = true,
@@ -54,7 +48,6 @@ const plannedApp = (
   ...app(buildServerId),
   buildFallback,
 });
-/** The Deplo host, and the addresses that identify it. */
 const DEPLO_HOST = srv({ id: "srv_panel", ip: "10.0.0.1", host: "10.0.0.1" });
 const SELF = new Set(["10.0.0.1"]);
 
@@ -73,9 +66,6 @@ test("a build-only server is used automatically, without anyone opting in", () =
 });
 
 test("an ordinary server is never picked automatically - only a dedicated one", () => {
-  // It IS offerable as an explicit pin (listBuildServerChoices includes it), but
-  // silently borrowing someone else's production host to build on is not a default
-  // anybody asked for.
   const other = srv({ id: "srv_other", buildOnly: false });
   const choice = pickBuildServer(app(), TARGET, [TARGET, other]);
   assert.deepEqual(choice, { serverId: null, reason: "none-available" });
@@ -100,14 +90,12 @@ test("pinning the app's OWN server means build here, even with a builder availab
 });
 
 test("a mismatched architecture is refused, not warned about", () => {
-  // The failure this prevents: an amd64 image loads fine on an arm64 host and the
-  // deploy reports success, then the container dies with `exec format error`.
+  // An amd64 image loads on an arm64 host, then the container dies with `exec format error`.
   const builder = srv({ id: "srv_build", buildOnly: true, hostArch: "arm64" });
   assert.deepEqual(pickBuildServer(app(), TARGET, [TARGET, builder]), {
     serverId: null,
     reason: "none-available",
   });
-  // Pinned, the same refusal gets its own reason so the log can say WHY.
   assert.deepEqual(
     pickBuildServer(app("srv_build"), TARGET, [TARGET, builder]),
     {
@@ -123,7 +111,6 @@ test("an agent too old to report its architecture is never used as a builder", (
     pickBuildServer(app(), TARGET, [TARGET, builder]).serverId,
     null,
   );
-  // And a target of unknown arch is equally unsafe to build FOR.
   const unknownTarget = srv({ id: "srv_app", hostArch: "" });
   const known = srv({ id: "srv_build", buildOnly: true, hostArch: "amd64" });
   assert.equal(
@@ -133,9 +120,6 @@ test("an agent too old to report its architecture is never used as a builder", (
 });
 
 test("only an ONLINE builder is dialed - every other state is skipped", () => {
-  // `warning` is `dockerAvailable: false` and `error` is a trust or agent failure
-  // (classifyServerHealth), so both are hosts that cannot compile anything. Sending
-  // a build to one burns the deploy's time to fail at the far end.
   for (const status of [
     "offline",
     "provisioning",
@@ -148,14 +132,12 @@ test("only an ONLINE builder is dialed - every other state is skipped", () => {
       null,
       `a ${status} builder must not be picked`,
     );
-    // And pinned to it by name, which is the case that used to reach the far end.
     assert.equal(
       pickBuildServer(app("srv_build"), TARGET, [TARGET, builder]).serverId,
       null,
       `a ${status} builder must not be used even when pinned`,
     );
   }
-  // Not vacuous: the same fixture online IS picked.
   const healthy = srv({ id: "srv_build", buildOnly: true, status: "online" });
   assert.equal(
     pickBuildServer(app(), TARGET, [TARGET, healthy]).serverId,
@@ -185,10 +167,8 @@ test("a storage-only server can never build - it has no Docker", () => {
 });
 
 test("a migration source can never build - it HAS Docker, and that is the trap", () => {
-  // Every other "can this machine build?"
   const box = srv({ id: "srv_import", importOnly: true, hostArch: "amd64" });
   assert.equal(canBuildFor(box, TARGET), false);
-  // And it is never picked automatically either, even alone in the fleet.
   assert.equal(pickBuildServer(app(), TARGET, [TARGET, box]).serverId, null);
 });
 
@@ -220,9 +200,6 @@ test("the least busy builder wins, and ties break on creation order", () => {
 });
 
 test("a pin to a server this team lost access to degrades instead of failing", () => {
-  // The server is simply absent from `candidates` - removed, or its grant revoked.
-  // The app still has to deploy, so this becomes "build where it runs" plus a
-  // warning, never an error and never a silent substitution of another builder.
   const otherBuilder = srv({ id: "srv_build", buildOnly: true });
   const choice = pickBuildServer(app("srv_gone"), TARGET, [
     TARGET,
@@ -230,10 +207,6 @@ test("a pin to a server this team lost access to degrades instead of failing", (
   ]);
   assert.deepEqual(choice, { serverId: null, reason: "none-available" });
 });
-
-/* ------------------------------------------------------------------ */
-/* The fallback pool                                                   */
-/* ------------------------------------------------------------------ */
 
 test("the Deplo host is a build fallback with nobody configuring anything", () => {
   const remote = srv({ id: "srv_remote", ip: "10.0.0.2" });
@@ -317,13 +290,7 @@ test("two marked fallbacks split the load, deterministically", () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The whole plan                                                      */
-/* ------------------------------------------------------------------ */
-
 test("a fleet with no build server is untouched by any of this", () => {
-  // The regression that would hurt everyone: an ordinary install suddenly shipping
-  // its builds to the panel host.
   assert.deepEqual(
     planBuildServers(plannedApp(), TARGET, [TARGET, DEPLO_HOST], SELF),
     { chain: [], local: true, missed: null },
@@ -386,8 +353,6 @@ test("a build server that is down hands the build to the fallback, not to the ap
 });
 
 test("with the switch off, a build server that is down FAILS the deploy", () => {
-  // The bug this closes: the pin was dropped at enqueue and the app's own server
-  // built it anyway, which is the one thing the switch promises will not happen.
   for (const builder of [
     srv({
       id: "srv_build",
@@ -455,8 +420,6 @@ test("Automatic falls back too, and says nobody chose that server", () => {
 });
 
 test("the app's own server is the last link, never a pool member", () => {
-  // Marked or not, the target is not in the chain: `local` is what allows it, and
-  // that is what the per-app switch turns off.
   const self = srv({ ...TARGET, buildFallback: true });
   const builder = srv({
     id: "srv_build",
@@ -472,10 +435,6 @@ test("the app's own server is the last link, never a pool member", () => {
   assert.equal(plan.local, true);
 });
 
-/* ------------------------------------------------------------------ */
-/* What the deploy log says                                            */
-/* ------------------------------------------------------------------ */
-
 const NAMES: Record<string, string> = {
   srv_build: "eu-build-1",
   srv_panel: "eu-main-1",
@@ -483,8 +442,6 @@ const NAMES: Record<string, string> = {
 const nameOf = (id: string) => NAMES[id] ?? id;
 
 test("no host is ever asked twice, even when the pin is itself in the pool", () => {
-  // The chain is tried in order, so a repeat would dial a host that just failed -
-  // and the app's own server must stay the LAST resort, never a link in it.
   const pinned = srv({
     id: "srv_build",
     buildOnly: true,
@@ -534,7 +491,6 @@ test("a fallback names both the host that could not and the one that took over",
   assert.equal(line.level, "warn");
   assert.match(line.text, /architecture/);
   assert.match(line.text, /Building on eu-main-1 instead/);
-  // Automatic never claims the app chose anything.
   const [auto] = buildPlanLines(
     {
       chain: [],

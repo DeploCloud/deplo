@@ -1,14 +1,13 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { hasCapability } from "@/lib/membership";
-import { listBackups, listBackupRuns } from "@/lib/data/backups";
-import {
-  ensureDefaultDestination,
-  listDestinationOptions,
-} from "@/lib/data/destinations";
+import { listBackupRuns } from "@/lib/data/backups/run-listing";
+import { listBackups } from "@/lib/data/backups/schedules";
+import { ensureDefaultDestination } from "@/lib/data/destinations/create";
+import { listDestinationOptions } from "@/lib/data/destinations/listing";
 import { EmptyState } from "@/components/shared/empty-state";
-import { BackupsPanel } from "@/components/storage/backups-panel";
+import { BackupsPanel } from "@/components/storage/backups-panel/backups-panel";
 
 export const metadata = { title: "Backups" };
 

@@ -13,10 +13,10 @@ process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
-  deployments as deploymentsTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
@@ -24,27 +24,20 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { createToken } from "./tokens";
+import { createToken } from "./tokens/mint";
 import { revealDeployHook } from "./deploy-hook";
 import {
   __setRunnerForTest,
   __resetQueueForTest,
 } from "../deploy/deploy-queue";
-import { ALL_CAPABILITIES, type Capability } from "../types";
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 
 import { POST } from "@/app/api/apps/[id]/deploy-hook/[token]/route";
-
-/**
- * The deploy hook, driven by a token whose creator is a member of BOTH teams.
- * These tests pin that ordering down: it is the property the folder gate turned
- * out not to have.
- */
 
 let db: TestDb;
 let pg: PGlite;
 
 const APP_IN_BETA = "prj_beta_hooked";
-/** Owner of alpha AND a deploying member of beta. */
 const BOTH = "user_both";
 
 before(async () => {
@@ -74,7 +67,6 @@ beforeEach(async () => {
       { id: USER_1, teamId: TEAM_B, role: "owner" },
     ],
   });
-  // The same person, deploying in beta too.
   await db.insert(membershipsTable).values({
     id: "mem_both_in_b",
     userId: BOTH,
@@ -145,8 +137,6 @@ test("a read-only token minted in alpha can't fire beta's hook, though its creat
 
 test("a token narrowed to alpha's own tree can't fire beta's hook either", async () => {
   const urlToken = await hookToken();
-  // Every capability, but its reach is pinned to ALPHA as a whole. Breadth in one
-  // team is not reach into another.
   const bearer = await mint(TEAM_A, [...ALL_CAPABILITIES], {
     teamIds: [TEAM_A],
   });

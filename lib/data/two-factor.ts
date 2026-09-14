@@ -2,25 +2,16 @@ import "server-only";
 
 // https://deplo.build/docs/guides/team/account-security
 
-import {
-  assertUser,
-  authHeaders,
-  verifyTwoFactorCode,
-  verifyUserPassword,
-} from "../auth";
+import { assertUser } from "../auth/current-user";
+import { verifyUserPassword } from "../auth/password-credential";
+import { authHeaders } from "../auth/session-cookies";
+import { verifyTwoFactorCode } from "../auth/sign-in";
 import { requireAuth } from "../auth/better-auth";
 import { requirePersonalSession } from "../auth/request-context";
 import { twoFactorMandateForCurrentUser } from "../membership";
 import { userHasPasskey } from "../passkey-policy";
 import { rateLimit } from "../security";
 
-/**
- * Turning two-factor on, off, and minting fresh recovery codes. The one exception
- * is first enrolment: there is no second factor to ask for yet, and adding one is
- * not a downgrade.
- */
-
-/** How many password/code attempts one account gets before it has to wait. */
 const STEP_UP_LIMIT = { limit: 6, windowMs: 5 * 60_000 };
 
 export interface TwoFactorEnrolment {
@@ -29,9 +20,7 @@ export interface TwoFactorEnrolment {
   recoveryCodes: string[];
 }
 
-/**
- * Confirm the password half of a step-up, and return the account it belongs to.
- */
+// stepUpPassword confirms the password half of a step-up and returns the account.
 export async function stepUpPassword(password: string) {
   const user = await assertUser();
   const limit = await rateLimit(`2fa-step-up:${user.id}`, STEP_UP_LIMIT);
@@ -42,9 +31,7 @@ export async function stepUpPassword(password: string) {
   return user;
 }
 
-/**
- * Confirm the second-factor half.
- */
+// stepUpCode confirms the second-factor half.
 export async function stepUpCode(code: string) {
   const value = code.trim();
   if (!value) throw new Error("Enter a code from your authenticator app");
@@ -63,9 +50,7 @@ export async function stepUpCode(code: string) {
   if (!res.ok) throw new Error(res.error ?? "That code is not valid");
 }
 
-/**
- * Begin enrolment: mint a TOTP secret and a set of recovery codes.
- */
+// startTwoFactorEnrolment mints a TOTP secret and a set of recovery codes.
 export async function startTwoFactorEnrolment(
   password: string,
 ): Promise<TwoFactorEnrolment> {
@@ -75,9 +60,7 @@ export async function startTwoFactorEnrolment(
     throw new Error(
       "Two-factor is already on for this account. Turn it off first to set up a new device.",
     );
-  // `method` is explicit, and the narrowing below is not ceremony. ("totp" is also
-  // the plugin's default; naming it is what keeps a future default flip from silently
-  // emptying the enrolment wizard.)
+  // "totp" is named explicitly so a future change of the plugin default cannot flip it.
   const res = await requireAuth().api.enableTwoFactor({
     body: { password, method: "totp" },
     headers: await authHeaders(),
@@ -89,11 +72,7 @@ export async function startTwoFactorEnrolment(
   return { totpUri: res.totpURI, recoveryCodes: res.backupCodes };
 }
 
-/**
- * Finish enrolment with the first code the authenticator app produces. No
- * password: it was taken at the start of the wizard, and the pending secret is
- * worthless to anyone who cannot read a code off it.
- */
+// confirmTwoFactorEnrolment finishes enrolment; the password was taken at wizard start.
 export async function confirmTwoFactorEnrolment(code: string): Promise<void> {
   requirePersonalSession("two-factor settings");
   const user = await assertUser();
@@ -103,10 +82,7 @@ export async function confirmTwoFactorEnrolment(code: string): Promise<void> {
   await stepUpCode(code);
 }
 
-/**
- * Turn two-factor off. Checked before the code is verified so a refusal never
- * burns one of the user's recovery codes.
- */
+// disableTwoFactor refuses before the code is verified, so no recovery code is burnt.
 export async function disableTwoFactor(input: {
   password: string;
   code: string;
@@ -127,9 +103,7 @@ export async function disableTwoFactor(input: {
   });
 }
 
-/**
- * Replace the recovery codes with a fresh set, returned once.
- */
+// regenerateRecoveryCodes replaces the recovery codes with a fresh set, returned once.
 export async function regenerateRecoveryCodes(input: {
   password: string;
   code: string;

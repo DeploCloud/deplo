@@ -5,9 +5,9 @@ import {
   teamUsesPreviews,
 } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
-import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers";
+import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers/registry";
 import { tokenScopesLine } from "@/lib/git/provider-access";
-import type { GitProviderId } from "@/lib/types";
+import type { GitProviderId } from "@/lib/types/git";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { safeReturnPath } from "@/lib/utils";
 import { GitPanel } from "@/components/settings/git-panel";
@@ -18,9 +18,7 @@ export default async function SettingsGitPage(props: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const sp = await props.searchParams;
-  // The page that sent the user here to connect something (?next=), so the
-  // detour can end where it started instead of on this page. The `?git=` flag
-  // the GitHub redirects carry is handled in the app shell, for every page.
+  // The `?git=` flag the GitHub redirects carry is handled in the app shell, for every page.
   const next = safeReturnPath(Array.isArray(sp.next) ? sp.next[0] : sp.next);
   if (!(await reachesWholeTeam()))
     return (
@@ -31,15 +29,11 @@ export default async function SettingsGitPage(props: {
       />
     );
   const githubApps = await listGithubApps();
-  // What each App is not allowed to do. Read live; an App that cannot be checked
-  // simply gets no entry and no warning. The pull request half is only reported
-  // to a team that actually uses previews.
+  // An App that cannot be checked gets no entry and no warning.
   const appAccess = await githubAppsAccess({
     previews: await teamUsesPreviews(),
   });
   const connections = await listGitConnections();
-  // The provider catalogue is static, so it is passed down rather than fetched:
-  // one fewer round trip before the connect dialog can render.
   const providers = (Object.keys(PROVIDERS) as GitProviderId[]).map((id) => ({
     id,
     label: PROVIDERS[id].label,
@@ -50,8 +44,7 @@ export default async function SettingsGitPage(props: {
     tokenHelpUrl: tokenHelpUrl(id, PROVIDERS[id].defaultBaseUrl ?? ""),
   }));
 
-  // The page header lives inside the panel: its Connect menu and the connect
-  // dialog are one interaction, so they have to share state.
+  // The page header lives inside the panel: its Connect menu and the connect dialog share state.
   return (
     <GitPanel
       githubApps={githubApps}

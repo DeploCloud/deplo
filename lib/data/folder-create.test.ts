@@ -4,14 +4,10 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { folders as foldersTable } from "../db/schema/control-plane";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { createFolder } from "./folders";
-
-/**
- * The `createFolder` nesting contract against pglite.
- */
 
 let db: TestDb;
 let pg: PGlite;

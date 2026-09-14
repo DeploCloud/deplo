@@ -20,18 +20,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { ActivityType } from "./types";
+import type { ActivityType } from "./types/activity";
 
-/**
- * Every kind of event the trail records, in the order the Activity page's event
- * filter lists them. The one place a type gets a name and a face.
- */
+// ACTIVITY_TYPES - every kind of event the trail records, in the event filter's order.
 export const ACTIVITY_TYPES: {
   value: ActivityType;
   label: string;
-  /** Heading in the event filter. */
   group: string;
-  /** Also the filter's search keywords - it matches label and hint together. */
   hint?: string;
   icon: LucideIcon;
 }[] = [
@@ -83,11 +78,10 @@ export const ACTIVITY_TYPES: {
   { value: "mcp", label: "MCP access", group: "Platform", icon: Bot },
 ];
 
-/** A type's glyph. A record, not a lookup call: the value IS rendered as a
- *  component, and React must see it read rather than produced. */
+// ACTIVITY_ICON - a type's glyph, as a record React can read rather than call.
 export const ACTIVITY_ICON: Record<string, LucideIcon> = Object.fromEntries(
   ACTIVITY_TYPES.map((t) => [t.value, t.icon]),
 );
 
-/** The glyph for a value an older build wrote and this one has no name for. */
+// UNKNOWN_ACTIVITY_ICON - the glyph for a value an older build wrote and this one has no name for.
 export const UNKNOWN_ACTIVITY_ICON = ActivityIcon;

@@ -9,11 +9,11 @@ import {
   ArrowRight,
   Plus,
 } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
 import { DeploymentCreator } from "@/components/apps/deployment-creator";
-import { listDeployments } from "@/lib/data/deployments";
+import { listDeployments } from "@/lib/data/deployments/deployment-queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,25 +45,18 @@ export default async function AppOverview(
   if (!project) notFound();
 
   const deployments = await listDeployments({ appId: project.id });
-  // Only for the banner's "Deploy anyway": the mutation gates itself, this
-  // decides whether the affordance is worth showing.
+  // Cosmetic: the mutation gates itself, this only decides whether "Deploy anyway" is shown.
   const canDeploy = await hasAppCapability(project.id, "deploy_apps");
-  // Prefer the row out of `deployments` (loaded two lines up) over the app graph's
-  // copy of it: only the list resolves `creatorUser`, and the graph's copy would show
-  // "by <name>" with no face beside it.
+  // Only the list resolves `creatorUser`; the app graph's copy shows "by <name>" with no face.
   const prod =
     deployments.find((d) => d.id === project.latestDeployment?.id) ??
     project.latestDeployment;
-  // What backs this app - a git repo (real branch/commit) or a compose stack / docker
-  // image / upload (no git, so no branch). Same source of truth as the Overview card,
-  // so the page never invents a "main" branch for a compose project.
+  // Same source of truth as the Overview card, so no "main" branch is invented for a compose app.
   const src = describeAppSource(project);
 
   return (
     <div className="space-y-6">
-      {/* The data a migration could not bring. FIRST, above everything: while it
-          is set Deploy is refused, so this is the explanation for a button that
-          does not work rather than a note beside one that does. */}
+      {/* First on the page: while it is set Deploy is refused, so it explains a dead button. */}
       <DataCopyNotice
         kind="app"
         id={project.id}
@@ -73,9 +66,7 @@ export default async function AppOverview(
         move={Boolean(project.migrateFromServerId)}
       />
 
-      {/* An app that names a repository but has no credential to clone it with:
-          the deploy would fail with nothing but `exit status 128` in the log,
-          so say it here instead. Derived from the row - no query, no API call. */}
+      {/* No credential to clone with: the deploy fails with nothing but `exit status 128`. */}
       {repoCredentialMissing(project) && project.repo && (
         <RepoLinkNotice
           slug={slug}
@@ -134,7 +125,6 @@ export default async function AppOverview(
                 <div>
                   <p className="text-xs text-muted-foreground">Source</p>
                   {src.isGit ? (
-                    // Git deploy: a real branch + commit are meaningful.
                     <>
                       <p className="flex items-center gap-1.5 text-sm">
                         <GitBranch className="size-3.5 shrink-0" />
@@ -150,18 +140,13 @@ export default async function AppOverview(
                       </p>
                     </>
                   ) : (
-                    // No git (compose / image / upload): show what the app
-                    // actually IS instead of a fabricated branch.
                     <p className="flex items-center gap-1.5 text-sm">
                       <src.Icon className="size-3.5 shrink-0" />
                       <span className="min-w-0 truncate">{src.label}</span>
                     </p>
                   )}
                 </div>
-                {/**
-                 * What Deplo recognised in the app's own source (or what the user corrected it to -
-                 * effectiveFramework settles that).
-                 */}
+                {/* effectiveFramework settles detection against the user's correction. */}
                 {effectiveFramework(project) &&
                   supportsFrameworkDetection(project.build.buildMethod) && (
                     <div>
@@ -212,8 +197,7 @@ export default async function AppOverview(
               <p className="text-sm text-muted-foreground">
                 No production deployment yet.
               </p>
-              {/* Even before the first deploy, show where this app comes
-                  from (its git repo, a compose stack, an image or an upload). */}
+              {/* The source, before there is a production row to describe. */}
               <div>
                 <p className="text-xs text-muted-foreground">Source</p>
                 <p className="mt-1 flex items-center gap-1.5 text-sm">

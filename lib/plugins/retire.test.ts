@@ -5,7 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { installedPlugins as installedPluginsTable } from "../db/schema/control-plane";
+import { installedPlugins as installedPluginsTable } from "../db/schema/control-plane/integrations";
 import {
   seedIdentity,
   TEAM_A,
@@ -14,9 +14,7 @@ import {
 } from "../data/leaf-test-helpers";
 import { retireInstalledPlugins } from "./retire";
 
-/**
- * The retirement sweep (ADR-0013).
- */
+// The retirement sweep (ADR-0013).
 
 let db: TestDb;
 let pg: PGlite;

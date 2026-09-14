@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
-import { VolumeFields } from "@/components/apps/volume-fields";
+import { VolumeFields } from "@/components/apps/volume-fields/volume-editor";
 import { StorageFileEditor } from "@/components/apps/storage-file-editor";
 import {
   failedFileDraft,
@@ -33,21 +33,13 @@ import {
 } from "@/lib/apps/volume-model";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
-import type { VolumeMount } from "@/lib/types";
+import type { VolumeMount } from "@/lib/types/container";
 import type { ComposeMount } from "@/lib/apps/compose-storage";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
-/**
- * A canonical string for the volume list, ignoring row ids and normalising
- * whitespace/case exactly as a save would, so a saved list matches its snapshot
- * even though the server may re-key the rows.
- */
 function volumesKey(vs: VolumeMount[], workdir?: string | null): string {
   return JSON.stringify(
     vs.map((v) => {
-      // Hash exactly what the save SENDS, so nothing invisible can arm the
-      // unsaved-changes guard: a stored row comes back with `type` absent (the
-      // back-compat default), each kind's payload carries only its own source, and an
       const kind = kindOf(v);
       return {
         type: kind,
@@ -87,7 +79,6 @@ const SET_VOLUMES = /* GraphQL */ `
   }
 `;
 
-/** How long a path edit rests before Deplo reads that file. */
 const READ_DEBOUNCE_MS = 300;
 
 interface StorageFileResult {
@@ -100,11 +91,7 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
-/**
- * Storage settings: persistent volumes mounted into the app's container(s).
- * Writing first (including an empty file the user never typed into) means an entry
- * always has a file.
- */
+// StorageSettingsForm edits the storage mounted into the app's container(s).
 export function StorageSettingsForm({
   appId,
   slug,
@@ -119,24 +106,17 @@ export function StorageSettingsForm({
   appId: string;
   slug: string;
   volumes: VolumeMount[];
-  /** Storage this app's own compose file mounts; read-only here. */
   composeMounts: ComposeMount[];
-  /** Compose services this app declares; empty ⇒ single-container (no picker). */
   composeServices: string[];
-  /** The service a row with no explicit pick lands on at deploy. */
   defaultComposeService?: string | null;
-  /** Whether the viewer may save a Bind (the host-volume grant). */
   canMountHostVolumes: boolean;
-  /** Whether the viewer may read and write this app's files (`configure_apps`). */
   canManageFiles: boolean;
-  /** Where this app's code runs in its container; null for a prebuilt image. */
   containerWorkdir?: string | null;
 }) {
   const router = useRouter();
   const [volumes, setVolumes] = React.useState<VolumeMount[]>(initialVolumes);
   const [pending, startTransition] = React.useTransition();
   const [revealProblems, setRevealProblems] = React.useState(false);
-  /** File contents, by row id. A row appears here once its path has been read. */
   const [files, setFiles] = React.useState<Record<string, StorageFileDraft>>(
     {},
   );
@@ -148,8 +128,6 @@ export function StorageSettingsForm({
   const [savedVolumesKey, setSavedVolumesKey] =
     React.useState(currentVolumesKey);
 
-  // Every File entry and the path it names right now - an entry that has not been
-  // named yet is IN this list, with an empty path.
   const fileTargets = React.useMemo(
     () =>
       volumes
@@ -159,8 +137,6 @@ export function StorageSettingsForm({
   );
   const targetsKey = JSON.stringify(fileTargets);
 
-  // Refs so the loader effect can read the latest targets/contents without
-  // re-running on every keystroke in an unrelated field.
   const targetsRef = React.useRef(fileTargets);
   const filesRef = React.useRef(files);
   React.useEffect(() => {
@@ -168,11 +144,6 @@ export function StorageSettingsForm({
     filesRef.current = files;
   });
 
-  /**
-   * In-flight reads, so a re-render can't fire the same read twice, and so a read
-   * the user has already superseded (they kept typing the path) can tell that it
-   * lost and leave the newer answer alone.
-   */
   const inFlight = React.useRef(
     new Map<
       string,
@@ -180,11 +151,6 @@ export function StorageSettingsForm({
     >(),
   );
 
-  /**
-   * Read one entry's file. Resolves to the draft it produced (the save awaits
-   * these, so a Save pressed while a read is still in flight still knows whether
-   * the file is there). State is only ever set in the async continuations.
-   */
   const loadFile = React.useCallback(
     (rowId: string, path: string): Promise<StorageFileDraft> => {
       const running = inFlight.current.get(rowId);
@@ -201,9 +167,7 @@ export function StorageSettingsForm({
             previous?.status === "editable" && previous.draft !== previous.saved
               ? previous.draft
               : undefined;
-          // Keyed by the path we ASKED for, not the one the server echoed: every other check
-          // (is this draft still for this entry, may the save write it) compares against the
-          // entry's current path, so the two must be the same string even if the server
+          // Keyed by the path we ASKED for, not the one the server echoed.
           const next = storageFileDraft({ ...appStorageFile, path }, keep);
           if (!superseded()) setFiles((prev) => ({ ...prev, [rowId]: next }));
           return next;
@@ -222,14 +186,12 @@ export function StorageSettingsForm({
     [appId],
   );
 
-  // Read every File entry's path, and re-read it when the path changes. An entry
-  // whose read FAILED is left alone - retrying it on every keystroke would hammer an
-  // unreachable agent; the editor offers a "Try again" button instead.
+  // A failed read is left alone: retrying it would hammer an unreachable agent.
   React.useEffect(() => {
     if (!canManageFiles) return;
     const timer = setTimeout(() => {
       for (const t of targetsRef.current) {
-        if (!t.path) continue; // not named yet, nothing to read
+        if (!t.path) continue;
         const current = filesRef.current[t.id];
         if (current && current.path === t.path) continue;
         void loadFile(t.id, t.path);
@@ -241,27 +203,19 @@ export function StorageSettingsForm({
   function setDraft(rowId: string, text: string) {
     setFiles((prev) => {
       const current = prev[rowId];
-      // Typed before the entry names a file: the text is held with no path, so
-      // no read can be tied to it and no write can go anywhere. The read that
-      // follows the first path carries it over as the unsaved draft.
       if (!current) return { ...prev, [rowId]: unpathedFileDraft(text) };
       if (current.status !== "editable") return prev;
       return { ...prev, [rowId]: { ...current, draft: text } };
     });
   }
 
-  // Content counts as unsaved work just like a changed path does, otherwise
-  // typing a config file and leaving the page would lose it with the Save button
-  // still greyed out.
   const contentDirty = fileTargets.some((t) =>
     fileDraftIsDirty(files[t.id], t.path),
   );
   const dirty = currentVolumesKey !== savedVolumesKey || contentDirty;
 
   function saveVolumes() {
-    // The SAME validator the editor rings fields with, so nothing can be typed here
-    // that the save then rejects with different words. (The server remains
-    // authoritative - this is the snappy first pass, not the boundary.)
+    // The same validator the editor uses; the server stays the boundary.
     for (const v of volumes) {
       const problem = volumeProblem(v, containerWorkdir);
       if (problem) {
@@ -280,14 +234,11 @@ export function StorageSettingsForm({
     const committedVolumesKey = volumesKey(volumes, containerWorkdir);
     const targets = fileTargets;
     startTransition(async () => {
-      // 1. The files, first and one at a time, so a failure names the file it failed on
-      // and no row is ever saved pointing at a file that isn't there.
+      // Files first, so no row is ever saved pointing at a file that isn't there.
       const written: { id: string; path: string; text: string }[] = [];
       if (canManageFiles) {
         for (const t of targets) {
-          // Validation above guarantees every File entry is named by now; the
-          // guard stays because writing to "" is the one thing this loop must
-          // never do.
+          // Writing to "" is the one thing this loop must never do.
           if (!t.path) continue;
           const known = filesRef.current[t.id];
           const file =
@@ -309,7 +260,6 @@ export function StorageSettingsForm({
         }
       }
 
-      // 2. The rows.
       const res = await gqlAction(SET_VOLUMES, {
         id: appId,
         volumes: volumes.map((v) => ({
@@ -320,23 +270,15 @@ export function StorageSettingsForm({
               : kindOf(v) === "app"
                 ? "service"
                 : "named",
-          // Type-gated, like the dirty key: a name typed for a Volume must not
-          // ride along in a Bind row that never showed the field.
           name: kindOf(v) === "named" ? v.name.trim() : "",
           projectPath:
             kindOf(v) === "app" ? normalizeFilesPath(v.projectPath) : undefined,
           hostPath:
             kindOf(v) === "host" ? (v.hostPath ?? "").trim() : undefined,
-          // Compose stacks only; the server ignores it elsewhere. Blank ⇒ the
-          // stack's default service, resolved at render time.
           service: (v.service ?? "").trim() || undefined,
-          // A path the user left empty is DERIVED and sent explicitly, never left to the
-          // server to invent: the row is stored with the exact path the editor previewed, so
-          // a later change to the app's root directory cannot silently move a mount that is
+          // Sent explicitly, so a later root-directory change cannot move the mount.
           mountPath: effectiveMountPath(v, containerWorkdir),
           readOnly: v.readOnly,
-          // Host binds only, like hostPath: a propagation left behind by a row
-          // that used to be a Bind must not ride along in another kind.
           propagation:
             kindOf(v) === "host" ? (v.propagation ?? undefined) : undefined,
         })),
@@ -378,10 +320,7 @@ export function StorageSettingsForm({
             />
           </CardTitle>
         </CardHeader>
-        {/**
-         * A real form, so Enter in any field saves - `display: contents` keeps Card's own
-         * layout untouched.
-         */}
+        {/* A real form, so Enter saves; display: contents keeps Card's layout. */}
         <form
           className="contents"
           onSubmit={(e) => {

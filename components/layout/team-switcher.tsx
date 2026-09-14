@@ -33,7 +33,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { teamSwitchDestination } from "@/lib/team-switch";
 import { withTeam } from "@/lib/team-path";
 import { cn } from "@/lib/utils";
-import type { TeamIdentity, TeamSummary } from "@/lib/types";
+import type { TeamIdentity, TeamSummary } from "@/lib/types/team";
 
 export function TeamSwitcher({
   team,
@@ -44,14 +44,8 @@ export function TeamSwitcher({
 }) {
   const router = useRouter();
   const pathname = useFlatPathname();
-  // Controlled only so the pencil can shut it: Radix closes on select, and the
-  // pencil deliberately does not select the row.
   const [open, setOpen] = React.useState(false);
-  // The reorder is optimistic and must never dim the rows it has already moved,
-  // so it holds its own transition and nothing reads its pending flag.
   const [, startReorder] = React.useTransition();
-  // What the drag has said so far, as ids - null until somebody drags. Ids the drag
-  // never saw (a team joined in another tab) fall in at the end instead of vanishing.
   const [draggedIds, setDraggedIds] = React.useState<string[] | null>(null);
   const order = React.useMemo(() => {
     if (!draggedIds) return teams;
@@ -62,14 +56,9 @@ export function TeamSwitcher({
     const seen = new Set(picked.map((t) => t.id));
     return [...picked, ...teams.filter((t) => !seen.has(t.id))];
   }, [teams, draggedIds]);
-  // Distance, so a click that switches team is never swallowed by a drag that
-  // was not one. Pointer only: the menu is keyboard-navigable and dragging is
-  // not the only way to reach a team.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
-  // Nothing to arrange with one team, and a handle beside a single row reads as
-  // a broken control.
   const sortable = order.length > 1;
 
   function handleDragEnd(e: DragEndEvent) {
@@ -95,18 +84,9 @@ export function TeamSwitcher({
   }
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  /**
-   * Switching team is a navigation: the team is in the address. `to`
-   * overrides where we land - the pencil always wants that team's settings.
-   */
   function switchTo(target: TeamSummary, to?: string) {
-    // Sections (Variables, Storage, Templates, …) exist in every team, so stay
-    // on the open page and let it re-read under the new team; only a page naming
-    // one team's App/Database/Project has to be left behind.
     const dest = withTeam(to ?? teamSwitchDestination(pathname), target.slug);
     if (dest === window.location.pathname + window.location.search) return;
-    // REPLACE, never push: the entry we'd leave behind points at the team we
-    // just left, so "back" would land on a page that no longer resolves.
     router.replace(dest);
   }
 
@@ -165,9 +145,6 @@ export function TeamSwitcher({
   );
 }
 
-/**
- * One team in the switcher, draggable by its handle.
- */
 function TeamRow({
   team,
   active,
@@ -179,7 +156,6 @@ function TeamRow({
   active: boolean;
   sortable: boolean;
   onSelect: () => void;
-  /** Switch to this team and open its settings. */
   onEdit: () => void;
 }) {
   const {
@@ -197,15 +173,12 @@ function TeamRow({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
         "group relative cursor-pointer overflow-hidden",
-        // The active team is the row that is already lit, so it needs no mark of
-        // its own. Same token the sidebar tints its rows with.
         active && "bg-secondary",
         isDragging && "z-10 opacity-80",
       )}
       onSelect={onSelect}
     >
-      {/* Both controls sit in the flow and fade rather than mount, so the
-          picture and the name never move under the pointer. */}
+      {/* Both controls fade rather than mount, so nothing moves under the pointer. */}
       <span className="flex w-full items-center gap-2">
         <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
         <span className="flex min-w-0 flex-col">
@@ -220,8 +193,6 @@ function TeamRow({
             <span
               {...attributes}
               {...listeners}
-              // The handle drags; it must never also switch team - and stopping
-              // the CLICK is the whole of what that takes.
               onClick={(e) => e.stopPropagation()}
               aria-label={`Reorder ${team.name}`}
               className="cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
@@ -232,8 +203,6 @@ function TeamRow({
           {team.canManage && (
             <button
               type="button"
-              // Same reason as the handle: this is its own action, not a way of
-              // picking the row.
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit();
@@ -241,8 +210,6 @@ function TeamRow({
               aria-label={`Settings for ${team.name}`}
               className={cn(
                 "cursor-pointer rounded-sm p-0.5 text-muted-foreground transition-opacity hover:text-foreground",
-                // The team you are IN keeps its gear out: it is the one whose
-                // settings you reach from here most. The rest ask first.
                 !active &&
                   "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
               )}

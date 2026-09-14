@@ -5,27 +5,16 @@ import { eq, inArray } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  apps as appsTable,
-  folders as foldersTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
 import { createFolder, moveAppToFolder } from "./folders";
-import {
-  createProject,
-  moveAppToProject,
-  moveAppToEnvironment,
-} from "./projects";
+import { createProject } from "./projects/lifecycle";
+import { moveAppToProject, moveAppToEnvironment } from "./projects/placement";
 import { createEnvironment } from "./environments";
-import { bulkAppAction } from "./apps";
-
-/**
- * Which apps a folder's or project's "All apps" action actually reaches. The
- * seeded server has never called home, so every agent call fails: that is the
- * point here.
- */
+import { bulkAppAction } from "./apps/bulk";
 
 let db: TestDb;
 let pg: PGlite;
@@ -59,7 +48,6 @@ beforeEach(async () => {
   await seedServer(db);
 });
 
-/** The apps left "active" by a failed stop: exactly the ones that were targeted. */
 async function touched(ids: string[]): Promise<string[]> {
   const rows = await db
     .select({ id: appsTable.id, status: appsTable.status })
@@ -84,8 +72,6 @@ test("a folder acts on its whole subtree, and on nothing outside it", async () =
     await moveAppToFolder("svc_other", other.id);
 
     const res = await bulkAppAction("stop", { folderId: top.id });
-    // Both apps were attempted; both failed on the unreachable agent, and the
-    // first failure's message comes back for the toast.
     assert.equal(res.ok, 0);
     assert.equal(res.failed, 2, "the nested app is part of the folder");
     assert.match(String(res.error), /not provisioned|unreachable/i);
@@ -105,17 +91,13 @@ test("a project acts on every environment, and on nothing outside it", async () 
     for (const id of ["svc_prod", "svc_staging", "svc_blog"]) {
       await seedApp(db, { id, teamId: TEAM_A, status: "idle" });
     }
-    // One app per environment: the project view only ever shows one of them at
-    // a time, so a project-wide action that only reached the selected
-    // environment would look right and be wrong.
     const staging = await createEnvironment(project.id, "Staging");
     await moveAppToProject("svc_prod", project.id);
     await moveAppToProject("svc_staging", project.id);
     await moveAppToEnvironment("svc_staging", staging.id);
     await moveAppToProject("svc_blog", other.id);
 
-    // A pre-ADR-0009 shape the project tile still counts: a folder filed under
-    // the project, with an app inside it and no project link of its own.
+    // A pre-ADR-0009 shape the project tile still counts: a folder with no project link.
     const legacy = await createFolder("Legacy");
     await seedApp(db, { id: "svc_legacy", teamId: TEAM_A, status: "idle" });
     await moveAppToFolder("svc_legacy", legacy.id);
@@ -135,8 +117,7 @@ test("a project acts on every environment, and on nothing outside it", async () 
 });
 
 test("another team's folder is empty, not an error", async () => {
-  // Seeded straight onto TEAM_B: the caller can't see the folder at all, so the
-  // action finds nothing rather than refusing in a way that proves it exists.
+  // Not an existence oracle: an unseeable folder finds nothing rather than refusing.
   const foreign = "fld_beta";
   await db.insert(foldersTable).values({
     id: foreign,

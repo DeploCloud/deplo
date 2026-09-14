@@ -3,27 +3,17 @@ import "server-only";
 import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  deployments as deploymentsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { publishAppChanged } from "../graphql/pubsub";
 import { nowIso } from "../ids";
 import type { ContainerStat as PbContainerStat } from "../agent/gen/agent";
-import type { Deployment } from "../types";
+import type { Deployment } from "../types/deployment";
 import { reportAppHealth } from "../notify/apps";
 
-/**
- * Correct a stale `apps.status` from what the host is actually reporting.
- */
-
-/** Deployment states that mean a build owns this App's status right now. */
 const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
 
-/**
- * Does this App's telemetry prove it is up? Keying strictly on `state` would
- * silently switch this whole feature off for part of a mixed-version fleet.
- */
+// Keying strictly on `state` would switch this off for part of a mixed-version fleet.
 export function telemetrySaysRunning(
   stats: readonly PbContainerStat[],
 ): boolean {
@@ -32,21 +22,14 @@ export function telemetrySaysRunning(
   return stats.some((s) => (s.state ? s.state === "running" : s.running));
 }
 
-/**
- * Clear `error` off every App on `serverId` that this frame proves is running.
- * That is not style: five of the eight writers of this column are UNCONDITIONAL,
- * so a read-then-decide would lose every race against a deploy landing in the gap.
- */
+// Clear `error` off every App on `serverId` that this frame proves is running.
+// Unconditional on purpose: 5 of the 8 writers of this column are too, so a
+// read-then-decide would lose every race with a deploy landing in the gap.
 export async function reconcileAppStatusFromTelemetry(
   serverId: string,
   byProject: ReadonlyMap<string, readonly PbContainerStat[]>,
 ): Promise<string[]> {
-  // Database ids ride the same `deplo.project` label; they simply match no row in
-  // `apps` and drop out of the UPDATE, so they need no special case here.
   const running: string[] = [];
-  // `restarting` is the crash-loop signal `telemetrySaysRunning` has always
-  // computed and discarded. Collected here, where the frame already is, and
-  // handed to the alerting side, which owns the hysteresis and writes nothing.
   const crashing: string[] = [];
   for (const [id, stats] of byProject) {
     if (telemetrySaysRunning(stats)) running.push(id);
@@ -82,7 +65,6 @@ export async function reconcileAppStatusFromTelemetry(
       )
       .returning({ id: appsTable.id });
 
-    // Publish only what actually changed.
     for (const row of corrected) publishAppChanged(row.id);
     if (corrected.length > 0) {
       console.log(
@@ -92,8 +74,7 @@ export async function reconcileAppStatusFromTelemetry(
     }
     return corrected.map((r) => r.id);
   } catch (e) {
-    // Best-effort, like markServerSeen: a DB blip must never take down the
-    // telemetry stream that called us.
+    // Best-effort: a DB blip must never take down the telemetry stream.
     console.error("[deplo] reconcileAppStatusFromTelemetry failed:", e);
     return [];
   }

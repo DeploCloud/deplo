@@ -9,24 +9,28 @@ import { holdsAPasskey, passkeyCountsForThisRequest } from "./passkey-policy";
 import { teamAvatarUrl } from "./avatar";
 import {
   appGrants as appGrantsTable,
-  apps as appsTable,
   folderGrants as folderGrantsTable,
-  folders as foldersTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
   projectGrants as projectGrantsTable,
-  projects as projectsTable,
   teamRoles as teamRolesTable,
+} from "./db/schema/control-plane/access-control";
+import { apps as appsTable } from "./db/schema/control-plane/apps";
+import {
   teams as teamsTable,
   users as usersTable,
-} from "./db/schema/control-plane";
-import { assertUser, getCurrentUser } from "./auth";
+} from "./db/schema/control-plane/identity";
+import {
+  folders as foldersTable,
+  projects as projectsTable,
+} from "./db/schema/control-plane/projects";
+import { assertUser, getCurrentUser } from "./auth/current-user";
 import {
   ALL_CAPABILITIES,
   type Capability,
   type Membership,
-  type Team,
-} from "./types";
+} from "./types/identity";
+import type { Team } from "./types/team";
 import {
   CAPABILITY_META,
   PROJECT_SCOPED_CAPABILITIES,
@@ -40,7 +44,6 @@ import {
   TEAM_HEADER,
   pickActiveTeam,
 } from "./team-path";
-// The leaf module: a role's reach, with no dependency back on this one.
 import { memberScopeFor, type NodeScope } from "./data/node-scope";
 
 export {
@@ -50,17 +53,7 @@ export {
   roleLabelForCapabilities,
 } from "./membership-shared";
 
-/**
- * Active-team context for the multi-tenant control plane. Data functions call
- * `getActiveTeamId()` internally and filter their reads/writes by it; mutating
- * actions call `requireCapability(...)` to gate on the member's permissions.
- */
-
-/**
- * The teams where this person holds `cap` outright - their stored membership
- * rows, never clamped to the token making the request. What a personal token's
- * reach and the MCP door read.
- */
+// teamsWhereUserHolds - the teams where this person holds `cap` outright, never clamped to the request's token.
 export const teamsWhereUserHolds = cache(async function teamsWhereUserHolds(
   userId: string,
   cap: Capability,
@@ -83,7 +76,7 @@ export const teamsWhereUserHolds = cache(async function teamsWhereUserHolds(
   return new Set(rows.map((r) => r.teamId));
 });
 
-/** All teams the given user is a member of, in creation order. */
+// teamsForUser - all teams the given user is a member of, in creation order.
 export const teamsForUser = cache(async (userId: string): Promise<Team[]> => {
   const rows = await prepared("teams-for-user", (db) =>
     db
@@ -112,14 +105,7 @@ export const teamsForUser = cache(async (userId: string): Promise<Team[]> => {
   }));
 });
 
-/* ------------------------------------------------------------------ */
-/* Two-factor policy                                                   */
-/* ------------------------------------------------------------------ */
-
-/**
- * Thrown when a team (or the member's role in it) requires two-factor
- * authentication and the account has not enrolled one.
- */
+// TwoFactorRequiredError - thrown when a team or the member's role requires 2FA and the account has not enrolled one.
 export class TwoFactorRequiredError extends Error {
   constructor(
     readonly teamId: string,
@@ -132,11 +118,6 @@ export class TwoFactorRequiredError extends Error {
   }
 }
 
-/**
- * Whether `userId` satisfies `teamId`'s 2FA policy, and if not, what to name.
- * Request-cached: the gate runs on every read AND every capability check, so
- * without memoization a single page would re-run it dozens of times.
- */
 const twoFactorMandate = cache(
   async (
     userId: string,
@@ -163,13 +144,9 @@ const twoFactorMandate = cache(
       )
       .limit(1);
     const r = rows[0];
-    // No membership: not this gate's problem. The caller's own "not a member"
-    // handling is the right answer, and inventing a 2FA error here would be a
-    // confusing way to say "you were removed from this team".
     if (!r) return { satisfied: true, reason: "" };
     if (r.enrolled) return { satisfied: true, reason: "" };
-    // Two questions, never one: the account holds a usable passkey, AND this
-    // request is one the passkey actually opened. See lib/passkey-policy.ts.
+    // A usable passkey AND a request it actually opened. See lib/passkey-policy.ts.
     if (r.hasPasskey && (await passkeyCountsForThisRequest()))
       return { satisfied: true, reason: "" };
     if (r.roleRequires)
@@ -179,17 +156,12 @@ const twoFactorMandate = cache(
   },
 );
 
-/** Throw if `userId` is under an unmet 2FA policy in `teamId`. */
 async function assertTwoFactor(userId: string, teamId: string): Promise<void> {
   const { satisfied, reason } = await twoFactorMandate(userId, teamId);
   if (!satisfied) throw new TwoFactorRequiredError(teamId, reason);
 }
 
-/**
- * The policy blocking (or that would block) the CURRENT user, across every team
- * they belong to - what Settings → Security needs to explain why 2FA cannot be
- * turned off. Returns null when nothing requires it.
- */
+// twoFactorMandateForCurrentUser - the policy that blocks turning 2FA off, or null when nothing requires it.
 export async function twoFactorMandateForCurrentUser(): Promise<string | null> {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -211,12 +183,11 @@ export async function twoFactorMandateForCurrentUser(): Promise<string | null> {
   return null;
 }
 
-/** The user's membership in a specific team (with capabilities), or null. */
+// membershipFor - the user's membership in a specific team (with capabilities), or null.
 export const membershipFor = cache(async function membershipFor(
   userId: string,
   teamId: string,
 ): Promise<Membership | null> {
-  // THE gate.
   await assertTwoFactor(userId, teamId);
   const rows = await prepared("membership-row", (db) =>
     db
@@ -258,10 +229,6 @@ export const membershipFor = cache(async function membershipFor(
   };
 });
 
-/**
- * Narrow a member's effective capabilities to what the API token making this
- * request was granted.
- */
 function clampToToken(
   caps: Capability[],
   userId: string,
@@ -270,20 +237,14 @@ function clampToToken(
   const id = currentIdentity();
   if (!id?.token || id.userId !== userId || id.teamId !== teamId) return caps;
   const own = boundedBy(caps, id.token.capabilities);
-  // Depth strips, breadth doesn't: a token holding this team WHOLLY keeps every
-  // capability it was given, however many other teams it also reaches.
+  // Depth strips, breadth doesn't: a token holding this team WHOLLY keeps every capability it was given.
   return narrowedScope() ? boundedBy(own, PROJECT_SCOPED_CAPABILITIES) : own;
 }
 
-/** {@link clampToToken}, for the node-level resolver that bypasses `membershipFor`. */
+// clampCapabilitiesToToken - clampToToken, for the node-level resolver that bypasses `membershipFor`.
 export const clampCapabilitiesToToken = clampToToken;
 
-/**
- * Resolve the active team id for the current request: the team named in the URL,
- * else the last one visited (the `deplo_team` cookie), else the user's first.
- * Both sources are validated against the memberships, so neither can name a team
- * the user is not in - and both accept the team's id or its slug.
- */
+// getActiveTeamId - the URL's team, else the last visited, else the first; both sources validated against the memberships.
 export const getActiveTeamId = cache(async (): Promise<string | null> => {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -298,9 +259,6 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
       );
     return override.teamId;
   }
-  // The URL wins over the cookie: a link to an app opens THAT app, whatever team
-  // the browser last had. The header is set by proxy.ts from the first path
-  // segment, and by the browser's own GraphQL client for /api/graphql.
   const store = await cookies();
   return pickActiveTeam(
     teams,
@@ -309,10 +267,7 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
   ).id;
 });
 
-/**
- * The active team id, throwing if the user is not a member of any team.
- * The canonical entry point for the data layer's team scoping.
- */
+// requireActiveTeamId - the active team id, throwing if the user is in no team; the data layer's scoping entry point.
 export async function requireActiveTeamId(): Promise<string> {
   const teamId = await getActiveTeamId();
   if (!teamId) throw new Error("No active team");
@@ -328,7 +283,7 @@ export interface ActiveMembership {
   membership: Membership;
 }
 
-/** The current user's membership in the active team, throwing if absent. */
+// requireMembership - the current user's membership in the active team, throwing if absent.
 export async function requireMembership(): Promise<ActiveMembership> {
   const user = await assertUser();
   const teamId = await requireActiveTeamId();
@@ -337,7 +292,7 @@ export async function requireMembership(): Promise<ActiveMembership> {
   return { userId: user.id, teamId, membership };
 }
 
-/** True if the current user has the given capability in the active team. */
+// hasCapability - true if the current user has the given capability in the active team.
 export async function hasCapability(cap: Capability): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
@@ -347,10 +302,7 @@ export async function hasCapability(cap: Capability): Promise<boolean> {
   return Boolean(m && m.capabilities.includes(cap));
 }
 
-/**
- * The current user's effective capabilities in the active team (empty if none).
- * Drives capability-gated nav visibility in the shell.
- */
+// currentCapabilities - the current user's effective capabilities in the active team (empty if none).
 export async function currentCapabilities(): Promise<Capability[]> {
   const user = await getCurrentUser();
   if (!user) return [];
@@ -359,10 +311,7 @@ export async function currentCapabilities(): Promise<Capability[]> {
   return (await membershipFor(user.id, teamId))?.capabilities ?? [];
 }
 
-/**
- * Everything the current user could do SOMEWHERE in the active team: their role's
- * set, plus every capability any node grant hands them (ADR-0016).
- */
+// reachableCapabilities - their role's set, plus every capability any node grant hands them (ADR-0016).
 export const reachableCapabilities = cache(async (): Promise<Capability[]> => {
   const user = await getCurrentUser();
   if (!user) return [];
@@ -408,8 +357,7 @@ export const reachableCapabilities = cache(async (): Promise<Capability[]> => {
     (r) => r.capability as Capability,
   );
   if (granted.length === 0) return own;
-  // A grant bypasses `membershipFor`, so the token clamp has to be applied here
-  // too - the same reason `lib/data/node-access.ts` ends with it.
+  // A grant bypasses `membershipFor`, so the token clamp has to be applied here too.
   const union = new Set<Capability>([
     ...own,
     ...clampToToken(granted, user.id, teamId),
@@ -417,16 +365,12 @@ export const reachableCapabilities = cache(async (): Promise<Capability[]> => {
   return ALL_CAPABILITIES.filter((c) => union.has(c));
 });
 
-/** True if the user holds `cap` anywhere in the active team. See the caveat above. */
+// hasCapabilityAnywhere - true if the user holds `cap` anywhere in the active team.
 export async function hasCapabilityAnywhere(cap: Capability): Promise<boolean> {
   return (await reachableCapabilities()).includes(cap);
 }
 
-/**
- * Authorize a mutating action: assert the user is a member of the active team
- * AND holds `cap`. Returns the active membership so callers can read the user.
- * Throws a user-facing "Unauthorized" - caught by the action `run()` wrapper.
- */
+// requireCapability - assert the caller is a member of the active team AND holds `cap`, returning the membership.
 export async function requireCapability(
   cap: Capability,
 ): Promise<ActiveMembership> {
@@ -439,43 +383,28 @@ export async function requireCapability(
   return ctx;
 }
 
-/* ------------------------------------------------------------------ */
-/* Instance-admin (global scope)                                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * True if the current user is a global instance admin - the gate for the
- * Settings → Users list, minting registration links, and the per-user admin
- * editor. Orthogonal to per-team capabilities.
- */
+// isInstanceAdmin - true if the current user is a global instance admin, orthogonal to per-team capabilities.
 export async function isInstanceAdmin(): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user?.isInstanceAdmin) return false;
   return tokenHoldsInstanceAdmin();
 }
 
-/** Throwing variant for admin-only data functions / actions. */
+// requireInstanceAdmin - throwing variant for admin-only data functions.
 export async function requireInstanceAdmin(): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!user.isInstanceAdmin || !tokenHoldsInstanceAdmin())
-    // Generic on purpose: this gates every instance-admin action (users, teams,
-    // global env, servers), not just user management.
     throw new Error("Only an instance admin can do that");
   return { userId: user.id };
 }
 
-/**
- * Instance-admin is opt-in PER TOKEN, not inherited from the person.
- */
+// Instance-admin is opt-in PER TOKEN, not inherited from the person.
 function tokenHoldsInstanceAdmin(): boolean {
   const token = currentIdentity()?.token;
   return !token || token.instanceAdmin;
 }
 
-/**
- * Refuse a resource that has no per-Project meaning to a principal who reaches
- * only part of this team - a narrowed API token, or a member whose ROLE is scoped.
- */
+// requireTeamWide - refuse a team-wide resource to a principal (token or role) that reaches only part of the team.
 export async function requireTeamWide(what: string): Promise<void> {
   if (narrowedScope())
     throw new Error(
@@ -487,12 +416,7 @@ export async function requireTeamWide(what: string): Promise<void> {
     );
 }
 
-/**
- * Does the current principal hold `cap` across the WHOLE of `teamId` - not
- * necessarily the active one? The question a cross-team share asks of every team
- * (ADR-0027). Four gates, all load-bearing: `clampToToken` bails out for another
- * team, so it would hand back the MEMBER's capabilities and ignore the token's.
- */
+// holdsTeamWideCapability - does the principal hold `cap` across the WHOLE of `teamId`, token clamp included (ADR-0027)?
 export async function holdsTeamWideCapability(
   teamId: string,
   cap: Capability,
@@ -502,8 +426,7 @@ export async function holdsTeamWideCapability(
   const token = currentIdentity()?.token;
   if (token) {
     if (!token.capabilities.includes(cap)) return false;
-    // Breadth, not depth: a token reaching this team through ONE project does not
-    // hold it, and `scope.teamIds` cannot tell the two apart.
+    // Breadth, not depth: a token reaching this team through ONE project does not hold it.
     if (token.scope && !token.scope.wholeTeamIds.includes(teamId)) return false;
   }
   // A role scoped to a folder or a project inside that team is not team-wide there.
@@ -517,11 +440,7 @@ export async function holdsTeamWideCapability(
   }
 }
 
-/**
- * The CURRENT caller's reach in the active team, or null when they reach all of it -
- * their own nodes when their membership carries a set, their role's scope
- * otherwise ({@link memberScopeFor}).
- */
+// currentMemberScope - the caller's reach in the active team, or null when they reach all of it.
 export async function currentMemberScope(): Promise<NodeScope | null> {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -532,32 +451,18 @@ export async function currentMemberScope(): Promise<NodeScope | null> {
   return memberScopeFor(user.id, teamId);
 }
 
-/**
- * The non-throwing twin of {@link requireTeamWide}, for a PAGE that has to degrade
- * rather than fail: a section outside someone's access should say so, not render
- * the error boundary over a healthy dashboard.
- */
+// reachesWholeTeam - the non-throwing twin of `requireTeamWide`, for a page that degrades rather than fails.
 export async function reachesWholeTeam(): Promise<boolean> {
   if (narrowedScope()) return false;
   const user = await getCurrentUser();
-  // FAIL CLOSED. Every caller today happens to prove a session first, so this changes
-  // nothing about who can do what; it is the default being right that matters,
-  // because the next caller will not check.
+  // FAIL CLOSED: the next caller will not prove a session first.
   if (!user) return false;
   const teamId = await getActiveTeamId();
   if (!teamId) return false;
   return (await memberScopeFor(user.id, teamId)) == null;
 }
 
-/* ------------------------------------------------------------------ */
-/* Instance-wide grants (global scope, orthogonal to teams)            */
-/* ------------------------------------------------------------------ */
-
-/**
- * The two grant flags don't ride on {@link PublicUser} (they're server-enforced
- * only), so resolve them from the raw stored user. Instance admins hold every
- * grant implicitly. Returns `false` for an unauthenticated caller.
- */
+// The grant flags are server-enforced only and never ride on `PublicUser`, so read the raw stored user.
 async function hasGrant(
   user: { id: string } | null,
   flag: "canExposePorts" | "canMountHostVolumes",
@@ -576,15 +481,12 @@ async function hasGrant(
   return Boolean(raw && (raw.isInstanceAdmin || raw[flag]));
 }
 
-/**
- * True if the current user may publish container ports - a compose service's
- * `ports:` (bound to the host) or `expose:` (advertised to linked containers).
- */
+// canExposePorts - true if the current user may publish a compose service's `ports:` or `expose:`.
 export async function canExposePorts(): Promise<boolean> {
   return hasGrant(await getCurrentUser(), "canExposePorts");
 }
 
-/** Throwing variant - gate any action that publishes container ports. */
+// requireExposePorts - throwing variant, gate any action that publishes container ports.
 export async function requireExposePorts(): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!(await hasGrant(user, "canExposePorts")))
@@ -592,23 +494,18 @@ export async function requireExposePorts(): Promise<{ userId: string }> {
   return { userId: user.id };
 }
 
-/** True if the current user may bind-mount a host filesystem path. */
+// canMountHostVolumes - true if the current user may bind-mount a host filesystem path.
 export async function canMountHostVolumes(): Promise<boolean> {
   return hasGrant(await getCurrentUser(), "canMountHostVolumes");
 }
 
-/**
- * Whether a NAMED user still holds the host grant - what a deploy asks about the
- * person who authored a compose that reaches the server, since a deploy has no
- * current user of its own (a push webhook has nobody at all).
- */
+// userMayReachHost - whether a NAMED user still holds the host grant, for a deploy with no current user.
 export async function userMayReachHost(userId: string): Promise<boolean> {
   return hasGrant({ id: userId }, "canMountHostVolumes");
 }
 
-/** Throwing variant - gate any host bind mount behind this. */
+// requireMountHostVolumes - throwing variant, gate any host bind mount behind this.
 export async function requireMountHostVolumes(
-  /** What asked for it, when it was not a Bind. See `composeHostReach`. */
   reach?: string,
 ): Promise<{ userId: string }> {
   const user = await assertUser();
@@ -621,7 +518,7 @@ export async function requireMountHostVolumes(
   return { userId: user.id };
 }
 
-/** Set the active-team cookie. Validates membership before writing. */
+// setActiveTeam - set the active-team cookie, validating membership first.
 export async function setActiveTeam(teamId: string): Promise<void> {
   const user = await assertUser();
   if (!(await membershipFor(user.id, teamId))) {
@@ -630,8 +527,7 @@ export async function setActiveTeam(teamId: string): Promise<void> {
   const store = await cookies();
   store.set(ACTIVE_TEAM_COOKIE, teamId, {
     httpOnly: true,
-    // Per REQUEST, not per instance: see requestIsHttps. A `Secure` cookie
-    // written on the panel's plain-http IP address is one the browser drops.
+    // Per REQUEST, not per instance: a `Secure` cookie on a plain-http address is dropped.
     secure: await requestIsHttps(),
     sameSite: "lax",
     path: "/",

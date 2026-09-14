@@ -43,9 +43,9 @@ import { gqlAction } from "@/lib/graphql-client";
 import { KindCard } from "@/components/shared/kind-card";
 import { offerRecoveryKey } from "@/components/storage/recovery-key";
 import { S3_ARGS_ALLOWED, validateS3Args } from "@/lib/backups/s3-args";
-import type { DestinationKind, S3Provider } from "@/lib/types";
+import type { DestinationKind, S3Provider } from "@/lib/types/backup";
 
-// Inlined (lib/data/destinations is server-only and cannot be imported here).
+// Inlined: lib/data/destinations is server-only and cannot be imported here.
 const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
   {
     id: "aws",
@@ -80,11 +80,7 @@ const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
   { id: "other", name: "Other S3-compatible", endpointHint: "https://..." },
 ];
 
-/**
- * The endpoint to send, or "" when there is nothing usable. Blank means "use the
- * provider's default", which is right for every provider whose hint is a real
- * URL, and wrong for "other", whose hint is a placeholder shape.
- */
+// Blank means "use the provider's default": right for every provider whose hint is a real URL, wrong for "other".
 function endpointOrHint(typed: string, hint: string): string {
   const value = typed.trim() || hint;
   return value.includes("...") ? "" : value;
@@ -112,33 +108,26 @@ export function CreateDestination({
   autoOpen = false,
   size = "default",
 }: {
-  /** Whether the current user may add a destination (`manage_backup_destinations`).
-   *  False shows the button disabled with a tooltip saying so, and nothing can
-   *  open the dialog, not even the ?new=destination deep link. */
+  // `manage_backup_destinations`. False blocks even the ?new=destination deep link.
   canCreate: boolean;
-  /** Servers this team can already reach, i.e. the same list the deploy picker
-   *  offers. A member must not discover a host they cannot otherwise see. */
+  // Only servers this team can already reach: a member must not discover a host they cannot otherwise see.
   servers: DestinationServerOption[];
-  /** A custom folder is instance-admin only: the default path carries no
-   *  privilege, an arbitrary absolute path on a shared host does. */
+  // A custom folder is instance-admin only: an arbitrary absolute path on a shared host carries privilege, the default path does not.
   isInstanceAdmin: boolean;
   autoOpen?: boolean;
-  /** `sm` outside a toolbar; `default` next to an input, which is h-9. */
+  // `sm` outside a toolbar; `default` next to an input, which is h-9.
   size?: "sm" | "default";
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen && canCreate);
   const { create } = usePendingCreate();
 
-  // Arrived via ?new=destination (e.g. from an app's "no destination" banner) →
-  // drop the param so a refresh or Back doesn't reopen the dialog.
+  // Drop ?new=destination so a refresh or Back doesn't reopen the dialog.
   React.useEffect(() => {
     if (autoOpen) router.replace("/storage", { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Server first: it is the one that needs no account anywhere, and on a fresh
-  // instance it is the only one that can be filled in without leaving the page.
   const [kind, setKind] = React.useState<DestinationKind>("server");
   const [name, setName] = React.useState("");
   const [serverId, setServerId] = React.useState(servers[0]?.id ?? "");
@@ -148,8 +137,6 @@ export function CreateDestination({
   const [allowPrivate, setAllowPrivate] = React.useState(false);
   const [s3Args, setS3Args] = React.useState("");
   const argsError = validateS3Args(s3Args);
-  // What Advanced holds, without opening it - the disclosure this replaced had
-  // the same line, and losing it would make the section look empty.
   const advancedSummary =
     kind === "server"
       ? path.trim() || "Managed folder"
@@ -165,9 +152,7 @@ export function CreateDestination({
     (k: keyof typeof s3) => (e: React.ChangeEvent<HTMLInputElement>) =>
       setS3((f) => ({ ...f, [k]: e.target.value }));
 
-  // The button asks for everything the SERVER asks for. It used to check only
-  // the bucket, so a form missing its keys closed, failed, and reopened with the
-  // error - which is a slower way of saying "this field is required".
+  // Everything the SERVER asks for: checking only the bucket made a form missing its keys close, fail and reopen with the error.
   const valid =
     kind === "server"
       ? Boolean(serverId) && servers.length > 0
@@ -191,7 +176,6 @@ export function CreateDestination({
   }
 
   function submit() {
-    // The destination shows up in the grid immediately, pulsing, while it is verified.
     const typed = {
       kind,
       name,
@@ -227,9 +211,7 @@ export function CreateDestination({
                     name: typed.name || typed.bucket,
                     kind: "s3",
                     provider: typed.provider.toUpperCase().replace(/-/g, "_"),
-                    // The provider hint is a real endpoint for every provider but "other", whose
-                    // placeholder is literally "https://..." - a string that parses as a URL and
-                    // resolves to nothing, so it used to be saved as a destination that could never
+                    // "other"'s placeholder "https://..." parses as a URL and resolves to nothing: it used to be saved as an unusable destination.
                     endpoint: endpointOrHint(typed.endpoint, hint),
                     region: typed.region,
                     bucket: typed.bucket,
@@ -242,8 +224,7 @@ export function CreateDestination({
         ),
       {
         success: "Backup destination added",
-        // Every destination is born encrypted, so every destination is born with a key that
-        // exists only inside this instance.
+        // Every destination is born encrypted, with a key that exists only inside this instance.
         onSuccess: (data) => {
           if (data?.createDestination.id)
             offerRecoveryKey(
@@ -285,9 +266,7 @@ export function CreateDestination({
               </Button>
             </DialogTrigger>
           ) : (
-            // Disabled buttons swallow pointer events, so wrap in a focusable
-            // span to keep the tooltip reachable. No DialogTrigger here means a
-            // click can never open a dialog the server would refuse.
+            // Disabled buttons swallow pointer events, so the span keeps the tooltip reachable; no DialogTrigger means a click can never open a dialog the server would refuse.
             <span tabIndex={0}>
               <Button size={size} disabled>
                 <Plus className="size-4" />
@@ -302,9 +281,7 @@ export function CreateDestination({
             : "You don't have permission to add backup destinations"}
         </TooltipContent>
       </Tooltip>
-      {/* `selfManaged`, like the backup wizard: the body below owns its own
-          height and clips itself only while that height is moving, which is what
-          lets a Select menu hang past the field it belongs to at rest. */}
+      {/* `selfManaged`: the body owns its height and clips only while it moves, so a Select menu can hang past its field at rest. */}
       <DialogContent selfManaged className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Add backup destination</DialogTitle>
@@ -313,9 +290,7 @@ export function CreateDestination({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          {/* Server and bucket are branches of very different heights, and the
-              Advanced section opens inside the taller one: eased, the dialog
-              reads as itself growing instead of being redrawn. */}
+          {/* Server and bucket are branches of very different heights. */}
           <AnimatedHeight className="space-y-4">
             <div
               role="radiogroup"
@@ -452,18 +427,14 @@ export function CreateDestination({
               </>
             )}
 
-            {/**
-             * One Advanced section for both kinds - the server branch used to hand-roll its own
-             * disclosure next to a checkbox that had none.
-             */}
+            {/* One Advanced section for both kinds. */}
             {(kind === "s3" || isInstanceAdmin) && (
               <Accordion type="single" collapsible>
                 <AccordionItem value="advanced" className="border-none">
                   <AccordionTrigger className="group py-2 text-sm">
                     <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
                       Advanced
-                      {/* What is in there, without opening it. Hidden once it is
-                          open, since the fields say it better. */}
+                      {/* What is in there, without opening it. */}
                       <span className="truncate text-xs font-normal text-muted-foreground group-data-[state=open]:hidden">
                         {advancedSummary}
                       </span>
@@ -487,11 +458,7 @@ export function CreateDestination({
                       </div>
                     ) : (
                       <>
-                        {/**
-                         * Self-hosting means the bucket is often on the same private network as the fleet,
-                         * and both guards refused that outright - so "MinIO (self-hosted)" was in the list
-                         * and unusable at any ordinary address.
-                         */}
+                        {/* Self-hosted buckets often sit on the fleet's own private network, which both outbound guards refused outright. */}
                         {isInstanceAdmin && (
                           <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
                             <Checkbox
@@ -581,8 +548,6 @@ export function CreateDestination({
   );
 }
 
-/** The server picker. The folder that goes with it lives in Advanced, one level
- *  up, so both destination kinds have exactly one advanced section between them. */
 function ServerFields({
   servers,
   serverId,

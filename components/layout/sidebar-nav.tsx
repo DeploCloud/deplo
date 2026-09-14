@@ -4,18 +4,12 @@ import * as React from "react";
 import Link, { useLinkStatus } from "@/components/ui/link";
 import { useFlatPathname } from "@/lib/nav";
 import { Loader2 } from "lucide-react";
-import {
-  NAV,
-  SETTINGS_NAV,
-  appNav,
-  appSettingsNav,
-  canSee,
-  sidebarMenuFor,
-  databaseNav,
-  databaseSettingsNav,
-  type NavItem,
-  type NavSection,
-} from "./nav-config";
+import { sidebarMenuFor } from "./nav-config/active-route";
+import { appNav, appSettingsNav } from "./nav-config/app-nav";
+import { databaseNav, databaseSettingsNav } from "./nav-config/database-nav";
+import { NAV } from "./nav-config/main-nav";
+import { canSee, type NavItem, type NavSection } from "./nav-config/nav-item";
+import { SETTINGS_NAV } from "./nav-config/settings-nav";
 import { backOutOf } from "./navigation-history";
 import { useAppNav } from "@/components/apps/app-nav-store";
 import { useDbNav } from "@/components/storage/db-nav-store";
@@ -45,28 +39,17 @@ export function SidebarNav({
 }: {
   onNavigate?: () => void;
   collapsed?: boolean;
-  /** The current member's capabilities; items whose `requires` isn't held are hidden. */
   capabilities?: string[];
-  /** Instance admin - gates items marked `requiresAdmin` (e.g. the Users settings). */
   isAdmin?: boolean;
 }) {
   const pathname = useFlatPathname();
   const caps = new Set(capabilities);
   const service = useAppNav();
   const dbNav = useDbNav();
-  // A DATABASE console is still unlocked by the one-time "I understand"; an app's
-  // is a per-app switch instead. `null` (pre-hydration) reads as "not yet".
   const consoleAcknowledged = useConsoleAck() === true;
-  // Builds in flight right now, live. Decorates the Deployments entry so a
-  // running deploy is visible from anywhere in the dashboard.
   const deploying = useActiveDeployments();
-  // A newer Deplo upstream, so the entry that owns the instance says so from
-  // anywhere in Settings. Independent of the banner's dismissal.
   const upstream = useUpstreamUpdate();
 
-  // A "back" escape hatch leaves the whole current section via the browser's history,
-  // jumping to the last page you were on *outside* it, so it lands where you came
-  // from instead of stepping between sibling pages.
   function handleNavClick(
     item: NavItem,
     e: React.MouseEvent<HTMLAnchorElement>,
@@ -88,22 +71,14 @@ export function SidebarNav({
           : pathname.startsWith("/settings")
             ? "/settings"
             : null;
-      // Suppress the href when we handled it (jumped out, or a jump is already
-      // running); only "none", no in-app page outside the section, follows it.
       if (prefix && backOutOf(prefix) !== "none") e.preventDefault();
     }
     onNavigate?.();
   }
 
-  // The same sidebar shows one of four navigations depending on where you are: inside
-  // an app it becomes that app's sub-menu; one level deeper, under that app's
-  // /settings, its settings sub-menu; under the top-level /settings the settings
   const { appSlug, dbId, inAppSettings, inDbSettings, inSettings, menu } =
     sidebarMenuFor(pathname);
 
-  // Inside an app, the gate is what the viewer holds on THAT app (published by the
-  // app layout), not the team-wide union this sidebar is handed - that union is
-  // deliberately wider than the truth so a per-folder grant doesn't hide the nav, and
   const appCaps =
     appSlug && service?.slug === appSlug ? new Set(service.capabilities) : caps;
 
@@ -111,28 +86,20 @@ export function SidebarNav({
   if (dbId && inDbSettings) {
     sections = databaseSettingsNav(dbId);
   } else if (dbId) {
-    // Only trusted while the store matches the id in the URL, so a stale flag
-    // from the database you just left cannot leak into the next one.
     const matches = dbNav?.id === dbId;
     sections = databaseNav(dbId, {
       pathname,
       consoleAcknowledged,
       cronsEnabled: matches ? dbNav!.cronsEnabled : false,
-      // Left undefined until it matches: the generic glyph stands in rather
-      // than the last database's brand mark.
       logo: matches ? dbNav!.logo : undefined,
       type: matches ? dbNav!.type : undefined,
     });
   } else if (appSlug && inAppSettings) {
-    // Until the store matches the slug in the URL (SSR, first paint) assume the app IS
-    // a GitHub one: that renders the entry live rather than disabled, and a link that
-    // becomes disabled a moment later is a smaller lie than a "cannot be enabled" that
     sections = appSettingsNav(
       appSlug,
       service?.slug === appSlug ? service.isGithubApp : true,
     );
   } else if (appSlug) {
-    // The live/per-app flags come from the same store as the capabilities above.
     const matches = service?.slug === appSlug;
     sections = appNav(appSlug, {
       pathname,
@@ -151,9 +118,6 @@ export function SidebarNav({
     sections = NAV;
   }
 
-  // Filter by capability/admin up front so the sliding-pill signature and the
-  // render use the exact same item set (app entries are pre-filtered by the
-  // builder, so this is a no-op for them).
   const rendered = sections
     .map((section) => ({
       ...section,
@@ -163,9 +127,6 @@ export function SidebarNav({
     }))
     .filter((section) => section.items.length > 0);
 
-  // Slide the nav horizontally when it swaps between navigations: in from the right
-  // going deeper (main → service → service-settings, or main → settings), from the
-  // left coming back up.
   const DEPTH: Record<typeof menu, number> = {
     main: 0,
     settings: 1,
@@ -183,8 +144,6 @@ export function SidebarNav({
     );
   }
 
-  // Single background "pill" that slides to the active item - only its background
-  // moves between entries.
   const navRef = React.useRef<HTMLElement | null>(null);
   const signature = rendered
     .map((s) => s.items.map((i) => i.href).join(","))
@@ -206,8 +165,6 @@ export function SidebarNav({
     <nav
       ref={navRef}
       className={cn(
-        // pt-1 is the focus ring's room, not a gap: the scroller above clips
-        // the first row's outline without it. The search box gives up 4px.
         "relative isolate flex flex-col pt-1 pb-3",
         collapsed ? "px-2" : "px-3",
         slide,
@@ -219,15 +176,10 @@ export function SidebarNav({
           key={i}
           className={cn(
             "flex flex-col gap-0.5",
-            // No break under the back row: it belongs to the menu below it, so
-            // it keeps the group's own row gap and nothing more.
             i > 0 && !section.title && !collapsed && "pt-0.5",
           )}
         >
-          {/* A titled group shows its label as a header. Collapsed there is no
-              room for one, so a rule stands in; expanded, the only untitled
-              break is under the back button, which reads as part of the menu
-              below it and gets neither. */}
+          {/* Collapsed has no room for a label, so a rule stands in. */}
           {section.title && !collapsed ? (
             <div
               className={cn(
@@ -246,11 +198,7 @@ export function SidebarNav({
           {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
             const Icon = item.icon;
-            // A text-only section (app/database settings) drops the icons, but
-            // never while collapsed, where the icon is the only thing rendered.
             const showIcon = !section.iconless || collapsed;
-            // A settings entry the app CANNOT use - pull request previews on an app that
-            // deploys from anything but GitHub.
             if (item.disabledReason) {
               return (
                 <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
@@ -273,9 +221,6 @@ export function SidebarNav({
                 </Tooltip>
               );
             }
-            // "3 deployments in progress" replaces both the label and the
-            // tooltip while builds are running: with the chip on, that IS what
-            // the entry is saying.
             const deployingTip =
               item.href === "/deployments" && deploying > 0
                 ? `${deploying} deployment${deploying === 1 ? "" : "s"} in progress`
@@ -297,7 +242,6 @@ export function SidebarNav({
                     }
                     data-active={active ? "true" : undefined}
                     className={cn(
-                      // relative z-10 keeps the label/icon above the sliding pill.
                       "group relative z-10 flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
                       collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
                       active
@@ -316,8 +260,6 @@ export function SidebarNav({
                       ))}
                     {deployingTip &&
                       (collapsed ? (
-                        // No room for a number next to the icon: the pulsing dot
-                        // alone, in its corner, like any unread marker.
                         <StatusDot
                           status="building"
                           className="absolute top-1 right-1"
@@ -346,16 +288,9 @@ export function SidebarNav({
   );
 }
 
-// Wait this long before a spinner replaces the icon, then keep it up at least this
-// long: under the first a fast page never flashes it, under the second a click that
-// resolves right after would blink it straight back out.
 const SPINNER_DELAY_MS = 150;
 const SPINNER_HOLD_MS = 300;
 
-/**
- * Pending, once it has lasted long enough to be worth saying - and then for long
- * enough to be seen. The icon stays put in between, so nothing blanks out.
- */
 function useSlowPending(): boolean {
   const { pending } = useLinkStatus();
   const [shown, setShown] = React.useState(false);
@@ -369,10 +304,6 @@ function useSlowPending(): boolean {
   return shown;
 }
 
-/**
- * The entry's icon, replaced by a spinner while its page loads. Most routes carry
- * no `loading.tsx` (they render in a few ms), so this is the click's only feedback.
- */
 function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
   const spinning = useSlowPending();
   const Icon = item.icon;
@@ -390,7 +321,6 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
-/** The same pending state for a text-only section, which has no icon to swap. */
 function NavPending() {
   return useSlowPending() ? <NavSpinner className="ml-auto" /> : null;
 }
@@ -408,10 +338,6 @@ function NavSpinner({ className }: { className?: string }) {
   );
 }
 
-/**
- * The picture on an app's or database's Overview entry, in the place the icon
- * would take.
- */
 function NavMark({ mark }: { mark: NonNullable<NavItem["mark"]> }) {
   return (
     <span className="flex size-4 shrink-0 items-center justify-center">

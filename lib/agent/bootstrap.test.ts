@@ -14,7 +14,7 @@ import {
   BootstrapError,
 } from "./bootstrap";
 import { sha256Hex } from "../crypto";
-import type { Server } from "../types";
+import type { Server } from "../types/server";
 
 function provisioningServer(over: Partial<Server> = {}): Server {
   const { stored } = mintBootstrap();
@@ -73,8 +73,7 @@ test("installCommand embeds the token + url, and the fingerprint only over HTTPS
   assert.match(noFp, /'http:\/\/10\.0\.0\.5:3000'/);
 });
 
-// Measured on a takeover: the address in the command did not answer, curl fetched
-// nothing, `| bash` ran an empty script and exited 0 - "installed" in silence.
+// Measured on a takeover: the address did not answer, so `| bash` ran an empty script and exited 0 - "installed" in silence.
 test("the one-liners download first and run second, so a failed download fails", () => {
   const cmd = installCommand({
     baseUrl: "https://deplo.example.com",
@@ -103,9 +102,7 @@ test("the one-liners download first and run second, so a failed download fails",
   );
 });
 
-// The curl alternatives of uBlock Origin's ClickFix filter (uAssets,
-// `prevent-clipboard-write` on every site, 2026-09-05). A match is a silent
-// no-op copy with a "Copied" toast on top: the operator pastes nothing.
+// The curl alternatives of uBlock Origin's ClickFix filter (uAssets `prevent-clipboard-write`): a match copies nothing under a "Copied" toast.
 const UBO_CLICKFIX =
   /^curl -s\b[\s\S]+?\| (bash|sh|zsh)\b|^curl\b [\s\S]+?chmod \+x[\s\S]+?&&|^curl\b[\s\S]+?-o\b[\s\S]+?\/tmp\/[\s\S]+?&&|^(bash <<<|curl -kfsSL) \$\(echo [\s\S]+? base64 -d\b/im;
 
@@ -129,9 +126,7 @@ test("the one-liners do not trip uBlock Origin's ClickFix filter", () => {
 });
 
 test("curl skips verification only when the panel's own certificate does not", () => {
-  // The generated nip.io address serves a certificate no public CA signed, so a
-  // command without -k fetches nothing. Printing it on an instance with a real
-  // certificate would teach people to skip verification for no reason.
+  // No public CA signs the generated nip.io cert, so -k there fetches nothing without it - and printing it elsewhere teaches people to skip verification.
   const base = {
     baseUrl: "https://deplo.example.com",
     rawToken: "t",
@@ -147,8 +142,7 @@ test("curl skips verification only when the panel's own certificate does not", (
 });
 
 test("a certificate that could not be read at all does not print -k", async () => {
-  // Unknown is not untrusted: a panel behind a proxy that dropped one connection
-  // would otherwise start teaching people to skip verification.
+  // Unknown is not untrusted: a panel behind a proxy that dropped one connection would otherwise start printing -k.
   const { controlPlaneCert } = await import("./bootstrap");
   const cert = await controlPlaneCert("http://10.255.255.1:3000");
   assert.equal(cert.insecure, false);
@@ -156,9 +150,7 @@ test("a certificate that could not be read at all does not print -k", async () =
 });
 
 test("the role rides as an env prefix INSIDE the elevated shell", () => {
-  // `sudo` does not forward the caller's environment, so a prefix outside it would be
-  // silently dropped and the host would install as an ordinary server - with Traefik,
-  // the shared network and a rewritten daemon.json on a machine Deplo is only
+  // `sudo` drops the caller's environment, so a prefix outside it is lost and the host installs as an ordinary server (Traefik, shared network, rewritten daemon.json).
   const base = {
     baseUrl: "https://deplo.example.com",
     rawToken: "tok123",
@@ -178,8 +170,7 @@ test("the role rides as an env prefix INSIDE the elevated shell", () => {
     );
   }
 
-  // Exactly one of them, ever: the three roles are exclusive, and a command
-  // carrying two would leave the host's shape up to the script's branch order.
+  // The three roles are exclusive: a command carrying two leaves the host's shape up to the script's branch order.
   const all = installCommand({
     ...base,
     storageOnly: true,
@@ -194,7 +185,6 @@ test("the role rides as an env prefix INSIDE the elevated shell", () => {
   // And the narrowest wins, because it is the one that touches the host least.
   assert.match(all, /DEPLO_IMPORT_ONLY=1/);
 
-  // An ordinary server carries no prefix at all.
   assert.doesNotMatch(installCommand(base), /DEPLO_[A-Z_]+_ONLY/);
 });
 
@@ -203,13 +193,11 @@ test("findServerForToken: matches by hash and validates state", () => {
   const server = provisioningServer({ bootstrap: stored });
   assert.equal(findServerForToken([server], rawToken).id, server.id);
 
-  // Unknown token.
   assert.throws(
     () => findServerForToken([server], "not-the-token"),
     (e: unknown) => e instanceof BootstrapError && e.reason === "unknown-token",
   );
 
-  // Used token.
   const used = provisioningServer({
     bootstrap: { ...stored, usedAt: new Date().toISOString() },
   });
@@ -218,7 +206,6 @@ test("findServerForToken: matches by hash and validates state", () => {
     (e: unknown) => e instanceof BootstrapError && e.reason === "already-used",
   );
 
-  // Expired token.
   const expired = provisioningServer({
     bootstrap: {
       ...stored,
@@ -238,13 +225,10 @@ test("signResponse/verifyResponse: a response binds to the token (HTTP trust pat
   assert.equal(verifyResponse(token, body, mac), true);
   // A different token can't reproduce the MAC (a MITM without the token).
   assert.equal(verifyResponse("other-token", body, mac), false);
-  // A tampered body fails.
   assert.equal(verifyResponse(token, body + "x", mac), false);
 });
 
-// The agent refuses to bootstrap against an HTTPS control plane with no pinned
-// fingerprint, so a command minted without one exits 0, says the agent is calling
-// home, and leaves a service restarting every five seconds.
+// The agent refuses to bootstrap against HTTPS with no pinned fingerprint: the command still exits 0 and leaves a service restarting every five seconds.
 test("an https panel whose certificate could not be read mints nothing", () => {
   assert.throws(
     () => assertPinnableFingerprint(new URL("https://panel.example.com"), ""),

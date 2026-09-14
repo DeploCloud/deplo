@@ -11,13 +11,7 @@ import {
   type StorageFileDraft,
 } from "./storage-file-model";
 import { effectiveMountPath, volumeProblem } from "./volume-model";
-import type { VolumeMount } from "../types";
-
-/**
- * A File storage entry's content box. The tests that matter are about what the
- * SAVE touches: a File entry writes a real file on the app's server, so "when do
- * we write, and to which path" is the whole safety story.
- */
+import type { VolumeMount } from "../types/container";
 
 const editable = (p: Partial<StorageFileDraft> = {}): StorageFileDraft => ({
   path: "config.toml",
@@ -28,8 +22,6 @@ const editable = (p: Partial<StorageFileDraft> = {}): StorageFileDraft => ({
   message: "",
   ...p,
 });
-
-/* ---- what the server's answer means -------------------------------- */
 
 test("an existing text file opens with its own contents", () => {
   const d = storageFileDraft({
@@ -51,7 +43,6 @@ test("a path with nothing behind it is an empty file to write, not an error", ()
 });
 
 test("a re-read keeps what the user had already typed", () => {
-  // Typing content, then correcting the path, must not throw the content away.
   const d = storageFileDraft(
     { path: "nginx.conf", state: "new", text: "" },
     "server { }",
@@ -76,15 +67,12 @@ test("an answer this build doesn't know is blocked, never silently editable", ()
   assert.ok(d.message.length > 0);
 });
 
-/* ---- unsaved work --------------------------------------------------- */
-
 test("typed content counts as unsaved work; an untouched file does not", () => {
   assert.equal(fileDraftIsDirty(editable(), "config.toml"), false);
   assert.equal(
     fileDraftIsDirty(editable({ draft: "a = 2" }), "config.toml"),
     true,
   );
-  // Read for another path, still loading, blocked or failed: nothing to save.
   assert.equal(
     fileDraftIsDirty(editable({ draft: "a = 2" }), "other.toml"),
     false,
@@ -95,8 +83,6 @@ test("typed content counts as unsaved work; an untouched file does not", () => {
   );
   assert.equal(fileDraftIsDirty(undefined, "config.toml"), false);
 });
-
-/* ---- what the save writes ------------------------------------------- */
 
 test("an unchanged file that already exists is not rewritten", () => {
   assert.equal(pendingFileWrite(editable(), "config.toml"), null);
@@ -110,9 +96,7 @@ test("changed content is written", () => {
 });
 
 test("a file that isn't there yet is created even when it is empty", () => {
-  // The reason this rule exists: Docker answers a missing bind source by
-  // inventing an empty DIRECTORY at the mount path, so the app would boot with a
-  // folder where its config file should be - silently.
+  // Docker answers a missing bind source by inventing an empty directory there.
   assert.equal(
     pendingFileWrite(
       editable({ exists: false, saved: "", draft: "" }),
@@ -123,8 +107,6 @@ test("a file that isn't there yet is created even when it is empty", () => {
 });
 
 test("content read for a different path is never written", () => {
-  // The user typed content for config.toml, then edited the path. Writing this
-  // to nginx.conf would truncate a file nobody looked at.
   assert.equal(
     pendingFileWrite(editable({ draft: "a = 2" }), "nginx.conf"),
     null,
@@ -132,11 +114,7 @@ test("content read for a different path is never written", () => {
   assert.equal(pendingFileWrite(undefined, "config.toml"), null);
 });
 
-/* ---- writing before the entry has a name ---------------------------- */
-
 test("the box can be written in before the entry names a file", () => {
-  // The editor is on screen from the moment a File entry is added, so the text
-  // needs somewhere to live while there is no path to read or write it at.
   const d = unpathedFileDraft("server { }");
   assert.equal(d.status, "editable");
   assert.equal(d.path, "");
@@ -150,8 +128,6 @@ test("text typed with no path yet is unsaved work, so leaving the page warns", (
 });
 
 test("nothing is ever written until the entry names a file", () => {
-  // The whole point of holding it with an empty path: there is no file to
-  // truncate and no folder to invent, whatever the save does next.
   assert.equal(pendingFileWrite(unpathedFileDraft("server { }"), ""), null);
   assert.equal(
     pendingFileWrite(editable({ path: "", saved: "", exists: false }), ""),
@@ -160,8 +136,6 @@ test("nothing is ever written until the entry names a file", () => {
 });
 
 test("naming the file afterwards carries the typed text over", () => {
-  // The re-read for the new path is where the two meet: `keepDraft` is the text
-  // written while the entry was still unnamed.
   const held = unpathedFileDraft("server { }");
   const named = storageFileDraft(
     { path: "nginx.conf", state: "new", text: "" },
@@ -172,8 +146,6 @@ test("naming the file afterwards carries the typed text over", () => {
 });
 
 test("the whole write-then-name flow: nothing is saved until the entry is complete", () => {
-  // The order people actually work in, step by step - the form's own sequence
-  // (setDraft, then the read for the first path, then the save).
   const row: VolumeMount = {
     id: "vol_1",
     type: "app",
@@ -181,16 +153,13 @@ test("the whole write-then-name flow: nothing is saved until the entry is comple
     mountPath: "",
     readOnly: false,
   };
-  // 1. A brand-new entry: the box is on screen, the save is blocked on the name.
   assert.equal(volumeProblem(row, "/app")?.field, "source");
 
-  // 2. Write the file first. It is unsaved work, and it goes nowhere yet.
   const typed = unpathedFileDraft("server { listen 80; }");
   assert.equal(fileDraftIsDirty(typed, ""), true);
   assert.equal(pendingFileWrite(typed, ""), null);
   assert.equal(volumeProblem(row, "/app")?.field, "source", "still blocked");
 
-  // 3. Name it, and leave the path inside the app empty on purpose.
   const named = { ...row, projectPath: "nginx.conf" };
   assert.equal(
     volumeProblem(named, "/app"),
@@ -199,15 +168,12 @@ test("the whole write-then-name flow: nothing is saved until the entry is comple
   );
   assert.equal(effectiveMountPath(named, "/app"), "/app/nginx.conf");
 
-  // 4. The read for that path lands and carries the text over; the save writes
-  //    the file, then the row, at the derived path.
   const read = storageFileDraft(
     { path: "nginx.conf", state: "new", text: "" },
     typed.draft,
   );
   assert.equal(pendingFileWrite(read, "nginx.conf"), "server { listen 80; }");
 
-  // 5. The same entry on a prebuilt image: nothing to derive from, so it asks.
   assert.equal(volumeProblem(named, null)?.field, "mountPath");
 });
 

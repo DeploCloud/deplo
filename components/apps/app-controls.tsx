@@ -13,7 +13,7 @@ import {
   useNeverDeployed,
 } from "@/components/apps/app-live-status";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
-import type { AppStatus } from "@/lib/types";
+import type { AppStatus } from "@/lib/types/app";
 
 export function AppControls({
   appId,
@@ -24,35 +24,18 @@ export function AppControls({
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
-  // Live status (subscription) takes precedence over the server-rendered value so the
-  // button reflects start/stop/deploy in real time, and the "Stopping" label is
-  // driven by the persisted "stopping" status, so it survives reload and every viewer
   const status = useLiveStatus(serverStatus);
-  // Nothing has ever been built for this app, so there is no container to start, stop
-  // or reroute - every control here would dial the host for a stack that is not
-  // there.
   const neverDeployed = useNeverDeployed();
-  // Start / Stop / Reload are all one permission. Without it every button here
-  // is disabled rather than hidden, so the app still reads as an app - it just
-  // isn't this viewer's to power on and off.
   const can = useAppCan("control_apps");
   const stopped = status === "idle";
   const stopping = status === "stopping";
-  // A backup is being put back in place: the stack is coming down and back up
-  // under Deplo's hand, so powering it on or off from here is not an option the
-  // app has right now.
   const restoring = status === "restoring";
 
-  // Fire and let the STATUS answer: the persisted `stopping` / `restoring`
-  // states and the live subscription already say what the container is doing,
-  // so holding the button in a spinner adds nothing but a delay.
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id: appId });
       if (res.ok) {
         toast.success(success);
-        // The subscription pushes the new status, but refresh the RSC tree too
-        // so any server-rendered, non-subscribed bits stay consistent.
         router.refresh();
       } else {
         toast.error(res.error);
@@ -60,8 +43,7 @@ export function AppControls({
     });
   }
 
-  // Reload re-applies the app's routing (domains + basic auth) to the running
-  // container WITHOUT a rebuild.
+  // Reload re-applies routing (domains + basic auth) to the running container, no rebuild.
   const [reloading, setReloading] = React.useState(false);
   function reload() {
     setReloading(true);
@@ -119,8 +101,6 @@ export function AppControls({
   return (
     <>
       {restoring ? (
-        // Persisted transient state, same contract as "Stopping": the button is
-        // disabled and self-clears when the restore settles the status.
         <Button variant="outline" size="sm" disabled>
           <Loader2 className="size-4 animate-spin" />
           Restoring
@@ -142,8 +122,6 @@ export function AppControls({
           </Button>
         </SimpleTooltip>
       ) : stopping ? (
-        // Persisted transient state: the container is being brought down. The
-        // button is disabled and self-clears when the status settles to "idle".
         <Button variant="outline" size="sm" disabled>
           <Loader2 className="size-4 animate-spin" />
           Stopping

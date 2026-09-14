@@ -16,12 +16,12 @@ import {
   seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { getDeployment, isFirstDeployment } from "./deployments";
+import {
+  getDeployment,
+  isFirstDeployment,
+} from "./deployments/deployment-queries";
 
-/**
- * `isFirstDeployment` against pglite - what gates the confetti on the
- * deployment page.
- */
+// `isFirstDeployment` is what gates the confetti on the deployment page.
 
 let db: TestDb;
 let pg: PGlite;

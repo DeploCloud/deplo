@@ -14,7 +14,7 @@ import {
   seedCronJob,
   TRUNCATE_CRONS,
 } from "../data/cron-test-helpers";
-import { __resetCronConnector, __setCronConnector } from "./runner";
+import { __resetCronConnector, __setCronConnector } from "./runner/agent";
 import {
   runCronSchedulerTick,
   shouldFire,
@@ -22,11 +22,7 @@ import {
 } from "./scheduler";
 import * as lease from "../backups/lease";
 
-/**
- * The TICK's cadence, which is the part `scheduler.test.ts` cannot see: it calls
- * the two phases directly, so it would pass just as well if they ran at the same
- * rate. They must not.
- */
+// The TICK's cadence: `scheduler.test.ts` calls the two phases directly, so it would pass even if they ran at the same rate.
 
 let db: TestDb;
 let pg: PGlite;
@@ -68,8 +64,7 @@ test("shouldFire lets one tick per wall-clock minute through", () => {
   assert.equal(shouldFire(at(5_000), T0), false, "the ticks underneath do not");
   assert.equal(shouldFire(at(59_999), T0), false);
   assert.equal(shouldFire(at(60_000), T0), true, "the next minute does");
-  // A backwards clock step lands in a different minute, so it fires - and the
-  // unique index is what keeps that from being a second run of the same minute.
+  // A backwards clock step lands in a different minute, so it fires; the unique index keeps that from being a second run of the same minute.
   assert.equal(shouldFire(at(-60_000), T0), true);
 });
 
@@ -78,8 +73,7 @@ test("a run settles within one tick, not one minute", async () => {
   await runCronSchedulerTick(T0);
   assert.equal((await runsOf(db, "cron_1"))[0].status, "running");
 
-  // The command is over 200ms later. The next TICK is what has to notice - a
-  // page that shows "Running" for another 59 seconds is the bug this fixes.
+  // Regression: a page that showed "Running" for another 59 seconds because only the next MINUTE noticed.
   agent.settleAll({ exitCode: 0, stdout: "done\n" });
   await runCronSchedulerTick(at(5_000));
 
@@ -91,8 +85,7 @@ test("a run settles within one tick, not one minute", async () => {
 
 test("the ticks inside a minute never fire again", async () => {
   await seedCronJob(db, { id: "cron_1", overlap: "allow" });
-  // Twelve ticks, one minute. Overlap=allow so nothing but the cadence itself
-  // can be what stops a second run.
+  // Overlap=allow, so nothing but the cadence itself can be what stops a second run.
   for (let i = 0; i < 12; i++) await runCronSchedulerTick(at(i * 5_000));
   assert.equal((await runsOf(db, "cron_1")).length, 1);
   assert.equal(agent.started.length, 1);
@@ -110,8 +103,7 @@ test("a minute stepped over during a long drain is still replayed", async () => 
   await runCronSchedulerTick(T0); // 01:00 - not due
   assert.equal((await runsOf(db, "cron_1")).length, 0);
 
-  // The next tick to fire lands three minutes late (a drain that outran the
-  // interval). 01:02 fell inside it and must not be lost.
+  // A drain that outran the interval: 01:02 fell inside it and must not be lost.
   await runCronSchedulerTick(at(3 * 60_000));
   const runs = await runsOf(db, "cron_1");
   assert.equal(runs.length, 1);

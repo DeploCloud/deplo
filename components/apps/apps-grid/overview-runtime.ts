@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { gql } from "@/lib/graphql-client";
-import type { AppSummary } from "@/lib/data/apps";
+import type { AppSummary } from "@/lib/data/apps/summary";
 import type {
   OverviewAppStateView,
   OverviewRuntimeView,

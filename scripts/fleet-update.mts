@@ -5,15 +5,17 @@
  */
 import { count, inArray, sql } from "drizzle-orm";
 
-import { listAllServers, markServerSeen } from "../lib/data/servers";
+import { markServerSeen } from "../lib/data/servers/agent-handshake";
+import { listAllServers } from "../lib/data/servers/roster";
 import { getDb } from "../lib/db/client";
-import { apps, deployments } from "../lib/db/schema/control-plane";
+import { apps } from "../lib/db/schema/control-plane/apps";
+import { deployments } from "../lib/db/schema/control-plane/deployments";
+import { selfUpdateServerAgent } from "../lib/infra/agent-client/agent-lifecycle";
 import {
-  agentPreflight,
-  selfUpdateServerAgent,
   AgentUnreachableError,
   AgentUpdateUnsupportedError,
-} from "../lib/infra/agent-client";
+} from "../lib/infra/agent-client/errors";
+import { agentPreflight } from "../lib/infra/agent-client/preflight";
 
 const dryRun = process.argv.includes("--dry-run");
 const localIp = process.env.DEPLO_SERVER_IP ?? "";

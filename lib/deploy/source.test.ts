@@ -11,7 +11,8 @@ import {
   resolveBuildDir,
   RootDirectoryNotFound,
 } from "./source";
-import type { GitRepo, UploadArchive } from "../types";
+import type { UploadArchive } from "../types/app";
+import type { GitRepo } from "../types/build";
 
 const repo: GitRepo = {
   provider: "git",

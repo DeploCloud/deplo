@@ -7,10 +7,10 @@ import {
   listActivity,
   listActivityActors,
 } from "@/lib/data/activity";
-import { listApps } from "@/lib/data/apps";
-import { listDatabases } from "@/lib/data/databases";
+import { listApps } from "@/lib/data/apps/listing";
+import { listDatabases } from "@/lib/data/databases/rows";
 import { listFolders } from "@/lib/data/folders";
-import { listProjects } from "@/lib/data/projects";
+import { listProjects } from "@/lib/data/projects/read";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ActivityFilters } from "@/components/activity/activity-filters";
 import { ActivityFeed } from "@/components/activity/activity-feed";
@@ -34,7 +34,7 @@ import {
   parseActivityParams,
 } from "@/lib/activity-filter";
 import { reachesWholeTeam } from "@/lib/membership";
-import type { FacetOption } from "@/components/env/env-filters";
+import type { FacetOption } from "@/components/env/env-filters/types";
 
 export const metadata = { title: "Activity" };
 
@@ -48,14 +48,10 @@ export default async function ActivityPage(
     resourceIds: params.resourceIds,
     ...activityWindow(params),
   };
-  // The counts get a window of their own, and each call below blanks its OWN
-  // dimension: picking a person narrows the events beside them without
-  // collapsing the people to a list of one.
+  // Each count call blanks its OWN dimension: picking a person must not collapse the people to one.
   const counted = { ...filter, ...activityCountWindow(params) };
 
-  // A database belongs to the team and to no project, so `listDatabases` refuses a
-  // role that only reaches part of it - and such a role reaches no database row in
-  // the feed either, so there is nothing to name.
+  // `listDatabases` refuses a role that reaches only part of the team, which sees no database here anyway.
   const [
     activities,
     months,
@@ -94,8 +90,7 @@ export default async function ActivityPage(
       folders={folders}
       projects={projects}
       databases={databases}
-      // Zeroes spelled out rather than left absent: an option with no number
-      // reads as a bug, one showing 0 reads as "nothing lately".
+      // An option with no number reads as a bug; one showing 0 reads as "nothing lately".
       actorCounts={zeroed(
         actors.map((a) => a.value),
         byActor,
@@ -121,8 +116,7 @@ export default async function ActivityPage(
               ? "No one did any of that in this window. Widen the filters to see more."
               : "As you deploy apps, manage databases and invite members, everything will show up here."
           }
-          // No action: when the filters are what emptied the page, the toolbar
-          // above is still on screen and already carries "Clear filters".
+          // No action: the toolbar above is on screen and already carries "Clear filters".
         />
       </>
     );
@@ -138,8 +132,7 @@ export default async function ActivityPage(
     count: c.count,
     author: actorById.get(c.actorUserId)?.author,
   }));
-  // Static markup, so the phone gets its own copy after the feed rather than the
-  // rail moving; the filters, which carry state, stay mounted once.
+  // Static markup, so the phone gets its own copy; the filters carry state and stay mounted once.
   const summary = (className: string) => (
     <ActivitySummary
       className={className}
@@ -185,7 +178,6 @@ function nonEmpty(values: string[]): string[] | null {
   return values.length ? values : null;
 }
 
-/** Every option's count, absent ones spelled out as 0. */
 function zeroed(
   values: string[],
   counts: Record<string, number>,

@@ -25,38 +25,29 @@ import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { EnvEditButton } from "@/components/env/env-edit-button";
+import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
 import {
-  EnvFilters,
-  useEnvFilters,
   editorFacet,
   sourceFacet,
   typeFacet,
   updatedFacet,
-} from "@/components/env/env-filters";
+} from "@/components/env/env-filters/facets";
+import { useEnvFilters } from "@/components/env/env-filters/use-env-filters";
 import { gqlAction } from "@/lib/graphql-client";
 import { envNameLooksSensitive } from "@/lib/env-secret-name";
-import type { EnvVarDTO } from "@/lib/types";
-import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
+import type { EnvVarDTO } from "@/lib/types/env";
+import type { AppSharedVarDTO } from "@/lib/data/shared-vars/app-view";
+import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
 import type {
   AppRef,
   ProjectRef,
   TeamRef,
-} from "@/components/env/shared-var-wizard";
+} from "@/components/env/shared-var-wizard/types";
 
-/**
- * Standalone and shared variables share ONE row list so that the sort orders the
- * whole table: filtered/sorted per block, "Recently modified" would still stack
- * every standalone var above every shared one, whatever their timestamps say.
- */
 type EnvRow =
   ({ kind: "standalone" } & EnvVarDTO) | ({ kind: "shared" } & AppSharedVarDTO);
 
-/**
- * A row's identity in this table - also its React key and what an optimistic
- * removal is tracked by. `kind` is part of it because the two lists are minted
- * separately: an id only identifies a row together with the list it came from.
- */
 const rowKey = (row: EnvRow) => `${row.kind}:${row.id}`;
 
 export function EnvManager({
@@ -74,24 +65,12 @@ export function EnvManager({
   appId: string;
   vars: EnvVarDTO[];
   sharedVars: AppSharedVarDTO[];
-  /**
-   * The full shared-var record for every shared var applied to this app - what
-   * says whether the variable is OURS to manage. Keyed by id into `detailsById`.
-   */
   sharedVarDetails: SharedVarDTO[];
-  /** `manage_env` held team-wide - what creating a shared variable needs. */
   canCreateShared: boolean;
-  /** Every app of the team - the shared-variable wizard's "Specific apps" picker. */
   apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
-  /** The teams the viewer may share a new variable with. */
   teams: TeamRef[];
-  /**
-   * Keys this app's own compose file writes itself. Deplo injects a variable into a
-   * compose service as a pass-through, so a key the YAML already sets keeps the
-   * YAML's value - said on the row, because the setting looks applied otherwise.
-   */
   composeKeys?: string[];
 }) {
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
@@ -99,10 +78,7 @@ export function EnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
 
-  // What actually reaches this app: the vars it OPTED INTO (the link, ADR-0012),
-  // plus the ones another team or the instance injects with no opt-in at all
-  // (ADR-0027) - those are read-only here, but they must be visible, because a
-  // value in the container that appears nowhere in the UI is the failure mode.
+  // The vars this app opted into (ADR-0012) plus the ones injected with no opt-in (ADR-0027).
   const appliedShared = React.useMemo(
     () => sharedVars.filter((v) => v.linked || v.autoInject),
     [sharedVars],
@@ -121,18 +97,12 @@ export function EnvManager({
     [vars, appliedShared],
   );
 
-  // A deleted (or unlinked) row leaves the table on the click, instead of waiting out
-  // the mutation and then the `router.refresh()` that reloads this page's variables -
-  // the window in which a second click on the same row used to earn a "Not found".
   const {
     visible: rows,
     remove,
     restore,
   } = useOptimisticRemove(serverRows, rowKey);
 
-  // One app's table: the variable is either its own or shared with it (Source),
-  // and beyond that only what/who/when apply - a Project or Environment filter
-  // would have exactly one value here.
   const facets = React.useMemo(
     () => [
       sourceFacet(rows),
@@ -153,9 +123,6 @@ export function EnvManager({
   const hasVars = rows.length > 0;
   const hasMatches = shownRows.length > 0;
 
-  // The page's one action, and it only ever has one home at a time: the toolbar when
-  // there is a table to act on, the heading row when there is not - the first
-  // variable has to be reachable from a page that has no toolbar yet.
   const addButton = (size: "sm" | "default") => (
     <Button
       size={size}
@@ -276,8 +243,7 @@ export function EnvManager({
                           className="gap-1 text-[10px] font-normal whitespace-nowrap"
                         >
                           <Share2 className="size-3" />
-                          {/* A variable another team owns says WHOSE it is, linked
-                              or not: the actions below are theirs, not ours. */}
+                          {/* Another team's variable says whose it is. */}
                           {row.linked &&
                           detailsById.get(row.id)?.editable !== false
                             ? "Shared"
@@ -308,7 +274,7 @@ export function EnvManager({
                       <TimeAgo at={row.updatedAt} />
                     </TableCell>
                     <TableCell>
-                      {/* A shared row carries no creator - it falls back server-side. */}
+                      {/* A shared row carries no creator. */}
                       <EnvAuthorCell author={row.updatedBy ?? null} />
                     </TableCell>
                     <TableCell className="text-right">
@@ -363,8 +329,6 @@ export function EnvManager({
         successMessage="Variable deleted"
         optimistic
         onConfirm={async () => {
-          // `deleteId` is this render's value: the dialog has already closed
-          // itself (and cleared it) by the time this runs.
           const id = deleteId!;
           const key = `standalone:${id}`;
           remove(key);
@@ -381,11 +345,7 @@ export function EnvManager({
   );
 }
 
-/**
- * Actions for a SHARED row on one app's table. Neither the value nor the variable
- * itself is edited here: an app opts in and out, the library is managed on the
- * Variables page.
- */
+// SharedRowActions - the opt-in / opt-out actions for a shared row on one app's table.
 function SharedRowActions({
   row,
   appId,
@@ -395,24 +355,15 @@ function SharedRowActions({
 }: {
   row: AppSharedVarDTO;
   appId: string;
-  /** Ours to manage: `manage_env` team-wide, and not another team's variable. */
   manageable: boolean;
-  /**
-   * Unlinking takes the row off THIS table, so it drops on the click rather than
-   * staying clickable until the refresh lands, and comes back if the mutation
-   * behind it is refused.
-   */
   onRemoved: () => void;
   onRestored: () => void;
 }) {
   const router = useRouter();
-  // Unlinking one of these does not take it out of the container: it keeps arriving
-  // with no link, at the lowest precedence (ADR-0027).
+  // Unlinking does not take it out of the container: it keeps arriving with no link (ADR-0027).
   const keepsArriving = row.autoInject;
 
   function removeFromApp() {
-    // The row goes now and the unlink settles behind it - unless the variable keeps
-    // arriving anyway, in which case the row belongs on the table, read-only.
     if (!keepsArriving) onRemoved();
     void (async () => {
       const res = await gqlAction(
@@ -467,9 +418,7 @@ function SharedRowActions({
   );
 }
 
-/**
- * A plain variable whose NAME reads like a credential (Docker's own rule).
- */
+// LooksLikeSecretBadge - a plain variable whose name reads like a credential.
 function LooksLikeSecretBadge() {
   return (
     <SimpleTooltip content="This name usually holds a credential. Edit it and turn on Secret: the value is then write-only and nothing shows it again.">

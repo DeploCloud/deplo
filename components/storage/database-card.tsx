@@ -39,13 +39,9 @@ import { OverlayLink } from "@/components/shared/overlay-link";
 import { gqlAction } from "@/lib/graphql-client";
 import { DatabaseLogo } from "./database-logo";
 import { DB_NAMES } from "./db-engines";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/**
- * A database on the Storage grid - visually aligned with the Overview app card: a
- * whole-card stretched link into the detail page, an engine-icon tile, a live
- * status, and a ⋯ actions menu.
- */
+// DatabaseCard - a database on the Storage grid, aligned with the Overview app card.
 export function DatabaseCard({
   db,
   serverName,
@@ -59,24 +55,20 @@ export function DatabaseCard({
 }: {
   db: DatabaseDTO;
   serverName?: string;
-  /** The team's Environments, so a database can be moved into one. Empty ⇒ the
-   *  team uses no projects and the whole affordance is hidden. */
+  // Empty ⇒ the team uses no projects, and the whole move affordance is hidden.
   environments?: { id: string; label: string }[];
-  /** The viewer holds `configure_databases` - what a move is gated on. */
+  // `configure_databases` - what a move is gated on.
   canConfigure?: boolean;
   view?: "grid" | "list";
-  /** Injected reorder handle (shown on hover); omit for a non-draggable card. */
+  // Omit for a non-draggable card.
   dragHandle?: React.ReactNode;
-  /** A reorder drag is in flight → make the overlay link inert so a drop can't navigate. */
+  // A reorder drag is in flight: the overlay link goes inert so a drop can't navigate.
   dragActive?: boolean;
-  /** Runtime-poll cadence for the status badge (slower on the list to stay light). */
   pollMs?: number;
-  /** The viewer holds `manage_infra` - the capability `revealConnection` needs. */
+  // `manage_infra` - the capability `revealConnection` needs.
   canReveal?: boolean;
 }) {
-  // Still arriving: a migration is creating this database and copying its volume
-  // across. `inert`, not just pointer-events-none, which the ⋯ cluster opts back
-  // out of with pointer-events-auto - the menu opened and Delete worked.
+  // A migration is still copying this in: `inert`, not pointer-events-none, which the ⋯ cluster opts back out of - the menu opened and Delete worked.
   if (db.migrationRunId)
     return (
       <div
@@ -168,8 +160,7 @@ function DatabaseCardGrid({
   const href = `/storage/databases/${db.id}`;
   return (
     <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20">
-      {/* Stretched link: the whole card is clickable. Interactive controls
-          below opt back into pointer events and sit above this overlay. */}
+      {/* Stretched link: the controls below opt back into pointer events above it. */}
       <OverlayLink href={href} label={db.name} inert={dragActive} />
 
       <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
@@ -192,11 +183,7 @@ function DatabaseCardGrid({
           />
         </div>
 
-        {/**
-         * Connection box - the databases analogue of the app card's latest-deployment box:
-         * the connection string up top as the same click-to-reveal chip the Variables page
-         * uses (masked, so the endpoint still reads at a glance), placement + exposure
-         */}
+        {/* The connection string as the same click-to-reveal chip the Variables page uses. */}
         <div className="rounded-lg border border-border bg-surface p-3">
           <ConnectionChip db={db} canReveal={canReveal} />
           <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -271,9 +258,6 @@ function DatabaseCardList({
   );
 }
 
-/**
- * The connection string, revealable and copyable without leaving the grid.
- */
 function ConnectionChip({
   db,
   canReveal,
@@ -333,8 +317,7 @@ function CardActions({
     });
   }
 
-  // An app reaches a database by name only from the same environment, so where a
-  // database lives is a thing you have to be able to change - not only pick once.
+  // An app reaches a database by name only from the same environment (ADR-0028), so placement has to stay changeable.
   function moveToEnvironment(environmentId: string | null) {
     startTransition(async () => {
       const res = await gqlAction(
@@ -353,8 +336,7 @@ function CardActions({
     });
   }
 
-  // `data-card-actions` + the pointer-events/z lift keep this cluster clickable
-  // above the overlay link (the same contract AppCard uses).
+  // `data-card-actions` + the pointer-events/z lift keep this cluster clickable above the overlay link (the contract AppCard uses).
   return (
     <div
       data-card-actions
@@ -365,8 +347,7 @@ function CardActions({
       ) : (
         <DatabaseStatusDot id={db.id} status={db.status} pollMs={pollMs} />
       )}
-      {/* Drag handle is out of the flow at rest (display:none) so it leaves no
-          empty gap; it slides + fades in on hover / keyboard focus. */}
+      {/* Out of the flow at rest, so it leaves no empty gap. */}
       {dragHandle && (
         <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
           {dragHandle}

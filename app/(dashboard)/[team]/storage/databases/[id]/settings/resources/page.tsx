@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
 import { Cpu } from "lucide-react";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseMetricsHistory } from "@/lib/data/container-metrics";
-import { listServers } from "@/lib/data/servers";
+import { listServers } from "@/lib/data/servers/roster";
 import { canMountHostVolumes, hasCapability } from "@/lib/membership";
 import { serverLabel } from "@/lib/utils";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
-import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-form";
+import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-form/resource-limits-form";
 
 export const metadata = { title: "Resources" };
 

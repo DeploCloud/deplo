@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { hasCapability } from "@/lib/membership";
-import { getRole } from "@/lib/data/roles";
-import { listTeamScopeTree } from "@/lib/data/tokens";
+import { getRole } from "@/lib/data/roles/role-list";
+import { listTeamScopeTree } from "@/lib/data/tokens/scope-tree";
 import { RoleEditor } from "@/components/settings/roles/role-editor";
 
 export async function generateMetadata(

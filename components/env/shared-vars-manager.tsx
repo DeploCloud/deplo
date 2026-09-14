@@ -33,25 +33,24 @@ import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
 import { EnvEditButton } from "@/components/env/env-edit-button";
 import { SharedWithChips } from "@/components/env/shared-with-chips";
+import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
 import {
-  EnvFilters,
-  useEnvFilters,
   editorFacet,
   typeFacet,
   updatedFacet,
-  type EnvFacet,
-} from "@/components/env/env-filters";
-import {
-  SharedVarDialog,
-  type AppRef,
-  type ProjectRef,
-  type TeamRef,
-} from "@/components/env/shared-var-wizard";
+} from "@/components/env/env-filters/facets";
+import type { EnvFacet } from "@/components/env/env-filters/types";
+import { useEnvFilters } from "@/components/env/env-filters/use-env-filters";
+import { SharedVarDialog } from "@/components/env/shared-var-wizard/dialog";
+import type {
+  AppRef,
+  ProjectRef,
+  TeamRef,
+} from "@/components/env/shared-var-wizard/types";
 import { gqlAction } from "@/lib/graphql-client";
-import type { SharedVarDTO } from "@/lib/data/shared-vars";
+import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
-/** The "Shared with" facet, as one predicate both the options and the filter use. */
 function matchSharing(v: SharedVarDTO, value: string): boolean {
   if (value === "team") return v.teamIds.length > 0;
   if (value === "automatic") return v.autoInject;
@@ -60,11 +59,7 @@ function matchSharing(v: SharedVarDTO, value: string): boolean {
   return v.appIds.length > 0;
 }
 
-/**
- * The unified "Shared" tab: every shared variable of the team with create / edit /
- * delete and the sharing modes (team-wide / projects & their environments /
- * per-app links).
- */
+// SharedVarsManager - the "Shared" tab: every shared variable of the team, and who it reaches.
 export function SharedVarsManager({
   vars,
   apps,
@@ -74,22 +69,16 @@ export function SharedVarsManager({
   openEditId,
 }: {
   vars: SharedVarDTO[];
-  /** Every app in the active team - the wizard's "specific apps" scope. */
   apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
-  /** The teams the viewer may share a variable with (the wizard's Teams step). */
   teams: TeamRef[];
-  /** `?edit=` - an app's "Manage" button lands here with its dialog already open. */
   openEditId?: string;
 }) {
-  // `wizard` is the scope editor (and the creator: `editing: null`); `editing` is
-  // the small value form the pencil opens.
   const [wizard, setWizard] = React.useState<{
     editing: SharedVarDTO | null;
   } | null>(null);
   const [editing, setEditing] = React.useState<SharedVarDTO | null>(
-    // A secret has no value form, so the deep link only lands the user on the row.
     () =>
       vars.find(
         (v) => v.id === openEditId && v.editable && v.type !== "secret",
@@ -98,38 +87,27 @@ export function SharedVarsManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
 
-  // The deep link has been consumed: drop it, or leaving and re-entering the tab
-  // would reopen the dialog the user just closed.
   React.useEffect(() => {
     if (openEditId) router.replace("/variables?tab=shared", { scroll: false });
   }, [openEditId, router]);
 
-  // A variable narrowed to single environments carries only THEIR ids, so the
-  // project it belongs to is only knowable through the environment.
   const projectOfEnv = React.useMemo(
     () => new Map(environments.map((e) => [e.id, e.projectId] as const)),
     [environments],
   );
 
-  // A deleted variable leaves the table on the click, instead of waiting out the
-  // mutation and then the `router.refresh()` behind it - the window in which a second
-  // click on the same row earned a "Not found".
   const {
     visible: rows,
     remove,
     restore,
   } = useOptimisticRemove(vars, (v) => v.id);
 
-  // The whole point of this tab is WHO gets the variable, so that is what it filters
-  // on: the sharing mode, and then the single project / environment / app a variable
-  // reaches.
   const facets = React.useMemo<EnvFacet<SharedVarDTO>[]>(() => {
     const reachesProject = (v: SharedVarDTO, projectId: string) =>
       v.projectIds.includes(projectId) ||
       v.environmentIds.some((id) => projectOfEnv.get(id) === projectId);
     const reachesEnvironment = (v: SharedVarDTO, environmentId: string) =>
       v.environmentIds.includes(environmentId) ||
-      // A whole-project scope reaches every environment of that project.
       v.projectIds.some((p) => p === projectOfEnv.get(environmentId));
 
     const sharingFacet: EnvFacet<SharedVarDTO> = {
@@ -168,8 +146,6 @@ export function SharedVarsManager({
       info: "Variables that reach this environment - picked directly, or through a scope on its whole project.",
       options: environments
         .filter((e) => rows.some((v) => reachesEnvironment(v, e.id)))
-        // Every project has a "Production": the project name is what tells two
-        // same-named environments apart in the menu.
         .map((e) => ({ value: e.id, label: e.name, hint: e.projectName })),
       match: reachesEnvironment,
     };
@@ -197,8 +173,6 @@ export function SharedVarsManager({
     ];
   }, [rows, projects, environments, apps, projectOfEnv]);
 
-  // Searching "storefront" finds the variables shared WITH storefront, not only
-  // the keys that spell it.
   const {
     state: filters,
     setState: setFilters,
@@ -215,8 +189,7 @@ export function SharedVarsManager({
 
   return (
     <div className="space-y-4">
-      {/* The action sits in the HEADER, not beside the filters: the toolbar needs
-          the full width to keep its dropdowns on one row. */}
+      {/* The action sits in the header: the toolbar needs its full width. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Shared variables</h3>
@@ -333,7 +306,6 @@ export function SharedVarsManager({
                         </Button>
                       </div>
                     ) : (
-                      /* Another team owns it: it reaches us, we do not edit it. */
                       <SimpleTooltip
                         content={`Owned by ${v.ownerTeam?.name ?? "an instance admin"}. Only they can change it.`}
                       >
@@ -383,8 +355,6 @@ export function SharedVarsManager({
         successMessage="Shared variable deleted"
         optimistic
         onConfirm={async () => {
-          // `deleteId` is this render's value: the dialog has already closed
-          // itself (and cleared it) by the time this runs.
           const id = deleteId!;
           remove(id);
           const res = await gqlAction<{ deleteSharedVar: boolean }>(

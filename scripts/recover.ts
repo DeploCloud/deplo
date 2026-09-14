@@ -1,18 +1,11 @@
-/**
- * Break-glass recovery, run on the host that runs Deplo: `deplo recover` on a
- * Docker install, `bun run recover` from a checkout.
- */
-
 import { and, asc, eq } from "drizzle-orm";
 import { createLocalAccountIssuer } from "better-auth";
 import { createInterface } from "node:readline";
 import { randomBytes } from "node:crypto";
 import { getDb } from "../lib/db/client";
-import {
-  instanceSettings,
-  servers as serversTable,
-  users as usersTable,
-} from "../lib/db/schema/control-plane";
+import { users as usersTable } from "../lib/db/schema/control-plane/identity";
+import { instanceSettings } from "../lib/db/schema/control-plane/instance";
+import { servers as serversTable } from "../lib/db/schema/control-plane/servers";
 import {
   account as accountTable,
   session as sessionTable,
@@ -27,7 +20,7 @@ import {
   panelFallbackHost,
 } from "../lib/deploy/domains";
 
-/** Named by the Docker image, which has no package.json to `bun run`. */
+// Named by the Docker image, which has no package.json to `bun run`.
 const CMD = process.env.DEPLO_RECOVER_CMD || "bun run recover";
 
 const USAGE = `
@@ -68,15 +61,11 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-/**
- * What readline may echo while a password is being typed: the prompt it redraws
- * with the buffer on every keypress, and nothing else.
- */
+// hiddenEcho - what readline may echo while a password is typed: the redrawn prompt, nothing else.
 export function hiddenEcho(label: string, redraw: string): string {
   return redraw.startsWith(label) ? label : "";
 }
 
-/** Read a line with the terminal echo off, so a password never lands on screen. */
 async function promptHidden(label: string): Promise<string> {
   if (!process.stdin.isTTY)
     fail(
@@ -88,17 +77,14 @@ async function promptHidden(label: string): Promise<string> {
     _writeToOutput: (s: string) => void;
   };
   const answer = await new Promise<string>((resolve) => {
-    // Ctrl-C and Ctrl-D both leave `question` pending for ever otherwise, and a
-    // wedged terminal is the last thing a break-glass tool should hand back.
+    // Ctrl-C and Ctrl-D both leave `question` pending for ever otherwise.
     rl.on("SIGINT", () => {
       process.stdout.write("\n");
       process.exit(130);
     });
     rl.on("close", () => resolve(""));
     rl.question(label, resolve);
-    // Readline clears the whole row and redraws `prompt + line` on every
-    // keypress, so a prompt written around it is erased by the first character.
-    // Let the prompt back through here and drop the rest: that is the echo.
+    // Readline clears the row and redraws `prompt + line` on every keypress: let the prompt through, drop the rest.
     out._writeToOutput = (s: string) => {
       const echo = hiddenEcho(label, s);
       if (echo) out.output.write(echo);
@@ -109,7 +95,6 @@ async function promptHidden(label: string): Promise<string> {
   return answer;
 }
 
-/** Resolve a username (or email) to a row, failing loudly rather than guessing. */
 async function findUser(handle: string) {
   const needle = handle.replace(/^@/, "").toLowerCase();
   const rows = await getDb()
@@ -174,7 +159,7 @@ async function cmdPassword(handle: string, given: string | undefined) {
 
   let password: string;
   if (given === "-") {
-    // url-safe-ish and long enough that nobody is tempted to keep it.
+    // Long enough that nobody is tempted to keep the generated break-glass password.
     password = randomBytes(18).toString("base64url");
   } else if (given) {
     password = given;
@@ -185,9 +170,7 @@ async function cmdPassword(handle: string, given: string | undefined) {
   }
   if (password.length < 8) fail("Choose a password of at least 8 characters.");
 
-  // The credential lives on the Better Auth `account` row since migration 0055.
-  // Written with plain drizzle rather than through lib/auth so this script stays
-  // free of `next/headers` (it runs from a terminal, not a request).
+  // The credential lives on the Better Auth `account` row since migration 0055; plain drizzle keeps this script free of `next/headers`.
   const updated = await getDb()
     .update(accountTable)
     .set({ password: await hashPassword(password), updatedAt: new Date() })
@@ -206,9 +189,7 @@ async function cmdPassword(handle: string, given: string | undefined) {
         userId: user.id,
         accountId: user.id,
         providerId: "credential",
-        // `account.issuer` is required since Better Auth 1.7.0 and the sign-in
-        // path matches on it exactly - a recovered password written without it is
-        // a credential that verifies and still cannot log in.
+        // Better Auth 1.7.0 matches `account.issuer` exactly at sign-in: without it the password verifies and still cannot log in.
         issuer: createLocalAccountIssuer("credential"),
         password: await hashPassword(password),
       });
@@ -232,8 +213,7 @@ async function cmdOwner(handle: string) {
 
   const now = new Date().toISOString();
   await getDb().transaction(async (tx) => {
-    // The crown implies both of these, so grant them rather than leave the
-    // instance in a state the app's invariants don't describe.
+    // The crown implies both, so granting them keeps the instance describable by the app's invariants.
     await tx
       .update(usersTable)
       .set({ isInstanceAdmin: true, suspended: false })
@@ -273,10 +253,7 @@ async function cmdUnsuspend(handle: string) {
   console.log(`\n  @${user.username} can sign in again.\n`);
 }
 
-/**
- * The break-glass half of updateServerAddress (lib/data/servers.ts): same two
- * columns, none of the checks.
- */
+// Break-glass half of updateServerAddress (lib/data/servers/agent-maintenance.ts): same two columns, none of the checks.
 async function cmdServerAddress(
   handle: string,
   address?: string,
@@ -320,10 +297,7 @@ async function cmdServerAddress(
   );
 }
 
-/**
- * The break-glass half of setPanelUrl: rewrite the panel's own route on the host
- * that serves it, with none of the checks and no reachability probe.
- */
+// Break-glass half of setPanelUrl on the host that serves the panel: none of the checks, no reachability probe.
 async function cmdPanelAddress(arg: string) {
   const servers = await getDb()
     .select({
@@ -343,7 +317,7 @@ async function cmdPanelAddress(arg: string) {
     );
 
   const { fetchHostInfo, applyTraefikConfig } =
-    await import("../lib/infra/agent-client");
+    await import("../lib/infra/agent-client/host-ops");
   const yaml = (await fetchHostInfo(server.id)).traefikComposeYaml;
   const current = yaml ? panelRoute(yaml) : null;
   if (!current)
@@ -379,8 +353,7 @@ async function cmdPanelAddress(arg: string) {
 
   const url = `${https ? "https" : "http"}://${domain}`;
   const now = new Date().toISOString();
-  // The generated address is the backup address: putting the panel back on it
-  // while it is switched off would leave the two disagreeing.
+  // The generated address IS the backup address, so re-using it while that is switched off would leave the two disagreeing.
   const set = {
     panelUrl: url,
     updatedAt: now,

@@ -15,12 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CAPABILITY_META } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
-import type { Capability } from "@/lib/types";
+import type { Capability } from "@/lib/types/identity";
 
-/**
- * One MCP tool, flattened for the browser. Importing the table into a client
- * component instead would put every tool's query text in the bundle.
- */
+// McpToolSummary - one MCP tool flattened for the browser; importing the table here would bundle every tool's query text.
 export interface McpToolSummary {
   name: string;
   title: string;
@@ -30,16 +27,14 @@ export interface McpToolSummary {
   destructive: boolean;
 }
 
-/**
- * What an agent can actually do, behind a link.
- */
+// ToolsDialog - what an agent can actually do, behind a link.
 export function ToolsDialog({
   tools,
   highlight,
   trigger,
 }: {
   tools: McpToolSummary[];
-  /** Capabilities to mark as reached. Omitted ⇒ nothing is marked. */
+  // Capabilities to mark as reached. Omitted ⇒ nothing is marked.
   highlight?: string[];
   trigger: React.ReactNode;
 }) {
@@ -144,8 +139,7 @@ function ToolRow({
     <div
       className={cn(
         "flex items-start justify-between gap-4 p-3",
-        // Dimmed, not hidden: seeing what a wider token would add is half the
-        // reason to open this from the permissions step.
+        // Dimmed, not hidden: what a wider token would add is half the reason to open this.
         !reached && "opacity-45",
       )}
     >

@@ -8,16 +8,18 @@ import {
   ExternalLink,
   Lock,
 } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import {
-  getDeployment,
   getLogs,
   getQueuePosition,
+} from "@/lib/data/deployments/build-progress";
+import {
+  getDeployment,
   isFirstDeployment,
-} from "@/lib/data/deployments";
+} from "@/lib/data/deployments/deployment-queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/status-badge";

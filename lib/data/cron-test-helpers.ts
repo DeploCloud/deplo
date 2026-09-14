@@ -1,19 +1,14 @@
 import { eq } from "drizzle-orm";
 
 import type { TestDb } from "../db/test-harness";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   cronJobs as cronJobsTable,
   cronRuns as cronRunsTable,
-  databases as databasesTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/crons";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { TEAM_A } from "./identity-test-helpers";
-import type { AgentConnection } from "../infra/agent-client";
-
-/**
- * Seeders + a fake agent for the cron tests. Not named `*.test.ts` so the
- * `node --test` glob skips it.
- */
+import type { AgentConnection } from "../infra/agent-client/connection";
 
 export const TRUNCATE_CRONS = `truncate table cron_runs, cron_job_env, cron_jobs
   restart identity cascade;`;
@@ -69,11 +64,7 @@ export async function seedCronJob(
   return opts.id;
 }
 
-/**
- * A run row. For the reads and gates that need one IN FLIGHT without an agent -
- * the overlap rule and the "is it running right now" flag both read the store,
- * not the host.
- */
+// seedCronRun seeds a run row for the reads and gates that need one in flight.
 export async function seedCronRun(
   db: TestDb,
   opts: {
@@ -106,7 +97,7 @@ export async function seedCronRun(
   return opts.id;
 }
 
-/** Flip a target's master switch (both start off, like production). */
+// enableCrons flips a target's master switch (both start off, like production).
 export async function enableCrons(
   db: TestDb,
   kind: "app" | "database",
@@ -125,7 +116,7 @@ export async function enableCrons(
   }
 }
 
-/** Every run of a job, oldest first - the history as the page shows it reversed. */
+// runsOf returns every run of a job, oldest first.
 export async function runsOf(db: TestDb, jobId: string) {
   return db
     .select()
@@ -134,7 +125,7 @@ export async function runsOf(db: TestDb, jobId: string) {
     .orderBy(cronRunsTable.seq);
 }
 
-/** What the fake agent should answer for one job handle. */
+// FakeJobState is what the fake agent answers for one job handle.
 export interface FakeJobState {
   found?: boolean;
   running?: boolean;
@@ -144,20 +135,15 @@ export interface FakeJobState {
   timedOut?: boolean;
 }
 
-/**
- * A stand-in for a real agent connection.
- */
+// FakeAgent is a stand-in for a real agent connection.
 export class FakeAgent {
-  /** Containers the fake host is running, in ListInstances order. */
   instances: {
     name: string;
     service: string;
     image: string;
     running: boolean;
   }[] = [{ name: "deplo-web", service: "web", image: "img", running: true }];
-  /** job_id -> what PollJob answers. */
   jobs = new Map<string, FakeJobState>();
-  /** Every StartJob it received, in order. */
   started: {
     container: string;
     command: string;
@@ -166,9 +152,7 @@ export class FakeAgent {
   }[] = [];
   killed: string[] = [];
   closed = 0;
-  /** When set, connecting throws it - an unreachable or too-old agent. */
   connectError: Error | null = null;
-  /** When set, StartJob throws it. */
   startError: Error | null = null;
   private seq = 0;
 
@@ -177,10 +161,9 @@ export class FakeAgent {
     return this.connection();
   };
 
-  /** Queue the answer PollJob gives for the NEXT started job. */
   nextState: FakeJobState = { found: true, running: true };
 
-  /** An arrow property, so the RPC bodies below close over `this` lexically. */
+  // An arrow property, so the RPC bodies close over `this` lexically.
   connection = (): AgentConnection => {
     const conn = {
       listInstances: async () =>
@@ -231,8 +214,6 @@ export class FakeAgent {
         this.closed++;
       },
     };
-    // Only the cron surface is real; reaching for another RPC is a coupling bug, not a
-    // gap in this fake.
     return new Proxy(conn, {
       get(target, prop) {
         if (prop in target) return target[prop as keyof typeof target];
@@ -244,7 +225,6 @@ export class FakeAgent {
     }) as unknown as AgentConnection;
   };
 
-  /** Settle every live handle with one outcome. */
   settleAll(state: FakeJobState): void {
     for (const id of this.jobs.keys()) {
       this.jobs.set(id, { found: true, running: false, ...state });

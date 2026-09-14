@@ -1,15 +1,11 @@
 import { notFound } from "next/navigation";
 
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScopedActivity } from "@/components/activity/scoped-activity";
 
 export const metadata = { title: "Activity" };
 
-/**
- * The team's audit trail narrowed to this app - who deployed, changed a domain,
- * touched a variable, and when.
- */
 export default async function AppActivityPage(
   props: PageProps<"/[team]/apps/[slug]/activity">,
 ) {

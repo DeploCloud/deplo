@@ -3,40 +3,25 @@ import "server-only";
 import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  deployments as deploymentsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { dispatchAlert } from "./dispatch";
 import { shouldFire } from "./cooldown";
 
-/**
- * "This app keeps dying" - the signal `telemetrySaysRunning` has always computed
- * and thrown away. Adding a ninth writer on a 30s clock would start a write-war
- * with the deploy pipeline for a fact the UI already displays correctly.
- */
-
+// Kept in RAM: another writer on a 30s clock would start a write-war with the deploy pipeline.
 const KEY = Symbol.for("deplo.notify.crashloop");
-/** App ids seen restarting on the PREVIOUS reconcile, per server. */
+// App ids seen restarting on the PREVIOUS reconcile, per server.
 const lastSeen = ((globalThis as Record<symbol, unknown>)[KEY] ??= new Map<
   string,
   Set<string>
 >()) as Map<string, Set<string>>;
 
 const ALERTED_KEY = Symbol.for("deplo.notify.crashloop.alerted");
-/**
- * App ids we have actually raised a crash-loop alert for. Recovery is announced
- * ONLY for these, otherwise every healthy app in the fleet would report itself
- * "running again" on the first reconcile after a restart.
- */
+// Recovery is announced ONLY for these, or every healthy app reports "running again" after a restart.
 const alerted = ((globalThis as Record<symbol, unknown>)[ALERTED_KEY] ??=
   new Set<string>()) as Set<string>;
 
-/**
- * Report this server's crash-looping apps for one reconcile pass. Both are needed:
- * the healthy list is what closes an open alert, and closing it costs a `Map.get`
- * per app because `shouldFire` is asked first.
- */
+// Both lists are needed: the healthy one is what closes an open alert.
 export async function reportAppHealth(
   serverId: string,
   crashing: string[],
@@ -50,7 +35,6 @@ export async function reportAppHealth(
     (id) =>
       alerted.delete(id) && shouldFire("app_crash_loop", `app:${id}`, "ok"),
   );
-  // Confirmed: restarting on this pass AND on the one before it.
   const confirmed = crashing.filter((id) => previous.has(id));
   if (confirmed.length === 0 && recovered.length === 0) return;
 
@@ -82,17 +66,12 @@ export async function reportAppHealth(
       });
     }
   } catch (e) {
-    // Best-effort, like the reconcile that calls us: a DB blip must never take
-    // down the telemetry stream.
+    // Best-effort like the reconcile that calls us: a DB blip must not take down the telemetry stream.
     console.error("[deplo] app health alerting failed:", e);
   }
 }
 
-/**
- * The apps behind those ids, with the same correctness guards the status
- * reconcile uses: this host must own them, they must not be mid-migration, and
- * an app with a deploy in flight is being worked on rather than failing.
- */
+// Same guards as the status reconcile: this host owns it, no migration, no deploy in flight.
 async function appRows(serverId: string, ids: string[]) {
   if (ids.length === 0) return [];
   return getDb()

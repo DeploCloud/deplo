@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { HardDrive } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { canMountHostVolumes } from "@/lib/membership";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { containerWorkdir } from "@/lib/apps/volume-model";
@@ -11,7 +11,7 @@ import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import {
   composeServiceNames,
   detectDefaultApp,
-} from "@/lib/deploy/compose-stack";
+} from "@/lib/deploy/compose-stack/compose-read";
 import { usesComposeStack } from "@/lib/utils";
 
 export const metadata = { title: "Storage" };
@@ -33,11 +33,9 @@ export default async function AppStorageSettingsPage(
   const composeServices = isComposeStack
     ? composeServiceNames(project.compose)
     : [];
-  // A Bind stays selectable without the grant - the editor says plainly that
-  // saving one needs it, which beats hiding the option and the reason with it.
+  // A Bind stays selectable without the grant - the editor says saving one needs it.
   const mayBind = await canMountHostVolumes();
-  // A File entry's content is part of the app's configuration, so it rides the
-  // same capability the rest of this page does.
+  // A File entry's content is app configuration, so it rides the page's configure_apps.
   const mayEditFiles = await hasAppCapability(project.id, "configure_apps");
 
   return (
@@ -52,20 +50,16 @@ export default async function AppStorageSettingsPage(
           appId={project.id}
           slug={project.slug}
           volumes={project.volumes ?? []}
-          // A stack's own yaml is storage too, and it is the only storage most
-          // migrated apps have - without it the tab claims the data is thrown away.
+          // A stack's own yaml is the only storage most migrated apps have - without it the tab claims the data is thrown away.
           composeMounts={composeDeclaredMounts(project)}
           composeServices={composeServices}
-          // The same heuristic the renderer falls back to, so the picker's
-          // placeholder names the service a blank row will actually mount into.
+          // The same fallback the renderer uses, so the placeholder names the service a blank row mounts into.
           defaultComposeService={
             isComposeStack ? detectDefaultApp(project.compose)?.service : null
           }
           canMountHostVolumes={mayBind}
           canManageFiles={mayEditFiles}
-          // "Path inside the app" is the field a non-expert cannot guess. For
-          // anything Deplo builds, the answer is a fact (the generated Dockerfile's
-          // WORKDIR), so the editor states it instead of leaving a blank box.
+          // The generated Dockerfile's WORKDIR - a path the non-expert cannot guess, so the editor states it.
           containerWorkdir={containerWorkdir(
             project.source,
             project.build.rootDirectory,

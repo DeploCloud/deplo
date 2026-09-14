@@ -1,28 +1,19 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { resolveLogsTarget } from "@/lib/data/console";
 import * as logs from "@/lib/logs/session";
-import { connectAgent } from "@/lib/infra/agent-client";
+import { connectAgent } from "@/lib/infra/agent-client/connect";
 import { parseLogWindow } from "@/lib/logs/window";
-import { logMaxDays } from "@/lib/data/instance-settings";
-
-/**
- * Live runtime logs (`docker logs -f`) for an app's container, over plain HTTP.
- * The first event is `session` with the id.
- */
+import { logMaxDays } from "@/lib/data/instance-settings/settings-store";
 
 // Long-lived stream; must run at request time on the Node runtime (spawns docker).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Queued-chunk ceiling before a stalled SSE client is cut off.
 const MAX_QUEUED_CHUNKS = 1024;
 
-/**
- * Belt-and-braces CSRF check: refuse a request whose `Origin` points at another
- * site.
- */
+// Belt-and-braces CSRF check: refuse a request whose Origin points at another site.
 function isCrossSite(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
@@ -54,15 +45,12 @@ export async function GET(
 
   const { id: appId } = await ctx.params;
   const target = request.nextUrl.searchParams.get("container") ?? undefined;
-  // Default to the last 500 lines. A missing param must fall back, NOT seed 0 -
-  // Number(null) is 0 (finite), which would request `--tail 0` (follow-only, no
-  // history) and leave the viewer empty on an idle container.
+  // Number(null) is 0 (finite), so a missing param must fall back to 500, never `--tail 0` (follow-only, empty viewer).
   const rawTail = request.nextUrl.searchParams.get("tail");
   const parsedTail = rawTail !== null ? Number(rawTail) : NaN;
   const tail = Number.isFinite(parsedTail)
     ? Math.min(Math.max(Math.trunc(parsedTail), 0), 5000)
     : 500;
-  // How far back to reach and whether to prefix each line with its write time.
   const window = parseLogWindow(
     request.nextUrl.searchParams,
     await logMaxDays(),
@@ -81,9 +69,7 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // Build the backing handle against the app's OWNING server's agent: it
-  // streams the agent's FollowLogs (cleanup closes the gRPC client when the
-  // session exits). On a dial failure, fail clearly with 503.
+  // Must stream from the app's OWNING server's agent, and a dial failure is a hard 503, never a local fallback.
   let session;
   try {
     const conn = await connectAgent(resolved.server!.id);
@@ -109,9 +95,7 @@ export async function GET(
         }
       };
       const send = (event: string, data: string) => {
-        // Back-pressure: desiredSize is null once the stream errors/closes and
-        // goes negative when the client stops reading. Skip writes on a dead
-        // stream; cut off a stalled client rather than grow the heap unbounded.
+        // desiredSize is null once the stream errored/closed and negative when the client stalled; cut it off rather than grow the heap.
         const size = controller.desiredSize;
         if (size === null) return;
         if (size < -MAX_QUEUED_CHUNKS) {
@@ -127,8 +111,7 @@ export async function GET(
       // NOT named "open" - EventSource reserves that event name (see attach route).
       send("session", session.id);
 
-      // Streaming decoder so a multi-byte UTF-8 glyph split across two docker
-      // chunks isn't mangled into � - partial bytes buffer until the rest lands.
+      // A multi-byte UTF-8 glyph split across two docker chunks is mangled without a streaming decoder.
       const decoder = new StringDecoder("utf8");
       unsubscribe = logs.subscribe(session, (chunk) => {
         try {
@@ -139,9 +122,7 @@ export async function GET(
         }
       });
 
-      // A stream that FAILED (agent unreachable, container refused) is not the same as a
-      // container that simply stopped talking, and the viewer must not render both as a
-      // silent empty pane: send the curated reason first, then close.
+      // A FAILED stream is not a stopped container: send the reason before exit, or the viewer shows a silent empty pane.
       session.onExit = (error) => {
         try {
           if (error) send("failure", error);
@@ -152,9 +133,7 @@ export async function GET(
         }
       };
 
-      // Browser navigated away / closed the tab: drop our subscription. A signal that
-      // aborted DURING the pre-start awaits never fires "abort" again - check it
-      // explicitly so an already-gone client is cleaned up immediately.
+      // A signal that aborted DURING the pre-start awaits never fires "abort" again, so check it explicitly.
       if (request.signal.aborted) {
         closeStream();
         return;
@@ -184,9 +163,7 @@ export async function DELETE(
   const { id: appId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? logs.get(sessionId, appId) : undefined;
-  // Only the principal that opened it may close it: a session id is otherwise a
-  // capability anyone can use to cut short somebody else's live log stream.
-  // Silent either way - a stranger learns nothing about which ids are live.
+  // Only the opener may close it: a session id is otherwise a capability to cut short somebody else's stream, and the silence hides which ids are live.
   if (session && session.userId === user.id) logs.destroy(sessionId);
   return Response.json({ ok: true });
 }

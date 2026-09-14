@@ -20,9 +20,10 @@ import { UserMenu } from "./user-menu";
 import { openPalette } from "@/components/command-palette/palette-open";
 import { TeamSwitcher } from "./team-switcher";
 import { Breadcrumbs } from "./breadcrumbs";
-import { isNonTeamSettings } from "./nav-config";
+import { isNonTeamSettings } from "./nav-config/active-route";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
-import type { PublicUser, TeamIdentity, TeamSummary } from "@/lib/types";
+import type { PublicUser } from "@/lib/types/identity";
+import type { TeamIdentity, TeamSummary } from "@/lib/types/team";
 
 export function Topbar({
   user,
@@ -35,15 +36,12 @@ export function Topbar({
   user: PublicUser;
   team: TeamIdentity;
   teams: TeamSummary[];
-  /** Team snapshot the breadcrumb navigates over (folders/apps/projects). */
   breadcrumb: BreadcrumbGraph;
   capabilities?: string[];
   isAdmin?: boolean;
 }) {
   const pathname = useFlatPathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  // Personal/system settings have no team context, so hide the team switcher
-  // there and show a neutral "Settings" label in its place.
   const hideTeam = isNonTeamSettings(pathname);
 
   return (
@@ -73,12 +71,10 @@ export function Topbar({
         </SheetContent>
       </Sheet>
 
-      {/* Only present while the sidebar is collapsed - it has no header of its
-          own to host the control at zero width. */}
+      {/* Only present while the sidebar is collapsed. */}
       <SidebarExpandButton />
 
-      {/* Team switcher - replaced by a neutral label on personal/system settings,
-          which act outside any single team. */}
+      {/* Team switcher, or a neutral label outside any single team. */}
       {hideTeam ? (
         <span className="flex items-center gap-2 text-sm font-medium">
           <Settings className="size-4 text-muted-foreground" />
@@ -88,10 +84,7 @@ export function Topbar({
         <TeamSwitcher team={team} teams={teams} />
       )}
 
-      {/**
-       * Rich trail on the apps tree (Overview ▾ / Folder ▾ / App ▾ / Section ▾ with
-       * sibling menus), a plain "/ Label" everywhere else.
-       */}
+      {/* Rich trail on the apps tree, a plain "/ Label" everywhere else. */}
       <React.Suspense
         fallback={
           <span className="hidden items-center gap-2 sm:flex">
@@ -122,10 +115,7 @@ export function Topbar({
         >
           <Search className="size-5" />
         </Button>
-        {/**
-         * Creation lives on the Overview's "Add New" menu only - the header stays lean
-         * (theme + account).
-         */}
+        {/* Creation lives on the Overview's "Add New" menu, not here. */}
         <MigrationChip canOpen={isAdmin} />
         <UpdateChip />
         <ThemeToggle />
@@ -135,7 +125,6 @@ export function Topbar({
   );
 }
 
-/** Segments whose name is not just their path, capitalised ("mcp" is not "Mcp"). */
 const SEGMENT_LABELS: Record<string, string> = {
   mcp: "MCP Server",
   tokens: "API tokens",
@@ -144,8 +133,6 @@ const SEGMENT_LABELS: Record<string, string> = {
 function breadcrumb(pathname: string): string {
   if (pathname === "/") return "Overview";
   const segs = pathname.split("/").filter(Boolean);
-  // Under /settings show the subsection (Account, Servers, …) rather than a
-  // generic "Settings"; elsewhere use the top-level segment.
   const seg =
     segs[0] === "settings" && segs.length > 1 ? segs[1] : (segs[0] ?? "");
   return SEGMENT_LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1);

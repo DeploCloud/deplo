@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Settings2 } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { faviconSourceKind } from "@/lib/apps/favicon-shared";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { GeneralSettingsForm } from "@/components/apps/settings/general-settings-form";
@@ -15,9 +15,7 @@ export default async function AppGeneralSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // "Detect from source" is offered for every app whose files Deplo can
-  // actually read: a GitHub repo, an uploaded archive, or, for a compose stack,
-  // the app's own files on its server. Same dispatch the detector runs.
+  // Same dispatch the detector runs, so the offer matches what detection can read.
   const detectable = faviconSourceKind(project) !== "none";
 
   return (

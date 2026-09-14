@@ -6,21 +6,18 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
-  folders as foldersTable,
   apps as appsTable,
   appMounts as appMountsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/apps";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { setFolderGrant } from "./folder-access";
 import { writeAppFile, readAppStorageFile } from "./app-files";
-import { __setAgentConnectorForTest } from "../infra/agent-client";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 
-/**
- * A File volume's body is written under `configure_apps` - per team and per folder
- * grant, at the data layer, not only at the field's authScopes.
- */
+// A File volume's body is written under `configure_apps`, per team and per folder grant, at the data layer and not only in the field's authScopes.
 
 let db: TestDb;
 let pg: PGlite;
@@ -62,7 +59,7 @@ before(async () => {
         }),
         close: () => {},
       }) as unknown as Awaited<
-        ReturnType<typeof import("../infra/agent-client").connectAgent>
+        ReturnType<typeof import("../infra/agent-client/connect").connectAgent>
       >,
   );
 });

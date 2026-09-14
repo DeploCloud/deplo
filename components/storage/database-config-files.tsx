@@ -19,24 +19,17 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { languageForPath } from "@/components/apps/editor-language";
 import { gqlAction } from "@/lib/graphql-client";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/**
- * The engine's own config files (Advanced): `postgresql.conf`, `my.cnf`,
- * `redis.conf`, a script under `/docker-entrypoint-initdb.d`.
- */
-
-/** ~40KB of CodeMirror, loaded only when a database actually has a file. */
+// ~40KB of CodeMirror, loaded only when a database actually has a file.
 const TextEditor = dynamic(
   () => import("@/components/apps/text-editor").then((m) => m.TextEditor),
   { ssr: false, loading: () => <EditorSkeleton /> },
 );
 
-/** How tall the box is before it scrolls - a config file, not a manuscript. */
 const EDITOR_MIN_HEIGHT = 200;
 
-/** A row while it is being edited: the saved shape plus a key React can hold on
- *  to, since two rows may briefly share an empty path. */
+// The extra `key` is because two rows may briefly share an empty path.
 interface Row {
   key: string;
   filePath: string;
@@ -50,8 +43,7 @@ function toRows(mounts: DatabaseDTO["mounts"]): Row[] {
   return mounts.map((m) => ({ key: `row-${nextKey++}`, ...m }));
 }
 
-/** What each engine documents as its config file, used as the placeholder pair
- *  so the commonest case is a matter of confirming what is already suggested. */
+// What each engine documents as its config file, offered as the placeholder pair.
 const SUGGESTION: Record<string, { filePath: string; mountPath: string }> = {
   postgres: { filePath: "postgresql.conf", mountPath: "/etc/postgresql.conf" },
   mysql: { filePath: "my.cnf", mountPath: "/etc/mysql/conf.d/my.cnf" },
@@ -67,7 +59,7 @@ const SUGGESTION: Record<string, { filePath: string; mountPath: string }> = {
   },
 };
 
-/** The one refusal worth linting in the browser: the engine's data directory. */
+// The refusal worth linting in the browser is the engine's data directory.
 function problemFor(row: Row, dataDir: string): string | null {
   const filePath = row.filePath.trim();
   const mountPath = row.mountPath.trim().replace(/\/+$/, "");
@@ -90,9 +82,7 @@ export function DatabaseConfigFiles({
   dataDir,
 }: {
   db: DatabaseDTO;
-  /** Where THIS engine keeps its data (`DB_DATA_DIRS`), passed in by the page:
-   *  the constant lives next to the compose renderer, which is server-only, and
-   *  a second copy of it here is exactly how the two would drift. */
+  // `DB_DATA_DIRS` lives next to the compose renderer, which is server-only, so the page passes it in rather than a second copy drifting here.
   dataDir: string;
 }) {
   const router = useRouter();
@@ -103,9 +93,7 @@ export function DatabaseConfigFiles({
     mountPath: "/etc/engine.conf",
   };
 
-  // What is stored right now. After a save `router.refresh()` re-renders with the
-  // new props, so `dirty` clears itself without the form having to re-seed - the
-  // same shape the Image & command card next door has.
+  // After a save `router.refresh()` re-renders with the new props, so `dirty` clears itself without the form re-seeding.
   const saved = React.useMemo(() => JSON.stringify(db.mounts), [db.mounts]);
 
   const current = JSON.stringify(

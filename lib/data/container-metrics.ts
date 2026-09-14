@@ -3,7 +3,7 @@ import "server-only";
 import { hasCapability, requireActiveTeamId } from "../membership";
 import { hasAppCapability } from "./node-access";
 import { loadTeamApp } from "./app-graph-load";
-import { loadDatabaseForTeam } from "./databases";
+import { loadDatabaseForTeam } from "./databases/rows";
 import type { ContainerStat as PbContainerStat } from "../agent/gen/agent";
 import {
   getContainerHistory,
@@ -12,13 +12,7 @@ import {
 } from "../monitoring/container-history";
 import { metricsStreamUnsupported } from "../monitoring/stream-modes";
 
-/**
- * Per-app / per-database live resource metrics - the data behind the Monitoring
- * TAB on an app or database page (the per-container sibling of
- * lib/data/monitoring.ts's host-level metrics).
- */
-
-/** One container's live usage in the breakdown table (live only; not charted). */
+// ContainerInstanceMetrics - one container's live usage in the breakdown table.
 export interface ContainerInstanceMetrics {
   name: string;
   running: boolean;
@@ -31,31 +25,22 @@ export interface ContainerInstanceMetrics {
   blockRead: number; // cumulative bytes
   blockWrite: number;
   pids: number;
-  /** Raw docker state: running | restarting | exited | created | paused | dead |
-   *  removing. Empty from an agent too old to send it - not a synonym for stopped. */
+  // Raw docker state (running | exited | restarting | ...); empty from an agent too old.
   state: string;
-  /** The healthcheck verdict when the image defines one: healthy | unhealthy |
-   *  starting. Empty when there is NO healthcheck, which is not "healthy". */
+  // healthy | unhealthy | starting; empty when there is NO healthcheck, which is not healthy.
   health: string;
-  /** How many times docker has restarted this container - what turns "it is
-   *  starting" into "it has been dying for an hour". */
   restartCount: number;
-  /** The container's network namespace. Containers sharing one report the SAME
-   *  counters, so the stack total must count them once. 0 = agent too old. */
+  // Containers sharing a namespace report the SAME counters, so count them once. 0 = old agent.
   netNsId: number;
-  /** `network_mode: host` - net is 0 here because those bytes are the machine's,
-   *  and the host chart already draws them. */
+  // network_mode: host - net is 0 here, because those bytes are the machine's.
   netNsHost: boolean;
 }
 
-/**
- * The aggregate stored in the ring buffer + charted.
- */
+// ContainerMetricsSample - the aggregate stored in the ring buffer and charted.
 export interface ContainerMetricsSample {
-  /** The app or database id - the history buffer key. */
   id: string;
   online: boolean;
-  /** epoch ms (control-plane clock at measurement). */
+  // epoch ms (control-plane clock at measurement).
   ts: number;
   cpu: number; // percent of ONE core, summed across running containers
   memUsed: number; // bytes, summed
@@ -66,24 +51,19 @@ export interface ContainerMetricsSample {
   blockRead: number; // cumulative bytes, summed
   blockWrite: number;
   pids: number; // summed
-  /** How many of the stack's containers are running. */
   running: number;
-  /** Total containers in the stack (running + stopped). */
   containers: number;
-  /** The owning machine's core count, so `cpu` (a percentage of ONE core) can
-   *  also be read as "3.0 of 8 cores". 0 before the first frame. */
+  // The owning machine's core count, so cpu also reads as "3.0 of 8 cores". 0 before the first frame.
   hostCores: number;
 }
 
-/** The live DTO: a sample plus the "update the agent" flag and the breakdown. */
+// ContainerMetrics - the live DTO: a sample plus the agent flag and the breakdown.
 export interface ContainerMetrics extends ContainerMetricsSample {
-  /** True only when the agent is too old for ContainerStats - the tab shows an
-   *  "update the agent on this server" state, distinct from offline. */
+  // True only when the agent is too old for ContainerStats - distinct from offline.
   unsupported: boolean;
   instances: ContainerInstanceMetrics[];
 }
 
-/** A "we couldn't measure" DTO - reachable? no. Never recorded to history. */
 function unavailable(
   id: string,
   ts: number,
@@ -131,16 +111,13 @@ function toInstance(s: PbContainerStat): ContainerInstanceMetrics {
   };
 }
 
-/** What the OWNING MACHINE can give a stack - the denominators the tab reads
- *  usage against, taken from the same telemetry frame as the usage itself. */
+// HostCapacity - what the OWNING MACHINE can give a stack, from the same telemetry frame.
 export interface HostCapacity {
-  /** RAM. Every stack's memory ceiling, counted once. */
   memTotal: number;
-  /** Cores, so a stack's CPU also reads as "3.0 of 8 cores". */
   cpuCores: number;
 }
 
-/** Fold the agent's per-container stats into the app-total DTO. */
+// aggregateContainerStats - fold the agent's per-container stats into the app-total DTO.
 export function aggregateContainerStats(
   id: string,
   stats: PbContainerStat[],
@@ -150,18 +127,12 @@ export function aggregateContainerStats(
   return aggregate(id, stats, ts, host);
 }
 
-/**
- * The containers whose network counters are the stack's OWN traffic, counted
- * once. Two containers in one namespace (a compose sidecar on
- * `network_mode: service:x`) read the same bytes out of the same
- * `/proc/<pid>/net/dev`, and a host-networked one reads the whole machine's.
- */
+// One counter per network namespace: a sidecar sharing one reads the very same bytes.
 function netContributors(running: PbContainerStat[]): PbContainerStat[] {
   const byNs = new Map<string, PbContainerStat>();
   for (const s of running) {
     if (s.netNsHost) continue;
-    // No namespace id (an agent too old to send one) means no way to prove a
-    // shared namespace, so each container counts for itself, as it always did.
+    // No namespace id (an agent too old) proves nothing shared, so each counts for itself.
     const key = s.netNsId ? `ns:${s.netNsId}` : `c:${s.containerId || s.name}`;
     if (!byNs.has(key)) byNs.set(key, s);
   }
@@ -178,11 +149,7 @@ function aggregate(
   const sum = (f: (s: PbContainerStat) => number) =>
     running.reduce((a, s) => a + f(s), 0);
   const memUsed = sum((s) => s.memUsed);
-  // The MACHINE is the ceiling. The agent reports an uncapped container's limit as
-  // the whole machine, so summing put 50.3 GB on a 23.4 GiB host and moved the
-  // denominator with the running count - the percentage stepped on every deploy
-  // without the usage changing. Clamping keeps a real `mem_limit` meaningful and
-  // collapses the uncapped case to one machine.
+  // The machine is the ceiling: the agent reports an uncapped container's limit as the whole host.
   const memLimit = Math.min(
     sum((s) => s.memLimit),
     host.memTotal > 0 ? host.memTotal : Number.POSITIVE_INFINITY,
@@ -211,58 +178,35 @@ function aggregate(
   };
 }
 
-/** Strip the live-only fields to the buffer sample. */
-/** The two pure folds the telemetry-stream supervisor reuses to demux a
- *  host-wide frame. Exported (rather than moved) so the poll path and the stream
- *  path cannot drift into aggregating the same containers two different ways. */
+// toContainerSample - the fold the stream supervisor reuses, so the two paths cannot drift.
 export function toContainerSample(m: ContainerMetrics): ContainerMetricsSample {
   return toSample(m);
 }
 
 function toSample(m: ContainerMetrics): ContainerMetricsSample {
-  // Deliberately drop `instances` (the breakdown is a live-only table) and
-  // `unsupported` (never true for a recorded, online sample) to keep the RAM
-  // window lean - rest-sibling omit, like databases.ts toDTO.
+  // Drops instances (live-only) and unsupported (never true for a recorded sample).
   const { unsupported, instances, ...sample } = m;
   void unsupported;
   void instances;
   return sample;
 }
 
-/**
- * `measureContainerStack` lived here: one ContainerStats dial per resource, the
- * shape the whole telemetry stream exists to replace.
- */
-
-/* ------------------------------------------------------------------ */
-/* App reads                                                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * Live metrics for one app (team-scoped). Null for an unknown / cross-team app.
- */
+// getAppMetrics - live metrics for one app (team-scoped). Null for an unknown or cross-team app.
 export async function getAppMetrics(
   appId: string,
 ): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
-  // Per-app: a node grant REPLACES the team role inside the app (ADR-0016), so
-  // `view_metrics` held elsewhere in the team is not permission to read this
-  // app's usage - and one granted here alone is.
+  // A node grant REPLACES the team role inside the app (ADR-0016), in both directions.
   if (!(await hasAppCapability(appId, "view_metrics"))) return null;
   const app = await loadTeamApp(appId, teamId);
   if (!app) return null;
   return fromBuffer(app.id, app.serverId ?? null);
 }
 
-/**
- * Rebuild the live DTO from what the supervisor buffered. That is an honest "no
- * data", never a fabricated zero.
- */
+// An honest "no data", never a fabricated zero.
 function fromBuffer(id: string, serverId: string | null): ContainerMetrics {
   const s = latestContainerSample(id);
-  // Nothing buffered AND the owning agent cannot stream: that is not "no data
-  // yet", it is an agent too old to report containers at all, and the tab has a
-  // state that says so with the right action.
+  // Nothing buffered AND no stream: not "no data yet" but an agent too old to report.
   if (!s) {
     const stale = Boolean(serverId) && metricsStreamUnsupported(serverId!);
     return unavailable(id, Date.now(), stale);
@@ -270,8 +214,7 @@ function fromBuffer(id: string, serverId: string | null): ContainerMetrics {
   return { ...s, unsupported: false, instances: latestContainerInstances(id) };
 }
 
-/** The buffered window for one app (team-scoped). Empty for an unknown /
- *  cross-team app, or before anything has been sampled. */
+// getAppMetricsHistory - the buffered window for one app (team-scoped).
 export async function getAppMetricsHistory(
   appId: string,
 ): Promise<ContainerMetricsSample[]> {
@@ -282,12 +225,7 @@ export async function getAppMetricsHistory(
   return getContainerHistory(app.id);
 }
 
-/* ------------------------------------------------------------------ */
-/* Database reads                                                      */
-/* ------------------------------------------------------------------ */
-
-/** Live metrics for one database (team-scoped). A buffer read, exactly like
- *  {@link getAppMetrics}. */
+// getDatabaseMetrics - live metrics for one database (team-scoped), a buffer read like getAppMetrics.
 export async function getDatabaseMetrics(
   databaseId: string,
 ): Promise<ContainerMetrics | null> {
@@ -298,7 +236,7 @@ export async function getDatabaseMetrics(
   return fromBuffer(db.id, db.serverId ?? null);
 }
 
-/** The buffered window for one database (team-scoped). */
+// getDatabaseMetricsHistory - the buffered window for one database (team-scoped).
 export async function getDatabaseMetricsHistory(
   databaseId: string,
 ): Promise<ContainerMetricsSample[]> {
@@ -308,13 +246,3 @@ export async function getDatabaseMetricsHistory(
   if (!db) return [];
   return getContainerHistory(db.id);
 }
-
-/* ------------------------------------------------------------------ */
-/* Removed with the polling collector                                  */
-/* ------------------------------------------------------------------ */
-
-/**
- * This file used to end with two more sections, both deleted. The COLLECTOR
- * ENUMERATIONS went first. - a question that only existed because sampling cost an
- * RPC each.
- */

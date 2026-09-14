@@ -1,45 +1,39 @@
 import { builder } from "../builder";
 import { S3ProviderEnum } from "./enums";
+import { createDestination } from "@/lib/data/destinations/create";
+import type {
+  DestinationDTO,
+  DestinationOption,
+} from "@/lib/data/destinations/dto";
 import {
   listDestinations,
   listDestinationOptions,
-  destinationRemovalImpact,
-  createDestination,
+} from "@/lib/data/destinations/listing";
+import {
   testDestination,
   testDestinations,
   destinationTestReport,
-  deleteDestination,
-  revealRecoveryKey,
-  type DestinationDTO,
-  type DestinationOption,
   type DestinationTestResult,
-} from "@/lib/data/destinations";
+} from "@/lib/data/destinations/probe";
+import { revealRecoveryKey } from "@/lib/data/destinations/recovery-key";
+import {
+  destinationRemovalImpact,
+  deleteDestination,
+} from "@/lib/data/destinations/removal";
 import type {
   S3TestReport,
   S3TestStep,
   S3TestLogLine,
 } from "@/lib/data/s3-test-report";
-import type { DestinationKind, S3Provider } from "@/lib/types";
+import type { DestinationKind, S3Provider } from "@/lib/types/backup";
 
-/* ------------------------------------------------------------------ */
-/* Enums (local, neither is shared in enums.ts)                        */
-/* ------------------------------------------------------------------ */
-
-// Connectivity state of a destination. Local to this module because no other
-// domain references it; the wire enum mirrors the DestinationStatus TS union.
 const DestinationStatusEnum = builder.enumType("DestinationStatus", {
   values: ["connected", "error", "unverified"] as const,
 });
 
-// Where the artifacts live. `s3` is a bucket; `server` is a directory on a
-// server in the fleet, whose artifacts are always encrypted.
 const DestinationKindEnum = builder.enumType("DestinationKind", {
   values: ["s3", "server"] as const,
 });
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 export const BackupDestinationRef = builder
   .objectRef<DestinationDTO>("BackupDestination")
@@ -53,19 +47,15 @@ export const BackupDestinationRef = builder
       teamId: t.exposeID("teamId"),
       name: t.exposeString("name"),
       kind: t.field({ type: DestinationKindEnum, resolve: (d) => d.kind }),
-      // One line naming where this points: the endpoint, or `<server> · <path>`.
-      // Every picker and card shows this rather than assembling its own.
       where: t.string({ resolve: (d) => destinationWhereField(d) }),
       status: t.field({
         type: DestinationStatusEnum,
         resolve: (d) => d.status,
       }),
       createdAt: t.exposeString("createdAt"),
-      // Last-test verdict, so a red badge can say WHY without opening the log.
       lastTestAt: t.exposeString("lastTestAt", { nullable: true }),
       lastTestError: t.exposeString("lastTestError", { nullable: true }),
 
-      /* ---- kind: s3 ---- */
       provider: t.field({
         type: S3ProviderEnum,
         nullable: true,
@@ -94,29 +84,19 @@ export const BackupDestinationRef = builder
         resolve: (d) => Boolean(d.ageRecipient),
       }),
 
-      /* ---- kind: server ---- */
       serverId: t.exposeID("serverId", { nullable: true }),
       serverName: t.exposeString("serverName", { nullable: true }),
-      // The configured directory (null = the agent's managed store) and the one
-      // the agent actually resolved, so the card shows a real path either way.
       path: t.exposeString("path", { nullable: true }),
       resolvedPath: t.exposeString("resolvedPath", { nullable: true }),
       // Float, not Int: a modern disk is well past 2^31 bytes.
       freeBytes: t.float({ nullable: true, resolve: (d) => d.lastFreeBytes }),
       totalBytes: t.float({ nullable: true, resolve: (d) => d.lastTotalBytes }),
-      // Null until someone downloads the recovery key. Drives the nudge on the
-      // card: an encrypted backup whose only key lives inside the thing that
-      // might be lost is not a backup.
       recoveryKeySavedAt: t.exposeString("recoveryKeySavedAt", {
         nullable: true,
       }),
     }),
   });
 
-/**
- * A destination as a PICKER needs it: what to call it, where it points, how it
- * last answered.
- */
 const BackupDestinationOptionRef = builder
   .objectRef<DestinationOption>("BackupDestinationOption")
   .implement({
@@ -141,7 +121,6 @@ const BackupDestinationOptionRef = builder
     }),
   });
 
-/** What removing a destination destroys, so the dialog can say it. */
 const DestinationRemovalImpactRef = builder
   .objectRef<{ schedules: number; runs: number; artifacts: number }>(
     "DestinationRemovalImpact",
@@ -157,8 +136,7 @@ const DestinationRemovalImpactRef = builder
     }),
   });
 
-/** Mirror of `destinationWhere` in the data layer, kept here so the field can be
- *  resolved without importing a `server-only` module into the schema twice. */
+// Mirror of `destinationWhere` in the data layer: the schema must not import a `server-only` module.
 function destinationWhereField(d: DestinationDTO): string {
   if (d.kind === "s3") return d.endpoint ?? "";
   const server = d.serverName ?? "a removed server";
@@ -166,9 +144,6 @@ function destinationWhereField(d: DestinationDTO): string {
   return path ? `${server} · ${path}` : server;
 }
 
-/**
- * The recovery key for a server destination: the age identity in the clear.
- */
 const RecoveryKeyRef = builder
   .objectRef<{
     name: string;
@@ -193,10 +168,6 @@ const RecoveryKeyRef = builder
       }),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Connection test report (the debug output behind the badge)           */
-/* ------------------------------------------------------------------ */
 
 const S3TestStepStatusEnum = builder.enumType("S3TestStepStatus", {
   values: ["passed", "failed", "skipped"] as const,
@@ -261,40 +232,24 @@ const DestinationTestResultRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const CreateDestinationInputType = builder.inputType("CreateDestinationInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     kind: t.field({ type: DestinationKindEnum, required: true }),
-    // s3 - required when kind is s3, validated in the data layer so the message
-    // says which field is missing rather than which arg failed.
     provider: t.field({ type: S3ProviderEnum, required: false }),
     endpoint: t.string({ required: false }),
     region: t.string({ required: false }),
     bucket: t.string({ required: false }),
     accessKey: t.string({ required: false }),
     secretKey: t.string({ required: false }),
-    // Instance-admin only, checked in the data layer. Lets a bucket on the
-    // operator's own network be used at all, which on a self-hosting platform is
-    // an ordinary thing to want.
+    // Instance-admin only, checked in the data layer.
     allowPrivateEndpoint: t.boolean({ required: false }),
-    // Advanced quirk flags for one misbehaving store. Refused by the data layer
-    // when they are not on its allowlist, so a flag that would change nothing is
-    // never accepted quietly.
     s3ExtraArgs: t.string({ required: false }),
-    // server - `path` is instance-admin only; null means the agent's own
-    // managed store, which is what almost everyone wants.
+    // `path` is instance-admin only; null means the agent's own managed store.
     serverId: t.string({ required: false }),
     path: t.string({ required: false }),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   backupDestinations: t.field({
@@ -333,10 +288,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { id }) => destinationTestReport(id),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   createDestination: t.field({

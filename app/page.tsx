@@ -1,13 +1,9 @@
 import { redirect } from "next/navigation";
 
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/current-user";
 import { getActiveTeamId, teamsForUser } from "@/lib/membership";
 
-/**
- * The panel's front door. Every page lives in a team, so this one only decides
- * WHICH: the last one visited, else the first. The query rides along: a full
- * navigation to `/?welcome=1` (the takeover's landing) has to arrive intact.
- */
+// RootPage keeps the query: a full navigation to /?welcome=1 (the takeover landing) must arrive intact.
 export default async function RootPage(props: PageProps<"/">) {
   const user = await requireUser();
   const teams = await teamsForUser(user.id);

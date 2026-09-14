@@ -1,14 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { renderCompose, parseStackVolumes } from "./build";
-import type { RoutableDomain } from "../data/domains";
-
-/**
- * Volumes injection into the single-container stack. NO volumes ⇒ output
- * byte-identical to the long-standing stack (so a reroute of an unchanged routing
- * set never restarts the container).
- */
+import { renderCompose } from "./build/compose-render";
+import { parseStackVolumes } from "./build/stack-yaml";
+import type { RoutableDomain } from "../data/domains/routes";
 
 const route: RoutableDomain = {
   name: "demo.example.com",
@@ -38,19 +33,13 @@ test("no volumes: output is byte-identical with [], undefined, and missing key",
   const withMissing = renderCompose(base);
   const withEmpty = renderCompose({ ...base, volumes: [] });
   assert.equal(withEmpty, withMissing);
-  // The no-volumes stack must contain no `volumes:` key at all.
   assert.ok(!/\bvolumes:/.test(withMissing), "no volumes: key when empty");
 });
 
 test("PORT is injected for a built source (default) but NOT for a prebuilt image", () => {
-  // Built sources (git/upload/dockerfile): PORT tells the 12-factor
-  // app where Traefik forwards. Default behaviour, so the flag is omitted.
   const built = renderCompose(base);
   assert.match(built, /PORT: "3000"/, "built source gets PORT injected");
 
-  // A prebuilt docker image is deployed as-is - it owns its own listen address,
-  // so Deplo must not inject PORT (which would silently override e.g. an :8080
-  // image onto :3000). The rest of the env is untouched.
   const image = renderCompose({ ...base, injectPort: false });
   assert.ok(!/\bPORT:/.test(image), "prebuilt image stack carries no PORT env");
   assert.match(image, /FOO: "bar"/, "user env is still rendered");
@@ -66,7 +55,6 @@ test("named volumes: emits service list + namespaced top-level volume", () => {
   });
   assert.match(yaml, /\n {6}- data:\/data\n/);
   assert.match(yaml, /\n {6}- cache:\/var\/cache:ro\n/);
-  // Top-level volumes block with per-project namespaced host names.
   assert.match(yaml, /\nvolumes:\n {2}data:\n {4}name: deplo-demo-data\n/);
   assert.match(yaml, /\n {2}cache:\n {4}name: deplo-demo-cache\n/);
 });
@@ -106,9 +94,8 @@ test("parseStackVolumes: empty / missing-service stacks yield []", () => {
 });
 
 test("renderCompose emits Docker Compose's `services:` top-level key, never `apps:`", () => {
-  // Docker Compose's schema only allows `services:`. A top-level `apps:` (a
-  // services→apps vocabulary over-rename) makes the agent's `docker compose up`
-  // reject the stack with "additional properties 'apps' not allowed".
+  // Compose's schema allows only `services:`; a top-level `apps:` makes the agent's
+  // `docker compose up` reject the stack ("additional properties 'apps' not allowed").
   const yaml = renderCompose(base);
   assert.match(yaml, /^services:$/m);
   assert.doesNotMatch(yaml, /^apps:/m);
@@ -127,10 +114,7 @@ test("host bind mount: emits hostPath source and NO top-level volumes entry", ()
       },
     ],
   });
-  // App line binds the host path directly.
   assert.match(yaml, /\n {6}- \/srv\/data:\/data\n/);
-  // A host bind is NOT a named volume, so no TOP-LEVEL (column-0) volumes: key is
-  // emitted (the service-level `    volumes:` list is still present).
   assert.ok(
     !/\nvolumes:/.test(yaml),
     "no top-level volumes block for a pure host bind",
@@ -154,9 +138,8 @@ test("host bind read-only flag emits :ro", () => {
 });
 
 test("host bind propagation renders as an option, alongside :ro", () => {
-  // The whole point of the field: without it docker's rprivate default hands the
-  // container a snapshot of the submounts that existed at startup, so a FUSE
-  // share or a network disk mounted under the folder later never appears.
+  // Without it docker's rprivate default hands the container a snapshot of the submounts
+  // present at startup, so a share mounted under the folder later never appears.
   const follows = renderCompose({
     ...base,
     volumes: [
@@ -172,7 +155,6 @@ test("host bind propagation renders as an option, alongside :ro", () => {
   });
   assert.match(follows, /- \/srv\/neon:\/srv\/neon:rslave\n/);
 
-  // Read-only first, then propagation - one comma-separated option list.
   const both = renderCompose({
     ...base,
     volumes: [
@@ -190,9 +172,8 @@ test("host bind propagation renders as an option, alongside :ro", () => {
 });
 
 test("propagation round-trips through parseStackVolumes, :ro included", () => {
-  // The reroute path re-renders from what it reads back here. Reading the option
-  // field as a single word (`flag === "ro"`) dropped BOTH flags off this line,
-  // which would have silently re-rendered the mount read-write and rprivate.
+  // The reroute path re-renders from what it reads back: reading the option field as one
+  // word (`flag === "ro"`) dropped BOTH flags, silently re-rendering rw and rprivate.
   const volumes = [
     {
       type: "host" as const,
@@ -220,7 +201,6 @@ test("propagation round-trips through parseStackVolumes, :ro included", () => {
       readOnly: true,
       propagation: "rslave",
     },
-    // No propagation ⇒ the key stays absent, so an untouched mount is unchanged.
     {
       type: "host",
       name: "",
@@ -247,7 +227,6 @@ test("mixed named + host: named gets a top-level entry, host does not", () => {
   });
   assert.match(yaml, /\n {6}- data:\/data\n/);
   assert.match(yaml, /\n {6}- \/srv\/h:\/h\n/);
-  // Exactly one named volume in the top-level block.
   assert.match(yaml, /\nvolumes:\n {2}data:\n {4}name: deplo-demo-data\n/);
   assert.ok(
     !/name: deplo-demo-h\b/.test(yaml),
@@ -293,13 +272,10 @@ test("project file mount: source resolves to the project's files dir, NO top-lev
       },
     ],
   });
-  // The source is the absolute per-project files dir (…/files/<slug>/<rel>),
-  // never a raw "./" that docker would resolve against the stack dir.
   assert.match(
     yaml,
     /\n {6}- \/.*\/files\/demo\/config\.toml:\/app\/config\.toml\n/,
   );
-  // A project bind, like a host bind, gets NO top-level volumes block.
   assert.ok(
     !/\nvolumes:/.test(yaml),
     "no top-level volumes block for a project bind",

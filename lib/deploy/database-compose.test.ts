@@ -6,12 +6,8 @@ import {
   buildConnectionString,
   parseConnectionPassword,
 } from "./database-compose";
-import type { DatabaseType } from "../types";
+import type { DatabaseType } from "../types/database";
 
-/**
- * The username/dbName the pre-parameterization tests implicitly assumed: the
- * service name for the DB, `app` for the login.
- */
 const DEFAULTS = {
   username: "app",
   dbName: "mydb",
@@ -19,12 +15,6 @@ const DEFAULTS = {
   network: "deplo-team-team_test",
 };
 
-/**
- * The database compose is the on-host stack the agent provisions for a managed
- * database.
- */
-
-// A CURRENT major per engine.
 const CURRENT_VERSION: Record<DatabaseType, string> = {
   postgres: "18",
   mysql: "8.4",
@@ -34,7 +24,6 @@ const CURRENT_VERSION: Record<DatabaseType, string> = {
   clickhouse: "25.8",
 };
 
-// The official images' documented data dirs - the volume must mount here.
 const EXPECTED_DATA_DIR: Record<DatabaseType, string> = {
   postgres: "/var/lib/postgresql/data",
   mysql: "/var/lib/mysql",
@@ -86,14 +75,12 @@ test("generateDatabaseCompose: redis still sets requirepass via command override
     username: "default",
     dbName: "cache",
   });
-  // The command override must not displace the corrected /data mount.
   assert.ok(yaml.includes("redis-server --requirepass s3cret"));
   assert.ok(yaml.includes("- cache-data:/data"));
 });
 
-// The logical database the backup descriptor dumps (dbName == db.host == the
-// compose `name`) MUST be created at provision time, or a backup silently dumps a
-// database that doesn't exist.
+// The logical database the backup descriptor dumps MUST be created at provision
+// time, or a backup silently dumps a database that doesn't exist.
 const DB_CREATE_ENV: Partial<Record<DatabaseType, string>> = {
   postgres: "POSTGRES_DB=mydb",
   mysql: "MYSQL_DATABASE=mydb",
@@ -119,9 +106,6 @@ for (const [type, envLine] of Object.entries(DB_CREATE_ENV) as [
   });
 }
 
-// "Expose publicly": when a host port is given, the compose publishes it as
-// `0.0.0.0:<hostPort>:<enginePort>` (host:container) so external clients reach the
-// DB on the chosen host port - the whole point of the feature.
 test("generateDatabaseCompose: no ports block when hostPort omitted (internal only)", () => {
   const yaml = generateDatabaseCompose({
     network: "deplo-team-team_test",
@@ -140,7 +124,6 @@ test("generateDatabaseCompose: no ports block when hostPort omitted (internal on
 });
 
 test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 when exposed", () => {
-  // A postgres DB (engine port 5432) exposed on host port 25432.
   const yaml = generateDatabaseCompose({
     network: "deplo-team-team_test",
     name: "db-public",
@@ -180,9 +163,6 @@ test("generateDatabaseCompose: hostPort maps to the engine's own port (redis 637
   );
 });
 
-// The username/dbName are parameterized (create-only, applied at first init).
-// They must reach the engine's real env vars, or a custom login/logical-DB the
-// connection string advertises would not actually exist.
 test("generateDatabaseCompose: threads a custom username + dbName into the engine env", () => {
   const yaml = generateDatabaseCompose({
     network: "deplo-team-team_test",
@@ -198,8 +178,6 @@ test("generateDatabaseCompose: threads a custom username + dbName into the engin
   assert.ok(yaml.includes("POSTGRES_DB=shop"), yaml);
 });
 
-// mysql/mariadb: the image ALWAYS needs a root password and treats
-// *_USER/*_PASSWORD as an OPTIONAL non-root user.
 for (const [type, prefix] of [
   ["mysql", "MYSQL"],
   ["mariadb", "MARIADB"],
@@ -223,8 +201,6 @@ for (const [type, prefix] of [
     );
   });
 
-  // A non-root username creates the extra scoped user ALONGSIDE root (root is
-  // still needed for backups, which dump as root). Both share the one password.
   test(`generateDatabaseCompose(${type}): non-root username emits ${prefix}_USER alongside root`, () => {
     const yaml = generateDatabaseCompose({
       network: "deplo-team-team_test",
@@ -242,26 +218,20 @@ for (const [type, prefix] of [
   });
 }
 
-// buildConnectionString is the single source of truth for the string's shape,
-// shared by create + edit. Verify the per-engine scheme, path segment and the
-// two engine-specific quirks (mongo authSource, mariadb->mysql scheme).
 test("buildConnectionString: per-engine scheme + path", () => {
   const base = { username: "app", password: "pw", host: "db-x", port: 5432 };
   assert.equal(
     buildConnectionString({ ...base, type: "postgres", dbName: "shop" }),
     "postgres://app:pw@db-x:5432/shop",
   );
-  // mariadb keeps the mysql:// scheme (the wire protocol is mysql's).
   assert.equal(
     buildConnectionString({ ...base, type: "mariadb", dbName: "shop" }),
     "mysql://app:pw@db-x:5432/shop",
   );
-  // mongo's root user lives in `admin`, so authSource=admin is mandatory.
   assert.equal(
     buildConnectionString({ ...base, type: "mongodb", dbName: "shop" }),
     "mongodb://app:pw@db-x:5432/shop?authSource=admin",
   );
-  // redis has no logical DB, no path segment.
   assert.equal(
     buildConnectionString({
       ...base,
@@ -273,11 +243,6 @@ test("buildConnectionString: per-engine scheme + path", () => {
   );
 });
 
-/**
- * A URL delimiter in the password is not a reason to refuse the password. `@` is
- * about the most common character in a password another platform generated, and it
- * used to be refused outright because the credential rode RAW in this string.
- */
 test("buildConnectionString: the credential survives every URL delimiter", () => {
   const password = "p@ss/w:o?r#d%2Fx[]";
   const username = "we@ird user";
@@ -291,18 +256,16 @@ test("buildConnectionString: the credential survives every URL delimiter", () =>
   });
 
   assert.equal(parseConnectionPassword(conn), password);
-  // It is a URL, which is what every client and every masked display parses it as.
   const url = new URL(conn);
   assert.equal(decodeURIComponent(url.username), username);
   assert.equal(url.hostname, "db-x");
   assert.equal(url.pathname, "/shop");
-  // And nothing of the password leaked into the authority as a delimiter.
   assert.equal(url.port, "5432");
 });
 
-// The deplo.* labels are LOAD-BEARING: the agent authorizes every container RPC
-// (listInstances/exec/attach/followLogs) by `deplo.project=<id>`, so a DB stack
-// without them is invisible to logs, the terminal, and the runtime poll.
+// The agent authorizes every container RPC (listInstances/exec/attach/followLogs) by
+// `deplo.project=<id>`, so a DB stack without these labels is invisible to logs,
+// the terminal and the runtime poll.
 test("generateDatabaseCompose: stamps the deplo.* labels with the database id", () => {
   const yaml = generateDatabaseCompose({
     name: "mydb",
@@ -317,8 +280,6 @@ test("generateDatabaseCompose: stamps the deplo.* labels with the database id", 
   assert.ok(yaml.includes("- deplo.slug=mydb"), yaml);
 });
 
-// Resource limits render as the same compose keys apps use; absent limits render
-// NOTHING (no resource keys at all), preserving the no-limits stack unchanged.
 test("generateDatabaseCompose: renders resource limits, omits them when unset", () => {
   const base = {
     name: "mydb",
@@ -353,7 +314,6 @@ test("generateDatabaseCompose: renders resource limits, omits them when unset", 
   assert.ok(limited.includes("pids_limit: 256"), limited);
 });
 
-// customImage replaces the derived engine image ref entirely (version inert).
 test("generateDatabaseCompose: customImage replaces the derived image", () => {
   const yaml = generateDatabaseCompose({
     name: "mydb",
@@ -367,8 +327,6 @@ test("generateDatabaseCompose: customImage replaces the derived image", () => {
   assert.ok(!yaml.includes("postgres:16-alpine"), yaml);
 });
 
-// customCommand replaces the default verbatim, including redis's
-// password-bearing `--requirepass` (the UI warns; this is the expert hatch).
 test("generateDatabaseCompose: customCommand replaces redis's requirepass command", () => {
   const yaml = generateDatabaseCompose({
     network: "deplo-team-team_test",
@@ -381,7 +339,6 @@ test("generateDatabaseCompose: customCommand replaces redis's requirepass comman
     dbName: "cache",
     customCommand: "redis-server /etc/redis/redis.conf",
   });
-  // User-supplied commands render double-quoted (YAML-safe); the default stays plain.
   assert.ok(
     yaml.includes('command: "redis-server /etc/redis/redis.conf"'),
     yaml,
@@ -389,9 +346,6 @@ test("generateDatabaseCompose: customCommand replaces redis's requirepass comman
   assert.ok(!yaml.includes("--requirepass"), yaml);
 });
 
-// Real per-engine healthchecks (replacing the historical `exit 0`), chosen to
-// avoid embedding the password literally. Under a customImage override the
-// engine tooling can't be assumed - fall back to the no-op probe.
 test("generateDatabaseCompose: real healthcheck per engine, exit 0 under customImage", () => {
   const mk = (type: DatabaseType, extra: Record<string, unknown> = {}) =>
     generateDatabaseCompose({
@@ -420,8 +374,6 @@ test("generateDatabaseCompose: real healthcheck per engine, exit 0 under customI
   assert.ok(custom.includes('"CMD-SHELL", "exit 0"'), custom);
 });
 
-// parseConnectionPassword recovers the create-only password on edit (and for the
-// backup dump). It must round-trip whatever buildConnectionString embeds.
 test("parseConnectionPassword: round-trips the embedded password", () => {
   for (const type of ["postgres", "mongodb", "mariadb", "redis"] as const) {
     const conn = buildConnectionString({
@@ -437,9 +389,8 @@ test("parseConnectionPassword: round-trips the embedded password", () => {
   assert.equal(parseConnectionPassword("not a url"), "");
 });
 
-// Postgres 18+ defaults PGDATA to `/var/lib/postgresql/<major>/docker` and its
-// entrypoint EXITS when `/var/lib/postgresql/data` is a mount point, which the
-// volume above always is.
+// Postgres 18+ defaults PGDATA elsewhere and its entrypoint EXITS when
+// `/var/lib/postgresql/data` is a mount point, which the volume above always is.
 for (const version of ["15", "16", "17", "18", "19"]) {
   test(`generateDatabaseCompose(postgres ${version}): pins PGDATA to the mounted path`, () => {
     const yaml = generateDatabaseCompose({
@@ -456,9 +407,6 @@ for (const version of ["15", "16", "17", "18", "19"]) {
   });
 }
 
-// An import pins the SOURCE's image on every database it brings over (a cluster
-// must be reopened by the binary that wrote it), so `customImage` is now the normal
-// case.
 test("generateDatabaseCompose: an official customImage keeps the real healthcheck", () => {
   const yaml = generateDatabaseCompose({
     name: "mydb",
@@ -486,12 +434,6 @@ test("generateDatabaseCompose: a foreign customImage still degrades the healthch
   assert.ok(!yaml.includes("pg_isready"), yaml);
 });
 
-/* ------------------------------------------------------------------ */
-/* config files                                                        */
-/* ------------------------------------------------------------------ */
-
-// A config file is bound as ONE FILE, next to the data volume and never instead
-// of it: an engine configured by a file still has to persist its data.
 test("generateDatabaseCompose: a config file is bound under the data volume", () => {
   const yaml = generateDatabaseCompose({
     name: "mydb",
@@ -520,8 +462,6 @@ test("generateDatabaseCompose: a config file is bound under the data volume", ()
   );
 });
 
-// The overwhelming majority of databases have none, and their stack must stay
-// byte-identical - a changed line recreates the container on the next reroute.
 test("generateDatabaseCompose: no config files renders exactly what it always did", () => {
   const base = {
     name: "mydb",
@@ -552,7 +492,6 @@ test("generateDatabaseCompose: redis carries REDISCLI_AUTH so redis-cli inside a
     dbName: "cache",
   };
   assert.ok(generateDatabaseCompose(input).includes("REDISCLI_AUTH=s3cret"));
-  // A custom command may have dropped requirepass; an AUTH would then fail.
   const custom = generateDatabaseCompose({
     ...input,
     customCommand: "redis-server --appendonly yes",

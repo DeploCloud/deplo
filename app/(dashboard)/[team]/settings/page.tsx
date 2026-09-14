@@ -1,11 +1,11 @@
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   getTeam,
   getTeamIdentity,
   membersWithoutTwoFactor,
 } from "@/lib/data/teams";
-import { listMembers } from "@/lib/data/members";
+import { listMembers } from "@/lib/data/members/roster";
 import { canDeleteTeam } from "@/lib/data/team-delete";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,16 +19,13 @@ import { Lock } from "lucide-react";
 export const metadata = { title: "Settings · General" };
 
 export default async function SettingsGeneralPage() {
-  // The team's own settings are a team-wide read, so a member limited to part of
-  // the team is refused them. A section they can't have says so instead of taking
-  // the page down with it.
+  // A team-wide read: a member who reaches only part of the team gets the empty state, not an error.
   const wholeTeam = await reachesWholeTeam();
   const [team, canManageTeam, viewer] = await Promise.all([
     getTeamIdentity(),
     hasCapability("manage_team"),
     getCurrentUser(),
   ]);
-  // The settings themselves, only for a principal who reaches the whole team.
   const [settings, deletion, twoFactor] = wholeTeam
     ? await Promise.all([getTeam(), canDeleteTeam(), membersWithoutTwoFactor()])
     : [
@@ -42,8 +39,7 @@ export default async function SettingsGeneralPage() {
         { without: 0, total: 0 },
       ];
 
-  // The crown, not the rank: an assigned owner may hand out the owner role but
-  // may not hand over the team itself (lib/data/team-ownership.ts).
+  // The crown, not the rank: manage_team hands out the owner role, it does not hand over the team (lib/data/team-ownership.ts).
   const canTransfer =
     canManageTeam && !!viewer && settings?.founderUserId === viewer.id;
   const candidates =
@@ -66,8 +62,7 @@ export default async function SettingsGeneralPage() {
       />
 
       {settings ? (
-        // Direct grid children, so Team and Security share one row's height
-        // instead of each ending wherever its own content stops.
+        // Direct grid children, so Team and Security share one row's height.
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>

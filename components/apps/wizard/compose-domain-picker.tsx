@@ -2,13 +2,9 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { ComposeRouteCandidate } from "@/lib/deploy/compose-lint";
+import type { ComposeRouteCandidate } from "@/lib/deploy/compose-lint/routing";
 
-/**
- * Which services of a hand-written stack get an address. The primary is the one
- * Deplo would pick on its own and is always routed; anything else is a choice,
- * and a database is never pre-selected.
- */
+// ComposeDomainPicker - the primary is always routed; a database is offered but never pre-selected.
 export function ComposeDomainPicker({
   candidates,
   selected,

@@ -6,13 +6,13 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../lib/db/client";
-import { deployments, apps } from "../lib/db/schema/control-plane";
-import { listAllServers, markServerSeen } from "../lib/data/servers";
-import {
-  agentPreflight,
-  runAgentCleanup,
-  selfUpdateServerAgent,
-} from "../lib/infra/agent-client";
+import { apps } from "../lib/db/schema/control-plane/apps";
+import { deployments } from "../lib/db/schema/control-plane/deployments";
+import { markServerSeen } from "../lib/data/servers/agent-handshake";
+import { listAllServers } from "../lib/data/servers/roster";
+import { selfUpdateServerAgent } from "../lib/infra/agent-client/agent-lifecycle";
+import { runAgentCleanup } from "../lib/infra/agent-client/docker-cleanup";
+import { agentPreflight } from "../lib/infra/agent-client/preflight";
 import { CleanupScope } from "../lib/agent/gen/agent";
 
 const TARGET = "1.25.0";

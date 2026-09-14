@@ -1,0 +1,141 @@
+"use client";
+
+import { useSearchParams } from "@/lib/nav";
+import { CircleFadingArrowUp, Globe, SlidersHorizontal } from "lucide-react";
+
+import {
+  Tabs,
+  TabsContent,
+  UnderlineTabsList,
+  UnderlineTabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  DeploUpdatesTab,
+  type FleetSummary,
+} from "@/components/settings/deplo-updates-tab";
+import {
+  DeploDiagnosticsCard,
+  type DiagnosticHost,
+} from "@/components/settings/deplo-diagnostics-card";
+import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
+import { GravatarCard } from "@/components/settings/gravatar-card";
+import {
+  InstanceOwnerCard,
+  type OwnerCandidate,
+} from "@/components/settings/instance-owner-card";
+import type { InstanceSettings } from "@/lib/data/instance-settings/settings-store";
+import { PanelAddressCard, SOURCE_LABEL } from "./panel-address-card";
+import { PanelBackupAddressCard } from "./panel-backup-address-card";
+import { PanelHttpCard } from "./panel-http-card";
+import { CertificatesCard } from "./certificates-card";
+
+const TABS = ["general", "advanced", "updates"] as const;
+type TabId = (typeof TABS)[number];
+
+// DeploSettingsPanel: Settings, Deplo - the instance itself.
+export function DeploSettingsPanel({
+  settings,
+  viewerIsOwner,
+  viewerTwoFactorEnabled,
+  ownerCandidates,
+  fleet,
+  hosts,
+}: {
+  settings: InstanceSettings;
+  viewerIsOwner: boolean;
+  viewerTwoFactorEnabled: boolean;
+  ownerCandidates: OwnerCandidate[];
+  fleet: FleetSummary;
+  hosts: DiagnosticHost[];
+}) {
+  const params = useSearchParams();
+  const requested = params.get("tab");
+  const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
+    ? (requested as TabId)
+    : "general";
+
+  function selectTab(tab: string) {
+    const next = new URLSearchParams(params.toString());
+    if (tab === "general") next.delete("tab");
+    else next.set("tab", tab);
+    const s = next.toString();
+    // The native History API, not `router.replace`: re-running every server read
+    // would be a page load to move an underline.
+    window.history.replaceState(
+      null,
+      "",
+      s ? `?${s}` : window.location.pathname,
+    );
+  }
+
+  return (
+    <Tabs value={active} onValueChange={selectTab} className="space-y-3">
+      <UnderlineTabsList>
+        <UnderlineTabsTrigger value="general">
+          <Globe className="size-4" />
+          General
+        </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="advanced">
+          <SlidersHorizontal className="size-4" />
+          Advanced
+        </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="updates">
+          <CircleFadingArrowUp className="size-4" />
+          Updates
+        </UnderlineTabsTrigger>
+      </UnderlineTabsList>
+
+      <TabsContent value="general">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <PanelAddressCard settings={settings} />
+          <CertificatesCard />
+          <div className="lg:col-span-2">
+            <InstanceOwnerCard
+              ownerName={settings.ownerName}
+              viewerIsOwner={viewerIsOwner}
+              viewerTwoFactorEnabled={viewerTwoFactorEnabled}
+              candidates={ownerCandidates}
+            />
+          </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="advanced">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <LogsRetentionCard logMaxDays={settings.logMaxDays} />
+          <GravatarCard enabled={settings.gravatarEnabled} />
+          <div className="lg:col-span-2">
+            <DeploDiagnosticsCard
+              version={settings.version}
+              panelUrl={settings.panelUrl}
+              panelUrlSource={SOURCE_LABEL[settings.panelUrlSource]}
+              deploHostName={settings.deploHostName}
+              expectedAgentVersion={fleet.expected}
+              hosts={hosts}
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <PanelBackupAddressCard settings={settings} />
+          </div>
+          <div className="lg:col-span-2">
+            <PanelHttpCard />
+          </div>
+        </div>
+      </TabsContent>
+
+      {/* forceMount: the changelog it fetched survives a flip to General and
+          back, and nothing is fetched until the tab is opened. */}
+      <TabsContent
+        value="updates"
+        forceMount
+        className="data-[state=inactive]:hidden"
+      >
+        <DeploUpdatesTab
+          active={active === "updates"}
+          version={settings.version}
+          fleet={fleet}
+        />
+      </TabsContent>
+    </Tabs>
+  );
+}

@@ -1,12 +1,8 @@
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import type { VarAuthor } from "@/lib/types";
+import type { VarAuthor } from "@/lib/types/identity";
 
-/**
- * The "Modified by" cell of a variables table. `null` - a deleted account, or a
- * row written before authorship was tracked (migration 0029 does not backfill) -
- * renders an em dash rather than a fabricated name.
- */
+// EnvAuthorCell - the "Modified by" cell of a variables table; a null author renders a dash.
 export function EnvAuthorCell({ author }: { author: VarAuthor | null }) {
   if (!author) {
     return <span className="text-xs text-muted-foreground">—</span>;

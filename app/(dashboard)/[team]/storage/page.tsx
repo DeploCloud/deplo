@@ -1,18 +1,18 @@
 import { Database } from "lucide-react";
-import { listDatabases } from "@/lib/data/databases";
+import { listDatabases } from "@/lib/data/databases/rows";
+import { ensureDefaultDestination } from "@/lib/data/destinations/create";
 import {
   destinationWhere,
-  ensureDefaultDestination,
-  listDestinations,
   toDestinationOption,
-} from "@/lib/data/destinations";
-import { listBackups } from "@/lib/data/backups";
-import { listServersForCurrentTeam } from "@/lib/data/servers";
+} from "@/lib/data/destinations/dto";
+import { listDestinations } from "@/lib/data/destinations/listing";
+import { listBackups } from "@/lib/data/backups/schedules";
+import { listServersForCurrentTeam } from "@/lib/data/servers/roster";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
 } from "@/lib/deploy/domains";
-import { listApps } from "@/lib/data/apps";
+import { listApps } from "@/lib/data/apps/listing";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import {
   canExposePorts,
@@ -58,8 +58,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
       ? "backups"
       : "databases";
 
-  // Every section of this page is team-level: a database belongs to the team and to
-  // no project, and so do the backup destinations and the fleet.
+  // Every section here is team-level: databases, destinations and the fleet belong to no project.
   if (!(await reachesWholeTeam()))
     return (
       <div className="space-y-6">
@@ -78,8 +77,6 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
     );
 
   // A team with no destination at all gets one pointing at a server it can reach.
-  // Backups are the one feature where "first go sign up for a bucket" turns a
-  // five-second decision into a project, and the fleet already has a disk.
   await ensureDefaultDestination();
 
   const [
@@ -103,35 +100,22 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
     listBackups(),
     listServersForCurrentTeam(),
     listApps(),
-    // Gates the "Expose publicly" toggle: only a user with the publish-ports
-    // grant may open a database to the internet (same grant as an app's
-    // compose `ports:`). Server-enforced too - this only hides the affordance.
+    // Same grant as an app's compose `ports:`; server-enforced, this only hides the affordance.
     canExposePorts(),
-    // Gates drag-to-reorder of the databases grid (persisted team-wide) - the
-    // same capability every database mutation is gated on.
     hasCapability("configure_databases"),
-    // The two bulk lifecycle actions on a multi-selection, each gated on exactly
-    // the capability its mutation requires (the same one the card's own menu
-    // uses) - without them the button is simply not on the selection bar.
     hasCapability("control_databases"),
     hasCapability("delete_databases"),
-    // The three create surfaces of this page, each gated on exactly the capability its
-    // mutation requires.
     hasCapability("create_databases"),
     hasCapability("manage_backup_destinations"),
     hasCapability("manage_backups"),
     hasCapability("restore_backups"),
-    // A custom backup folder is an arbitrary absolute path on a shared host, so
-    // it is an instance-level decision. Everyone else gets the managed folder,
-    // which is what almost everyone wants anyway.
+    // A custom backup folder is an arbitrary absolute path on a shared host, so it is instance-level.
     isInstanceAdmin(),
   ]);
 
-  // Only provisioned servers can host a database (provisioning routes through a live
-  // agent). A storage-only host runs nothing, so it can never provision a database;
-  // nor can a migration source, which is another platform's machine.
   // Resolved once for both lists: it walks the NICs.
   const selfAddrs = deploHostSelfAddresses();
+  // Only a provisioned server (live agent) can host a database: storage-only runs nothing, import-only is another platform's machine.
   const dbServers = servers
     .filter(
       (s) =>
@@ -142,16 +126,13 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
       name: s.name,
       isDeploHost: isDeploHostServer(s, selfAddrs),
     }));
-  // The placement picker's rows: a database takes the same kind of home an App
-  // does, and that home is the network apps reach it on.
+  // A database takes the same kind of home an App does, and that home is the network apps reach it on.
   const dbEnvironments = (await listAllEnvironmentsForTeam()).map((e) => ({
     id: e.id,
     label: `${e.projectName} / ${e.name}`,
   }));
-  // serverId → name, so a card can show which host each database runs on.
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
-  // A backup destination can live on ANY server the team reaches, including a
-  // storage-only box that hosts nothing, which is exactly the point of one.
+  // A destination may live on ANY reachable server, including a storage-only box that hosts nothing.
   const destinationServers = servers
     .filter((s) => Boolean(s.agent?.certFingerprint) && !s.importOnly)
     .map((s) => ({
@@ -161,14 +142,11 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
       isDeploHost: isDeploHostServer(s, selfAddrs),
     }));
 
-  // Named once: the schedule dialog appears both in the toolbar and in the empty
-  // state, and only one of the two is ever on screen.
   const createBackupProps = {
     databases: databases.map((d) => ({
       id: d.id,
       name: d.name,
-      // The engine under the name, and the second thing the picker's search
-      // matches on.
+      // The engine under the name, and the second thing the picker's search matches on.
       detail: d.type,
       type: d.type,
       logo: d.logo,
@@ -219,11 +197,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
 
         {/* Databases */}
         <TabsContent value="databases" className="space-y-4">
-          {/**
-           * Creating a database closes the dialog at once and shows the card pulsing in the
-           * grid while the host port is probed and the row is written; the real card then
-           * takes over and reports provisioning live.
-           */}
+          {/* Optimistic: the card pulses in the grid while the row is written. */}
           <PendingCreateProvider count={databases.length}>
             <PendingList
               empty={databases.length === 0}
@@ -232,10 +206,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
                   graphic={<DatabaseGraphic />}
                   title="No databases yet"
                   docs="databases.overview"
-                  // The toolbar that carries Create database is hidden while the
-                  // list is empty, so the button lives here instead - exactly one
-                  // at any moment. When the actor cannot create one, say which
-                  // permission is missing rather than leaving them guessing.
+                  // The toolbar with Create database is hidden while the list is empty, so the button lives here - exactly one at any moment.
                   description={
                     canCreateDatabase
                       ? "Create a managed database to connect to your apps."
@@ -257,17 +228,14 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
               }
             >
               <DatabasesGrid
-                // Remount only when the SET of databases changes (create/delete),
-                // so a reorder, same set, never remounts and its optimistic
-                // order survives the drop (mirrors the Overview grid's gridKey).
+                // Key on the SET only: a reorder must not remount, or the optimistic order is lost on drop.
                 key={[...databases.map((d) => d.id)].sort().join(",")}
                 databases={databases}
                 serverNames={serverNames}
                 environments={dbEnvironments}
                 canConfigure={canManageDatabases}
                 canReorder={canManageDatabases}
-                // Same capability the reveal mutation is gated on: without it a
-                // card shows the masked string and no reveal/copy affordance.
+                // Same capability the reveal mutation is gated on; without it the card stays masked.
                 canReveal={canManageDatabases}
                 canControl={canControlDatabases}
                 canDelete={canDeleteDatabases}
@@ -287,9 +255,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
 
         {/* Destinations */}
         <TabsContent value="destinations" className="space-y-4">
-          {/* Adding a destination closes the dialog at once and shows it pulsing
-              in the grid while it is verified. Its own provider, so a pending
-              database never leaks into this grid. */}
+          {/* Its own provider, so a pending database never leaks into this grid. */}
           <PendingCreateProvider count={destinations.length}>
             <PendingList
               empty={destinations.length === 0}
@@ -298,8 +264,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
                   graphic={<DestinationGraphic />}
                   title="No backup destinations"
                   docs="backups.destinations"
-                  // The toolbar that carries Add destination is hidden while the
-                  // list is empty, so the button lives here instead.
+                  // The toolbar with Add destination is hidden while the list is empty, so the button lives here.
                   description={
                     canManageDestinations
                       ? "Pick a server to keep backups on, or connect an S3 bucket."
@@ -348,8 +313,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
               graphic={<BackupScheduleGraphic />}
               title="No backups scheduled"
               docs="backups.schedule"
-              // The toolbar that carries Schedule backup is hidden while the list
-              // is empty, so the button lives here instead.
+              // The toolbar with Schedule backup is hidden while the list is empty, so the button lives here.
               description={
                 canManageBackups
                   ? "Schedule automatic backups of your databases and apps."

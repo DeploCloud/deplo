@@ -6,21 +6,14 @@ import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { createGunzip } from "node:zlib";
 
-import {
-  connectAgent,
-  mapVolumeCopyUnsupported,
-  type AgentConnection,
-  type DroppedEntries,
-} from "../infra/agent-client";
+import { connectAgent } from "../infra/agent-client/connect";
+import type {
+  AgentConnection,
+  DroppedEntries,
+} from "../infra/agent-client/connection";
+import { mapVolumeCopyUnsupported } from "../infra/agent-client/errors";
 
-/**
- * Cross-host data migration for a server MOVE - the shared relay that both the
- * database move (a single data volume) and the app move (N data volumes + the
- * files dir) build on.
- */
-
-/** Stop a stack on a specific server, throwing on failure (a move can't proceed if
- *  the stack won't quiesce - its data would change under the copy). */
+// Stop a stack on a specific server - a move can't proceed if its data would change under the copy.
 export async function stopStackOn(
   serverId: string,
   slug: string,
@@ -34,7 +27,7 @@ export async function stopStackOn(
   }
 }
 
-/** Start a stack on a specific server, throwing on failure. */
+// Start a stack on a specific server, throwing on failure.
 export async function startStackOn(
   serverId: string,
   slug: string,
@@ -48,11 +41,7 @@ export async function startStackOn(
   }
 }
 
-/**
- * Destroy a stack on a specific server, throwing on failure. `removeVolumes`
- * (default true) also reclaims the stack's named volumes - used to tear down the
- * OLD host after a verified copy, or to roll back a half-built NEW stack.
- */
+// Destroy a stack on a specific server; `removeVolumes` also reclaims its named volumes.
 export async function destroyStackOn(
   serverId: string,
   slug: string,
@@ -67,11 +56,6 @@ export async function destroyStackOn(
   }
 }
 
-/**
- * Attribute a copy RPC rejection to the side that failed. The export (source) or
- * the import (destination) can reject; an UNIMPLEMENTED (agent too old) is mapped
- * to a clear "update the agent on the <side> server" error.
- */
 function attributeCopyError(e: unknown): Error {
   const asSource = mapVolumeCopyUnsupported(e, "source");
   if (asSource.constructor.name === "AgentVolumeCopyUnsupportedError")
@@ -79,27 +63,18 @@ function attributeCopyError(e: unknown): Error {
   return mapVolumeCopyUnsupported(e, "destination");
 }
 
-/**
- * The agent's refusal to hand over a FILE through the directory export. A `./x`
- * bind that names one is ordinary compose (`./nginx.conf:/etc/nginx/nginx.conf`),
- * and the caller answers it by copying the directory the file sits in.
- */
+// The agent's refusal to hand over a FILE through the directory export.
 export function isNotADirectory(e: unknown): boolean {
   return e instanceof Error && /is a file, not a directory/.test(e.message);
 }
 
-/** gRPC NOT_FOUND (5), however the error object reaches us. */
 function isNotFound(e: unknown): boolean {
   const code = (e as { code?: unknown } | null)?.code;
   if (code === 5) return true;
   return e instanceof Error && /\b5 NOT_FOUND\b/.test(e.message);
 }
 
-/**
- * An agent that advertises the hardened import ALWAYS reports the digest of what it
- * received, so from one of those "not reported" stops being an answer: the source is
- * torn down on this verdict, and `sha256: ""` used to sail through both cross-checks.
- */
+// An agent advertising the hardened import ALWAYS reports a digest, so an empty sha256 stops being an answer.
 const HARDENED_COPY_CAPABILITY = "volume-copy-hardened";
 
 async function destMustProveTheCopy(dest: AgentConnection): Promise<boolean> {
@@ -113,7 +88,6 @@ async function destMustProveTheCopy(dest: AgentConnection): Promise<boolean> {
   }
 }
 
-/** The destination counts what its sanitizer refused, so the report can say it. */
 const DROP_REPORT_CAPABILITY = "volume-copy.drop-report";
 
 async function hasCapability(
@@ -127,7 +101,6 @@ async function hasCapability(
   }
 }
 
-/** Both halves of a host-path copy can carry ONE FILE, not only a directory. */
 const FILE_COPY_CAPABILITY = "host-path-copy.file";
 
 async function carriesOneFile(agent: AgentConnection): Promise<boolean> {
@@ -141,18 +114,13 @@ async function carriesOneFile(agent: AgentConnection): Promise<boolean> {
   }
 }
 
-/** An agent too old to move a single file, named as the host it is on. */
 function tooOldForFiles(sourcePath: string, which: string): Error {
   return new Error(
     `"${sourcePath}" is a single file, and the server agent on the ${which} host is too old to copy one. Update that server's agent and run the copy again.`,
   );
 }
 
-/**
- * The one sentence for what a copy left behind, or null when there is nothing to
- * say. An agent without `volume-copy.drop-report` answers zeros, which is why the
- * capability is asked for rather than the counters read on their own.
- */
+// An agent without `volume-copy.drop-report` answers zeros, so ask the capability, not the counters.
 async function droppedNote(
   dest: AgentConnection,
   dropped: DroppedEntries | undefined,
@@ -167,8 +135,7 @@ async function droppedNote(
     dropped.special > 0 &&
       `${dropped.special} device${dropped.special === 1 ? "" : "s"}, socket${dropped.special === 1 ? "" : "s"} or pipe${dropped.special === 1 ? "" : "s"}`,
   ].filter((x): x is string => Boolean(x));
-  // The agent reports ONE list of names for both kinds, so a parenthesis after the
-  // last kind labels a symlink a device. With two kinds the names go on their own.
+  // The agent reports ONE list of names for both kinds, so a parenthesis after the last kind would mislabel them.
   const named = dropped.names.slice(0, 3).join(", ");
   const which = !named
     ? ""
@@ -178,45 +145,20 @@ async function droppedNote(
   return `${total} entr${total === 1 ? "y" : "ies"} did not come across: ${kinds.join(" and ")}${which}. Deplo does not copy those - re-create them by hand if the app needs them.`;
 }
 
-/**
- * What a copy actually moved.
- */
+// What a copy actually moved.
 export interface VolumeCopyResult {
-  /** The source was one FILE, not a directory - so the report can say which. */
   file?: boolean;
-  /** Compressed bytes relayed through the control plane. */
   bytes: number;
-  /** sha256 of the relayed stream, for the destination's own digest to meet. */
   sha256: string;
-  /** The source archive held no files; nothing was written or wiped. */
   empty: boolean;
-  /**
-   * The source volume or directory does not EXIST over there - which is the
-   * normal state of a service that was created and never started, not data that
-   * failed to arrive.
-   */
   missing?: boolean;
-  /**
-   * What the destination's sanitizer refused: an absolute or escaping link, and
-   * every device, socket and fifo. Dropped on purpose and, until the agent
-   * counted them, dropped in silence - a tree arrived short and the run read
-   * clean. Null from an agent that does not report them.
-   */
   dropped?: string | null;
 }
 
-/**
- * Called with each chunk's size as it crosses, for a caller that wants to SAY so
- * while it happens. Deliberately sync and deliberately ignored on throw: a
- * progress line must never be able to fail a copy.
- */
+// Called with each chunk's size as it crosses; ignored on throw - progress must never fail a copy.
 export type OnBytes = (chunkBytes: number) => void;
 
-/**
- * A copy somebody cancelled, told apart from a copy that broke. So the stream
- * itself is interruptible, and this is the shape the interruption takes: never a
- * `failed` line in the report, because nothing failed.
- */
+// A copy somebody cancelled, told apart from a copy that broke.
 export class CopyAbortedError extends Error {
   constructor() {
     super("The copy was cancelled.");
@@ -230,13 +172,10 @@ export function isCopyAborted(e: unknown): boolean {
   );
 }
 
-/** Throw the moment the caller withdraws. Called once per relayed chunk, which
- *  is roughly once a megabyte - close enough to instant, and free. */
 function stopIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new CopyAbortedError();
 }
 
-/** Report progress without ever letting it fail the copy it is describing. */
 function report(onBytes: OnBytes | undefined, chunkBytes: number): void {
   try {
     onBytes?.(chunkBytes);
@@ -245,15 +184,14 @@ function report(onBytes: OnBytes | undefined, chunkBytes: number): void {
   }
 }
 
-/** Tar entries that describe the NEXT entry rather than a file of their own. */
+// Tar entries that describe the NEXT entry rather than a file of their own.
 const TAR_META_TYPES = new Set(["x", "g", "L", "K", "V"]);
 
 const ARCHIVE_ROOTS: ReadonlySet<string> = new Set([".", "./"]);
-/** A files-dir export is rooted at `files/` (deplo-agent addDirToTar). */
+// A files-dir export is rooted at `files/` (deplo-agent addDirToTar).
 const FILES_ROOTS: ReadonlySet<string> = new Set(["files", "files/"]);
 
-/** Whether the app's files dir on `source` holds anything. A missing dir exports
- *  as a header-only tar, and importing that would WIPE the destination's dir. */
+// A missing dir exports as a header-only tar, and importing that would WIPE the destination's dir.
 export async function filesDirHasContent(
   source: AgentConnection,
   slug: string,
@@ -261,14 +199,9 @@ export async function filesDirHasContent(
   return archiveHasEntries(source.exportFiles(slug), FILES_ROOTS);
 }
 
-/**
- * Does this gzipped tar hold anything besides the directory root? Read from the
- * archive's own headers, because a size threshold calls a 300-byte file empty -
- * a small redis dump, a sqlite with a few rows, a licence, a key.
- */
+// Read from the archive's own headers: a size threshold calls a 300-byte file empty.
 async function archiveHasEntries(
   stream: AsyncIterable<Uint8Array>,
-  /** Entry names that are the archive's own root, not content. */
   roots: ReadonlySet<string> = ARCHIVE_ROOTS,
 ): Promise<boolean> {
   const src = Readable.from(stream);
@@ -306,12 +239,10 @@ async function archiveHasEntries(
   return false;
 }
 
-/** How much of a relayed archive is kept to judge it by its entries afterwards.
- *  A tar's first headers sit at its front, so this never needs to be large. */
+// A tar's first headers sit at its front, so the kept head never needs to be large.
 const ARCHIVE_HEAD_BYTES = 65_536;
 
-/** Did what actually crossed hold files, or only the directory root? A head too
- *  short to finish reading is not evidence of an empty archive. */
+// A head too short to finish reading is not evidence of an empty archive.
 async function relayedArchiveHeldEntries(head: Buffer[]): Promise<boolean> {
   try {
     return await archiveHasEntries(
@@ -324,9 +255,7 @@ async function relayedArchiveHeldEntries(head: Buffer[]): Promise<boolean> {
   }
 }
 
-/**
- * Prove the source volume has content BEFORE the destination is touched.
- */
+// Prove the source volume has content BEFORE the destination is touched.
 async function sourceHasData(
   source: AgentConnection,
   volumeName: string,
@@ -334,10 +263,7 @@ async function sourceHasData(
   return archiveHasEntries(source.exportVolume(volumeName));
 }
 
-/**
- * Copy ONE named Docker volume from `source` to `dest` (both already-open agent
- * connections), overwriting the destination volume.
- */
+// Copy ONE named Docker volume between two open agent connections, overwriting the destination.
 export async function copyVolumeBetween(
   source: AgentConnection,
   dest: AgentConnection,
@@ -350,17 +276,13 @@ export async function copyVolumeBetween(
     if (!(await sourceHasData(source, volumeName)))
       return { bytes: 0, sha256: "", empty: true };
   } catch (e) {
-    // Nothing there to copy is not a copy that failed: a service that has never
-    // run has no data volume yet, and calling that a loss blocks the deploy that
-    // would create it.
+    // Nothing there to copy is not a copy that failed: a service that never ran has no data volume yet.
     if (isNotFound(e))
       return { bytes: 0, sha256: "", empty: true, missing: true };
     throw attributeCopyError(e);
   }
 
-  // Count and hash what actually crosses. The digest is the same cross-check the
-  // backup relay makes (lib/data/backup-transport.ts): an agent that reports its
-  // own sha256 back has to meet this one.
+  // The digest is the same cross-check the backup relay makes (lib/data/backup-transport.ts).
   const hash = createHash("sha256");
   let bytes = 0;
   const head: Buffer[] = [];
@@ -386,15 +308,11 @@ export async function copyVolumeBetween(
     sha256?: string;
     dropped?: DroppedEntries;
   };
-  // Both cross-checks are OPTIONAL by version, not by importance: an agent older
-  // than the fields answers 0 and "", which is "not reported" - reading a 0 as
-  // "wrote nothing" would fail every copy on the fleet that has not updated yet.
+  // An agent older than these fields answers 0 and "", which is "not reported", never "wrote nothing".
   try {
     res = await dest.importVolume(targetName, true, counted);
   } catch (e) {
-    // Ours first: a generator that threw reaches the caller wearing whatever
-    // the RPC layer made of it, and a cancellation must never read as a volume
-    // that failed to copy.
+    // Ours first: a cancellation must never read as a volume that failed to copy.
     stopIfAborted(signal);
     throw attributeCopyError(e);
   }
@@ -404,15 +322,12 @@ export async function copyVolumeBetween(
     );
 
   const digest = hash.digest("hex");
-  // The source proved itself a moment ago, so an archive with nothing in it here
-  // means the export stopped answering between the probe and the copy.
+  // The source proved itself a moment ago, so an empty archive means the export stopped answering.
   if (!(await relayedArchiveHeldEntries(head)))
     throw new Error(
       `nothing was copied out of "${volumeName}" - the volume is empty or no longer on that host`,
     );
-  // Both halves of the digest cross-check are optional until the whole fleet
-  // answers them (they are additive StackResult fields); when they are there they
-  // are load-bearing, because a truncated untar is otherwise invisible.
+  // Load-bearing when reported, because a truncated untar is otherwise invisible.
   if (!res.sha256 && (await destMustProveTheCopy(dest)))
     throw new Error(
       `the copy of "${volumeName}" arrived unverified: the destination host reported no digest`,
@@ -438,10 +353,7 @@ export async function copyVolumeBetween(
   };
 }
 
-/**
- * Copy one HOST DIRECTORY from `source` to `dest` - the bind-mount half of a
- * migration from a platform that keeps service data in a plain directory.
- */
+// Copy one HOST DIRECTORY between two open agent connections - the bind-mount half of a migration.
 export async function copyHostPathBetween(
   source: AgentConnection,
   dest: AgentConnection,
@@ -449,14 +361,11 @@ export async function copyHostPathBetween(
   targetPath: string,
   onBytes?: OnBytes,
   signal?: AbortSignal,
-  /** Empty the target first. Off when the target holds more than this copy - a
-   *  stack's files dir, where a second bind and Deplo's own File mounts live. */
+  // Off when the target holds more than this copy - a stack's files dir, where a
+  // second bind and Deplo's own File mounts live.
   wipe = true,
 ): Promise<VolumeCopyResult> {
-  // `- ./nginx.conf:/etc/nginx/nginx.conf` is ordinary compose, and the export
-  // refuses a file rather than guessing. That refusal is the only reliable way to
-  // learn which of the two this path is, so it drives the second attempt: from
-  // here both halves carry the ONE entry instead of the directory around it.
+  // The export refuses a file rather than guessing, and that refusal is the only way to tell the two apart.
   let file = false;
   try {
     if (!(await archiveHasEntries(source.exportHostPath(sourcePath))))
@@ -466,9 +375,7 @@ export async function copyHostPathBetween(
       return { bytes: 0, sha256: "", empty: true, missing: true };
     if (!isNotADirectory(e)) throw attributeCopyError(e);
     file = true;
-    // Asked BEFORE anything is streamed: an agent that does not know the flag
-    // would create a DIRECTORY at the target and the stack would come back up on
-    // it, which is worse than the copy that did not happen.
+    // Asked BEFORE anything is streamed: an older agent would create a DIRECTORY at the target instead.
     if (!(await carriesOneFile(dest)))
       throw tooOldForFiles(sourcePath, "target");
     try {
@@ -547,17 +454,13 @@ export async function copyHostPathBetween(
   };
 }
 
-/**
- * Copy an app's files dir (a host directory, not a Docker volume) from `source` to
- * `dest`, overwriting the destination.
- */
+// Copy an app's files dir (a host directory, not a Docker volume), overwriting the destination.
 export async function copyFilesBetween(
   source: AgentConnection,
   dest: AgentConnection,
   slug: string,
 ): Promise<{ empty: boolean }> {
-  // Nothing over there means nothing to write here - never a wipe of the files
-  // the deploy just rendered on the destination.
+  // Nothing over there means nothing to write here - never a wipe of what the deploy just rendered.
   try {
     if (!(await filesDirHasContent(source, slug))) return { empty: true };
   } catch (e) {
@@ -576,11 +479,7 @@ export async function copyFilesBetween(
   return { empty: false };
 }
 
-/**
- * Copy a BUILT IMAGE from the server that compiled it to the server that will run
- * it - the build-server relay, and the third use of this module's one idea: agents
- * cannot dial each other, so the bytes pass through the control plane.
- */
+// Copy a BUILT IMAGE between servers: agents cannot dial each other, so the bytes pass through here.
 export async function copyImageBetween(
   source: AgentConnection,
   dest: AgentConnection,
@@ -603,11 +502,7 @@ export async function copyImageBetween(
   return res.bytesWritten;
 }
 
-/**
- * Migrate a workload's full on-host state from one server to another: every named
- * volume (in order) and, optionally, the files dir. The caller must have STOPPED
- * both stacks first (see the module comment).
- */
+// Migrate a workload's on-host state; the caller must have STOPPED both stacks first.
 export async function migrateWorkloadData(
   fromServerId: string,
   toServerId: string,
@@ -620,9 +515,8 @@ export async function migrateWorkloadData(
     try {
       for (const volume of opts.volumeNames) {
         const res = await copyVolumeBetween(source, dest, volume);
-        // Reported, never swallowed: the callers tear the SOURCE down when this
-        // returns, and "the volume is not there" is also what a volume named
-        // wrongly looks like.
+        // Reported, never swallowed: the callers tear the SOURCE down when this returns.
+        // No RPC lists volumes, so a wrongly-named one reads as missing, not as a failure.
         if (res.missing) missing.push(volume);
       }
       if (opts.filesSlug) {

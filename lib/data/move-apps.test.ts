@@ -6,12 +6,12 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   environments as environmentsTable,
   folders as foldersTable,
   projects as projectsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -26,15 +26,9 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { moveAppToFolder, moveAppsToFolder } from "./folders";
-import { moveAppToProject, moveAppToEnvironment } from "./projects";
+import { moveAppToProject, moveAppToEnvironment } from "./projects/placement";
 import { transferAppToTeam, appTransferInfo } from "./app-transfer";
-import { ALL_CAPABILITIES, type Capability } from "../types";
-
-/**
- * What "Move & reorder apps" actually buys you. The permission names one thing -
- * relocating an app - and it is spread over four call sites (folder, project,
- * environment, another team), each with its own second gate.
- */
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 
 let db: TestDb;
 let pg: PGlite;
@@ -68,8 +62,6 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      // The subject: one permission, in both teams (the transfer needs a
-      // membership on the far side too).
       {
         id: MOVER,
         teamId: TEAM_A,
@@ -143,7 +135,6 @@ beforeEach(async () => {
 const asMover = <T>(fn: () => Promise<T>, teamId = TEAM_A): Promise<T> =>
   runWithIdentity({ userId: MOVER, teamId }, fn);
 
-/** Give the subject a different set (always keeping the `view` floor). */
 async function setCaps(caps: Capability[]): Promise<void> {
   await pg.exec(
     `delete from membership_capabilities where membership_id = 'mem_${MOVER}';`,
@@ -169,10 +160,6 @@ async function placementOf(appId = APP) {
     .where(eq(appsTable.id, appId));
   return row;
 }
-
-/* ------------------------------------------------------------------ */
-/* It works                                                            */
-/* ------------------------------------------------------------------ */
 
 test("move_apps alone files an app into a folder and pulls it back out", async () => {
   await asMover(() => moveAppToFolder(APP, MY_FOLDER));
@@ -216,8 +203,7 @@ test("move_apps alone moves a whole selection at once", async () => {
 });
 
 test("filing an app into a folder takes it out of its project, and vice versa", async () => {
-  // An app lives in exactly ONE place (ADR-0009); the UI offers both moves from
-  // the same menu, so the two must not be able to leave it in both.
+  // An app lives in exactly ONE place (ADR-0009).
   await asMover(() => moveAppToProject(APP, PROJECT));
   await asMover(() => moveAppToFolder(APP, MY_FOLDER));
   const inFolder = await placementOf();
@@ -230,10 +216,6 @@ test("filing an app into a folder takes it out of its project, and vice versa", 
   assert.equal(inProject.projectId, PROJECT);
   assert.equal(inProject.folderId, null);
 });
-
-/* ------------------------------------------------------------------ */
-/* And it stops where it should                                        */
-/* ------------------------------------------------------------------ */
 
 test("a folder the mover can't see is not a destination", async () => {
   await assert.rejects(
@@ -262,10 +244,6 @@ test("the other thirty-nine permissions move nothing", async () => {
   assert.equal(still.folderId, null);
   assert.equal(still.projectId, null);
 });
-
-/* ------------------------------------------------------------------ */
-/* Crossing a team boundary needs more than move_apps                  */
-/* ------------------------------------------------------------------ */
 
 test("a transfer to another team also needs manage_env - the variables travel with it", async () => {
   await assert.rejects(
@@ -304,18 +282,12 @@ test("the transfer picker offers exactly the teams the mover may move INTO", asy
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* A migration owns the rows it is still writing                       */
-/* ------------------------------------------------------------------ */
-
 test("a bulk move refuses an app a migration is still writing", async () => {
   await db
     .update(appsTable)
     .set({ migrationRunId: "mig_run_1" })
     .where(eq(appsTable.id, APP_2));
 
-  // The single move goes through requireAppCapability, which asks; the bulk one
-  // reads the whole selection's capabilities at once and never did.
   await assert.rejects(
     () => asMover(() => moveAppToFolder(APP_2, MY_FOLDER)),
     /still being brought over/,

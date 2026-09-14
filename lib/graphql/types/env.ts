@@ -11,26 +11,15 @@ import {
   type AppEnvGroup,
 } from "@/lib/data/env";
 import { dismissPendingChanges } from "@/lib/data/pending-changes";
-import type { EnvVarDTO, VarAuthor } from "@/lib/types";
+import type { EnvVarDTO } from "@/lib/types/env";
+import type { VarAuthor } from "@/lib/types/identity";
 
-/* ------------------------------------------------------------------ */
-/* Local enums                                                         */
-/* ------------------------------------------------------------------ */
-
-// `type` is a two-valued union that is not shared in enums.ts, so it lives here.
-// Exported so the shared-env types reuse the same GraphQL enum (a Pothos enum
-// name must be unique, so there can be only one "EnvVarType").
+// EnvVarTypeEnum is exported so the shared-env types reuse it: a Pothos enum name must be unique.
 export const EnvVarTypeEnum = builder.enumType("EnvVarType", {
   values: ["plain", "secret"] as const,
 });
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
-// The one authorship type for every kind of variable (app / shared / preview), so
-// exported: a Pothos type name must be unique, and shared-env.ts imports this ref
-// rather than declaring a second "VarAuthor".
+// VarAuthorRef is exported so shared-env.ts reuses it: a Pothos type name must be unique.
 export const VarAuthorRef = builder
   .objectRef<VarAuthor>("VarAuthor")
   .implement({
@@ -63,8 +52,6 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
       resolve: (e) => e.targets,
     }),
     type: t.field({ type: EnvVarTypeEnum, resolve: (e) => e.type }),
-    // Null for rows written before authorship tracking, or once the author's
-    // user is deleted (the FK is ON DELETE SET NULL) - the UI renders "—".
     createdBy: t.field({
       type: VarAuthorRef,
       nullable: true,
@@ -80,7 +67,6 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
   }),
 });
 
-// The lightweight project descriptor each group carries (id/name/slug only).
 type AppEnvGroupApp = AppEnvGroup["app"];
 
 const AppEnvGroupAppRef = builder
@@ -123,35 +109,23 @@ const EnvImportResultRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const UpsertEnvInputType = builder.inputType("UpsertEnvInput", {
   fields: (t) => ({
     appId: t.string({ required: true }),
     key: t.string({ required: true }),
     value: t.string({ required: true }),
-    // An App belongs to exactly one Environment, so the UI no longer asks for
-    // deploy runtimes; omit and the variable applies to all of them. Optional,
-    // not removed, so clients still passing targets keep working.
+    // Optional, not removed, so clients still passing targets keep working; omitted applies to all.
     targets: t.field({ type: [EnvTargetEnum], required: false }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
   }),
 });
 
-// One KEY=VALUE pair for the ".env editor" (setAppEnv). `type`/`targets` are
-// not expressed here: existing vars keep theirs, new ones default to plain.
 const EnvEntryInputType = builder.inputType("EnvEntryInput", {
   fields: (t) => ({
     key: t.string({ required: true }),
     value: t.string({ required: true }),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   env: t.field({
@@ -168,10 +142,6 @@ builder.queryFields((t) => ({
     resolve: () => listAllAppEnv(),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations (every env server action)                                 */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   upsertEnv: t.field({
@@ -259,7 +229,6 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/** Reload a single env var after the void upsert so we can return the entity. */
 async function reloadEnv(appId: string, key: string): Promise<EnvVarDTO> {
   const all = await listEnv(appId);
   const found = all.find((e) => e.key === key.trim());

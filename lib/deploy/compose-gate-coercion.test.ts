@@ -1,32 +1,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { composeTruthy, interpolates } from "./compose-lint/document";
+import { composePublishesPorts } from "./compose-lint/host-ports";
 import {
   composeBuildReachesHost,
-  composeHasHostBindMount,
   composeHostPrivilegeKeys,
+} from "./compose-lint/host-privileges";
+import {
   composeInterpolatedHostname,
   composeJoinsForeignNetwork,
+} from "./compose-lint/networks";
+import {
+  composeHasHostBindMount,
   composeMountsForeignStorage,
-  composePublishesPorts,
-  composeTruthy,
-  interpolates,
-} from "./compose-lint";
+} from "./compose-lint/volumes";
 
-/**
- * The gates read the compose file with a YAML 1.2 parser; `docker compose` reads
- * the same bytes with YAML 1.1 booleans and an env-file behind every `$VAR`. Every
- * case here was verified against `docker compose config` - it is the difference
- * between the two readings that let a value reach the host ungated.
- */
+// The gates parse YAML 1.2; `docker compose` reads the same bytes as YAML 1.1, with an
+// env-file behind every `$VAR`. Every case here was verified against `docker compose config`.
 
 const svc = (body: string): string =>
   `services:\n  a:\n    image: alpine\n${body}`;
 
 test("compose's own booleans are true: yes, on, y and a quoted true", () => {
-  // Verified against `docker compose config`: it casts all of these, and refuses
-  // `1`/`t` outright - which this reads as true anyway, one refusal ahead of the
-  // deploy that would have failed.
+  // Verified against `docker compose config`: it casts all of these and refuses `1`/`t`
+  // outright, which this reads as true anyway - one refusal ahead of a failing deploy.
   for (const v of [true, 1, "yes", "Yes", "YES", "on", "y", "1", "true"])
     assert.equal(composeTruthy(v), true, `${String(v)} should read as true`);
   for (const v of [
@@ -51,7 +49,6 @@ test("`privileged: yes` takes the host grant, exactly like `privileged: true`", 
       ["privileged"],
       `privileged: ${value} was not gated`,
     );
-  // Off is off: a key present but false declares nothing and stays free.
   for (const value of ["false", "no", "off"])
     assert.deepEqual(
       composeHostPrivilegeKeys(svc(`    privileged: ${value}`)),
@@ -83,31 +80,26 @@ test("`$$` is compose's escape and interpolates nothing", () => {
 });
 
 test("an interpolated volume source is a host bind until proven otherwise", () => {
-  // `${HOSTPATH}:/host` with HOSTPATH=/ is a bind mount of the whole server, and
-  // the env-file it comes from is written after every check here.
+  // `${HOSTPATH}:/host` with HOSTPATH=/ binds the whole server, and the env-file it
+  // comes from is written after every check here.
   assert.equal(
     composeHasHostBindMount(svc('    volumes:\n      - "${HOSTPATH}:/host"')),
     true,
   );
-  // The WHOLE entry filled in from one variable - no colon to split on.
   assert.equal(
     composeHasHostBindMount(svc("    volumes:\n      - ${MOUNT}")),
     true,
   );
-  // Long form, where the source carries no `/` of its own.
   assert.equal(
     composeHasHostBindMount(
       svc('    volumes:\n      - source: "${SRC}"\n        target: /x'),
     ),
     true,
   );
-  // The project's own files convention still passes: `./x` is rewritten into the
-  // app's isolated files dir.
   assert.equal(
     composeHasHostBindMount(svc("    volumes:\n      - ./conf:/etc/conf")),
     false,
   );
-  // ...but not once a variable decides where under it the mount lands.
   assert.equal(
     composeHasHostBindMount(svc('    volumes:\n      - "./${REL}:/etc/conf"')),
     true,
@@ -150,8 +142,6 @@ test("`no-new-privileges:false` is the option turned OFF, not a hardening", () =
     ),
     ["security_opt"],
   );
-  // Hardening is never gated: a permission in front of the safer choice is one
-  // people learn to route around.
   for (const value of ["no-new-privileges:true", "no-new-privileges"])
     assert.deepEqual(
       composeHostPrivilegeKeys(svc(`    security_opt:\n      - ${value}`)),
@@ -196,15 +186,12 @@ test("an interpolated hostname is refused: it decides which name answers", () =>
 });
 
 test("a privileged lifecycle hook is `privileged:` one level down", () => {
-  // `post_start` runs `docker exec` on the container, and privileged there hands the
-  // process every capability whatever the container itself was given.
   assert.deepEqual(
     composeHostPrivilegeKeys(
       svc("    post_start:\n      - command: id\n        privileged: yes"),
     ),
     ["post_start"],
   );
-  // A hook that asks for nothing is an ordinary hook.
   assert.deepEqual(
     composeHostPrivilegeKeys(svc("    post_start:\n      - command: id")),
     [],
@@ -221,7 +208,6 @@ test("a device RESERVATION hands over host hardware like `devices:` does", () =>
     ),
     ["deploy.resources.reservations.devices"],
   );
-  // Capping a service is the ordinary use of `deploy:` and stays free.
   assert.deepEqual(
     composeHostPrivilegeKeys(
       svc(

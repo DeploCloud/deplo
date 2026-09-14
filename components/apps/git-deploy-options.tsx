@@ -12,21 +12,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { GitTriggerType } from "@/lib/types";
+import type { GitTriggerType } from "@/lib/types/build";
 
-/**
- * The editable git deploy options shared by the app settings page and the new-app
- * wizard (so both surfaces stay identical): the auto-deploy trigger (push vs new
- * tag), the optional watch-path filter, and the submodules toggle.
- */
+// GitDeployOptionsValue - the git deploy options shared by settings and the wizard.
 export interface GitDeployOptionsValue {
   triggerType: GitTriggerType;
-  /** Raw textarea contents - one glob per line (commas also accepted). */
   watchPaths: string;
   submodules: boolean;
 }
 
-/** Split raw watch-path text into a clean glob list (mirrors parseWatchPaths). */
+// watchPathsToArray - split raw watch-path text into a clean glob list.
 export function watchPathsToArray(raw: string): string[] {
   return raw
     .split(/[\n,]/)
@@ -34,7 +29,7 @@ export function watchPathsToArray(raw: string): string[] {
     .filter(Boolean);
 }
 
-/** The seed value for an app that has no repo yet (wizard default). */
+// DEFAULT_GIT_DEPLOY_OPTIONS - the seed for an app that has no repo yet.
 export const DEFAULT_GIT_DEPLOY_OPTIONS: GitDeployOptionsValue = {
   triggerType: "push",
   watchPaths: "",
@@ -55,7 +50,7 @@ export function GitDeployOptions({
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {/* Deploy trigger - push to branch vs any new tag. */}
+      {/* Deploy trigger */}
       <div className="space-y-2">
         <FieldLabel
           info="When automatic deployments are on, deploy on a push to the branch, or on any new tag."
@@ -88,7 +83,7 @@ export function GitDeployOptions({
         </Select>
       </div>
 
-      {/* Include submodules - clone git submodules at build time. */}
+      {/* Include submodules */}
       <div className="space-y-2">
         <FieldLabel
           info={
@@ -115,7 +110,7 @@ export function GitDeployOptions({
         </div>
       </div>
 
-      {/* Watch paths - optional path filter for auto-deploys. */}
+      {/* Watch paths */}
       <div className="space-y-2 sm:col-span-2">
         <FieldLabel
           info="Only auto-deploy when a changed file matches one of these globs (one per line). Leave empty to deploy on any change."

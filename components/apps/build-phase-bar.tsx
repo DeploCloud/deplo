@@ -7,19 +7,11 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { buildPhases } from "@/lib/build-phases";
 import { isDeploymentLive } from "@/lib/deployment-status";
 import { cn, formatBuildDuration, formatClockTime } from "@/lib/utils";
-import type { DeploymentStatus, LogLine } from "@/lib/types";
+import type { DeploymentStatus, LogLine } from "@/lib/types/deployment";
 
-/**
- * Half the growth transition, so the running phase is moving far more of the time
- * than it is still. Free: the 500ms log poll already re-renders this at that rate.
- */
 const TICK_MS = 500;
 
-/**
- * Where a build's time went, one segment per phase - derived from the `command`
- * lines the deployment already logged, so it costs a pass over the polled array.
- * The width carries the proportion; the pill holds only the time and an outcome.
- */
+// BuildPhaseBar - where a build's time went, one segment per phase, from its logged command lines.
 export function BuildPhaseBar({
   logs,
   status,
@@ -46,19 +38,13 @@ export function BuildPhaseBar({
     [logs, startedAt, buildDurationMs, now],
   );
 
-  // The bar appearing is not an entrance (globals.css: page entrances are not
-  // animated) - only a phase that STARTS while you watch opens. Phases are
-  // append-only, so that is an index comparison against however many the bar
-  // first painted. Adjusted during render, not in an effect: an effect runs after
-  // the commit, which is one frame of every phase opening at once.
+  // Adjusted during render, not in an effect: an effect opens every phase one frame late.
   const [painted, setPainted] = React.useState(0);
   if (painted === 0 && phases.length > 0) setPainted(phases.length);
 
   if (phases.length === 0) return null;
 
   return (
-    // Scrolls only where it has to: five phases need 394px, which no dashboard
-    // column is short of and a phone is.
     <div className="overflow-x-auto">
       <div
         className="flex gap-1.5 [--phase-min:4.625rem]"
@@ -76,12 +62,8 @@ export function BuildPhaseBar({
             <div
               key={i}
               className={cn(
-                // --phase-min is measured, not guessed: the widest thing a NARROW
-                // phase has to hold is its `HH:MM:SS.mmm` start (72.3px).
-                // Proportional above that, never below it.
+                // --phase-min is measured: a narrow phase still holds its `HH:MM:SS.mmm` start (72.3px).
                 "flex min-w-[var(--phase-min)] flex-col gap-1 overflow-hidden",
-                // Every column, not just the running one: as the total grows they
-                // all lose share, and they have to lose it just as smoothly.
                 "transition-[flex-grow] duration-300 ease-out",
                 opening && "animate-phase-in",
               )}
@@ -118,7 +100,6 @@ export function BuildPhaseBar({
   );
 }
 
-/** A phase is over unless it is the last one of a build still going. */
 function PhaseOutcome({
   last,
   status,
@@ -136,7 +117,6 @@ function PhaseOutcome({
       </span>
     );
   }
-  // The build died in whichever phase was running when it stopped.
   if (last && status === "error") {
     return (
       <CircleX

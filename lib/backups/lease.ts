@@ -5,49 +5,28 @@ import { hostname } from "node:os";
 
 import { getPool, isPostgresEnabled } from "../db/pg";
 
-/**
- * Cross-process lease for the backup scheduler (Step 6). Why a lease at all: a due
- * backup must fire AT MOST ONCE. Without a shared mutex each instance would dump
- * the same database to S3 simultaneously.
- */
+// LEASE_STALE_MS - a lease is reclaimable once its heartbeat is older than this.
+export const LEASE_STALE_MS = 2 * 60 * 60 * 1000;
 
-/** A lease is reclaimable once its heartbeat is older than this. */
-export const LEASE_STALE_MS = 2 * 60 * 60 * 1000; // 2h - see PLAN "stale > 2h".
-
-/** The scheduler's lease name (one row in `scheduler_lease`). */
+// BACKUP_SCHEDULER_LEASE - the scheduler's lease name (one row in scheduler_lease).
 export const BACKUP_SCHEDULER_LEASE = "backup-scheduler";
 
-/**
- * The Docker-cleanup scheduler's lease name.
- */
+// DOCKER_CLEANUP_LEASE - the Docker-cleanup scheduler's lease name.
 export const DOCKER_CLEANUP_LEASE = "docker-cleanup-scheduler";
 
-/**
- * The pull request preview reaper's lease name. A third independent row, for the
- * same reason as the second: the three loops claim different names, so a long
- * nightly dump can never block a preview from being reaped (or the reverse).
- */
+// PREVIEW_REAPER_LEASE - the pull request preview reaper's lease name.
 export const PREVIEW_REAPER_LEASE = "preview-reaper";
 
-/**
- * The cron scheduler's lease name - a fourth row, same reasoning again.
- */
+// CRON_SCHEDULER_LEASE - the cron scheduler's lease name.
 export const CRON_SCHEDULER_LEASE = "cron-scheduler";
 
-/* ------------------------------------------------------------------ */
-/* Pure decision (unit-tested)                                          */
-/* ------------------------------------------------------------------ */
-
-/** The current lease row as seen by a claimant (null = no row yet). */
+// LeaseRow - the current lease row as seen by a claimant (null = no row yet).
 export interface LeaseRow {
   owner: string;
   heartbeatAt: Date;
 }
 
-/**
- * Pure CAS decision: given the existing lease row (or null), can `me` take/keep it
- * as of `now`?
- */
+// canAcquire - pure CAS decision: can `me` take or keep the lease as of `now`?
 export function canAcquire(
   existing: LeaseRow | null,
   me: string,
@@ -59,14 +38,7 @@ export function canAcquire(
   return now.getTime() - existing.heartbeatAt.getTime() > staleMs;
 }
 
-/**
- * Is this owner a process on THIS host that no longer exists? Every scheduler
- * labels itself `hostname:pid:rand`, so a control plane that was killed rather
- * than stopped (SIGKILL, OOM, a crash) can be recognised without waiting out
- * the two-hour window - during which no cron job would fire and a run in
- * flight would outlive the agent's 30-minute memory of it. A pid the kernel
- * has since reused reads as alive, which only falls back to the window.
- */
+// ownedByDeadLocalProcess - is this owner a process on THIS host that no longer exists?
 export function ownedByDeadLocalProcess(
   owner: string,
   probe: { host: string; alive: (pid: number) => boolean } = {
@@ -81,15 +53,10 @@ export function ownedByDeadLocalProcess(
   return !probe.alive(n);
 }
 
-/* ------------------------------------------------------------------ */
-/* In-process fallback (no Postgres)                                    */
-/* ------------------------------------------------------------------ */
-
 type LocalLeases = Map<string, LeaseRow>;
 const LOCAL_KEY = Symbol.for("deplo.backup.scheduler.lease.local");
 const g = globalThis as unknown as { [LOCAL_KEY]?: LocalLeases };
-// Same globalThis-singleton rationale as the store: RSC and route-handler graphs
-// are separate module registries, so a module-level Map would split the lock.
+// Separate RSC / route-handler module registries would split a module-level Map.
 const localLeases: LocalLeases = (g[LOCAL_KEY] ??= new Map());
 
 function acquireLocal(
@@ -99,9 +66,6 @@ function acquireLocal(
   staleMs: number,
 ): boolean {
   const existing = localLeases.get(name) ?? null;
-  // The window comes from the CALLER, exactly as it does in the SQL above: a holder
-  // that wants a tighter one (the migration runner does) must get the same answer
-  // from both paths, or the fallback tests a rule production is not running.
   if (!canAcquire(existing, owner, now, staleMs)) return false;
   localLeases.set(name, { owner, heartbeatAt: now });
   return true;
@@ -111,13 +75,6 @@ function releaseLocal(name: string, owner: string): void {
   if (localLeases.get(name)?.owner === owner) localLeases.delete(name);
 }
 
-/* ------------------------------------------------------------------ */
-/* Postgres CAS                                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * Atomically claim or renew the lease in Postgres.
- */
 async function acquirePostgres(
   name: string,
   owner: string,
@@ -139,26 +96,17 @@ async function acquirePostgres(
      RETURNING owner`,
     [name, owner, staleSeconds],
   );
-  // A row comes back only when WE hold it (insert, renew, or steal). If a live
-  // foreign owner blocked the update, ON CONFLICT's WHERE failed → 0 rows.
   return res.rows[0]?.owner === owner;
 }
 
 async function releasePostgres(name: string, owner: string): Promise<void> {
-  // Only the holder releases - a stale-steal by someone else must not be undone.
   await getPool().query(
     `DELETE FROM scheduler_lease WHERE name = $1 AND owner = $2`,
     [name, owner],
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Public API                                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * Claim or renew `name` for `owner`. Returns true if we hold it after the call.
- */
+// acquireLease - claim or renew `name` for `owner`; true if we hold it after the call.
 export async function acquireLease(
   name: string,
   owner: string,
@@ -168,7 +116,6 @@ export async function acquireLease(
   if (!isPostgresEnabled()) return acquireLocal(name, owner, now, staleMs);
   try {
     if (await acquirePostgres(name, owner, staleMs)) return true;
-    // Denied by a holder that is a dead process on this host: reclaim it now.
     const held = await getPool().query<{ owner: string }>(
       `SELECT owner FROM scheduler_lease WHERE name = $1`,
       [name],
@@ -185,7 +132,7 @@ export async function acquireLease(
   }
 }
 
-/** Release `name` if `owner` still holds it. Best-effort; never throws. */
+// releaseLease - release `name` if `owner` still holds it. Best-effort; never throws.
 export async function releaseLease(name: string, owner: string): Promise<void> {
   if (!isPostgresEnabled()) {
     releaseLocal(name, owner);
@@ -200,7 +147,7 @@ export async function releaseLease(name: string, owner: string): Promise<void> {
   }
 }
 
-/** Test-only: reset the in-process lease map between cases. */
+// __resetLocalLeases - test-only: reset the in-process lease map between cases.
 export function __resetLocalLeases(): void {
   localLeases.clear();
 }

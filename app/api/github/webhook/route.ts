@@ -1,10 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import {
-  githubInstallation as githubInstallationTable,
-  apps as appsTable,
-} from "@/lib/db/schema/control-plane";
+import { apps as appsTable } from "@/lib/db/schema/control-plane/apps";
+import { githubInstallation as githubInstallationTable } from "@/lib/db/schema/control-plane/integrations";
 import { decryptSecret } from "@/lib/crypto";
 import { findAppByAppId } from "@/lib/github/app";
 import { parsePushEvent } from "@/lib/deploy/git-webhook";
@@ -12,11 +10,7 @@ import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
 import { readTextCapped } from "@/lib/http/body-cap";
 
-/**
- * Inbound GitHub App webhook. Verifies the HMAC signature against the receiving
- * App's webhook secret, then triggers an auto-redeploy of any project wired to the
- * pushed repo + branch.
- */
+// POST verifies the delivery's HMAC against the receiving App's webhook secret before acting on it.
 export async function POST(request: Request) {
   const raw = await readTextCapped(request);
   if (raw instanceof Response) return raw;
@@ -26,9 +20,7 @@ export async function POST(request: Request) {
   );
   const app = Number.isInteger(appId) ? await findAppByAppId(appId) : null;
   if (!app) {
-    // No connected App matches this delivery's target id. Logged because an
-    // operator staring at "auto-deploy never fires" has no other way to learn
-    // the delivery was acknowledged-and-dropped here rather than at the filter.
+    // Logged because "auto-deploy never fires" has no other trace of being acknowledged-and-dropped here.
     console.warn(
       `[github-webhook] ignored: no connected App for appId=${appId}`,
     );
@@ -38,9 +30,7 @@ export async function POST(request: Request) {
   const secret = decryptSecret(app.webhookSecretEnc);
   const signature = request.headers.get("x-hub-signature-256") ?? "";
   if (!secret || !verifySignature(raw, secret, signature)) {
-    // The realistic cause is DEPLO_SECRET rotating after the App was created,
-    // so the stored webhook secret can no longer be decrypted (empty) - every
-    // delivery then 401s. Name it so it isn't mistaken for a GitHub problem.
+    // Usually DEPLO_SECRET rotated after the App was created, so the stored secret no longer decrypts.
     console.warn(
       `[github-webhook] 401 invalid signature for app=${app.slug}` +
         (secret
@@ -51,9 +41,7 @@ export async function POST(request: Request) {
   }
 
   const event = request.headers.get("x-github-event");
-  // Pull request deliveries drive preview deployments; the push arm below is
-  // untouched. `app.id` rides along for the same reason it is used below: the
-  // delivery may only act on installations of the App whose secret just verified it.
+  // `app.id` rides along: a delivery may only act on installations of the App whose secret verified it.
   if (event === "pull_request") return handlePullRequestDelivery(raw, app.id);
   if (event !== "push") return new Response("ok", { status: 200 });
 
@@ -66,12 +54,10 @@ export async function POST(request: Request) {
 
   const fullName = payload.repository?.full_name;
   const numericInstall = payload.installation?.id;
-  // Normalise the ref/commit metadata once; per-app gating (push vs tag,
-  // watch paths) happens below against each candidate's stored config.
+  // Per-app gating (push vs tag, watch paths) is not done here - dispatchPushEvent does it per candidate.
   const pushEvent = parsePushEvent(payload);
   if (!fullName || !pushEvent.refName || !numericInstall) {
-    // A ref with no name (or a delivery missing repo/installation) has nothing to
-    // match. Worth a line so it's not confused with a missing-config drop.
+    // Logged so it isn't confused with a missing-config drop.
     console.warn(
       `[github-webhook] push ignored: ref=${payload.ref} repo=${fullName ?? "?"} install=${numericInstall ?? "?"}`,
     );
@@ -97,8 +83,6 @@ export async function POST(request: Request) {
     return new Response("ok", { status: 200 });
   }
 
-  // Apps are relational (cut-set c): the github-source candidates for this
-  // installation, matched in SQL on the flattened repo_* columns.
   await dispatchPushEvent({
     match: and(
       eq(appsTable.source, "github"),

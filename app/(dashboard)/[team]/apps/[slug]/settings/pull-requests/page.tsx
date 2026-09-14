@@ -2,10 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "@/components/ui/link";
 import { GitPullRequest } from "lucide-react";
 
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { listAppPreviews } from "@/lib/data/previews";
-import { listServerChoices } from "@/lib/data/servers";
+import { listServerChoices } from "@/lib/data/servers/roster";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import { PreviewSettingsForm } from "@/components/apps/settings/preview-settings-form";
@@ -14,9 +14,6 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export const metadata = { title: "Pull requests" };
 
-/**
- * Everything that shapes a pull request preview, on a page of its own.
- */
 export default async function AppPullRequestsSettingsPage(
   props: PageProps<"/[team]/apps/[slug]/settings/pull-requests">,
 ) {
@@ -25,9 +22,7 @@ export default async function AppPullRequestsSettingsPage(
   if (!project) notFound();
 
   const isGithubApp = project.source === "github";
-  // The capability is checked BEFORE the read: `listAppPreviews` is gated and
-  // throws, which would take the whole page down for someone who may still
-  // configure the app perfectly well.
+  // Checked before the read: `listAppPreviews` is gated and throws, which would take the page down.
   const canManage = await hasAppCapability(project.id, "manage_previews");
   const [view, servers] = await Promise.all([
     isGithubApp && canManage ? listAppPreviews(project.id) : null,

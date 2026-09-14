@@ -5,12 +5,12 @@
 import { desc, eq, asc } from "drizzle-orm";
 
 import { getDb } from "../lib/db/client";
+import { apps } from "../lib/db/schema/control-plane/apps";
 import {
-  apps,
   deployments,
   deploymentLogs,
-} from "../lib/db/schema/control-plane";
-import { startDeployment } from "../lib/deploy/build";
+} from "../lib/db/schema/control-plane/deployments";
+import { startDeployment } from "../lib/deploy/build/deploy-start";
 
 const slug = process.argv[2];
 if (!slug) {

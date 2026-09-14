@@ -33,7 +33,7 @@ import {
 } from "@/components/monitoring/dashboard-parts";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
-import type { ServerStatus } from "@/lib/types";
+import type { ServerStatus } from "@/lib/types/server";
 import { formatBytes, serverLabel } from "@/lib/utils";
 
 interface ServerLite {
@@ -58,19 +58,15 @@ export function MonitoringDashboard({
   canManageServers,
 }: {
   servers: ServerLite[];
-  /** The FIRST server's buffered window, so its charts paint full on the first
-   *  render. Real measurements: there is no synthetic snapshot any more. */
+  // The FIRST server's buffered window, so its charts paint full on the first render.
   initialHistory: ServerMetrics[];
-  /** Every server's headline reading, so the fleet list paints full too. */
   initialFleet: FleetRow[];
-  /** Cosmetic gate on the link to a server's own page (instance admins only). */
+  // Cosmetic gate on the link to a server's own page (instance admins only).
   canManageServers: boolean;
 }) {
   const [selectedId, setSelectedId] = React.useState(servers[0]?.id ?? "");
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
-  // Chart history holds live MEASUREMENTS only. The SSR hint (stored status, zeroed
-  // net/load) is a placeholder, not a measurement - charting it would draw a fake dip
-  // to 0.
+  // Live MEASUREMENTS only: charting the SSR hint (zeroed net/load) drew a fake dip to 0.
   const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>(
     () =>
       initialHistory.length && servers[0]
@@ -80,31 +76,24 @@ export function MonitoringDashboard({
   const [fleet, setFleet] = React.useState<Record<string, FleetRow>>(() =>
     Object.fromEntries(initialFleet.map((r) => [r.serverId, r])),
   );
-  // A render clock, advanced by the read loop below, so staleness can assert
-  // itself even when reads stop succeeding (nothing else would re-render).
+  // A render clock, so staleness asserts itself when reads stop succeeding.
   const [now, setNow] = React.useState<number>(() => Date.now());
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
-  // One host is not a fleet: with nothing to pick, the list is first-run surface.
   const showFleet = servers.length > 1;
   // Read at the rate the samples ARRIVE, not a fixed 1s - see pollIntervalFor.
   const pollMs = React.useMemo(
     () => pollIntervalFor((history[selectedId] ?? []).map((x) => x.ts)),
     [history, selectedId],
   );
-  // Read the buffer for anything that HAS an agent, not just a server whose last
-  // stored status was `online`.
+  // Anything that HAS an agent, not just a server whose last stored status was `online`.
   const online = Boolean(selected) && selected.status !== "provisioning";
 
-  // ONE read, on POLL_MS, of the control plane's ring buffers. The fleet rows ride
-  // the same document rather than a second request: both are RAM reads on the
-  // control plane, and one round trip cannot interleave two clocks.
+  // Fleet rows ride the same document: one round trip cannot interleave two clocks.
   React.useEffect(() => {
     if (!selectedId || !online) return;
     let active = true;
-    // A buffer read is cheap but not instant (auth + team scoping). Keep the
-    // in-flight guard so ticks cannot stack into a queue on a slow link and
-    // land out of order.
+    // In-flight guard: on a slow link ticks would stack into a queue and land out of order.
     let busy = false;
     const seed = async () => {
       setNow(Date.now());
@@ -138,14 +127,12 @@ export function MonitoringDashboard({
         setHistory((h) => {
           const prev = h[selectedId] ?? [];
           const byTs = new Map<number, ServerMetrics>();
-          // Buffer samples second so they win a timestamp collision - same
-          // data, authoritative provenance.
+          // Buffer samples go second so they win a timestamp collision.
           for (const s of [...prev, ...seeded]) byTs.set(s.ts, s);
           const merged = [...byTs.values()]
             .sort((a, b) => a.ts - b.ts)
             .slice(-MAX_POINTS);
-          // Reads run faster than the agent's cadence, so most of them return a window
-          // identical to the one already on screen.
+          // Reads outrun the agent's cadence, so most return the window already on screen.
           if (
             merged.length === prev.length &&
             merged[merged.length - 1]?.ts === prev[prev.length - 1]?.ts
@@ -160,9 +147,7 @@ export function MonitoringDashboard({
     };
     void seed();
     const iv = setInterval(seed, pollMs);
-    // Read on wake as well as on the timer. A soft-nav back or a bfcache/Router-Cache
-    // restore may not remount this component, so a mount-only read would never re-run;
-    // `pageshow` covers the bfcache restore.
+    // A soft-nav back or bfcache restore may not remount, so a mount-only read never re-runs.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void seed();
     };
@@ -179,15 +164,11 @@ export function MonitoringDashboard({
   }, [selectedId, online, pollMs, showFleet]);
 
   const samples = history[selectedId] ?? [];
-  // Latest MEASUREMENT for the tiles. While nothing is arriving they freeze on the
-  // last real values (the status line says so) instead of zeroing, and before the
-  // first one there is an honest waiting state rather than a fabricated snapshot.
+  // Tiles freeze on the last real values instead of zeroing, and never fabricate one.
   const cur = samples[samples.length - 1] ?? null;
-  // "Live" is a claim about the FEED, not about the last request: a read that
-  // succeeds and returns the same frame it returned a minute ago is not live.
+  // "Live" is a claim about the FEED: a read that returns a minute-old frame is not live.
   const stale = cur ? now - cur.ts > STALE_AFTER_MS : false;
 
-  // One shared point list feeds every chart; each panel picks its keys.
   const points = React.useMemo(
     () =>
       samples.map((s) => ({
@@ -205,9 +186,7 @@ export function MonitoringDashboard({
     [samples],
   );
 
-  // No servers added yet (e.g. straight after first-run setup): nothing to chart.
-  // Point the operator at the Servers page to add this host and run its installer.
-  // (After all hooks above, so the hook order stays stable across renders.)
+  // After every hook above, so the hook order stays stable across renders.
   if (!selected) {
     return (
       <EmptyState
@@ -220,10 +199,7 @@ export function MonitoringDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Whose panels these are, whether the feed is live, and the window that
-          scopes every chart below. OUTSIDE the empty branch on purpose: the
-          picker is navigation, and a host that has gone quiet must not be a
-          dead end. */}
+      {/* Outside the empty branch on purpose: a host gone quiet must not be a dead end. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {showFleet ? (
@@ -234,8 +210,6 @@ export function MonitoringDashboard({
               onSelect={setSelectedId}
             />
           ) : (
-            // One host: there is nothing to pick, so the name is just a name -
-            // and its Manage link has no row to live on.
             <>
               <span
                 className="max-w-full truncate text-sm font-medium"
@@ -248,10 +222,7 @@ export function MonitoringDashboard({
               )}
             </>
           )}
-          {/**
-           * The shared status line, not a local copy of it: the per-app Monitoring tab shows
-           * the same claim, and two hand-maintained versions of "is this feed live?"
-           */}
+          {/* Shared with the per-app Monitoring tab, so both make the same live claim. */}
           {cur && <LiveStatusLine stale={stale} asOf={cur.ts} />}
         </div>
         {online && cur && (
@@ -408,8 +379,7 @@ export function MonitoringDashboard({
         </>
       )}
 
-      {/* The fleet, under this host's own numbers rather than above them: the
-          page answers "how is the one I picked" first. */}
+      {/* Under this host's own numbers: the page answers "how is the one I picked" first. */}
       {showFleet && (
         <FleetList
           servers={servers}

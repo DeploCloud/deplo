@@ -1,20 +1,14 @@
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
-import { listRoles } from "@/lib/data/roles";
+import { listRoles } from "@/lib/data/roles/role-list";
 import { PageHeader } from "@/components/shared/page-header";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { RolesRail } from "@/components/settings/roles/roles-rail";
 
-/**
- * Roles is a master-detail section, not a page with dialogs: the team's roles
- * stay listed on the left while one of them is open on the right. The rail lives
- * here so navigating between roles never re-renders it.
- */
+// RolesLayout holds the rail so navigating between roles never re-renders it.
 export default async function RolesLayout({
   children,
 }: LayoutProps<"/[team]/settings/roles">) {
-  // The guard belongs in the LAYOUT, not the pages under it: this runs before
-  // every child, so a throw here took out the whole section - the read-only role
-  // viewer included.
+  // Guarded here, and returning rather than throwing: a throw took out the whole section, read-only viewer included.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess

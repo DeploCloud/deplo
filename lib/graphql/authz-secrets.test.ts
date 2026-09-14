@@ -4,8 +4,7 @@ import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
 import { graphql, isNonNullType } from "graphql";
 
-// Set BEFORE the data modules load: with a configured public URL the deploy
-// hook never reaches for request headers, which don't exist under `node --test`.
+// Set BEFORE the data modules load: the deploy hook otherwise reaches for request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -13,11 +12,11 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { schema } from "./schema";
 import type { GraphQLContext } from "./context";
 import { runWithIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { upsertEnv, listEnv } from "../data/env";
 import { addBasicAuthUser } from "../data/basic-auth";
-import { saveSharedVar } from "../data/shared-vars";
+import { saveSharedVar } from "../data/shared-vars/authoring";
 import { revealDeployHook } from "../data/deploy-hook";
 import {
   seedIdentity,
@@ -30,19 +29,13 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
-import { ALL_CAPABILITIES, type Capability } from "../types";
-
-/**
- * Secrets are write-only: `reveal_secrets` is a permission of its own precisely so
- * that a member who configures variables cannot read them back.
- */
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 
 let db: TestDb;
 let pg: PGlite;
 
 const APP = "prj_secretive";
 const USER_M = "user_reader";
-// Distinctive on purpose: a substring match on the response has to be unambiguous.
 const ENV_SECRET = "zzz-env-plaintext-2f8a1c";
 const SHARED_SECRET = "zzz-shared-plaintext-91bd47";
 const BASIC_PASSWORD = "Zzz-basic-plaintext-6c30de!";
@@ -88,7 +81,7 @@ beforeEach(async () => {
       projectIds: [],
     });
     await addBasicAuthUser(APP, "gatekeeper", BASIC_PASSWORD);
-    await revealDeployHook(APP); // mint the hook token so it exists to leak
+    await revealDeployHook(APP);
   });
 });
 
@@ -118,17 +111,12 @@ async function readAs(userId: string, doc: string): Promise<string> {
       identity: null,
     };
     const result = await graphql({ schema, source: doc, contextValue: ctx });
-    // The whole payload, errors included: a message that quotes the value is a
-    // leak exactly like a field that returns it.
+    // The whole payload, errors included: a message quoting the value is a leak too.
     return JSON.stringify(result);
   });
 }
 
-/**
- * Every query in the schema, asked with the fixture's REAL ids wherever the
- * argument names one - a sweep against unreachable ids would prove nothing.
- * Fields are selected one level deep, which is where a value would surface.
- */
+// Real fixture ids wherever an argument names one: a sweep of unreachable ids proves nothing.
 function everyQueryDocument(): { name: string; doc: string }[] {
   const query = schema.getQueryType()!;
   const docs: { name: string; doc: string }[] = [];
@@ -163,7 +151,6 @@ function namedOutput(type: unknown): import("graphql").GraphQLNamedType | null {
   return "getFields" in (named as object) ? named : null;
 }
 
-/** Select every scalar leaf of an object type - one level, no recursion. */
 function leafSelection(type: import("graphql").GraphQLNamedType): string {
   const fields = (
     type as unknown as {
@@ -188,7 +175,6 @@ test("no query returns a planted secret to a member without reveal_secrets", asy
     for (const secret of PLANTED)
       if (body.includes(secret)) leaks.push(`${name} → ${secret}`);
   }
-  // A sweep that reached nothing would pass while proving nothing.
   assert.ok(
     answered.length > 10,
     `only ${answered.length} queries answered at all`,
@@ -238,9 +224,6 @@ test("the masked value is a mask, not the first characters of the secret", async
 });
 
 test("an env secret has no reveal at all - every capability still gets the mask", async () => {
-  // `revealEnv` used to be the sanctioned read-back, gated on `reveal_secrets`.
-  // It is gone: an env variable marked secret is write-only for everyone, and
-  // the mask is the only answer the schema has.
   await setCaps([...ALL_CAPABILITIES]);
   const [row] = await runWithIdentity({ userId: USER_M, teamId: TEAM_A }, () =>
     listEnv(APP),
@@ -248,9 +231,6 @@ test("an env secret has no reveal at all - every capability still gets the mask"
   assert.equal(row.masked, true);
   assert.notEqual(row.value, ENV_SECRET);
 
-  // And the door that used to walk around the mask: relabel the row plain while
-  // sending the mask back, then read the list. Holding EVERY capability is not
-  // enough, because it is not a permission question any more.
   await assert.rejects(
     () =>
       runWithIdentity({ userId: USER_M, teamId: TEAM_A }, () =>

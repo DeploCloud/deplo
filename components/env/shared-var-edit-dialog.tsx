@@ -21,18 +21,12 @@ import { SecretRow } from "@/components/env/secret-row";
 import { SharedWithChips } from "@/components/env/shared-with-chips";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
-import type { SharedVarDTO } from "@/lib/data/shared-vars";
+import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 
-/** Mirrors the server's key rule (lib/data/shared-vars.ts) so a bad key fails here. */
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-/**
- * Edit ONE shared variable's value, not who gets it. `targets` is omitted for the
- * same reason: an edit must never widen the deploy runtimes a legacy variable
- * reaches.
- */
+// SharedVarEditDialog - edits one shared variable's value, never who receives it.
 export function SharedVarEditDialog(props: SharedVarEditDialogProps) {
-  // A secret has no edit form.
   if (props.editing.type === "secret") return null;
   return <SharedVarEditForm {...props} />;
 }
@@ -41,7 +35,6 @@ interface SharedVarEditDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   editing: SharedVarDTO;
-  /** Hand this variable to the wizard to change WHO gets it. */
   onChangeSharing?: () => void;
 }
 
@@ -51,7 +44,6 @@ function SharedVarEditForm({
   editing,
   onChangeSharing,
 }: SharedVarEditDialogProps) {
-  // Prefill: a plain var shows its value.
   const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
@@ -67,8 +59,6 @@ function SharedVarEditForm({
   }
 
   function submit() {
-    // Closes on the click; a refusal reopens it with what was typed still in
-    // the fields (the dialog is not unmounted while its save is in flight).
     onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction<{ saveSharedVar: { id: string } }>(
@@ -82,7 +72,7 @@ function SharedVarEditForm({
             teamIds: editing.teamIds,
             environmentIds: editing.environmentIds,
             projectIds: editing.projectIds,
-            // `appIds` is deliberately ABSENT - see the doc comment above.
+            // `appIds` is deliberately absent: an edit must never widen who the variable reaches.
           },
         },
       );
@@ -146,9 +136,7 @@ function SharedVarEditForm({
                 >
                   Value
                 </FieldLabel>
-                {/* The key is disabled, so the value is the first thing to put the
-                  caret in, and it keeps the Dialog's initial focus off the info
-                  button next to the Key label. */}
+                {/* Focus lands on the value: the key is disabled. */}
                 <Textarea
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
@@ -159,8 +147,7 @@ function SharedVarEditForm({
               </div>
               <SecretRow secret={secret} onChange={setSecret} />
 
-              {/* The scope, shown but not editable: it is what tells you this save
-                leaves the variable reaching exactly what it reached before. */}
+              {/* The scope, shown but not editable. */}
               <div className="space-y-2 rounded-lg border border-border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium">Shared with</p>

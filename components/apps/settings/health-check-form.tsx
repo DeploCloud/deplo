@@ -24,12 +24,7 @@ import {
   healthCheckToForm,
   type HealthCheckForm,
 } from "@/lib/apps/health-check-model";
-import type { HealthCheck } from "@/lib/types";
-
-/**
- * One app's health check. Off until somebody turns it on, because an app that
- * answers nothing is not broken - it just has no check.
- */
+import type { HealthCheck } from "@/lib/types/container";
 
 const SAVE = /* GraphQL */ `
   mutation ($id: String!, $input: HealthCheckInput) {
@@ -95,8 +90,7 @@ export function HealthCheckForm({
           onCheckedChange={(v) => {
             const next = { ...form, enabled: v };
             setForm(next);
-            // Turning it off is a save on its own; turning it on waits for the
-            // fields, so nobody lands a check that has not been filled in.
+            // Off saves at once; on waits for the fields to be filled in first.
             if (!v) save(next);
           }}
         />

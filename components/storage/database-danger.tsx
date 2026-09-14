@@ -14,15 +14,10 @@ import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { gqlAction } from "@/lib/graphql-client";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/**
- * The database's Danger Zone - two destructive actions, each behind a typed
- * confirmation: - Rebuild: wipe the data volume and re-provision a fresh, empty
- * database from the current settings (same engine/version/credentials - the
- * connection string keeps working).
- */
+// DatabaseDanger - the database's Danger Zone: rebuild (wipe and re-provision) and delete.
 export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = React.useState(false);

@@ -26,12 +26,7 @@ import {
   MIN_USER_PORT,
   isValidExposePort,
 } from "@/lib/databases/ports";
-import { MAX_PUBLISHED_PORTS, type PublishedPort } from "@/lib/types";
-
-/**
- * Host ports one app publishes, for what Traefik cannot route - a game server,
- * an SMTP relay, a database the app exposes.
- */
+import { MAX_PUBLISHED_PORTS, type PublishedPort } from "@/lib/types/container";
 
 const SAVE = /* GraphQL */ `
   mutation ($id: String!, $ports: [PublishedPortInput!]!) {
@@ -52,7 +47,7 @@ function toRows(ports: PublishedPort[]): Row[] {
   }));
 }
 
-/** What is wrong with the set, in the words the server would use. */
+// What is wrong with the set, in the words the server would use.
 function problemOf(rows: Row[]): string | null {
   const seen = new Set<string>();
   for (const r of rows) {
@@ -76,7 +71,7 @@ export function PublishedPortsForm({
 }: {
   appId: string;
   ports: PublishedPort[];
-  /** COSMETIC: the real gate is `requireExposePorts()` inside `setAppPorts`. */
+  // COSMETIC: the real gate is `requireExposePorts()` inside `setAppPorts`.
   canExposePorts: boolean;
 }) {
   const router = useRouter();

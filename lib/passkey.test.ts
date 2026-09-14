@@ -13,18 +13,16 @@ import {
 import {
   memberships as membershipsTable,
   teamRoles as teamRolesTable,
+} from "./db/schema/control-plane/access-control";
+import {
   teams as teamsTable,
   users as usersTable,
-} from "./db/schema/control-plane";
+} from "./db/schema/control-plane/identity";
 import { runWithIdentity } from "./auth/request-context";
 import { requireAuth } from "./auth/better-auth";
-import {
-  getCurrentUser,
-  login,
-  markSessionAuthMethod,
-  passkeyChallenge,
-  verifyPasskeyLogin,
-} from "./auth";
+import { getCurrentUser } from "./auth/current-user";
+import { markSessionAuthMethod } from "./auth/session-records";
+import { login, passkeyChallenge, verifyPasskeyLogin } from "./auth/sign-in";
 import {
   requireActiveTeamId,
   requireCapability,
@@ -37,7 +35,7 @@ import {
   renamePasskey,
   startPasskeyRegistration,
 } from "./data/passkeys";
-import { resetUserPasskeys } from "./data/members";
+import { resetUserPasskeys } from "./data/members/instance-users";
 import { changePassword } from "./data/account";
 import {
   seedIdentity,
@@ -46,14 +44,9 @@ import {
   USER_1,
 } from "./data/identity-test-helpers";
 import { setStoredPublicBaseUrl } from "./public-url";
-import { ALL_CAPABILITIES } from "./types";
+import { ALL_CAPABILITIES } from "./types/identity";
 
-/**
- * A passkey as a SECOND FACTOR - the three things about it that are true only by
- * construction, and would stop being true silently (ADR-0024).
- * `/api/auth/passkey/*` cannot be reached over the network.
- */
-
+// A passkey as a SECOND FACTOR, true only by construction (ADR-0024).
 const SOME_CAPABILITY = ALL_CAPABILITIES.find((c) => c !== "view")!;
 
 let db: TestDb;
@@ -62,15 +55,12 @@ let pg: PGlite;
 const PASSWORD = "password1";
 const EMAIL_1 = `${USER_1}@example.io`;
 const USER_2 = "user_2";
-/** The panel address every test runs against, and the rpID derived from it. */
 const PANEL = "https://deplo.example.com";
 const RP_ID = "deplo.example.com";
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // Without an address there is no relying party, and a passkey satisfies
-  // nothing - which is a behaviour with its own tests further down.
   setStoredPublicBaseUrl(PANEL);
 });
 
@@ -92,14 +82,9 @@ beforeEach(async () => {
   });
 });
 
-/**
- * A request with an identity but NO session - which is what a bearer token looks
- * like, and what every pre-existing test in the repo means by "as this user".
- */
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/** The id of the newest session belonging to `userId`. */
 async function newestSession(userId: string): Promise<string> {
   const rows = await db
     .select({ id: sessionTable.id })
@@ -111,7 +96,6 @@ async function newestSession(userId: string): Promise<string> {
   return rows[0].id;
 }
 
-/** A browser request riding on that account's newest session. */
 async function runWithSession<T>(
   userId: string,
   teamId: string,
@@ -124,17 +108,10 @@ async function runWithSession<T>(
 const asSession = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithSession(userId, TEAM_A, fn);
 
-/** Stamp the newest session the way a passkey sign-in would. */
 async function markCurrentSession(method: "passkey"): Promise<void> {
   await markSessionAuthMethod(await newestSession(USER_1), USER_1, method);
 }
 
-/**
- * Put a credential on the account without running a ceremony.
- *
- * `rpId` defaults to this panel's; pass another to model a credential minted
- * before the address moved, or null to model a row from migration 0102.
- */
 async function seedPasskey(
   userId: string,
   id = "pk-1",
@@ -172,15 +149,7 @@ const sessionCount = async () =>
   (await pg.query<{ n: number }>(`select count(*)::int as n from session`))
     .rows[0]!.n;
 
-/* ------------------------------------------------------------------ */
-/* 1. The gate on the plugin's own endpoints                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * The METHOD matters: better-call answers 404 when the verb does not match, and
- * a 404 would pass a "not 200" assertion while proving nothing about the gate.
- * Each endpoint is called the way it is actually declared.
- */
+// better-call answers 404 on a verb mismatch, which would pass a "not 200" assertion while proving nothing.
 async function overHttp(path: string, method: "GET" | "POST") {
   return requireAuth().handler(
     new Request(
@@ -216,16 +185,9 @@ for (const [path, method] of [
 }
 
 test("the passkey gate leaves the rest of Better Auth alone", async () => {
-  // Proves the matcher is scoped to /passkey/ rather than having quietly closed the
-  // whole auth surface. Not `/sign-in/email` any more: `deploOwnedGate` closes that
-  // one on its own merits, so a 403 there would say nothing about THIS matcher.
   const res = await overHttp("/get-session", "GET");
   assert.notEqual(res.status, 403, "get-session still reaches its own handler");
 });
-
-/* ------------------------------------------------------------------ */
-/* 2. A passkey satisfies the mandate                                  */
-/* ------------------------------------------------------------------ */
 
 test("a passkey satisfies a team's two-factor mandate", async () => {
   await requireForTeam();
@@ -244,8 +206,7 @@ test("removing the passkey puts the account back under the mandate", async () =>
   await db.delete(passkeyTable).where(eq(passkeyTable.userId, USER_1));
 
   await asUser(USER_1, async () => {
-    // Both gates, because each is reached by a different path: reads never touch
-    // membershipFor, so closing only one of them is the bug this catches.
+    // Both gates: reads never touch `membershipFor`, so closing only one is the bug this catches.
     await assert.rejects(
       () => requireActiveTeamId(),
       (e: unknown) => e instanceof TwoFactorRequiredError,
@@ -257,17 +218,7 @@ test("removing the passkey puts the account back under the mandate", async () =>
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* 3. Owning a passkey is not the same as having used one              */
-/* ------------------------------------------------------------------ */
-
-/**
- * The hole, and the thing that closes it without becoming a lockout. A passkey
- * satisfies a mandate, so merely OWNING one must not clear a two-factor policy by
- * typing a password. But ADR-0014 §4 promises a blocked member keeps their account
- * settings, so the password always opens a session carrying what it proved.
- */
-
+// Owning a passkey must not clear a policy by password alone; ADR-0014 §4 keeps account settings reachable.
 test("a password session does not inherit the account's passkey", async () => {
   await requireForTeam();
   await seedPasskey(USER_1);
@@ -303,9 +254,6 @@ test("a session the passkey opened does satisfy the mandate", async () => {
 });
 
 test("a bearer token still inherits the ACCOUNT's standing", async () => {
-  // A token presents no factors at all, so the session question does not apply
-  // to it - and `identityForTokenRow` asks this before any identity exists,
-  // which is the branch that would break token authentication outright.
   await requireForTeam();
   await seedPasskey(USER_1);
   await asUser(USER_1, async () => {
@@ -321,10 +269,6 @@ test("a wrong password is still just a wrong password", async () => {
   assert.match(res.error ?? "", /Invalid email or password/);
   assert.equal(await sessionCount(), 0);
 });
-
-/* ------------------------------------------------------------------ */
-/* 10. The login path, in the shapes that are easy to get wrong        */
-/* ------------------------------------------------------------------ */
 
 test("a suspended account is refused before anything about passkeys is decided", async () => {
   await requireForTeam();
@@ -354,9 +298,6 @@ test("an authenticator app wins over a passkey at the login fork", async () => {
 });
 
 test("a role's mandate blocks a password session too, not just the team's", async () => {
-  // The role half of the policy is a separate column and a separate join; a
-  // predicate that only read `teams.require_two_factor` would pass every other
-  // test in this file.
   await db.insert(teamRolesTable).values({
     id: "role_locked",
     teamId: TEAM_A,
@@ -391,8 +332,6 @@ test("a garbage assertion signs nobody in and says nothing useful about why", as
   });
   assert.equal(res.ok, false);
   assert.equal(await sessionCount(), before, "no session was minted");
-  // The message must still come from the auth layer rather than being swallowed
-  // by the sanitizer that keeps database errors off the sign-in page.
   assert.notEqual(
     res.error,
     undefined,
@@ -414,13 +353,8 @@ test("the challenge is refused outright when this panel cannot have passkeys", a
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* 10b. The stamp itself                                               */
-/* ------------------------------------------------------------------ */
-
 test("a session refresh does not wash the stamp off", async () => {
-  // Better Auth extends a session in place every `updateAge` (15 minutes here) by
-  // UPDATEing `expires_at`/`updated_at` on the same row.
+  // Better Auth extends a session in place, UPDATEing `expires_at`/`updated_at` on the same row.
   await requireForTeam();
   await seedPasskey(USER_1);
   await login(EMAIL_1, PASSWORD);
@@ -447,8 +381,6 @@ test("a session refresh does not wash the stamp off", async () => {
 test("the stamp cannot be put on somebody else's session", async () => {
   await login(EMAIL_1, PASSWORD);
   const victim = await newestSession(USER_1);
-  // A caller that knows an id but not whose it is must change nothing. Nothing
-  // passes a caller-supplied id today; this is what keeps that safe if one does.
   await markSessionAuthMethod(victim, USER_2, "passkey");
   const [row] = await db
     .select({ method: sessionTable.authMethod })
@@ -462,8 +394,6 @@ test("stamping a session that no longer exists is a no-op, not a crash", async (
 });
 
 test("changing the password keeps a passkey session's standing", async () => {
-  // `changePassword` revokes every session and mints a replacement from the new
-  // password.
   await requireForTeam();
   await seedPasskey(USER_1);
   await login(EMAIL_1, PASSWORD);
@@ -489,7 +419,7 @@ test("changing the password keeps a passkey session's standing", async () => {
 test("changing the password does not INVENT a standing", async () => {
   await requireForTeam();
   await seedPasskey(USER_1);
-  await login(EMAIL_1, PASSWORD); // password session, never stamped
+  await login(EMAIL_1, PASSWORD);
 
   await asSession(USER_1, () =>
     changePassword({
@@ -545,15 +475,6 @@ test("deleting the passkey ends the standing of a session that used it", async (
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* 11. Blocked, but never locked out                                   */
-/* ------------------------------------------------------------------ */
-
-/**
- * The property ADR-0014 §4 exists for, now that a passkey can be the thing a
- * mandate rests on: a member who cannot satisfy the policy is stopped INSIDE the
- * team and nowhere else, so the screen that fixes it is reachable.
- */
 test("a blocked password session can still reach its own account", async () => {
   await requireForTeam();
   await seedPasskey(USER_1);
@@ -565,8 +486,6 @@ test("a blocked password session can still reach its own account", async () => {
       (e: unknown) => e instanceof TwoFactorRequiredError,
       "the team is blocked",
     );
-    // …and the account is not. These are exactly what Settings -> Security
-    // reads, and they are what makes the block recoverable rather than a wall.
     const me = await getCurrentUser();
     assert.equal(me?.id, USER_1);
     assert.equal((await listMyPasskeys()).length, 1);
@@ -594,10 +513,6 @@ test("a mandate in one team leaves the others alone", async () => {
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* 4. Removing the last one cannot lock you out                        */
-/* ------------------------------------------------------------------ */
-
 test("the last passkey cannot be removed while a policy rests on it", async () => {
   await requireForTeam();
   await seedPasskey(USER_1);
@@ -610,10 +525,6 @@ test("the last passkey cannot be removed while a policy rests on it", async () =
     ),
   );
 
-  // With an authenticator app on, the policy no longer depends on the passkey,
-  // so the guard must stand aside. (The delete itself needs a live Better Auth
-  // session, which this harness has no request scope for - what is asserted is
-  // that the refusal is no longer the mandate.)
   await enableTotp();
   await asUser(USER_1, async () => {
     const err = await deletePasskey({ id: "pk-1", password: PASSWORD }).then(
@@ -644,17 +555,6 @@ test("a passkey that is not the last one is removable under a policy", async () 
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* 5. A passkey only counts where it can be used                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * A credential the browser will not offer here is not a second factor here. The
- * account falls back to "no second factor", which is the ordinary blocked-but-
- * recoverable state - rather than looking protected by something nobody can
- * present.
- */
-
 test("a passkey minted for another address counts for nothing", async () => {
   await requireForTeam();
   await seedPasskey(USER_1, "pk-old", "Old address", "old.example.com");
@@ -684,7 +584,6 @@ test("turning the panel's https off makes every passkey stop counting", async ()
   await login(EMAIL_1, PASSWORD);
   await markCurrentSession("passkey");
 
-  // What `setPanelHttps(false)` does to the rest of the process.
   setStoredPublicBaseUrl("http://deplo.example.com");
   try {
     assert.equal(await userHasPasskey(USER_1), false);
@@ -714,15 +613,9 @@ test("an unusable passkey is still listed, flagged, and removable", async () => 
     );
     assert.equal(rows.find((r) => r.id === "pk-here")?.usableHere, true);
     assert.equal(rows.find((r) => r.id === "pk-old")?.usableHere, false);
-    // The guard counts only the usable ones, so the stale row is never what
-    // stands between the person and removing it.
     await deletePasskey({ id: "pk-old", password: PASSWORD });
   });
 });
-
-/* ------------------------------------------------------------------ */
-/* 6. Registration guards                                              */
-/* ------------------------------------------------------------------ */
 
 test("registration is refused when the instance has no relying party", async () => {
   setStoredPublicBaseUrl("http://deplo.example.com");
@@ -749,10 +642,6 @@ test("an account tops out at twenty passkeys", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* 7. Renaming                                                         */
-/* ------------------------------------------------------------------ */
-
 test("renaming is scoped to your own passkeys", async () => {
   await seedPasskey(USER_2, "pk-theirs", "Theirs");
   await asUser(USER_1, () =>
@@ -768,14 +657,8 @@ test("renaming is scoped to your own passkeys", async () => {
   assert.equal(row?.name, "Theirs", "and it really did not move");
 });
 
-/* ------------------------------------------------------------------ */
-/* 8. The plugin's own view of Deplo's hand-written table              */
-/* ------------------------------------------------------------------ */
-
 test("the plugin's adapter can write, find and update a passkey row", async () => {
-  // The one thing a rename in lib/db/schema/auth.ts breaks SILENTLY: the Drizzle
-  // adapter resolves a model field as `schema.passkey[field]`, so the JS property
-  // names are the plugin's field list verbatim.
+  // The Drizzle adapter resolves a field as `schema.passkey[field]`, so a rename in lib/db/schema/auth.ts breaks it SILENTLY.
   const adapter = (await requireAuth().$context).adapter;
   const created = (await adapter.create({
     model: "passkey",
@@ -815,10 +698,6 @@ test("the plugin's adapter can write, find and update a passkey row", async () =
   })) as { counter: number } | null;
   assert.equal(bumped?.counter, 9, "the replay counter is written back");
 });
-
-/* ------------------------------------------------------------------ */
-/* 9. The admin escape hatch                                           */
-/* ------------------------------------------------------------------ */
 
 const makeAdmin = (userId: string) =>
   db
@@ -861,10 +740,6 @@ test("a non-admin cannot clear anyone's passkeys", async () => {
   await seedPasskey(USER_1);
   await assert.rejects(() => asUser(USER_2, () => resetUserPasskeys(USER_1)));
 });
-
-/* ------------------------------------------------------------------ */
-/* The DTO carries no credential                                       */
-/* ------------------------------------------------------------------ */
 
 test("the list never projects key material", async () => {
   await seedPasskey(USER_1);

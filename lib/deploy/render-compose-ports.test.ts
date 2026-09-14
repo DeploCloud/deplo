@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { renderCompose, parseStackPorts, portMappings } from "./build";
-import type { RoutableDomain } from "../data/domains";
-
-/**
- * Published host ports on the single-container stack. NO ports ⇒ output
- * byte-identical to the long-standing stack, like volumes and resource limits.
- */
+import { renderCompose, portMappings } from "./build/compose-render";
+import { parseStackPorts } from "./build/stack-yaml";
+import type { RoutableDomain } from "../data/domains/routes";
 
 const route: RoutableDomain = {
   name: "demo.example.com",
@@ -33,6 +29,7 @@ const base = {
   env: { FOO: "bar" },
 };
 
+// No ports ⇒ the render must stay byte-identical to the pre-ports stack.
 test("no ports: output is byte-identical with [], undefined and no key", () => {
   const missing = renderCompose(base);
   assert.equal(renderCompose({ ...base, ports: [] }), missing);
@@ -61,8 +58,7 @@ test("portMappings writes the protocol only when it is not tcp", () => {
   assert.deepEqual(portMappings(null), []);
 });
 
-// A reroute re-renders from the RUNNING stack, so it must read the ports back
-// rather than apply an edit nobody has deployed.
+// A reroute re-renders from the RUNNING stack, so it must read the ports back rather than apply an undeployed edit.
 test("parseStackPorts reads the ports the running stack publishes", () => {
   const yaml = renderCompose({ ...base, ports: ["16379:6379"] });
   assert.deepEqual(parseStackPorts(yaml, "deplo-demo"), ["16379:6379"]);

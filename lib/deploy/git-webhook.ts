@@ -1,11 +1,6 @@
 // https://deplo.build/docs/guides/releases/automatic-deployments
 
-import type { GitTriggerType } from "@/lib/types";
-
-/**
- * Pure, side-effect-free helpers the GitHub push webhook uses to decide whether a
- * verified delivery should auto-deploy a given app.
- */
+import type { GitTriggerType } from "@/lib/types/build";
 
 /** The parts of an inbound GitHub `push` delivery the trigger decision needs. */
 export interface GitPushEvent {
@@ -15,11 +10,7 @@ export interface GitPushEvent {
   refName: string;
   /** A branch/tag deletion push (GitHub sets `deleted:true`, head_commit null). */
   deleted: boolean;
-  /**
-   * Union of files added/modified/removed across the delivery's commits. Empty
-   * when the delivery carries no file list (an annotated-tag push, or a payload
-   * with no `commits`), in which case the watch-path filter fails open.
-   */
+  /** Union of files across the delivery's commits. Empty ⇒ the watch-path filter fails open. */
   changedPaths: string[];
 }
 
@@ -31,18 +22,12 @@ export interface RepoTriggerConfig {
   triggerType: GitTriggerType;
   /** Parsed watch-path globs (repo_watch_paths). Empty ⇒ deploy on any change. */
   watchPaths: string[];
-  /** The build root directory (app_build.root_directory). Only consulted when
-   *  {@link skipUnchanged} is on. Empty/"."/unset ⇒ the whole repo is the root. */
+  /** The build root directory. Only consulted when {@link skipUnchanged} is on. */
   rootDirectory?: string | null;
-  /** When true, an auto-deploy is skipped unless the push touched a file inside
-   *  the root directory (app_build.skip_unchanged_deployments). */
+  /** Skip an auto-deploy unless the push touched a file inside the root directory. */
   skipUnchanged?: boolean;
 }
 
-/**
- * Normalise a rootDirectory to a clean forward-slash relative path with no leading
- * `./` or `/`; `""`/`"."`/unset all collapse to `"."` (the repo root).
- */
 function normalizeRoot(rootDirectory: string | null | undefined): string {
   return (rootDirectory || ".").replace(/\\/g, "/").replace(/^\.?\/?/, "");
 }
@@ -91,36 +76,25 @@ export function parsePushEvent(payload: RawPushPayload): GitPushEvent {
   };
 }
 
-/**
- * Whether a verified push should trigger an automatic deployment for an app
- * whose auto-deploy is already on. Encapsulates trigger-type gating (push vs new
- * tag) and the optional watch-path filter.
- */
+/** Whether a verified push should trigger an automatic deployment for an app whose auto-deploy is on. */
 export function shouldAutoDeploy(
   cfg: RepoTriggerConfig,
   ev: GitPushEvent,
 ): boolean {
-  // A ref deletion never deploys (no code to build).
   if (ev.deleted) return false;
 
   if (cfg.triggerType === "tag") {
-    // "On new tag": only tag pushes qualify; the branch is irrelevant.
     if (!ev.isTag) return false;
   } else {
-    // "On push": only a push to the tracked branch qualifies (tags ignored).
     if (ev.isTag) return false;
     if (ev.refName !== cfg.branch) return false;
   }
 
-  // Watch-path filter - only gate when we have BOTH globs and a known file list.
-  // A delivery with no file list (annotated-tag push) falls open, matching the
-  // "best effort" contract documented on GitRepo.watchPaths.
+  // Fails open on a delivery with no file list (annotated-tag push) - the documented best-effort contract.
   if (cfg.watchPaths.length > 0 && ev.changedPaths.length > 0) {
     return ev.changedPaths.some((f) => pathMatchesAnyGlob(f, cfg.watchPaths));
   }
 
-  // "Skip when the root directory is untouched" - like an implicit watch path of the
-  // root directory.
   if (cfg.skipUnchanged && ev.changedPaths.length > 0) {
     const root = normalizeRoot(cfg.rootDirectory);
     if (root && root !== ".") {
@@ -142,9 +116,7 @@ function normalizePath(p: string): string {
   return p.trim().replace(/^\.?\//, "");
 }
 
-/**
- * Match a single (already-normalised) path against one glob.
- */
+/** Match a single (already-normalised) path against one glob. */
 export function pathMatchesGlob(path: string, glob: string): boolean {
   if (!glob) return false;
   if (!/[*?]/.test(glob)) {
@@ -162,13 +134,10 @@ function globToRegExp(glob: string): RegExp {
       if (glob[i + 1] === "*") {
         i++;
         if (glob[i + 1] === "/") {
-          // "**/" matches zero or more WHOLE leading path segments - anchored to a
-          // "/" boundary so "**/config.json" matches "config.json" and "a/b/config.json"
-          // but NOT "myconfig.json" (the leading part must end at a separator).
+          // "**/" matches zero or more WHOLE leading segments: "**/c.json" matches "c.json", not "myc.json".
           re += "(?:.*/)?";
           i++;
         } else {
-          // A bare "**" matches anything, including path separators.
           re += ".*";
         }
       } else {

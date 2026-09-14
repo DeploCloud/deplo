@@ -5,25 +5,18 @@ import "server-only";
 import { X509Certificate, createPrivateKey } from "node:crypto";
 
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import {
   traefikCertificates,
   withTraefikCertificates,
   type CustomCertificate,
 } from "../deploy/traefik-stack";
 import { recordActivity } from "./activity";
-import { getServerById } from "./servers";
+import { getServerById } from "./servers/roster";
 
-/**
- * Custom TLS certificates on ONE server: the "I already bought a certificate"
- * escape hatch next to the Let's Encrypt one Deplo issues by itself.
- */
-
-/** An installed certificate, described from the certificate itself. The private
- *  key is never part of this: it goes to the host and has no read path. */
+/** An installed certificate, described from the certificate itself; never its private key. */
 export type ServerCertificate = {
-  /** SHA-256 fingerprint. The certificate's own identity, so nothing has to be
-   *  minted or stored to address one. */
+  /** SHA-256 fingerprint: the certificate's own identity, nothing minted or stored. */
   id: string;
   /** Common name, or the first domain when the certificate carries no CN. */
   subject: string;
@@ -32,19 +25,13 @@ export type ServerCertificate = {
   issuer: string;
   notBefore: string;
   notAfter: string;
-  /** Whether it is past its expiry right now. A certificate can expire in place
-   *  long after it was accepted. */
+  /** Whether it is past its expiry right now: a certificate can expire in place. */
   expired: boolean;
-  /** Whole days until it expires, negative once it has. Computed here rather
-   *  than in the browser: the countdown must not depend on the viewer's clock. */
+  /** Whole days until it expires, negative once it has. Never the viewer's clock. */
   expiresInDays: number;
 };
 
 export type CertificateInput = { certPem: string; keyPem: string };
-
-/* ------------------------------------------------------------------ */
-/* Reads                                                               */
-/* ------------------------------------------------------------------ */
 
 /** What this host is serving, read from its live stack file. */
 export async function listServerCertificates(
@@ -55,17 +42,14 @@ export async function listServerCertificates(
   return describeStackCertificates(yaml);
 }
 
-/** The certificates in a host's stack file, described. Pure, so a caller that
- *  already holds that host's stack (the fleet-wide certificate page does) can
- *  read them without dialing it a second time. */
+/** The certificates in a host's stack file, described. Pure, so no second dial. */
 export function describeStackCertificates(
   stackYaml: string,
 ): ServerCertificate[] {
   return describeAll(traefikCertificates(stackYaml));
 }
 
-/** Describe a host's certificates, skipping any Deplo cannot read: one entry
- *  mangled by hand must not make the whole tab an error page. */
+/** Describe a host's certificates, skipping any Deplo cannot read. */
 function describeAll(certificates: CustomCertificate[]): ServerCertificate[] {
   return certificates.flatMap((c) => {
     try {
@@ -85,15 +69,7 @@ function identify(certificate: CustomCertificate): ServerCertificate | null {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Writes                                                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * Install a certificate on a server. A certificate that merely overlaps is kept
- * alongside - evicting it would take away the names only it covers, and Traefik
- * prefers the more specific certificate for a given hostname anyway.
- */
+// Install a certificate on a server. One that merely overlaps is kept alongside.
 export async function addServerCertificate(
   serverId: string,
   input: CertificateInput,
@@ -102,13 +78,13 @@ export async function addServerCertificate(
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
 
-  // Validated BEFORE the host is dialed: a malformed PEM must come back as "this
-  // is not a certificate", never as "server unreachable".
+  // Validated BEFORE the host is dialed: a bad PEM must not come back as "server unreachable".
   const added = parseCertificate(input);
   const description = describe(added);
   const covered = new Set(description.domains);
 
-  const { withTraefikStackLock } = await import("../infra/agent-client");
+  const { withTraefikStackLock } =
+    await import("../infra/agent-client/host-ops");
   const { next, serverName } = await withTraefikStackLock(
     serverId,
     async () => {
@@ -136,8 +112,7 @@ export async function addServerCertificate(
   return describeAll(next);
 }
 
-/** Remove one certificate by fingerprint. The proxy falls back to whatever else
- *  covers those domains, usually Let's Encrypt, which will re-issue. */
+/** Remove one certificate by fingerprint; the proxy falls back to whatever else covers it. */
 export async function removeServerCertificate(
   serverId: string,
   certificateId: string,
@@ -146,7 +121,8 @@ export async function removeServerCertificate(
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
 
-  const { withTraefikStackLock } = await import("../infra/agent-client");
+  const { withTraefikStackLock } =
+    await import("../infra/agent-client/host-ops");
   const { next, removed, serverName } = await withTraefikStackLock(
     serverId,
     async () => {
@@ -176,16 +152,11 @@ export async function removeServerCertificate(
   return describeAll(next);
 }
 
-/* ------------------------------------------------------------------ */
-/* The host                                                            */
-/* ------------------------------------------------------------------ */
-
-/** The server row plus its live Traefik stack file, refusing early on a host
- *  whose proxy Deplo did not install: there is nothing to write there. */
+/** The server row plus its live Traefik stack file, refusing a proxy Deplo did not install. */
 async function readStack(serverId: string) {
   const server = await getServerById(serverId);
   if (!server) throw new Error("Server not found");
-  const { fetchHostInfo } = await import("../infra/agent-client");
+  const { fetchHostInfo } = await import("../infra/agent-client/host-ops");
   const info = await fetchHostInfo(serverId);
   if (!info.traefikComposeYaml)
     throw new Error(
@@ -200,11 +171,9 @@ async function applyCertificates(
   currentYaml: string,
   certificates: CustomCertificate[],
 ): Promise<void> {
-  const { applyTraefikConfig } = await import("../infra/agent-client");
+  const { applyTraefikConfig } = await import("../infra/agent-client/host-ops");
   const composeYaml = withTraefikCertificates(currentYaml, certificates);
-  // Nothing to write, nothing to restart: applying recreates the proxy and takes
-  // every site on the host down for a few seconds, and pasting the same certificate
-  // in twice must not cost that.
+  // Applying recreates the proxy and takes every site on the host down for a few seconds.
   if (composeYaml === currentYaml) return;
   const res = await applyTraefikConfig(serverId, { composeYaml });
   if (!res.ok)
@@ -215,23 +184,14 @@ async function applyCertificates(
     );
 }
 
-/**
- * The certificate rides in a compose `configs` entry with inline `content`, which
- * Docker Compose only understands from v2.23.1.
- */
+// The certificate rides in an inline compose `configs` entry, which needs Compose 2.23.1.
 function addComposeHint(error: string): string {
   return /config/i.test(error)
     ? `${error} Installing a certificate needs Docker Compose 2.23.1 or newer on that server.`
     : error;
 }
 
-/* ------------------------------------------------------------------ */
-/* The certificate itself                                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * Read and check a pasted certificate + key.
- */
+// Read and check a pasted certificate + key.
 function parseCertificate(input: CertificateInput): CustomCertificate {
   const certPem = input.certPem.trim();
   const keyPem = input.keyPem.trim();
@@ -240,8 +200,7 @@ function parseCertificate(input: CertificateInput): CustomCertificate {
       "That is not a certificate. Paste the PEM text, starting with -----BEGIN CERTIFICATE-----",
     );
 
-  // Traefik serves the FIRST certificate in the file and treats the rest as the
-  // chain, so the leaf is the one every check below is about.
+  // Traefik serves the FIRST certificate in the file and treats the rest as the chain.
   const chain = splitChain(certPem);
   let cert: X509Certificate;
   try {
@@ -261,9 +220,7 @@ function parseCertificate(input: CertificateInput): CustomCertificate {
     );
   }
   if (!cert.checkPrivateKey(key)) {
-    // The key belonging to a LATER certificate in the file is the chain pasted
-    // upside down, which is worth saying: "wrong key" would send someone hunting
-    // through their key files for a key they already have.
+    // A key matching a LATER certificate means the chain was pasted upside down.
     if (chain.slice(1).some((pem) => matchesKey(pem, key)))
       throw new Error(
         "That chain is upside down. Put your own certificate first and the intermediates after it.",
@@ -276,9 +233,7 @@ function parseCertificate(input: CertificateInput): CustomCertificate {
     throw new Error(
       `That certificate expired on ${notAfter.toISOString().slice(0, 10)}. Renew it and upload the new one.`,
     );
-  // A certificate dated in the future is refused for the same reason an expired
-  // one is: Traefik would serve it and every browser would reject it, with
-  // nothing on this side saying why.
+  // Refused like an expired one: Traefik would serve it and every browser would reject it.
   const notBefore = new Date(cert.validFrom);
   if (notBefore.getTime() > Date.now())
     throw new Error(
@@ -310,11 +265,8 @@ function matchesKey(
   }
 }
 
-/**
- * Whether a certificate covering `incoming` makes `installed` redundant. A partial
- * overlap is not redundancy - evicting it would take away the names only it covers
- * - so both stay and Traefik picks the more specific one per hostname.
- */
+// Whether a certificate covering `incoming` makes `installed` redundant; a partial overlap does not.
+// Evicting an overlap would drop the names only it covers, and Traefik prefers the more specific certificate per hostname.
 export function supersedes(
   incoming: Set<string>,
   installed: ServerCertificate,
@@ -330,8 +282,7 @@ function describe(certificate: CustomCertificate): ServerCertificate {
   const cert = new X509Certificate(certificate.certPem);
   const cn = subjectCommonName(cert.subject);
   const domains = subjectAltNames(cert.subjectAltName);
-  // `validFrom`/`validTo` rather than the Date pair: the strings are what every
-  // Node version carries, and they parse to the same instant.
+  // `validFrom`/`validTo` rather than the Date pair: every Node version carries the strings.
   const notBefore = new Date(cert.validFrom);
   const notAfter = new Date(cert.validTo);
   const msLeft = notAfter.getTime() - Date.now();
@@ -358,8 +309,7 @@ function subjectCommonName(subject: string): string {
   return "";
 }
 
-/** `subjectAltName` is `DNS:a.example.com, DNS:*.example.com, IP Address:x`:
- *  only the DNS entries are hostnames a browser will match. */
+/** `subjectAltName` is `DNS:a, DNS:*.b, IP Address:x`: only the DNS entries are hostnames. */
 function subjectAltNames(altName: string | undefined): string[] {
   if (!altName) return [];
   return altName

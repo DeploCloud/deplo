@@ -28,12 +28,9 @@ import {
   ExposureSwitch,
   ExposurePortRow,
 } from "@/components/storage/database-exposure";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/**
- * How clients reach this database, and the one control worth having on the
- * overview: publishing the port. Settings keeps the same control plus the move.
- */
+// DatabaseNetworkingCard shows how clients reach this database and publishes the port.
 export function DatabaseNetworkingCard({
   db,
   serverHost,
@@ -44,22 +41,17 @@ export function DatabaseNetworkingCard({
   serverName,
 }: {
   db: DatabaseDTO;
-  /** The owning server's address - half of the published endpoint. */
   serverHost: string;
   canExposePorts: boolean;
   canConfigure: boolean;
-  /** Where this database lives (`Project / Environment`), or null for the team's
-   *  top level. It decides WHICH apps the internal address answers for. */
+  // Which apps the internal address answers for: an Environment owns its network.
   environmentLabel?: string | null;
-  /** Every Environment of the team - the move lives here, next to the rule. */
   environments?: { id: string; label: string }[];
-  /** The owning server. A network lives on one machine, so this is half the rule. */
   serverName: string;
 }) {
   const exposure = useDatabaseExposure(db);
   const internal = `${db.host}:${db.port}`;
-  // The SAVED state, not the switch: an address you can copy before the save
-  // lands is an address that does not answer.
+  // The SAVED state, not the switch: an address copied before the save lands does not answer.
   const published =
     db.exposedPublicly && db.exposedPort && serverHost
       ? `${serverHost}:${db.exposedPort}`
@@ -139,8 +131,7 @@ export function DatabaseNetworkingCard({
             />
           )}
 
-          {/* The port is a bare 0.0.0.0 bind: no proxy, no certificate, and the
-              engine password is the only thing in front of it. */}
+          {/* The port is a bare 0.0.0.0 bind: no proxy, no certificate, only the engine password. */}
           {exposure.exposed && (
             <p className="flex items-start gap-2 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-2.5 text-xs">
               <TriangleAlert className="mt-px size-3.5 shrink-0 text-[var(--warning)]" />
@@ -187,7 +178,6 @@ function Address({
   );
 }
 
-/** The move, where the rule that makes it matter is written. */
 function EnvironmentPicker({
   value,
   environments,
@@ -209,7 +199,6 @@ function EnvironmentPicker({
   React.useEffect(() => {
     if (error) toast.error(error);
   }, [error]);
-  // Nothing to pick between, or no permission: say where it is and stop there.
   if (!canConfigure || environments.length === 0)
     return <p className="truncate text-sm">{label}</p>;
   return (

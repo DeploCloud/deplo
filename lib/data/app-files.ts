@@ -3,34 +3,21 @@ import "server-only";
 // https://deplo.build/docs/guides/data/persistent-storage
 
 import { status as GrpcStatus } from "@grpc/grpc-js";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { recordActivity } from "./activity";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { appMounts as appMountsTable } from "../db/schema/control-plane";
+import { appMounts as appMountsTable } from "../db/schema/control-plane/apps";
 import { loadTeamApp } from "./app-graph-load";
 import { requireAppCapability } from "./node-access";
-import {
-  connectAgent,
-  AgentUnreachableError,
-  type AgentConnection,
-} from "../infra/agent-client";
+import { connectAgent } from "../infra/agent-client/connect";
+import type { AgentConnection } from "../infra/agent-client/connection";
+import { AgentUnreachableError } from "../infra/agent-client/errors";
 
-/**
- * Read and write the files a **File** volume points at - the on-disk
- * `<stacks>/files/<slug>` tree that backs the `./` app-files convention
- * (see `lib/deploy/compose-stack.ts`).
- */
+const MAX_WRITE_BYTES = 1024 * 1024;
 
-/** Reject writes whose body exceeds this - the editor is for config, not blobs. */
-const MAX_WRITE_BYTES = 1024 * 1024; // 1 MiB
-
-/**
- * Normalise a relative path to a clean POSIX form, rejecting absolute paths and
- * any `..` traversal before it can reach the filesystem. Backslashes are folded to
- * `/` so a Windows-style `..\` can't sneak past the segment check.
- */
+// normalizeRel cleans a relative path, rejecting absolute paths and any `..` traversal (backslashes folded).
 export function normalizeRel(relPath: string): string {
   const rel = (relPath ?? "")
     .replace(/\\/g, "/")
@@ -47,8 +34,7 @@ export function normalizeRel(relPath: string): string {
     .filter((seg) => seg !== "." && seg !== "")
     .join("/");
   if (clean === "") return "";
-  // The stack's decrypted env-file lives at the root of this tree: reading it is
-  // `reveal_secrets`, writing it is `manage_env`, and this editor is neither.
+  // The stack's decrypted env-file lives at this root: reading it is reveal_secrets, writing it manage_env.
   if (clean === ".env")
     throw new Error(
       "The .env file is written by Deplo from the app's variables - edit those in Settings → Environment.",
@@ -56,13 +42,10 @@ export function normalizeRel(relPath: string): string {
   return clean;
 }
 
-/** Confirm the project is in the caller's team; throws if not. Resolves the
- * owning server id so each op can route to that host's agent. */
 async function requireAppInTeam(
   appId: string,
 ): Promise<{ slug: string; teamId: string; serverId: string }> {
-  // A File volume's body is part of the app's configuration, so it rides the
-  // same capability the rest of Settings → Storage does.
+  // A File volume's body is part of the app's configuration, so it rides that capability.
   const { teamId } = await requireAppCapability(appId, "configure_apps");
   const project = await loadTeamApp(appId, teamId);
   if (!project) {
@@ -71,16 +54,11 @@ async function requireAppInTeam(
   return { slug: project.slug, teamId, serverId: project.serverId };
 }
 
-/** Open a connection to a project's owning agent (all file ops route here). */
 function agentFor(serverId: string): Promise<AgentConnection> {
   return connectAgent(serverId);
 }
 
-/**
- * Write (create or overwrite) a text file at `path`. Parent dirs are created as
- * needed. The body is capped so the editor stays a config editor, not an upload
- * channel. Answers the path that was written.
- */
+// writeAppFile creates or overwrites a text file, capped so the editor stays a config editor.
 export async function writeAppFile(
   appId: string,
   path: string,
@@ -103,14 +81,11 @@ export async function writeAppFile(
   }
 }
 
-/** What the Storage editor found at a File entry's path in this app's Files. */
+// StorageFileState is what the Storage editor found at a File entry's path.
 export type StorageFileState =
   "text" | "new" | "folder" | "binary" | "too-large";
 
-/**
- * What a FAILED agent read of a File entry's path means, or null when the failure
- * is real and must be rethrown.
- */
+// storageFileStateForError says what a FAILED agent read means, or null when it must be rethrown.
 export function storageFileStateForError(e: unknown): StorageFileState | null {
   const code = (e as { code?: number } | null)?.code;
   const message = e instanceof Error ? e.message : String(e);
@@ -121,10 +96,7 @@ export function storageFileStateForError(e: unknown): StorageFileState | null {
   return null;
 }
 
-/**
- * The user-facing failure for a read Deplo could NOT classify - the editor puts
- * this next to a "Try again" button, so it has to say what happened.
- */
+// storageFileReadError is the user-facing failure for a read Deplo could not classify.
 export function storageFileReadError(e: unknown): Error {
   return new Error(
     e instanceof AgentUnreachableError
@@ -135,18 +107,12 @@ export function storageFileReadError(e: unknown): Error {
 }
 
 export interface StorageFile {
-  /** The normalised path that was read. */
   path: string;
   state: StorageFileState;
-  /** The body. Always "" for anything but "text". */
   text: string;
 }
 
-/**
- * Read the file a **File** storage entry points at (Settings → Storage), where a
- * path that isn't there yet is a normal answer, `state: "new"`, rather than an
- * error.
- */
+// readAppStorageFile reads a File entry's path; a path that is not there yet answers state "new".
 export async function readAppStorageFile(
   appId: string,
   path: string,
@@ -154,9 +120,7 @@ export async function readAppStorageFile(
   const { slug, serverId } = await requireAppInTeam(appId);
   const rel = normalizeRel(path);
   if (!rel) throw new Error("A path in this app's Files is required");
-  // The dial is INSIDE the try: a server with no provisioned agent (or with its
-  // trust revoked) fails right here, and that has to reach the editor as the
-  // same plain "the server didn't answer" as a dead connection does.
+  // The dial is INSIDE the try: an unprovisioned agent must read as "the server didn't answer" too.
   let conn: AgentConnection | undefined;
   try {
     conn = await agentFor(serverId);
@@ -172,9 +136,6 @@ export async function readAppStorageFile(
   }
 }
 
-/**
- * Keep the app's stored CONFIG FILES in step with what just happened on disk.
- */
 async function syncAppMount(
   appId: string,
   path: string,
@@ -204,7 +165,6 @@ async function syncAppMount(
     );
 }
 
-/** Record a project-scoped activity line for a files change. */
 async function note(appId: string, message: string): Promise<void> {
   const user = await getCurrentUser();
   await recordActivity("app", message, user?.name ?? "system", appId);

@@ -5,49 +5,31 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { apps as appsTable } from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { eq } from "drizzle-orm";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_PROJECT_GRAPH, seedApp } from "./app-graph-test-helpers";
 import { seedDatabase, seedDestination } from "./backup-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
-import {
-  getServerById,
-  removeServer,
-  addServer,
-  uninstallServerAgent,
-  listAllServers,
-} from "./servers";
-import { __setAgentConnectorForTest } from "../infra/agent-client";
-
-/**
- * Removal is TRUST REVOCATION + FORGETTING, not a host uninstall - these tests pin
- * that contract, which previously had zero coverage while the UI claimed the
- * opposite ("tells it to tear down its containers").
- */
+import { addServer } from "./servers/enrollment";
+import { removeServer, uninstallServerAgent } from "./servers/removal";
+import { getServerById, listAllServers } from "./servers/roster";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 
 let db: TestDb;
 let pg: PGlite;
 
 const SERVER = "srv_target";
 const OTHER = "srv_other";
-/**
- * RFC 5737 TEST-NET-1, not the helper's default 10.0.0.1. A TEST-NET address is
- * guaranteed never to be assigned to an interface.
- */
+// RFC 5737 TEST-NET-1: guaranteed never to be assigned to an interface.
 const REMOTE_IP = "192.0.2.10";
-/** What this instance believes its OWN address is, for the Deplo-host case. */
 const SELF_IP = "192.0.2.200";
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // removeServer builds the uninstall one-liner from the public base URL; pin it
-  // so the assertion below isn't asserting the no-request-scope placeholder.
   process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
-  // Pin what this instance thinks its own address is, so the Deplo-host guard is
-  // testing a decision we control rather than whatever NICs the runner happens to have.
   process.env.DEPLO_SERVER_IP = SELF_IP;
 });
 
@@ -93,7 +75,6 @@ beforeEach(async () => {
 const asAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** The pinned agent cert of the target server, or "" once trust is revoked. */
 async function pinnedCert(): Promise<string | undefined> {
   const server = await getServerById(SERVER);
   return server?.agent?.certFingerprint;
@@ -125,15 +106,11 @@ test("blocks removal while a backup destination keeps its artifacts here", async
     (e: Error) => {
       assert.match(e.message, /backup destinations/i);
       assert.match(e.message, /Nightly backups/);
-      // The whole point: backup_destination.server_id is RESTRICT, so without
-      // this guard the preflight passes, trust is revoked, and only THEN does
-      // the DELETE blow up, leaving the operator a Postgres constraint string
-      // and a server that can never be removed.
+      // backup_destination.server_id is RESTRICT: without the guard the DELETE blows up after trust is revoked.
       assert.doesNotMatch(e.message, /foreign key|violates/i);
       return true;
     },
   );
-  // Nothing was touched on the way to the refusal.
   assert.notEqual(await pinnedCert(), "");
 });
 
@@ -145,8 +122,7 @@ test("blocks removal while a database is hosted - a clean message, not a raw FK 
     (e: Error) => {
       assert.match(e.message, /Move or delete the databases/i);
       assert.match(e.message, /pg-main/);
-      // The regression: databases.server_id is RESTRICT, so without the guard the
-      // DELETE surfaced Postgres' foreign-key violation to the operator.
+      // databases.server_id is RESTRICT: without the guard Postgres' FK violation reached the operator.
       assert.doesNotMatch(e.message, /foreign key|violates/i);
       return true;
     },
@@ -158,8 +134,6 @@ test("a blocked removal has NO side effects - trust is not revoked on the way ou
 
   await assert.rejects(() => asAdmin(() => removeServer(SERVER)));
 
-  // The old code revoked the pinned cert BEFORE it checked, so a blocked removal
-  // permanently de-trusted a server it then refused to remove.
   assert.equal(await pinnedCert(), "sha256:pinned");
   assert.ok(await getServerById(SERVER), "the server row must survive a block");
 });
@@ -169,7 +143,6 @@ test("a clean removal deletes the row and returns the host-side uninstall comman
 
   assert.equal(await getServerById(SERVER), null);
   assert.equal(result.warning, null);
-  // Removal never touches the host, so the command is the whole point of it.
   assert.equal(
     result.uninstallCommand,
     "curl -fsSL 'https://deplo.test/uninstall.sh' --output /tmp/deplo-uninstall.sh && sudo bash /tmp/deplo-uninstall.sh --yes --agent-only",
@@ -177,8 +150,7 @@ test("a clean removal deletes the row and returns the host-side uninstall comman
 });
 
 test("warns (but does not block) when an App is mid-move OFF the server", async () => {
-  // The App lives on OTHER now, but its volumes are still on SERVER - that is what
-  // migrate_from_server_id means, and it is SET NULL when SERVER is deleted.
+  // migrate_from_server_id: the app moved but its volumes are still here, and it is SET NULL on delete.
   const appId = await seedApp(db, {
     id: "prj_api",
     slug: "api",
@@ -202,9 +174,6 @@ test("warns (but does not block) when an App is mid-move OFF the server", async 
 });
 
 test("refuses to remove the host running Deplo itself", async () => {
-  // Registered under the very address this instance answers on - that IS the
-  // control-plane box. Removing it revokes the trust Deplo needs to reach its own
-  // server and forgets the row, with no in-product way back.
   await seedServerRow(db, {
     id: "srv_self",
     name: "this-host",
@@ -242,14 +211,11 @@ test("the Deplo-host refusal fires BEFORE any side effect", async () => {
 
   await assert.rejects(() => asAdmin(() => removeServer("srv_self")));
 
-  // Same trap the workload guards fell into once: refusing AFTER revoking trust
-  // would leave the control plane unable to dial its own host.
   const self = await getServerById("srv_self");
   assert.equal(self?.agent?.certFingerprint, "sha256:self-pinned");
 });
 
 test("the guard matches on host as well as ip, and spares unrelated remotes", async () => {
-  // Registered by hostname rather than IP: DEPLO_PUBLIC_URL's host is a self-signal too.
   await seedServerRow(db, {
     id: "srv_by_name",
     name: "by-name",
@@ -261,8 +227,6 @@ test("the guard matches on host as well as ip, and spares unrelated remotes", as
     /host running Deplo itself/i,
   );
 
-  // And the remote at a TEST-NET address is still perfectly removable - the guard
-  // must not turn into "no server can ever be deleted".
   await asAdmin(() => removeServer(OTHER));
   assert.equal(await getServerById(OTHER), null);
 });
@@ -278,18 +242,6 @@ test("only an instance admin can remove a server", async () => {
   assert.ok(await getServerById(SERVER), "the server row must survive");
 });
 
-/* ------------------------------------------------------------------ */
-/* Uninstalling a MIGRATION SOURCE                                      */
-/* ------------------------------------------------------------------ */
-
-/**
- * The one case where Deplo DOES touch the host: the agent on a migration source
- * was installed by Deplo for one import, and ending that with a shell command is
- * the failure the product exists to remove. What these lock is the ORDER - guards
- * before the RPC, and the row survives every failure.
- */
-
-/** A stand-in agent. `capabilities` and `fail` decide which branch is exercised. */
 function fakeAgent(opts: { capabilities?: string[]; fail?: Error } = {}) {
   const calls = { hello: 0, uninstall: 0 };
   const conn = {
@@ -310,22 +262,20 @@ function fakeAgent(opts: { capabilities?: string[]; fail?: Error } = {}) {
   __setAgentConnectorForTest(
     async () =>
       conn as unknown as Awaited<
-        ReturnType<typeof import("../infra/agent-client").connectAgent>
+        ReturnType<typeof import("../infra/agent-client/connect").connectAgent>
       >,
   );
   return calls;
 }
 
-/** Register a migration source the only way there is, then give it an agent. */
 async function seedMigrationSource(host = "192.0.2.50") {
   const { server } = await asAdmin(() =>
     addServer({ name: "dokploy-host", host, importOnly: true }),
   );
-  const { servers } = await import("../db/schema/control-plane");
+  const { servers } = await import("../db/schema/control-plane/servers");
   await db
     .update(servers)
-    // Fingerprints are unique across the fleet (a partial unique index), so this
-    // has to differ from the target server's.
+    // Fingerprints are unique across the fleet (a partial unique index).
     .set({ agentCertFingerprint: `sha256:${server.id}`, agentPort: 9443 })
     .where(eq(servers.id, server.id));
   return server.id;
@@ -374,8 +324,6 @@ test("an agent that cannot uninstall itself KEEPS the row, and hands over the co
 });
 
 test("a migration source Deplo cannot reach can still be forgotten", async () => {
-  // The dead end this closes: uninstalling needs the agent to ANSWER, and this row
-  // exists because it does not.
   const id = await seedMigrationSource();
   const calls = fakeAgent({ capabilities: ["self-update"] });
   try {
@@ -398,9 +346,7 @@ test("a migration source Deplo cannot reach can still be forgotten", async () =>
 
 test("a blocked removal fails BEFORE the host is touched", async () => {
   const id = await seedMigrationSource();
-  // A destination pointing at the host: server_id is ON DELETE RESTRICT, so
-  // uninstalling first would strip the agent off a server that then cannot be
-  // deleted - and cannot be reached to try again.
+  // server_id is ON DELETE RESTRICT: uninstalling first strips the agent off a server that cannot be deleted.
   await seedDestination(db, {
     id: "dst_on_source",
     name: "Nightly backups",
@@ -425,9 +371,6 @@ test("a blocked removal fails BEFORE the host is touched", async () => {
 });
 
 test("a registration whose install command was never run is simply forgotten", async () => {
-  // No agent ever called home, so there is nothing on the host to remove - and
-  // this is the ONLY way that row can leave, now that a migration source has no
-  // management page.
   const { server } = await asAdmin(() =>
     addServer({
       name: "never-installed",
@@ -487,9 +430,7 @@ test("a server Deplo already reaches is offered, never registered twice", async 
     SERVER,
     "a second row was created for one machine",
   );
-  // The whole danger of a second row: the installer would clear that agent's
-  // materials and re-bootstrap it AS a source, and the uninstall at the end of
-  // the migration would then take a real server off the fleet.
+  // A second row would let the installer re-bootstrap a real server AS a source.
   assert.equal(res.installCommand, "", "a real server was told to reinstall");
   assert.equal((await listAllServers()).length, before);
   const server = await getServerById(SERVER);
@@ -535,14 +476,10 @@ test("a source that already answered is offered, not re-bootstrapped", async () 
     addServer({ name: "coolify-host", host: "192.0.2.70", importOnly: true }),
   );
   assert.equal(res.server.id, id);
-  // Re-minting a token on a TRUSTED agent arms a re-pin window that can silently
-  // replace its certificate. There is nothing to install here, so nothing is minted.
+  // Re-minting a token on a TRUSTED agent arms a re-pin window that can replace its certificate.
   assert.equal(res.installCommand, "");
 });
 
-// The wizard reads "connected" off this answer. A machine whose agent was taken
-// off keeps the fingerprint it earned, and calling that connected walked the
-// whole wizard past Install and onto a Start that could read nothing.
 test("a source whose agent is GONE is told to install again", async () => {
   const id = await seedMigrationSource("192.0.2.71");
   __setAgentConnectorForTest(async () => {
@@ -559,14 +496,12 @@ test("a source whose agent is GONE is told to install again", async () => {
 
 test("a source another team left behind follows the team reading it now", async () => {
   const id = await seedMigrationSource("192.0.2.72");
-  const { serverTeams } = await import("../db/schema/control-plane");
+  const { serverTeams } = await import("../db/schema/control-plane/servers");
   await db
     .update(serverTeams)
     .set({ teamId: TEAM_B })
     .where(eq(serverTeams.serverId, id));
-  // What a walk that gave up leaves on the row: nothing may take it off the
-  // machine, and every lookup in the new team is blind to it.
-  const { servers } = await import("../db/schema/control-plane");
+  const { servers } = await import("../db/schema/control-plane/servers");
   await db
     .update(servers)
     .set({ uninstallAttempts: 3, uninstallError: "no answer" })

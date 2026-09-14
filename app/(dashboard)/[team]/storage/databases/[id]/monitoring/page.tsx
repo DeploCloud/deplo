@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseMetricsHistory } from "@/lib/data/container-metrics";
-import { listServers } from "@/lib/data/servers";
+import { listServers } from "@/lib/data/servers/roster";
 import { isInstanceAdmin } from "@/lib/membership";
 import { serverLabel } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";

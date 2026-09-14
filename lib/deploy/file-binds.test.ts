@@ -8,15 +8,10 @@ import {
   looksLikeFileMount,
 } from "./file-binds";
 import { ensureFileBinds } from "./agent-deploy";
-import { buildComposeStack } from "./compose-stack";
-import { renderCompose } from "./build";
+import { buildComposeStack } from "./compose-stack/render";
+import { renderCompose } from "./build/compose-render";
 
-/**
- * Docker invents an empty FOLDER for a missing bind source, so a `./config.yml`
- * nobody wrote yet came up as a directory. The deploy now creates file-shaped
- * binds empty first; these pin down which binds count as files and what the
- * pre-flight does on the host.
- */
+// Docker invents an empty FOLDER for a missing bind source, so file binds are created first.
 
 test("looksLikeFile: a known extension or a known name is a file", () => {
   for (const p of [
@@ -150,8 +145,6 @@ test("fileBindsUnderFilesDir: a neighbour's dir, the whole dir and bad yaml give
   );
 });
 
-// ---- the host side ----
-
 type Calls = string[];
 
 function grpcError(code: number, message: string): Error & { code: number } {
@@ -274,8 +267,6 @@ test("ensureFileBinds: nothing to ensure dials nothing", async () => {
   assert.deepEqual(calls, []);
 });
 
-// ---- second pass: edge shapes, Storage File rows, and the real renderers ----
-
 test("looksLikeFile: case, dotfiles and double extensions", () => {
   for (const p of [
     "CONFIG.YML",
@@ -305,7 +296,6 @@ test("fileBindsUnderFilesDir: a Storage File row is a file whatever its name", (
   assert.deepEqual(fileBindsUnderFilesDir(yaml, filesDir, [], ["./myconfig"]), [
     "myconfig",
   ]);
-  // A File row the agent also writes as a config file is still left to the agent.
   assert.deepEqual(
     fileBindsUnderFilesDir(yaml, filesDir, ["myconfig"], ["myconfig"]),
     [],
@@ -370,7 +360,6 @@ volumes:
     ).sort(),
     ["Caddyfile", "nginx.conf", "notes"],
   );
-  // Without the Storage row's word for it, `notes` reads as a folder.
   assert.deepEqual(
     fileBindsUnderFilesDir(rendered, "/srv/stacks/files/demo").sort(),
     ["Caddyfile", "nginx.conf"],

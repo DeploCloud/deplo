@@ -1,17 +1,9 @@
 import { builder } from "../builder";
 import { CapabilityEnum } from "./enums";
-import {
-  listTokens,
-  createToken,
-  updateToken,
-  revokeToken,
-  type ApiTokenDTO,
-} from "@/lib/data/tokens";
-import type { Capability } from "@/lib/types";
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
+import { listTokens, type ApiTokenDTO } from "@/lib/data/tokens/listing";
+import { createToken, updateToken } from "@/lib/data/tokens/mint";
+import { revokeToken } from "@/lib/data/tokens/revoke";
+import type { Capability } from "@/lib/types/identity";
 
 export const ApiTokenRef = builder
   .objectRef<ApiTokenDTO>("ApiToken")
@@ -24,8 +16,7 @@ export const ApiTokenRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
-      // The visible prefix (`deplo_…`) used to recognise a token in a list;
-      // the full secret / tokenHash are never exposed.
+      // The full secret and the token hash are never exposed.
       prefix: t.exposeString("prefix"),
       capabilities: t.exposeStringList("capabilities", {
         description:
@@ -96,10 +87,6 @@ export const ApiTokenRef = builder
     }),
   });
 
-/**
- * The payload of `createToken`: the raw secret (shown exactly once) plus the
- * persisted token record. Mirrors the data layer's `{ raw, token }` shape.
- */
 const CreateTokenPayloadRef = builder
   .objectRef<{ raw: string; token: ApiTokenDTO }>("CreateTokenPayload")
   .implement({
@@ -114,26 +101,17 @@ const CreateTokenPayloadRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const CreateTokenInputType = builder.inputType("CreateTokenInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
-    // Omitted / empty ⇒ a view-only token. `view` is added server-side either
-    // way. There is no "everything" default: a token that quietly held its
-    // creator's whole access is exactly what this input replaced.
+    // Omitted / empty ⇒ a view-only token; there is no "everything" default.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
-    // The scope tree, one list per level.
     teamIds: t.stringList({ required: false }),
     projectIds: t.stringList({ required: false }),
     folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
-    // ISO instant. OMITTED ⇒ the default the editor proposes (ninety days);
-    // explicit null ⇒ never. A credential nobody remembers to revoke should not
-    // be what you get for leaving a field out.
+    // ISO instant. OMITTED ⇒ the editor's default (ninety days); explicit null ⇒ never.
     expiresAt: t.string({ required: false }),
   }),
 });
@@ -148,15 +126,9 @@ const UpdateTokenInputType = builder.inputType("UpdateTokenInput", {
     folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
-    // ISO instant, or null to clear the expiry. OMITTED leaves it alone, so a
-    // client that renames a token cannot silently un-expire it.
     expiresAt: t.string({ required: false }),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   apiTokens: t.field({
@@ -168,10 +140,6 @@ builder.queryFields((t) => ({
     resolve: () => listTokens(),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations (every token server action)                               */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   createToken: t.field({
@@ -192,9 +160,7 @@ builder.mutationFields((t) => ({
         folderIds: input.folderIds ?? undefined,
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
-        // Passed through, NOT `?? undefined`: absent means "the default expiry",
-        // explicit null means "never", and collapsing the two would hand a
-        // ninety-day token to someone who asked for one that does not expire.
+        // Passed through, NOT `?? undefined`: absent means the default expiry, null means never.
         expiresAt: input.expiresAt,
       }),
   }),

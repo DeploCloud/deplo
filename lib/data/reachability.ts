@@ -5,24 +5,19 @@ import "server-only";
 import { and, eq, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { appNetwork } from "../deploy/network";
 import { usesAsHost } from "../deploy/cross-network";
-import { appEnv } from "../deploy/build";
+import { appEnv } from "../deploy/build/deploy-env";
 import type { Placement } from "./name-clash";
 
-/** A neighbour this app names today and would stop resolving after the move. */
+// LostNeighbour is a name this app reaches today and would lose after the move.
 export interface LostNeighbour {
-  /** The DNS name the app points at. */
   name: string;
-  /** What it is, for the sentence: `database` or `app`. */
   kind: "database" | "app";
 }
 
-/** The env of an app, or nothing when it cannot be read. Never throws. */
 async function safeEnv(appId: string): Promise<Record<string, string>> {
   try {
     return await appEnv(appId);
@@ -31,12 +26,7 @@ async function safeEnv(appId: string): Promise<Record<string, string>> {
   }
 }
 
-/**
- * What this app names TODAY, can reach today, and would stop reaching if it moved
- * to `to` - the question a placement change raises and no check asked: organising
- * apps into a Project leaves the database behind. Heuristic like the deploy-time
- * warning (`usesAsHost`), so it informs rather than refuses.
- */
+// neighboursLostByMove lists what this app reaches today and would lose by moving to `to`.
 export async function neighboursLostByMove(
   appId: string,
   to: Omit<Placement, "serverId">,
@@ -90,7 +80,6 @@ export async function neighboursLostByMove(
 
   const out: LostNeighbour[] = [];
   for (const d of dbs) {
-    // Reachable now, not after: that is what the mover has to be told.
     if (d.serverId !== app.serverId) continue;
     if (appNetwork(d) !== from || appNetwork(d) === after) continue;
     if (names(d.host)) out.push({ name: d.host, kind: "database" });
@@ -98,7 +87,8 @@ export async function neighboursLostByMove(
   for (const n of apps) {
     if (n.serverId !== app.serverId) continue;
     if (appNetwork(n) !== from || appNetwork(n) === after) continue;
-    const { composeNamesOnNetwork } = await import("../deploy/compose-stack");
+    const { composeNamesOnNetwork } =
+      await import("../deploy/compose-stack/compose-read");
     const claimed = n.compose?.trim() ? composeNamesOnNetwork(n.compose) : [];
     for (const name of claimed)
       if (names(name)) out.push({ name, kind: "app" });
@@ -106,7 +96,7 @@ export async function neighboursLostByMove(
   return out;
 }
 
-/** The one line a move records when it takes something out of reach. */
+// lostNeighbourMessage is the line a move records when it takes something out of reach.
 export function lostNeighbourMessage(
   appName: string,
   lost: LostNeighbour[],

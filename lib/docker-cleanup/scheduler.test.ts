@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { dockerCleanupRuns as runsTable } from "../db/schema/control-plane";
+import { dockerCleanupRuns as runsTable } from "../db/schema/control-plane/docker-cleanup";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import { seedServer, SERVER_1 } from "../data/app-graph-test-helpers";
 import {
@@ -16,20 +16,12 @@ import {
 } from "../data/docker-cleanup-test-helpers";
 import { runWithIdentity } from "../auth/request-context";
 
-/**
- * Scheduler-tick tests for the Docker cleanup loop - the sibling of
- * `lib/backups/scheduler.test.ts`, and shaped like it: these exercise the
- * ORCHESTRATION (due selection, the exclusion list, the per-minute dedup guard,
- * the never-stack-runs check, the cross-process lease) and NOT a real `docker`
- * sweep.
- */
-
 let db: TestDb;
 let pg: PGlite;
 let scheduler: typeof import("./scheduler");
 let lease: typeof import("../backups/lease");
 
-/** A second host, so "excluded" and "swept" can be told apart in one tick. */
+// A second host, so "excluded" and "swept" can be told apart in one tick.
 const SERVER_2 = "srv_2";
 
 before(async () => {
@@ -45,16 +37,14 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  // Reset the globalThis scheduler singleton (its per-minute `lastFired` dedup map +
-  // the lease it holds) so a previous case's fired sweep can't bleed across tests.
+  // Reset the globalThis scheduler singleton (its lastFired map + the lease it holds) so a fired sweep can't bleed across tests.
   await scheduler.__stopDockerCleanupScheduler();
   await pg.exec(`${TRUNCATE_CLEANUP}
     truncate table activities, servers, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
-  // Provisioned on purpose: the tick skips a host whose agent never called home,
-  // and these tests are about the schedule, not about enrolment.
+  // Provisioned on purpose: these cases are about the schedule, not about enrolment.
   await seedServer(db, SERVER_1, { provisioned: true });
   await seedServer(db, SERVER_2, { provisioned: true });
   lease.__resetLocalLeases();
@@ -62,13 +52,12 @@ beforeEach(async () => {
 
 const NOW = new Date("2026-06-23T12:00:00Z");
 
-/** A cron that matches every minute, so "did it fire?" is about the OTHER predicates. */
+// A cron that matches every minute, so "did it fire?" is about the OTHER predicates.
 const EVERY_MINUTE = "* * * * *";
-/** Due at 03:00 UTC; NOW is 12:00, so `cronMatches` is false and only catch-up can fire. */
+// Due at 03:00 UTC; NOW is 12:00, so cronMatches is false and only catch-up can fire.
 const NOT_NOW = "0 3 * * *";
 
-// The tick runs session-free; give the data layer a principal anyway, as the backup
-// scheduler test does, so any incidental cookie-free read still has a team.
+// The tick runs session-free; give the data layer a principal anyway so an incidental read still has a team.
 const tick = (now: Date) =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     scheduler.runCleanupSchedulerTick(now),
@@ -84,8 +73,7 @@ test("an enabled policy sweeps a non-excluded server", async () => {
 
   const runs = await runsFor(SERVER_1);
   assert.equal(runs.length, 1, "one cleanup run recorded for the due server");
-  // It failed (no agent on the seeded server), but the run row is the proof that the
-  // unattended executor ran end to end, with no session and no cookies.
+  // It failed (no agent on the seeded server), but the run row proves the unattended executor ran end to end.
   assert.equal(runs[0]!.status, "failed");
   assert.equal(runs[0]!.trigger, "scheduled");
   assert.equal(runs[0]!.actor, "Scheduler");
@@ -135,7 +123,6 @@ test("a disabled policy never sweeps", async () => {
 });
 
 test("catch-up: a server overdue by 26h sweeps even when the cron does not match", async () => {
-  // The policy is due at 03:00; NOW is 12:00. Nothing here is "on time".
   await seedCleanupPolicy(db, { enabled: true, schedule: NOT_NOW });
   // SERVER_1 was last swept 26h ago - past the 25h catch-up window, so it is OVERDUE.
   await seedCleanupRun(db, {
@@ -144,9 +131,7 @@ test("catch-up: a server overdue by 26h sweeps even when the cron does not match
     status: "success",
     startedAt: new Date(NOW.getTime() - 26 * 60 * 60_000).toISOString(),
   });
-  // SERVER_2 was swept an hour ago - inside the window, so it is NOT overdue. This is
-  // the control: without it, "it fired" would prove nothing, since a host with no runs
-  // at all is overdue by construction.
+  // SERVER_2 is inside the window: the control, since a host with no runs at all is overdue by construction.
   await seedCleanupRun(db, {
     id: "dcr_recent",
     serverId: SERVER_2,
@@ -176,9 +161,7 @@ test("catch-up: a server overdue by 26h sweeps even when the cron does not match
 
 test("a server with a run already in flight does not stack a second one", async () => {
   await seedCleanupPolicy(db, { enabled: true, schedule: EVERY_MINUTE });
-  // A sweep already running on SERVER_1 (the row the boot reconcile would settle if the
-  // process had died). Two concurrent `docker rmi` sweeps on one host would race each
-  // other's candidate lists, so the tick must skip it.
+  // Two concurrent sweeps on one host race each other's candidate lists, so the tick must skip a running one.
   await seedCleanupRun(db, {
     id: "dcr_inflight",
     serverId: SERVER_1,
@@ -202,8 +185,7 @@ test("a server with a run already in flight does not stack a second one", async 
 test("the cleanup lease and the backup lease are independent", async () => {
   await seedCleanupPolicy(db, { enabled: true, schedule: EVERY_MINUTE });
 
-  // Another live instance holds the CLEANUP lease → this tick must do nothing, or a
-  // horizontally-scaled deploy would run `docker rmi` N times on the same host.
+  // Another instance holds the CLEANUP lease: this tick must do nothing, or a scaled deploy runs `docker rmi` N times on one host.
   assert.equal(
     await lease.acquireLease(
       lease.DOCKER_CLEANUP_LEASE,
@@ -220,8 +202,7 @@ test("the cleanup lease and the backup lease are independent", async () => {
     "no sweep while the cleanup lease is held elsewhere",
   );
 
-  // Now hand the cleanup lease back but hold the BACKUP one instead. The two are
-  // separate rows in `scheduler_lease`, so a long nightly dump must not block cleanup.
+  // The two are separate rows in `scheduler_lease`, so a long nightly dump must not block cleanup.
   await lease.releaseLease(lease.DOCKER_CLEANUP_LEASE, "another-instance");
   assert.equal(
     await lease.acquireLease(

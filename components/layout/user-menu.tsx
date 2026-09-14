@@ -21,7 +21,7 @@ import { DiscordIcon, GitHubIcon } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
 import { DISCORD_URL, GITHUB_URL } from "@/lib/links";
 import { docsUrl } from "@/lib/docs";
-import type { PublicUser } from "@/lib/types";
+import type { PublicUser } from "@/lib/types/identity";
 
 /** The account's own settings - the same three the Settings sidebar groups under "Account". */
 const ACCOUNT_LINKS = [

@@ -6,10 +6,8 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  instanceSettings,
-  users as usersTable,
-} from "../db/schema/control-plane";
+import { users as usersTable } from "../db/schema/control-plane/identity";
+import { instanceSettings } from "../db/schema/control-plane/instance";
 import {
   account as accountTable,
   session as sessionTable,
@@ -21,7 +19,7 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
-import { updateUserAdmin } from "./members";
+import { updateUserAdmin } from "./members/instance-users";
 import {
   instanceOwnerUserId,
   markWelcomeSeen,
@@ -30,19 +28,12 @@ import {
   welcomePending,
 } from "./instance-owner";
 
-/**
- * Instance-owner invariants - the lockout this whole feature exists to close.
- * Before the crown, `updateUserAdmin`'s only guard was "≥1 ACTIVE admin must
- * survive", which the ATTACKER satisfies by being that admin.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
 const OWNER = "owner1";
 const ADMIN = "admin2";
 const PLAIN = "member3";
-/** The password `seedIdentity` hashes into every seeded user by default. */
 const SEEDED_PW = "password1";
 
 before(async () => {
@@ -62,7 +53,6 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/** Two instance admins + a plain member, with the crown on OWNER. */
 async function seedOwnedInstance() {
   await seedIdentity(db, {
     users: [
@@ -78,7 +68,6 @@ async function seedOwnedInstance() {
   });
 }
 
-/** The full input shape; every field is required by updateUserAdmin. */
 const edit = (
   userId: string,
   patch: Partial<Parameters<typeof updateUserAdmin>[0]> = {},
@@ -91,8 +80,7 @@ const edit = (
   ...patch,
 });
 
-// The credential lives on the Better Auth `account` row since migration 0055, so
-// the password assertions read it from there rather than from `users`.
+// The credential lives on the Better Auth `account` row since migration 0055.
 const userRow = async (id: string) =>
   (
     await db
@@ -106,10 +94,6 @@ const userRow = async (id: string) =>
       .where(eq(usersTable.id, id))
       .limit(1)
   )[0]!;
-
-/* ------------------------------------------------------------------ */
-/* The three takeover routes, closed                                   */
-/* ------------------------------------------------------------------ */
 
 test("another admin cannot DEMOTE the instance owner", async () => {
   await seedOwnedInstance();
@@ -161,17 +145,12 @@ test("the owner cannot uncrown themselves by dropping their own admin flag", asy
   assert.equal((await userRow(OWNER)).isInstanceAdmin, true);
 });
 
-/* ------------------------------------------------------------------ */
-/* What the guard must NOT break                                       */
-/* ------------------------------------------------------------------ */
-
 test("the owner can still edit their own account, but not set their own password here", async () => {
   await seedOwnedInstance();
   await asUser(OWNER, () =>
     updateUserAdmin(edit(OWNER, { canExposePorts: true })),
   );
-  // One's own password is changed with the current one in hand, never from a
-  // door a stolen session could walk through.
+  // One's own password is changed with the current one in hand, never from a door a stolen session could walk through.
   await assert.rejects(
     () =>
       asUser(OWNER, () =>
@@ -218,8 +197,7 @@ test("admins can still edit each other when neither is the owner", async () => {
 });
 
 test("an UNOWNED instance behaves exactly as before (no guard fires)", async () => {
-  // The pre-0038 state: a row that was never written, or an instance with no
-  // admin to backfill from. The guards must no-op rather than wedge every edit.
+  // The pre-0038 state: a row that was never written, or no admin to backfill from.
   await seedIdentity(db, {
     users: [
       { id: OWNER, teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
@@ -234,8 +212,6 @@ test("an UNOWNED instance behaves exactly as before (no guard fires)", async () 
 });
 
 test("the last-active-admin invariant still holds ahead of the owner guard", async () => {
-  // The owner demoting the only OTHER admin is fine; demoting themselves is
-  // caught by the owner guard, and the count invariant stays intact either way.
   await seedOwnedInstance();
   await asUser(OWNER, () =>
     updateUserAdmin(edit(ADMIN, { isInstanceAdmin: false })),
@@ -248,10 +224,6 @@ test("the last-active-admin invariant still holds ahead of the owner guard", asy
   });
   assert.equal((await userRow(OWNER)).isInstanceAdmin, true);
 });
-
-/* ------------------------------------------------------------------ */
-/* Transfer - the crown is not a dead end                              */
-/* ------------------------------------------------------------------ */
 
 test("only the owner can transfer ownership", async () => {
   await seedOwnedInstance();
@@ -298,14 +270,12 @@ test("a successful transfer moves the crown, and the protections with it", async
   );
   assert.equal(await instanceOwnerUserId(), ADMIN);
 
-  // The new owner is now the untouchable one...
   await asUser(OWNER, async () => {
     await assert.rejects(
       () => updateUserAdmin(edit(ADMIN, { suspended: true })),
       /Only the instance owner can edit/,
     );
   });
-  // ...and the old owner is an ordinary admin again, demotable by the new owner.
   await asUser(ADMIN, () =>
     updateUserAdmin(edit(OWNER, { isInstanceAdmin: false })),
   );
@@ -336,10 +306,6 @@ test("suspending an account ends its sessions, not only its next sign-in", async
     .where(eq(sessionTable.userId, ADMIN));
   assert.equal(left.length, 0);
 });
-
-/* ------------------------------------------------------------------ */
-/* The first-run welcome                                               */
-/* ------------------------------------------------------------------ */
 
 test("the welcome is owed to the owner once, and to nobody else", async () => {
   await seedOwnedInstance();

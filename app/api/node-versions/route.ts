@@ -1,14 +1,8 @@
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 
-/**
- * Node.js major versions, synced from the official nodejs.org release index, for
- * the "Node.js version" autocomplete in build settings.
- */
 const INDEX_URL = "https://nodejs.org/dist/index.json";
 const TTL_MS = 6 * 60 * 60 * 1000; // 6h - Node majors change very slowly.
-/** How many distinct majors to surface (newest first). Covers current + recent. */
 const MAX_MAJORS = 6;
-/** Minimal fallback so the field still works if nodejs.org is unreachable. */
 const FALLBACK: NodeVersion[] = [
   { value: "22", label: "22 · LTS (Jod)" },
   { value: "20", label: "20 · LTS (Iron)" },
@@ -19,10 +13,9 @@ interface NodeVersion {
   label: string;
 }
 
-/** One raw entry from nodejs.org/dist/index.json (only the fields we read). */
 interface DistEntry {
   version?: string;
-  /** false for a non-LTS line, or the LTS codename string (e.g. "Jod"). */
+  // false for a non-LTS line, or the LTS codename string (e.g. "Jod").
   lts?: false | string;
 }
 
@@ -33,8 +26,7 @@ async function fetchVersions(): Promise<NodeVersion[]> {
   if (!res.ok) throw new Error(`nodejs.org responded ${res.status}`);
   const entries = (await res.json()) as DistEntry[];
 
-  // The index is newest-first. Collapse to the newest entry per MAJOR so each
-  // major is represented once, carrying that line's LTS status.
+  // The index is newest-first, so the first entry per major is that line's newest.
   const seen = new Set<string>();
   const majors: { value: string; lts: string | null; newest: boolean }[] = [];
   for (const e of entries) {
@@ -48,8 +40,6 @@ async function fetchVersions(): Promise<NodeVersion[]> {
     majors.push({ value: major, lts, newest: majors.length === 0 });
   }
 
-  // Curate for a deployment platform: the newest release plus the LTS train. Kept
-  // newest-first, capped.
   return majors
     .filter((mj) => mj.newest || mj.lts)
     .slice(0, MAX_MAJORS)
@@ -59,8 +49,7 @@ async function fetchVersions(): Promise<NodeVersion[]> {
     }));
 }
 
-// Process-wide (per server instance) cache. `Date.now()` is fine in a request
-// handler - this is app runtime, not a workflow script.
+// Date.now() is fine in a request handler - app runtime, not a workflow script.
 let cache: { at: number; versions: NodeVersion[] } | null = null;
 
 export async function GET() {
@@ -76,8 +65,7 @@ export async function GET() {
     cache = { at: now, versions };
     return Response.json({ versions });
   } catch {
-    // nodejs.org unreachable - serve the last good cache if any, else a minimal
-    // fallback so the field is still usable (it accepts free text too).
+    // The field accepts free text, so a stale or minimal list stays usable.
     return Response.json({ versions: cache?.versions ?? FALLBACK });
   }
 }

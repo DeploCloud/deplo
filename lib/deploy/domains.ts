@@ -4,37 +4,29 @@ import { networkInterfaces } from "node:os";
 import { readFileSync } from "node:fs";
 import { friendlyWords } from "../friendly-words";
 import { hash6 } from "./routing";
-import type { CertProvider, DomainEntrypoint } from "../types";
+import type { CertProvider, DomainEntrypoint } from "../types/domain";
 import { publicBaseUrl } from "../public-url";
-
-/**
- * Default domains via nip.io - a public wildcard DNS where a hostname whose final
- * label before `.nip.io` is the server's IPv4 in 8-char HEXADECIMAL (`1.2.3.4` →
- * `01020304`) resolves to that IP with zero configuration.
- */
 
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
-/** True for a syntactically valid dotted-quad IPv4 string. */
+// True for a syntactically valid dotted-quad IPv4 string.
 export function isIpv4(s: string): boolean {
   const m = IPV4_RE.exec(s.trim());
   return !!m && m.slice(1).every((o) => Number(o) <= 255);
 }
 
-/** True for a loopback (127.0.0.0/8) address. */
+// True for a loopback (127.0.0.0/8) address.
 export function isLoopbackIp(ip: string): boolean {
   return ip.startsWith("127.");
 }
 
-/** True for RFC1918 / link-local IPv4 ranges (not internet-routable). */
 function isPrivateIpv4(ip: string): boolean {
   if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
-  if (ip.startsWith("169.254.")) return true; // link-local
+  if (ip.startsWith("169.254.")) return true;
   const m = /^172\.(\d{1,3})\./.exec(ip);
   return !!m && Number(m[1]) >= 16 && Number(m[1]) <= 31;
 }
 
-/** Every non-internal IPv4 across all network interfaces (loopback excluded). */
 function allNicIpv4(): string[] {
   const addrs: string[] = [];
   const nets = networkInterfaces();
@@ -50,15 +42,10 @@ function allNicIpv4(): string[] {
   return addrs;
 }
 
-/**
- * The address a container on this instance reaches its own HOST on: the default
- * route's gateway. Guessed as `172.17.0.1` for years, which is Docker's default
- * bridge - and Deplo's own network is not that one, so the address it offered for
- * the same-machine case reached nothing.
- */
+// The address a container on this instance reaches its own host on: the default route's gateway.
 export function sameMachineHost(): string {
-  // OUTSIDE a container the default gateway is the ROUTER, not this box - and
-  // calling that "us" would make a server row for the router read as agent 0.
+  // Outside a container the default gateway is the ROUTER, not this box, and calling
+  // that "us" would make a server row for the router read as agent 0.
   try {
     readFileSync("/.dockerenv");
   } catch {
@@ -79,18 +66,13 @@ export function sameMachineHost(): string {
       ].join(".");
       if (isIpv4(ip) && ip !== "0.0.0.0") return ip;
     }
-  } catch {
-    /* not Linux, or no /proc - the loopback answer is the honest one */
-  }
+  } catch {}
   return "127.0.0.1";
 }
 
-/** First non-internal IPv4 on a network interface, preferring a public one. */
 function detectNicIpv4(): string | null {
   const addrs = allNicIpv4();
   if (addrs.length === 0) return null;
-  // Prefer a publicly-routable address on multi-homed hosts; fall back to the
-  // first private one (still better than loopback for LAN access).
   return addrs.find((a) => !isPrivateIpv4(a)) ?? addrs[0];
 }
 
@@ -101,11 +83,7 @@ function warnOnce(key: string, msg: string): void {
   console.warn(`[deplo] ${msg}`);
 }
 
-/**
- * Public IPv4 of this Deplo instance, resolved in order of trust: 1.
- * `DEPLO_SERVER_IP` (must be a literal IPv4) 2. the first non-internal IPv4 on a
- * network interface 4.
- */
+// Public IPv4 of this Deplo instance: DEPLO_SERVER_IP first, then the first non-internal NIC address.
 export function instanceHost(): string {
   const fromEnv = process.env.DEPLO_SERVER_IP?.trim();
   if (fromEnv) {
@@ -121,17 +99,12 @@ export function instanceHost(): string {
     try {
       const host = new URL(pub).hostname;
       if (isIpv4(host)) return host;
-      // The panel's own address is normally a generated nip.io host, which
-      // CARRIES this server's IP - reading it back beats NIC detection, which
-      // picks whichever interface comes first on a multi-homed box.
+      // The panel's nip.io host CARRIES this server's IP, so reading it back beats NIC
+      // detection on a multi-homed box; a hostname falls through instead, since it
+      // cannot be encoded as a nip.io label and would mint a host with no A record.
       const embedded = nipEmbeddedIp(host);
       if (embedded) return embedded;
-      // A hostname-valued DEPLO_PUBLIC_URL (e.g. https://deplo.example.com)
-      // cannot be encoded as the trailing hex label of a nip.io host - fall
-      // through to NIC detection rather than generating a host with no A record.
-    } catch {
-      /* not a URL - fall through */
-    }
+    } catch {}
   }
 
   const nic = detectNicIpv4();
@@ -146,13 +119,8 @@ export function instanceHost(): string {
   return "127.0.0.1";
 }
 
-/**
- * The addresses that identify the CONTROL-PLANE HOST - the single server in the
- * fleet that also runs Deplo itself ("agent 0"; CONTEXT.md: "the host running
- * Deplo is an agent too"). , never "may this caller do X".
- */
+// The addresses that identify the control-plane host - the fleet server that also runs Deplo ("agent 0").
 export function deploHostSelfAddresses(): Set<string> {
-  // A NIC scan plus a /proc read on every call, and a page asks per server row.
   const now = Date.now();
   const key = `${process.env.DEPLO_SERVER_IP}|${process.env.DEPLO_PUBLIC_URL}|${publicBaseUrl()}`;
   if (
@@ -175,31 +143,23 @@ function computeSelfAddresses(): Set<string> {
     if (s) addrs.add(s);
   };
   add(process.env.DEPLO_SERVER_IP);
-  // Both the address this instance was INSTALLED with and the one it answers on now:
-  // an operator who moved the panel and registered its host under the new name would
-  // otherwise stop being recognised as their own host, and the settings that read
+  // Both the address this instance was INSTALLED with and the one it answers on now,
+  // so an operator who moved the panel still recognises their own host.
   for (const pub of [process.env.DEPLO_PUBLIC_URL?.trim(), publicBaseUrl()]) {
     if (!pub) continue;
     try {
       add(new URL(pub).hostname);
-    } catch {
-      /* not a URL - ignore */
-    }
+    } catch {}
   }
   for (const nic of allNicIpv4()) add(nic);
-  // The host as this CONTAINER sees it (loopback when there is no container, which
-  // is already local). Without it, the one address that does reach a panel on the
-  // same machine read as a stranger, and Deplo asked for a second agent on the box
-  // it is already running on.
+  // Without the container gateway, the one address that reaches a panel on the same
+  // machine read as a stranger and Deplo asked for a second agent on its own box.
   const gateway = sameMachineHost();
   if (gateway !== "127.0.0.1") add(gateway);
   return addrs;
 }
 
-/**
- * Whether `server` is the host running Deplo - i.e. one of its operator-declared
- * addresses matches this instance's own {@link deploHostSelfAddresses}.
- */
+// Whether `server` is the host running Deplo: one of its addresses matches this instance's own.
 export function isDeploHostServer(
   server: { ip?: string; host?: string },
   self: ReadonlySet<string> = deploHostSelfAddresses(),
@@ -210,10 +170,7 @@ export function isDeploHostServer(
   return (!!ip && self.has(ip)) || (!!host && self.has(host));
 }
 
-/**
- * Whether a host compiles for an app whose own build server could not. `null` is
- * automatic: the Deplo host, which every install has, and nothing else.
- */
+// Whether a host compiles for an app whose own build server could not; `null` means the Deplo host.
 export function isBuildFallbackServer(
   server: { buildFallback: boolean | null; ip?: string; host?: string },
   self: ReadonlySet<string> = deploHostSelfAddresses(),
@@ -221,25 +178,15 @@ export function isBuildFallbackServer(
   return server.buildFallback ?? isDeploHostServer(server, self);
 }
 
-/**
- * Name of the Traefik ACME cert resolver baked into every router's
- * `tls.certresolver` label.
- */
+// Name of the Traefik ACME cert resolver baked into every router's `tls.certresolver` label.
 export function certResolver(): string {
   return process.env.DEPLO_CERT_RESOLVER?.trim() || "letsencrypt";
 }
 
-/**
- * Per-team cap on `letsencrypt`-backed domains. Left uncapped, one team
- * registering hundreds of `letsencrypt` subdomains would exhaust that shared
- * budget and stall certificate issuance for EVERY other team.
- */
+// Per-team cap on `letsencrypt` domains: uncapped, one team could exhaust the shared ACME budget.
 export const LETSENCRYPT_DOMAINS_PER_TEAM_CAP = 50;
 
-/**
- * Guard the shared ACME account: throw when adding one more `letsencrypt` domain
- * would push a team past {@link LETSENCRYPT_DOMAINS_PER_TEAM_CAP}.
- */
+// Throw when one more `letsencrypt` domain would push a team past the cap.
 export function assertLetsencryptQuota(
   currentCount: number,
   provider: CertProvider | undefined,
@@ -253,19 +200,12 @@ export function assertLetsencryptQuota(
   }
 }
 
-/**
- * Name of the Traefik DNS-01 cert resolver used when a domain picks the
- * `cloudflare` certificate provider.
- */
+// Name of the Traefik DNS-01 cert resolver used by the `cloudflare` certificate provider.
 export function cloudflareCertResolver(): string {
   return process.env.DEPLO_CLOUDFLARE_CERT_RESOLVER?.trim() || "cloudflare";
 }
 
-/**
- * The router TLS triplet for a domain's certificate-provider choice - the one
- * place that maps the user-facing {@link CertProvider} enum onto the concrete
- * Traefik resolver/entrypoint a router needs.
- */
+// The router TLS triplet for a domain's certificate-provider choice.
 export function domainTlsConfig(domain: {
   entrypoint?: DomainEntrypoint;
   certProvider?: CertProvider;
@@ -290,25 +230,15 @@ export function domainTlsConfig(domain: {
   };
 }
 
-/**
- * URL scheme a domain is served on - `http` for the `none` certificate provider
- * (its router terminates no TLS, riding the `web` entrypoint), `https` for every
- * real provider.
- */
+// URL scheme a domain is served on - `http` only for the `none` certificate provider.
 export function domainScheme(domain: {
   certProvider?: CertProvider;
   proxied?: boolean | null;
 }): "http" | "https" {
-  // A proxied host is reached AT the proxy, which terminates TLS there - the
-  // origin router behind it can still be plain http.
   return domain.proxied || domainTlsConfig(domain).tls ? "https" : "http";
 }
 
-/**
- * Whether a blueprint's auto domains should be born WITH a TLS certificate. The
- * check is anchored on the app's OWN hosts: a stray `https://hub.docker.com` in a
- * compose comment never opts an app into certificate issuance.
- */
+// Whether a blueprint's auto domains are born with a TLS certificate, anchored on the app's own hosts.
 export function blueprintWantsTls(
   hosts: (string | null | undefined)[],
   texts: (string | null | undefined)[],
@@ -324,11 +254,7 @@ export function blueprintWantsTls(
   });
 }
 
-/**
- * The IPv4 to use for a given server's domains. The server's recorded IP is
- * authoritative when it is a usable, non-loopback IPv4; otherwise fall back to the
- * instance host (a never-set or stored-loopback IP resolves live).
- */
+// The IPv4 to use for a server's domains: its recorded IP when usable, else the instance host.
 export function resolveServerIp(server?: { ip?: string }): string {
   if (server?.ip && isIpv4(server.ip) && !isLoopbackIp(server.ip)) {
     return server.ip;
@@ -336,10 +262,7 @@ export function resolveServerIp(server?: { ip?: string }): string {
   return instanceHost();
 }
 
-/**
- * `1.2.3.4` → `01020304`: the 8-char, zero-padded hexadecimal of an IPv4, the form
- * nip.io accepts as the routing label.
- */
+// `1.2.3.4` to `01020304`: the 8-char hexadecimal of an IPv4, the form nip.io accepts.
 export function ipToHex(ip: string): string {
   return ip
     .trim()
@@ -348,8 +271,7 @@ export function ipToHex(ip: string): string {
     .join("");
 }
 
-/** `01020304` → `1.2.3.4`: inverse of {@link ipToHex}. Null for anything that
- * is not exactly 8 hex digits decoding to a valid IPv4. */
+// `01020304` back to `1.2.3.4`: inverse of ipToHex, null for anything else.
 export function hexToIp(hex: string): string | null {
   if (!/^[0-9a-f]{8}$/i.test(hex)) return null;
   const ip = [0, 2, 4, 6]
@@ -358,38 +280,26 @@ export function hexToIp(hex: string): string | null {
   return isIpv4(ip) ? ip : null;
 }
 
-// The hex IP is the final label before `.nip.io`, hyphen-joined to the words
-// (`…-<adjective>-<animal>-<hexip>.nip.io`).
 const NIP_HEXIP_RE = /-([0-9a-f]{8})\.nip\.io$/i;
-// Same hex group, NOT end-anchored, for rewriting a host embedded mid-string
-// inside a free-text env value (`https://app-…-<hexip>.nip.io/path`).
 const NIP_HEXIP_EMBEDDED_RE = /-([0-9a-f]{8})\.nip\.io/gi;
 
-/** The IPv4 embedded (as hex) in an `<…>-<hexip>.nip.io` hostname, or null. */
+// The IPv4 embedded (as hex) in a `<hexip>.nip.io` hostname, or null.
 export function nipEmbeddedIp(name: string): string | null {
   const m = NIP_HEXIP_RE.exec(name.trim());
   return m ? hexToIp(m[1]) : null;
 }
 
-/**
- * The address the panel itself answers on when nobody gave it a domain, and the
- * one it keeps answering on afterwards. `nipDomain` cannot mint it: with no words
- * it emits a double hyphen.
- */
+// The address the panel answers on when nobody gave it a domain.
 export function panelFallbackHost(ip = instanceHost()): string {
   return `deplo-${ipToHex(ip)}.nip.io`;
 }
 
-/** Replace the embedded IP of a nip.io hostname (no-op for other names). */
+// Replace the embedded IP of a nip.io hostname (no-op for other names).
 export function rehostNip(name: string, ip: string): string {
   return name.replace(NIP_HEXIP_RE, `-${ipToHex(ip)}.nip.io`);
 }
 
-/**
- * Rewrite every `…-<fromHex>.nip.io` occurrence inside a free-text string (e.g. an
- * env value like `https://app-…-<hexip>.nip.io/path`) to `<toIp>`, leaving the
- * words and any surrounding text intact.
- */
+// Rewrite every embedded `<hexip>.nip.io` host inside a free-text string onto `toIp`.
 export function rehostEmbeddedNip(
   value: string,
   fromIp: string,
@@ -402,8 +312,7 @@ export function rehostEmbeddedNip(
   );
 }
 
-/** The subset of a template's CreateAppInput whose nip.io hosts are baked
- * against the master IP and must follow the project to its target server. */
+// The subset of a template's CreateAppInput whose nip.io hosts must follow the project to its target server.
 export interface BlueprintHosts {
   autoDomain?: string | null;
   extraDomains?:
@@ -412,11 +321,7 @@ export interface BlueprintHosts {
   env?: { key: string; value: string }[];
 }
 
-/**
- * Re-host a template's generated nip.io hosts from `fromIp` (the master IP the
- * /new page baked them against) onto `toIp` (the IP of the server the project
- * actually targets). Pure: returns a NEW object, never mutates its input.
- */
+// Re-host a template's generated nip.io hosts from `fromIp` onto `toIp`. Returns a NEW object.
 export function rehostBlueprintHosts<T extends BlueprintHosts>(
   input: T,
   fromIp: string,
@@ -442,18 +347,12 @@ export function rehostBlueprintHosts<T extends BlueprintHosts>(
   };
 }
 
-/**
- * A random `adjective-animal` pair (e.g. `charming-otter`), the two human-readable
- * words baked between a domain's app prefix and its hex IP.
- */
+// A random `adjective-animal` pair baked between a domain's app prefix and its hex IP.
 export function randomWords(): string {
   return friendlyWords();
 }
 
-/**
- * A nip.io hostname that resolves to `ip` with no DNS setup:
- * `<label>-<adjective>-<animal>-<hexip>.nip.io`.
- */
+// A nip.io hostname that resolves to `ip` with no DNS setup.
 export function nipDomain(
   label: string,
   words: string,
@@ -465,34 +364,24 @@ export function nipDomain(
       .replace(/[^a-z0-9-]/g, "-")
       .replace(/^-+|-+$/g, "");
   const tail = `${clean(words)}-${ipToHex(ip)}`;
-  // A DNS label stops at 63 characters, and an app name plus a compose service
-  // name reaches that - the host would simply not resolve. The words and the IP
-  // carry the uniqueness, so the readable half is the one that gives way.
+  // A DNS label stops at 63 characters, so the readable half is what gives way.
   const head = clean(label)
     .slice(0, Math.max(1, 62 - tail.length))
     .replace(/-+$/, "");
   return `${head}-${tail}.nip.io`;
 }
 
-/** Production domain for a project slug, with freshly-generated words. */
+// Production domain for a project slug, with freshly-generated words.
 export function productionDomain(slug: string, ip = instanceHost()): string {
   return nipDomain(slug, randomWords(), ip);
 }
 
-/**
- * The hostname a pull request preview answers on, and the certificate provider its
- * router must be rendered with. The slug is part of the host, so two apps sharing
- * one base never collide.
- */
+// The hostname a pull request preview answers on, and the certificate provider for its router.
 export function previewHost(opts: {
   appId: string;
   slug: string;
   prNumber: number;
-  /** e.g. `preview.example.com`. Empty/absent ⇒ the nip.io default. */
   baseDomain?: string | null;
-  /**
-   * Serve previews over HTTPS.
-   */
   https?: boolean;
   ip?: string;
 }): { host: string; certProvider: CertProvider } {
@@ -501,8 +390,6 @@ export function previewHost(opts: {
   if (base) {
     return {
       host: `${label}.${base}`.toLowerCase(),
-      // Plain HTTP on a domain you own is a legitimate choice; on nip.io it is
-      // the only one.
       certProvider: opts.https === false ? "none" : "letsencrypt",
     };
   }
@@ -512,19 +399,13 @@ export function previewHost(opts: {
   };
 }
 
-/**
- * Whether a string is usable as the base of a preview hostname. Deliberately
- * strict: it is concatenated into a Traefik `Host()` rule, so anything that is
- * not a plain dotted hostname is refused rather than escaped.
- */
+// Whether a string can base a preview hostname: it lands in a Traefik `Host()` rule, so it is refused rather than escaped.
 export function isValidPreviewBaseDomain(base: string): boolean {
   const clean = base
     .trim()
     .replace(/^\.+|\.+$/g, "")
     .toLowerCase();
   if (!clean || clean.length > 200) return false;
-  // At least one dot (a bare TLD is never what anyone means), and each label is
-  // alphanumeric with inner dashes.
   return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(
     clean,
   );

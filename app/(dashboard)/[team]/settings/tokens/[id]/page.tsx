@@ -2,12 +2,13 @@ import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { isInstanceAdmin, requireActiveTeamId } from "@/lib/membership";
-import { getToken, listScopeTree } from "@/lib/data/tokens";
+import { getToken } from "@/lib/data/tokens/listing";
+import { listScopeTree } from "@/lib/data/tokens/scope-tree";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
 import { timeAgo } from "@/lib/utils";
-import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
+import { instancePublicBaseUrl } from "@/lib/data/instance-settings/settings-store";
 
 export async function generateMetadata(
   props: PageProps<"/[team]/settings/tokens/[id]">,

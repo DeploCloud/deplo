@@ -10,7 +10,7 @@ import {
   UnderlineTabsList,
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
-import { MigrationWizard } from "./migration-wizard";
+import { MigrationWizard } from "./migration-wizard/wizard";
 import { MigrationsHistory } from "./migrations-history";
 import type { ImportRun, ServerChoice, TargetTeam } from "./types";
 

@@ -1,21 +1,13 @@
 // https://deplo.build/docs/reference/capabilities
 
-import type { Capability } from "./types";
-import { ALL_CAPABILITIES } from "./types";
+import type { Capability } from "./types/identity";
+import { ALL_CAPABILITIES } from "./types/identity";
 
-/**
- * The capability catalog - one entry per thing a member can be allowed to do, plus
- * the categories the role editor browses them by.
- */
-
-/** How a permission is shown in the role editor. */
+// CapabilityMeta - how a permission is shown in the role editor.
 export interface CapabilityMeta {
   label: string;
-  /** One line, in the terms the dashboard uses. */
   description: string;
-  /** Extra weight in search: words a user might type that aren't in the label. */
   keywords?: string;
-  /** Handing this out can cost data or hand over access - flagged in the UI. */
   sensitive?: boolean;
 }
 
@@ -27,7 +19,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "read access dashboard",
   },
 
-  /* ---- Apps ---- */
   create_apps: {
     label: "Create apps",
     description: "Add a new app from a repository, image, template or upload.",
@@ -83,13 +74,10 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     description:
       "Create, edit and run scheduled commands inside an app or database container.",
     keywords: "cron schedule scheduled task job timer recurring command",
-    // Same class as the console: a cron job is an arbitrary command inside the
-    // container, as the container's user, with no sandbox. That it runs on a
-    // timer rather than at a keystroke makes it more dangerous, not less.
+    // Same class as the console: an arbitrary command inside the container, as its user, with no sandbox.
     sensitive: true,
   },
 
-  /* ---- App configuration ---- */
   manage_domains: {
     label: "Manage domains",
     description:
@@ -115,7 +103,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     sensitive: true,
   },
 
-  /* ---- Organization ---- */
   create_folders: {
     label: "Create folders",
     description: "Add folders to group apps on the overview.",
@@ -155,7 +142,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "environment branch preview production staging",
   },
 
-  /* ---- Databases ---- */
   create_databases: {
     label: "Create databases",
     description: "Provision a new managed database on one of the servers.",
@@ -185,7 +171,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     sensitive: true,
   },
 
-  /* ---- Backups & storage ---- */
   manage_backups: {
     label: "Manage backups",
     description: "Create, edit, disable and run backup schedules on demand.",
@@ -203,9 +188,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     description:
       "Permanently delete a single backup, removing the file it was restored from.",
     keywords: "remove artifact purge prune erase restore point",
-    // The only verb here that destroys data with no way back and no warning further
-    // down: the artifact is the last copy of what an app or database looked like at
-    // that moment, and deleting it can silently leave a target with no restore point at
+    // The only verb here that destroys data with no way back: the artifact can be a target's last restore point.
     sensitive: true,
   },
   manage_backup_destinations: {
@@ -214,13 +197,10 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
       "Connect, test and remove the places backups are stored, and download the key that decrypts them.",
     keywords:
       "bucket s3 server disk storage remote credentials minio garage path recovery key",
-    // Sensitive, and not because connecting a bucket is dangerous: this is the
-    // capability that hands over the recovery key, which decrypts EVERY artifact at a
-    // destination - including backups of apps the holder has no grant on.
+    // It hands over the recovery key, which decrypts EVERY artifact at a destination, grant or no grant.
     sensitive: true,
   },
 
-  /* ---- Integrations ---- */
   manage_registries: {
     label: "Manage container registries",
     description: "Connect and remove private image registries.",
@@ -233,8 +213,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   manage_tokens: {
     label: "Use API tokens",
-    // Tokens are personal (nobody else sees them); this is the team's say over
-    // whether a member's tokens reach it at all.
+    // Tokens are personal: this is the team's say over whether a member's tokens reach it at all.
     description:
       "Let their own API tokens act in this team, from scripts, CI and other clients.",
     keywords: "api access token bearer cli automation",
@@ -253,7 +232,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "alerts email webhook discord slack",
   },
 
-  /* ---- Observability ---- */
   view_logs: {
     label: "View logs",
     description: "Read runtime and build logs for apps and databases.",
@@ -276,7 +254,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "audit history events trail",
   },
 
-  /* ---- Team ---- */
   manage_members: {
     label: "Manage members",
     description: "Add and remove members, and assign each of them a role.",
@@ -302,11 +279,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
 };
 
-/**
- * The role editor's browse order. A category is a place to LOOK, not a thing to
- * grant - there is no category-level switch, because a permission that can only be
- * handed out as part of a bundle isn't a permission, it's a bundle.
- */
+// CAPABILITY_CATEGORIES - the role editor's browse order; a category is a place to LOOK, not a thing to grant.
 export const CAPABILITY_CATEGORIES: {
   key: string;
   label: string;
@@ -404,17 +377,12 @@ export const CAPABILITY_CATEGORIES: {
   },
 ];
 
-/**
- * What each capability of the ORIGINAL eight expands to.
- */
+// LEGACY_CAPABILITY_EXPANSION - what each capability of the ORIGINAL eight expands to.
 export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   view: ["view", "view_logs", "view_metrics", "view_activity"],
   deploy: [
     "create_apps",
     "deploy_apps",
-    // Anyone the coarse `deploy` covered could already ship any commit they liked,
-    // reverting one included - so going back to a build that already shipped is
-    // strictly less power than they had.
     "rollback_apps",
     "control_apps",
     "configure_apps",
@@ -422,8 +390,6 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "move_apps",
     "open_app_console",
     "manage_previews",
-    // Under `deploy` and not `manage_infra` because that is where `open_app_console`
-    // already sits, and a cron job is the same power on a timer.
     "manage_crons",
     "create_folders",
     "organize_folders",
@@ -443,43 +409,30 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "open_database_console",
     "manage_backups",
     "restore_backups",
-    // Under `manage_infra` because `delete_databases` already is, and that is the verb
-    // the backfill seeds this one from: deleting a database ALREADY sweeps every
-    // artifact it has.
     "delete_backups",
     "manage_backup_destinations",
     "manage_registries",
     "manage_git",
     "manage_tokens",
-    // Same rule as the 0098 backfill: deciding whether an AI agent may drive the
-    // team is the same class of decision as minting the bearer token that lets
-    // it in, so `manage_mcp` follows `manage_tokens` everywhere it appears.
     "manage_mcp",
     "manage_notifications",
     "manage_monitoring",
   ],
   manage_members: ["manage_members", "manage_roles"],
   manage_team: ["manage_team", "delete_team"],
-  // `manage_s3` was renamed to `manage_backup_destinations` when a destination
-  // stopped necessarily being S3 (migration 0083).
+  // `manage_s3` was renamed to `manage_backup_destinations` (migration 0083).
   manage_s3: ["manage_backup_destinations"],
 };
 
-/** Every retired spelling that still expands as input: the eight the split
- *  started from, plus `manage_s3` (renamed, not split). */
+// LEGACY_CAPABILITY_NAMES - every retired spelling that still expands as input.
 export const LEGACY_CAPABILITY_NAMES = Object.keys(LEGACY_CAPABILITY_EXPANSION);
 
-/** The ones that no longer exist as capabilities in their own right: the three
- *  the split retired, plus `manage_s3`, which was renamed rather than split when
- *  a destination stopped necessarily being a bucket. */
+// RETIRED_CAPABILITY_NAMES - the names that no longer exist as capabilities in their own right.
 export const RETIRED_CAPABILITY_NAMES = LEGACY_CAPABILITY_NAMES.filter(
   (n) => !(ALL_CAPABILITIES as string[]).includes(n),
 );
 
-/**
- * Normalise a capability list that may still use one of the RETIRED names
- * (`deploy`, `manage_infra`), dropping anything unrecognised.
- */
+// expandLegacyCapabilities - normalise a list that may still use a RETIRED name, dropping anything unrecognised.
 export function expandLegacyCapabilities(caps: string[]): Capability[] {
   const out = new Set<Capability>();
   for (const c of caps) {
@@ -492,7 +445,7 @@ export function expandLegacyCapabilities(caps: string[]): Capability[] {
   return ALL_CAPABILITIES.filter((c) => out.has(c));
 }
 
-/** Lower-cased haystack for the role editor's search box. */
+// capabilitySearchText - the lower-cased haystack for the role editor's search box.
 export function capabilitySearchText(cap: Capability): string {
   const meta = CAPABILITY_META[cap];
   return `${cap} ${meta.label} ${meta.description} ${meta.keywords ?? ""}`
@@ -500,7 +453,7 @@ export function capabilitySearchText(cap: Capability): string {
     .replace(/_/g, " ");
 }
 
-/** Capabilities matching a free-text query, in catalog order (empty ⇒ all). */
+// searchCapabilities - the capabilities matching a free-text query, in catalog order.
 export function searchCapabilities(query: string): Capability[] {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [...ALL_CAPABILITIES];

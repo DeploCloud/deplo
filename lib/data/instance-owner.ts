@@ -2,32 +2,20 @@ import "server-only";
 
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb, type DbTx } from "../db/client";
-import {
-  instanceSettings,
-  users as usersTable,
-} from "../db/schema/control-plane";
+import { users as usersTable } from "../db/schema/control-plane/identity";
+import { instanceSettings } from "../db/schema/control-plane/instance";
 import { account as accountTable } from "../db/schema/auth";
 import { nowIso } from "../ids";
-import { assertUser, getCurrentUser } from "../auth";
+import { assertUser, getCurrentUser } from "../auth/current-user";
 import { verifyPassword } from "../crypto";
 import { requireInstanceAdmin } from "../membership";
 import { rateLimit } from "../security";
 import { recordActivity } from "./activity";
 import { stepUpCode } from "./two-factor";
 
-/**
- * The instance owner - the instance-level twin of a team's founder "crown"
- * (`teams.founder_user_id`), stored on the `instance_settings` singleton.
- */
-
-/** The singleton row's fixed PK, like `monitoring_settings` / the cleanup policy. */
 const SETTINGS_ID = "default";
 
-/**
- * The owning user's id, or null when the instance is unowned (no row yet - a
- * pre-0038 instance that never replayed the backfill, or one with no admin to
- * backfill from).
- */
+// instanceOwnerUserId is the owning user's id, or null when the instance is unowned.
 export async function instanceOwnerUserId(tx?: DbTx): Promise<string | null> {
   const db = tx ?? getDb();
   const rows = await db
@@ -38,7 +26,7 @@ export async function instanceOwnerUserId(tx?: DbTx): Promise<string | null> {
   return rows[0]?.ownerUserId ?? null;
 }
 
-/** True if `userId` owns this instance. Internal; no auth gate (see above). */
+/** True if `userId` owns this instance. Internal; no auth gate. */
 export async function isInstanceOwner(
   userId: string,
   tx?: DbTx,
@@ -54,11 +42,7 @@ export async function viewerIsInstanceOwner(): Promise<boolean> {
   return isInstanceOwner(user.id);
 }
 
-/**
- * Whether the first-run welcome is still owed: the viewer owns this instance and
- * nobody has opened it yet. The wizard's `?welcome=1` does not survive a reload,
- * so the stamp decides, not the URL.
- */
+// welcomePending is true when the viewer owns this instance and has not opened it yet.
 export async function welcomePending(): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
@@ -92,11 +76,7 @@ export async function markWelcomeSeen(): Promise<boolean> {
   return done.length > 0;
 }
 
-/**
- * Hand the crown to another user. The ONLY way `owner_user_id` ever changes after
- * setup, and the one thing here the owner alone may do - an instance admin calling
- * this is rejected even though they pass {@link requireInstanceAdmin}.
- */
+// transferInstanceOwner hands the crown over; the OWNER alone may, not an instance admin.
 export async function transferInstanceOwner(input: {
   userId: string;
   password: string;
@@ -105,11 +85,7 @@ export async function transferInstanceOwner(input: {
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
   const actor = await assertUser();
-  // The same step-up a team transfer asks for: the crown must not be one factor
-  // weaker than the team it sits above.
   if (actor.twoFactorEnabled) await stepUpCode(input.code ?? "");
-  // The password check below is a re-auth, and this is the highest-value one in the
-  // product: on success the instance changes hands.
   const limit = await rateLimit(`account-reauth:${actingUserId}`, {
     limit: 6,
     windowMs: 5 * 60_000,
@@ -118,8 +94,7 @@ export async function transferInstanceOwner(input: {
     throw new Error(`Too many attempts. Try again in ${limit.retryAfterSec}s.`);
 
   const targetUsername = await getDb().transaction(async (tx) => {
-    // Lock the singleton first: two concurrent transfers must serialize, or both
-    // could read "I am the owner" and the second would overwrite the first.
+    // Lock the singleton first: two concurrent transfers must serialize.
     const settings = (
       await tx
         .select({ ownerUserId: instanceSettings.ownerUserId })
@@ -138,8 +113,7 @@ export async function transferInstanceOwner(input: {
     if (input.userId === actingUserId)
       throw new Error("You already own this instance");
 
-    // The password check reads the actor's CURRENT hash inside the transaction -
-    // a hash rotated between the session being issued and this call must win.
+    // Reads the actor's CURRENT hash inside the transaction: a rotated hash must win.
     const me = (
       await tx
         .select({ password: accountTable.password })

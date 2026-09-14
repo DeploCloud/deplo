@@ -32,9 +32,9 @@ import {
 import { GitProviderMark } from "@/components/shared/brand-icons";
 import { ConnectGitProviderDialog } from "@/components/settings/git-connect-dialog";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
-import type { GitProviderChoice } from "@/lib/types";
+import type { GitProviderChoice } from "@/lib/types/git";
 
-/** What the Git source resolves to, ready to become a `GitRepoInput`. */
+// GitSourceValue - what the Git source resolves to, ready to become a GitRepoInput.
 export interface GitSourceValue {
   provider: string;
   url: string;
@@ -43,7 +43,6 @@ export interface GitSourceValue {
   connectionId: string | null;
 }
 
-/** owner/name pulled out of a clone URL, for display and webhook matching. */
 function repoNameFromUrl(url: string): string {
   return (
     url
@@ -53,7 +52,6 @@ function repoNameFromUrl(url: string): string {
   );
 }
 
-/** Recognise the host in a pasted URL, so a bare URL still labels itself. */
 function providerFromUrl(url: string): string {
   if (/gitlab/i.test(url)) return "gitlab";
   if (/bitbucket/i.test(url)) return "bitbucket";
@@ -62,10 +60,7 @@ function providerFromUrl(url: string): string {
   return "git";
 }
 
-/**
- * The Git deploy source: choose which credential to clone with, then the
- * repository.
- */
+// GitSourcePicker - which credential to clone with, then the repository.
 export function GitSourcePicker({
   connections,
   providers,
@@ -75,9 +70,7 @@ export function GitSourcePicker({
   manageHref = "/settings/git",
 }: {
   connections: GitConnectionDTO[];
-  /** The connectable hosts, so a provider is added from here rather than in Settings. */
   providers: GitProviderChoice[];
-  /** Gates the dialog's one advanced option: an address inside the network. */
   isInstanceAdmin: boolean;
   initial?: {
     connectionId?: string | null;
@@ -105,7 +98,6 @@ export function GitSourcePicker({
 
   const active = connections.find((c) => c.id === connectionId) ?? null;
 
-  // Everything the parent needs, recomputed from whichever arm is active.
   const onChangeRef = React.useRef(onChange);
   React.useEffect(() => {
     onChangeRef.current = onChange;
@@ -114,7 +106,6 @@ export function GitSourcePicker({
     onChangeRef.current(v);
   }, []);
 
-  // The plain-URL and plain-git arms: the two text fields ARE the value.
   React.useEffect(() => {
     if (active?.hasApi) return;
     emit({
@@ -126,7 +117,6 @@ export function GitSourcePicker({
     });
   }, [active, url, branch, emit]);
 
-  // The browsing arm: the repo picker owns repo + branch.
   const handleBrowsed = React.useCallback(
     (sel: RepoSelection | null) => {
       if (!active || !sel) return;
@@ -144,14 +134,10 @@ export function GitSourcePicker({
   function pick(id: string | null) {
     if (id === connectionId) return;
     setConnectionId(id);
-    // Switching credentials invalidates whatever repository was typed for the
-    // previous one - a URL on gitlab.com means nothing to a Gitea token.
     setUrl("");
     setBranch("");
     const next = connections.find((c) => c.id === id) ?? null;
-    // The text arms re-emit from the effect above; the browsing arm emits only
-    // once a repository is chosen, so clear the value here or Save would commit
-    // the PREVIOUS credential's repository under the new one.
+    // The browsing arm emits only once a repo is chosen; clear it or Save keeps the old one.
     if (next?.hasApi) {
       emit({
         provider: next.provider,
@@ -256,8 +242,7 @@ export function GitSourcePicker({
               </>
             )}
             <DropdownMenuSeparator />
-            {/* Connected here, in the dialog Settings uses: a provider you are
-                missing is not a reason to leave the app you are creating. */}
+            {/* Connected here: a missing provider is not a reason to leave the app. */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
                 <Plus className="size-4" />
@@ -276,11 +261,7 @@ export function GitSourcePicker({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            {/**
-             * Carries where we are, so the Settings detour hands the user back to this
-             * page - with the new connection in the list - instead of leaving them there
-             * to find their way back.
-             */}
+            {/* Carries where we are, so the Settings detour hands the user back here. */}
             <DropdownMenuItem
               className="gap-2"
               onSelect={() =>

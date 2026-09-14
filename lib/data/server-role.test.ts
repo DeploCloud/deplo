@@ -13,22 +13,15 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
+import { addServer } from "./servers/enrollment";
 import {
-  setServerRole,
-  setServerBuildFallback,
   serverRole,
   getServerById,
   listServerChoices,
   listBuildServerChoices,
-  addServer,
   canHostWorkloads,
-} from "./servers";
-
-/**
- * What a server is FOR, and the one direction that is genuinely one-way. The
- * exception is physical, not policy: a server installed as backups-only never had
- * Docker put on it, and no write here can change that.
- */
+} from "./servers/roster";
+import { setServerRole, setServerBuildFallback } from "./servers/settings";
 
 let db: TestDb;
 let pg: PGlite;
@@ -49,7 +42,7 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
-  await seedServer(db); // SERVER_1, "everything", dockerVersion set by the seeder
+  await seedServer(db);
 });
 
 const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
@@ -99,7 +92,6 @@ test("a host that still runs something cannot be retired into either role", asyn
         `${role} was accepted while an app still lived there`,
       );
     }
-    // ...and the row is untouched, so a refused change leaves nothing half-applied.
     assert.equal(serverRole((await getServerById(SERVER_1))!), "everything");
   });
 });
@@ -107,23 +99,20 @@ test("a host that still runs something cannot be retired into either role", asyn
 test("going BACK to everything is always allowed - nothing is stranded by it", async () => {
   await asOwner(async () => {
     await setServerRole(SERVER_1, "build");
-    // No workload check on the way back: a build server hosts nothing by
-    // definition, so there is never anything to move off it first.
+    // No workload check on the way back: a build server hosts nothing to move off.
     const s = await setServerRole(SERVER_1, "everything");
     assert.equal(serverRole(s), "everything");
   });
 });
 
 test("a backups-only server with no Docker is pinned to that role", async () => {
-  // The installer's storage-only branch never puts Docker on the box, and an
-  // agent that has none reports no version. That is the signal, and it is the
-  // only thing here that a database write genuinely cannot undo.
+  // The storage-only installer puts no Docker on the box, so the agent reports no version.
   await db
-    .update((await import("../db/schema/control-plane")).servers)
+    .update((await import("../db/schema/control-plane/servers")).servers)
     .set({ storageOnly: true, buildOnly: false, dockerVersion: "" })
     .where(
       (await import("drizzle-orm")).eq(
-        (await import("../db/schema/control-plane")).servers.id,
+        (await import("../db/schema/control-plane/servers")).servers.id,
         SERVER_1,
       ),
     );
@@ -139,8 +128,7 @@ test("a backups-only server with no Docker is pinned to that role", async () => 
 });
 
 test("a Docker-having server retired into storage can still come back", async () => {
-  // The case the pin above must NOT catch: somebody merely repurposed a normal
-  // host. Docker is still on it, so nothing physical stops the return trip.
+  // The pin must NOT catch a merely repurposed host: Docker is still on it.
   await asOwner(async () => {
     await setServerRole(SERVER_1, "storage");
     const s = await setServerRole(SERVER_1, "everything");
@@ -165,11 +153,6 @@ test("either specialised role drops the host out of the deploy-target picker", a
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* The fourth role: a MIGRATION SOURCE                                  */
-/* ------------------------------------------------------------------ */
-
-/** Register one the only way there is: through the import wizard's addServer. */
 async function addMigrationSource(name = "dokploy-host", host = "10.9.9.9") {
   const { server } = await addServer({ name, host, importOnly: true });
   return server;
@@ -177,9 +160,7 @@ async function addMigrationSource(name = "dokploy-host", host = "10.9.9.9") {
 
 test("a migration source is not a role anyone can pick, and not one it can leave", async () => {
   await asOwner(async () => {
-    // Into it: refused. The installer put no Traefik and no shared network on
-    // that host, so a database write claiming otherwise would produce a server
-    // that looks ready and routes nothing.
+    // The installer put no Traefik and no shared network on that host.
     await assert.rejects(
       () => setServerRole(SERVER_1, "import" as never),
       /created by the import wizard/,
@@ -187,7 +168,6 @@ test("a migration source is not a role anyone can pick, and not one it can leave
     );
     assert.equal(serverRole((await getServerById(SERVER_1))!), "everything");
 
-    // Out of it: refused too, and the message says what to do instead.
     const src = await addMigrationSource();
     for (const role of ["everything", "build", "storage"] as const) {
       await assert.rejects(
@@ -209,9 +189,9 @@ test("a migration source is out of the deploy picker AND the build picker", asyn
       false,
       "a migration source was offered as a deploy target",
     );
-    // The build picker is the one that reads differently: it deliberately keeps hosts
-    // that cannot deploy, and a migration source HAS Docker - so without its own
-    // exclusion it would be offered, and a build would ship the app's source and
+    // The build picker keeps hosts that cannot deploy, and a migration source HAS Docker.
+    // Without its own exclusion it would be offered, and a build would ship the app's
+    // source to the host the user is migrating away from.
     const builders = await listBuildServerChoices();
     assert.ok(
       builders.some((c) => c.id === SERVER_1),
@@ -235,10 +215,6 @@ test("a build-only server is still a legal builder, unlike a migration source", 
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* Build fallback                                                      */
-/* ------------------------------------------------------------------ */
-
 test("the Deplo host is a build fallback with nobody configuring anything", async () => {
   // SERVER_1 answers on 10.0.0.1, which is what the panel says it is.
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
@@ -250,14 +226,13 @@ test("the Deplo host is a build fallback with nobody configuring anything", asyn
       assert.equal(panel?.isDeploHost, true);
       assert.equal(panel?.buildFallback, true);
 
-      // And it can be taken out, which is the point of storing the answer.
       await setServerBuildFallback(SERVER_1, false);
       assert.equal(
         (await listBuildServerChoices()).find((c) => c.id === SERVER_1)
           ?.buildFallback,
         false,
       );
-      // Back to automatic, which is on again for this host.
+      // null is back to automatic, which is on again for this host.
       await setServerBuildFallback(SERVER_1, null);
       assert.equal((await getServerById(SERVER_1))!.buildFallback, null);
     });
@@ -296,7 +271,6 @@ test("a backups-only host cannot be marked as a build fallback", async () => {
       /backups only/,
       "a host with no Docker was accepted as a builder",
     );
-    // Turning it OFF stays legal: the answer is stored either way.
     await setServerBuildFallback(SERVER_1, false);
     assert.equal((await getServerById(SERVER_1))!.buildFallback, false);
   });

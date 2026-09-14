@@ -2,12 +2,9 @@
 
 import * as React from "react";
 import { gqlSubscribe } from "@/lib/graphql-client";
-import type { DatabaseStatus } from "@/lib/types";
+import type { DatabaseStatus } from "@/lib/types/database";
 
-/**
- * The live, client-tracked slice of a database's state - the DB twin of {@link
- * import("@/components/apps/app-live-status").
- */
+// LiveDatabase - the live, client-tracked slice of a database's state.
 export type LiveDatabase = {
   id: string;
   name: string;
@@ -60,12 +57,12 @@ export function DatabaseLiveStatusProvider({
   );
 }
 
-/** Read the live database state, or null outside a provider. */
+// useLiveDatabase - the live database state, or null outside a provider.
 export function useLiveDatabase(): LiveDatabase | null {
   return React.useContext(LiveDatabaseContext);
 }
 
-/** The database's live status, falling back to a server-rendered value. */
+// useLiveDatabaseStatus - the live status, falling back to a server-rendered value.
 export function useLiveDatabaseStatus(
   fallback: DatabaseStatus,
 ): DatabaseStatus {

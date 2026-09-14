@@ -51,15 +51,11 @@ import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
 import type { GithubAppAccessDTO, GithubAppDTO } from "@/lib/data/github";
-import type { GitProviderChoice } from "@/lib/types";
+import type { GitProviderChoice } from "@/lib/types/git";
 
-/** What each connected App is not allowed to do, and where its owner fixes it. */
 type AppAccess = Record<string, GithubAppAccessDTO>;
 
-/**
- * The whole Git settings page: one header, one grid of connected hosts, one empty
- * state.
- */
+// GitPanel - the Git settings page: hosts grid, empty state.
 export function GitPanel({
   githubApps,
   connections,
@@ -70,15 +66,9 @@ export function GitPanel({
 }: {
   githubApps: GithubAppDTO[];
   connections: GitConnectionDTO[];
-  /** The provider catalogue, passed down rather than fetched: it is static. */
   providers: GitProviderChoice[];
   appAccess?: AppAccess;
-  /**
-   * Where to send the browser once a provider is connected: the page that linked
-   * here (`?next=`), already validated server-side.
-   */
   next?: string | null;
-  /** Gates the one advanced option: pointing a connection inside the network. */
   isInstanceAdmin: boolean;
 }) {
   const router = useRouter();
@@ -104,8 +94,6 @@ export function GitPanel({
     router.refresh();
   }
 
-  // Both kinds of card leave the page on the click and come back only if the
-  // server refuses.
   const {
     visible: apps,
     remove: hideApp,
@@ -143,9 +131,6 @@ export function GitPanel({
           description="Connect a host and its repositories are yours to import and deploy on every push."
         />
       ) : (
-        // `items-start` because a card carrying a failure block is genuinely
-        // taller than one that is fine, and the grid's default stretch would
-        // pad the healthy card with an empty void to match it.
         <div className="grid items-start gap-4 sm:grid-cols-2 3xl:grid-cols-3">
           {apps.map((app) => (
             <GithubAppCard
@@ -168,8 +153,7 @@ export function GitPanel({
         </div>
       )}
 
-      {/* The dialogs are mounted only while open, so their fields seed from
-          their initial state instead of an effect that resets them. */}
+      {/* Mounted only while open, so fields seed from their initial state. */}
       {connectProvider && (
         <ConnectGitProviderDialog
           provider={connectProvider}
@@ -242,13 +226,6 @@ export function GitPanel({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Connect menu                                                        */
-/* ------------------------------------------------------------------ */
-
-/**
- * The page's one add button.
- */
 function ConnectMenu({
   providers,
   onPick,
@@ -273,12 +250,8 @@ function ConnectMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          {/* Every host in the menu wears the same coloured mark it wears on its
-              card below, so picking one is recognising a logo rather than reading
-              a list. */}
-          {/* GitHub creates the App under whoever owns it, and the two owners
-              live at different addresses on github.com - so the owner is picked
-              here, before the browser leaves. */}
+          {/* Every host wears the same mark it wears on its card below. */}
+          {/* The two GitHub owners live at different addresses, so it is picked here. */}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <GitProviderMark provider="github" className="size-5" />
@@ -309,15 +282,6 @@ function ConnectMenu({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Cards                                                               */
-/* ------------------------------------------------------------------ */
-
-/**
- * The shell both kinds of card share: mark, title block, kebab. One component so
- * a GitHub App and a token connection can never drift into two different card
- * shapes sitting side by side in the same grid.
- */
 function HostCard({
   provider,
   title,
@@ -328,7 +292,6 @@ function HostCard({
 }: {
   provider: string;
   title: string;
-  /** The host's own page. Reached from the menu, as "Manage". */
   href: string;
   subtitle: string;
   menu: React.ReactNode;
@@ -356,11 +319,7 @@ function HostCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            {/**
-             * Rendered HERE rather than by each card, so no host can end up without a way back
-             * to its own settings page - which is where repository access, tokens and
-             * everything else Deplo does not own is actually changed.
-             */}
+            {/* Rendered here so no host ends up without a way back to its settings. */}
             <DropdownMenuItem asChild>
               <a href={href} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="size-4" />
@@ -399,8 +358,7 @@ function GithubAppCard({
         </DropdownMenuItem>
       }
     >
-      {/* A missing entry means GitHub could not be asked - no badge, no
-          accusation. */}
+      {/* A missing entry means GitHub could not be asked - no badge. */}
       {access && access.missing.length > 0 && (
         <GitAccessNotice
           className="mt-3"
@@ -451,8 +409,7 @@ function ConnectionCard({
       }
       menu={
         <>
-          {/* Only a provider with an API can be asked whether its token still
-              works; for the rest the item would always fail. */}
+          {/* Only a provider with an API can be asked whether its token works. */}
           {conn.hasApi && (
             <DropdownMenuItem onSelect={onTest} disabled={testing}>
               {testing ? (
@@ -509,9 +466,7 @@ function ConnectionCard({
               Token expires {conn.tokenExpiresAt.slice(0, 10)}
             </Badge>
           )}
-          {/* An address inside the network is an instance-admin exception, so it
-              is stated on the card rather than left to whoever remembers making
-              it. */}
+          {/* An address inside the network is an instance-admin exception. */}
           {conn.allowPrivateEndpoint && (
             <Badge variant="muted">On your own network</Badge>
           )}
@@ -520,10 +475,6 @@ function ConnectionCard({
     </HostCard>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Edit / rotate                                                       */
-/* ------------------------------------------------------------------ */
 
 function EditDialog({
   connection,

@@ -6,50 +6,32 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   appGrants,
-  apps as appsTable,
-  environments as environmentsTable,
   folderGrants,
-  folders as foldersTable,
   memberships as membershipsTable,
   projectGrants,
-  projects as projectsTable,
   teamRoles as teamRolesTable,
   teamRoleScopeApps,
   teamRoleScopeEnvironments,
   teamRoleScopeFolders,
   teamRoleScopeProjects,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import {
+  environments as environmentsTable,
+  folders as foldersTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane/projects";
 
-/**
- * REACH, as opposed to POWER: which nodes of a team a principal can touch at all,
- * before anyone asks what they may do there.
- */
-
-/** What a scope names. `null` anywhere below means "unrestricted". */
+// NodeScope is what a scope names; null anywhere below means unrestricted.
 export interface NodeScope {
   projectIds: string[];
-  /**
-   * Ticked environments. Filing an app into a folder CLEARS its environment, which
-   * is why the app predicate asks the folder first: the two are alternatives,
-   * never both.
-   */
   environmentIds: string[];
-  /** Ticked folders and their whole subtrees, expanded once at read time. */
   folderIds: string[];
   appIds: string[];
-  /**
-   * Projects that CONTAIN an individually named node, so the container stays
-   * navigable without being granted. The token scope carries the same field for
-   * the same reason.
-   */
   appProjectIds: string[];
 }
 
-/**
- * Every folder a scope actually reaches: the ticked ones, everything nested under
- * them, and everything filed under a ticked project, plus the projects those
- * folders sit in, so the containers stay navigable.
- */
+// expandFolders returns every folder a scope reaches, plus the projects those folders sit in.
 export async function expandFolders(
   teamIds: string[],
   ticked: string[],
@@ -74,8 +56,6 @@ export async function expandFolders(
     if (f.parentId)
       childrenOf.set(f.parentId, [...(childrenOf.get(f.parentId) ?? []), f.id]);
 
-  // Roots: the ticked folders, plus every folder filed DIRECTLY under a ticked
-  // project (their own subtrees follow below).
   const projects = new Set(scopedProjectIds);
   const roots = [
     ...ticked,
@@ -104,11 +84,7 @@ export async function expandFolders(
   return { folderIds: [...reached], folderProjectIds };
 }
 
-/**
- * The reach of this PERSON in this team, or `null` for the whole of it, which is
- * every member until someone limits one, and so the answer for most of them. Two
- * sources, in this order: 1. **their role's scope** otherwise.
- */
+// memberScopeFor is this person's reach in a team, or null for the whole of it.
 export const memberScopeFor = cache(async function memberScopeFor(
   userId: string,
   teamId: string,
@@ -122,9 +98,7 @@ export const memberScopeFor = cache(async function memberScopeFor(
         granular: membershipsTable.granular,
       })
       .from(membershipsTable)
-      // LEFT, not inner: a granular membership carries its own reach whether or
-      // not it points at a role, and an inner join answered "unrestricted" for
-      // the hand-picked ones.
+      // LEFT, not inner: a granular membership carries its own reach with or without a role.
       .leftJoin(teamRolesTable, eq(teamRolesTable.id, membershipsTable.roleId))
       .where(
         and(
@@ -140,10 +114,7 @@ export const memberScopeFor = cache(async function memberScopeFor(
   return loadRoleScope(row.roleId, teamId);
 });
 
-/**
- * The nodes one person holds in a team, as a scope: the same rows that grant them
- * capabilities there (ADR-0016) read as REACH rather than as power.
- */
+// The same rows that grant a person capabilities (ADR-0016), read as reach rather than power.
 async function loadMemberScope(
   userId: string,
   teamId: string,
@@ -182,8 +153,7 @@ async function loadMemberScope(
   );
   return {
     projectIds,
-    // No environment rung: a grant cannot name one, so the member page never
-    // offers it and this list is always empty here.
+    // No environment rung: a grant cannot name one, so this list is always empty here.
     environmentIds: [],
     folderIds,
     appIds: appRows.map((r) => r.id),
@@ -199,7 +169,7 @@ async function loadMemberScope(
   };
 }
 
-/** The junctions of one scoped role, expanded. Split out so tests can drive it. */
+// loadRoleScope expands the junctions of one scoped role.
 export async function loadRoleScope(
   roleId: string,
   teamId: string,
@@ -256,8 +226,7 @@ export async function loadRoleScope(
     appProjectIds: [
       ...new Set(
         [
-          // A named node makes its project navigable, whatever kind it is: you cannot drill
-          // into staging, or into one app, without seeing the project that holds it.
+          // A named node makes its project navigable: no drilling into staging without its project.
           ...envRows.map((r) => r.projectId),
           ...appRows.map((r) => r.projectId),
           ...folderRows.map((r) => r.projectId),
@@ -268,15 +237,7 @@ export async function loadRoleScope(
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* The predicates. Pure, and null means unrestricted.                  */
-/* ------------------------------------------------------------------ */
-
-/**
- * An app lives in exactly ONE place - a folder, a project, or the team top level
- * (filing it into a folder clears its project link), so the three clauses are
- * alternatives.
- */
+// appInScope: an app lives in exactly ONE place - folder, project or team top level - so the clauses are alternatives.
 export function appInScope(
   scope: NodeScope | null,
   app: {
@@ -298,7 +259,7 @@ export function appInScope(
   return app.projectId != null && scope.projectIds.includes(app.projectId);
 }
 
-/** Strict, like a folder: an environment is reached by being named. */
+// environmentInScope is strict, like a folder: an environment is reached by being named.
 export function environmentInScope(
   scope: NodeScope | null,
   environmentId: string | null,
@@ -307,7 +268,7 @@ export function environmentInScope(
   return environmentId != null && scope.environmentIds.includes(environmentId);
 }
 
-/** Strict: the subtree is already flattened into `folderIds`, so no walk here. */
+// folderInScope is strict: the subtree is already flattened into folderIds, so no walk here.
 export function folderInScope(
   scope: NodeScope | null,
   folderId: string | null,
@@ -316,7 +277,7 @@ export function folderInScope(
   return folderId != null && scope.folderIds.includes(folderId);
 }
 
-/** A project is reached by being named, or by containing something that was. */
+// projectInScope: a project is reached by being named, or by containing something that was.
 export function projectInScope(
   scope: NodeScope | null,
   projectId: string | null,

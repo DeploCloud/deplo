@@ -15,13 +15,11 @@ import {
   mcpTokenConnected,
   mintMcpConnection,
 } from "./mcp-clients";
-import { createToken, listTokens, revokeToken } from "./tokens";
+import { listTokens } from "./tokens/listing";
+import { createToken } from "./tokens/mint";
+import { revokeToken } from "./tokens/revoke";
 import { listActivity } from "./activity";
-import type { Capability } from "../types";
-
-/**
- * The consent decision.
- */
+import type { Capability } from "../types/identity";
 
 let db: TestDb;
 let pg: PGlite;
@@ -45,7 +43,6 @@ after(async () => {
   await pg.close();
 });
 
-/** Both capabilities the door needs, and nothing dangerous beyond them. */
 const CONNECTOR: Capability[] = [
   "view",
   "manage_mcp",
@@ -66,8 +63,6 @@ beforeEach(async () => {
     ],
   });
   await registerClientRow(CLIENT, "Claude");
-  // The mint requires a FRESH approval on file - the row `POST /oauth2/consent`
-  // writes after verifying the provider's signature.
   await consentRow(CLIENT, OWNER);
   await consentRow(CLIENT, MEMBER);
 });
@@ -80,10 +75,7 @@ async function registerClientRow(clientId: string, name: string) {
   );
 }
 
-/**
- * Seeded the way the APPLICATION writes it, a JS `Date` through the driver, and
- * never with SQL `now()`.
- */
+// Seeded the way the APPLICATION writes it, a JS `Date` through the driver, and never with SQL `now()`.
 async function consentRow(clientId: string, userId: string, ageMs = 0) {
   await db.insert(oauthConsent).values({
     id: `ocs_${clientId}_${userId}`,
@@ -95,7 +87,6 @@ async function consentRow(clientId: string, userId: string, ageMs = 0) {
   });
 }
 
-/** Make OWNER a full member of another team, with the same capabilities. */
 async function grantOwnerIn(teamId: string) {
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
@@ -114,10 +105,6 @@ function as<T>(userId: string, fn: () => Promise<T>, teamId = TEAM_A) {
   return runWithIdentity({ userId, teamId }, fn);
 }
 
-/* ------------------------------------------------------------------ */
-/* Privilege escalation                                                */
-/* ------------------------------------------------------------------ */
-
 test("a connection cannot be granted a capability its approver does not hold", async () => {
   await assert.rejects(
     as(MEMBER, () =>
@@ -131,8 +118,6 @@ test("a connection cannot be granted a capability its approver does not hold", a
 });
 
 test("a connection is never granted instance administration", async () => {
-  // The consent path never names it, so it cannot be asked for. Run it as the
-  // instance ADMIN, where a slip would actually be reachable.
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
@@ -157,7 +142,6 @@ test("re-approving replaces the connection instead of widening the old token", a
     }),
   );
   assert.notEqual(first.tokenId, second.tokenId);
-  // The old row is GONE, not quietly holding the new permissions.
   const old = (
     await pg.query(`select id from api_tokens where id = $1`, [first.tokenId])
   ).rows;
@@ -171,9 +155,6 @@ test("re-approving replaces the connection instead of widening the old token", a
 });
 
 test("the minted capabilities are the ones the form submitted, never the client's ask", async () => {
-  // A consent screen that trusted the OAuth `scope` parameter would grant what
-  // the client asked for while showing the user something else. `scope` is not
-  // even an argument here - Capabilities and OAuth scopes are different things.
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
@@ -207,8 +188,6 @@ test("naming nothing means every team you may connect agents to, live", async ()
     TEAM_A,
     TEAM_B,
   ]);
-  // Where it may ACT is read live: take the permission away in one team and
-  // the connection is refused there, with nothing on the token touched.
   await pg.query(
     `delete from membership_capabilities
      where membership_id = 'mem_owner_b2' and capability = 'manage_mcp'`,
@@ -221,10 +200,9 @@ test("naming nothing means every team you may connect agents to, live", async ()
 });
 
 test("no approval on file mints nothing", async () => {
-  // The hole this closes: the mint used to answer to a `client_id` and a session and
-  // nothing else, so a link to `/oauth/consent?client_id=<mine>` was enough to make
-  // somebody with the capabilities click Authorize and mint a live API token bound to
-  // a client they had never heard of.
+  // The hole this closes: the mint used to answer to a `client_id` plus a session and nothing else, so a
+  // crafted `/oauth/consent?client_id=<mine>` link made anyone with the capabilities mint a live API token
+  // bound to a client they had never heard of.
   await pg.query(`delete from oauth_consent`);
   await assert.rejects(
     as(OWNER, () =>
@@ -236,9 +214,6 @@ test("no approval on file mints nothing", async () => {
 });
 
 test("a stale approval mints nothing either", async () => {
-  // Existence is not enough: a consent from an earlier connection would
-  // otherwise be a standing permission to mint, and the crafted link would work
-  // again for anyone who had ever connected that client.
   await pg.query(`delete from oauth_consent`);
   await consentRow(CLIENT, OWNER, 30 * 60 * 1000);
   await assert.rejects(
@@ -261,7 +236,6 @@ test("one person's approval does not let another mint", async () => {
 });
 
 test("a team that drifted between the screen and the submit is refused", async () => {
-  // The screen says which team it showed; the server still decides.
   await assert.rejects(
     as(OWNER, () =>
       mintMcpConnection({
@@ -276,9 +250,6 @@ test("a team that drifted between the screen and the submit is refused", async (
 });
 
 test("another team may be granted, and then the connection really reaches it", async () => {
-  // The multi-team rule. Naming a project of TEAM_B grants TEAM_B - a scope
-  // reaches every team it touches, not only the ones ticked whole, so the same
-  // gate has to pass there, and here it does.
   await grantOwnerIn(TEAM_B);
   await pg.query(
     `insert into projects (id, team_id, name, slug, created_at, updated_at)
@@ -309,8 +280,6 @@ test("another team may be granted, and then the connection really reaches it", a
 });
 
 test("a team where you may not manage MCP access cannot be granted", async () => {
-  // The gate is asked in the team it applies to. Holding it here says nothing
-  // about there, and naming a team is letting an AI client into it.
   await grantOwnerIn(TEAM_B);
   await pg.query(
     `delete from membership_capabilities
@@ -346,10 +315,6 @@ test("a team with MCP switched off cannot be granted either", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* What the consent screen ticks                                       */
-/* ------------------------------------------------------------------ */
-
 test("the teams ticked by default are exactly the ones the mint would accept", async () => {
   await grantOwnerIn(TEAM_B);
   assert.deepEqual(
@@ -357,8 +322,6 @@ test("the teams ticked by default are exactly the ones the mint would accept", a
     [TEAM_A, TEAM_B].sort(),
   );
 
-  // The same two refusals the mint raises, so the screen never opens with a
-  // tick on a team that would fail at Authorize.
   await pg.query(
     `delete from membership_capabilities
      where membership_id = 'mem_owner_b2' and capability = 'manage_mcp'`,
@@ -379,8 +342,6 @@ test("a team you are not in is never ticked", async () => {
 });
 
 test("an attacker-length client name does not break the mint", async () => {
-  // `createToken` refuses a name over 40 characters, and the name is chosen by
-  // whoever registered the client.
   await registerClientRow("client_long", "N".repeat(200));
   await consentRow("client_long", OWNER);
   await as(OWNER, () =>
@@ -394,10 +355,6 @@ test("an attacker-length client name does not break the mint", async () => {
   assert.equal(rows.length, 1);
   assert.ok(rows[0].name.length <= 40, rows[0].name);
 });
-
-/* ------------------------------------------------------------------ */
-/* The door                                                            */
-/* ------------------------------------------------------------------ */
 
 test("approving needs manage_mcp", async () => {
   await pg.query(
@@ -414,8 +371,6 @@ test("approving needs manage_mcp", async () => {
 });
 
 test("approving needs manage_tokens as well, not only manage_mcp", async () => {
-  // Both, in both directions: one `requireCapability` call can only carry one,
-  // and this pair is what forces the second gate to exist.
   await pg.query(
     `delete from membership_capabilities
      where membership_id = $1 and capability = 'manage_tokens'`,
@@ -432,8 +387,6 @@ test("approving needs manage_tokens as well, not only manage_mcp", async () => {
 });
 
 test("the team kill switch blocks the DOOR, not only the request", async () => {
-  // Otherwise turning MCP off leaves connections that resume the moment it
-  // flips back, which is not what an operator turning it off believes.
   await pg.query(`update teams set mcp_enabled = false where id = $1`, [
     TEAM_A,
   ]);
@@ -484,10 +437,6 @@ test("a disabled client cannot be approved", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Listing, revocation, cross-team                                     */
-/* ------------------------------------------------------------------ */
-
 test("a connection is listed to its owner with the permissions it holds NOW", async () => {
   await as(OWNER, () =>
     mintMcpConnection({
@@ -514,7 +463,6 @@ test("another person neither sees nor revokes the connection, but the team count
     as(MEMBER, () => revokeToken(tokenId)),
     /not found/i,
   );
-  // A number is all the team gets: enough to know an agent is here.
   assert.equal(await as(MEMBER, () => countMcpAgents()), 1);
 });
 
@@ -538,7 +486,6 @@ test("the agent count is per team, and only counts where the owner may connect",
   );
   assert.equal(await as(OWNER, () => countMcpAgents()), 1);
   assert.equal(await as(OWNER, () => countMcpAgents(), TEAM_B), 1);
-  // Not a member who may use tokens there any more: not counted there.
   await pg.query(
     `delete from membership_capabilities
      where membership_id = 'mem_owner_b2' and capability = 'manage_tokens'`,
@@ -561,8 +508,6 @@ test("revoking from one team disconnects the client from all of them", async () 
 
   assert.equal(await as(OWNER, () => countMcpAgents()), 0);
   assert.equal(await as(OWNER, () => countMcpAgents(), TEAM_B), 0);
-  // The OAuth half goes with it: a surviving consent would let the client
-  // re-authorize with no screen, which is not what Revoke promised.
   assert.equal(
     (await pg.query(`select id from oauth_consent where user_id = $1`, [OWNER]))
       .rows.length,
@@ -574,8 +519,6 @@ test("revoking the connection also clears its OAuth rows", async () => {
   const { tokenId } = await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
-  // A refresh token would otherwise mint a fresh access token an hour later, and
-  // a surviving consent would let the client re-authorize with no screen.
   await pg.query(
     `insert into oauth_refresh_token
        (id, token, client_id, user_id, expires_at, created_at, scopes)
@@ -600,8 +543,6 @@ test("revoking the connection also clears its OAuth rows", async () => {
     const rows = (await pg.query(`select id from ${table}`)).rows;
     assert.equal(rows.length, 0, `${table} kept a row after revocation`);
   }
-  // Scoped to the person whose connection was revoked: another member's
-  // approval of the same client is none of this revocation's business.
   const mine = (
     await pg.query(
       `select id from oauth_consent where client_id = $1 and user_id = $2`,
@@ -635,10 +576,6 @@ test("revoking one person's connection leaves another's to the same client alone
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Audit and secret hygiene                                            */
-/* ------------------------------------------------------------------ */
-
 test("approving writes one activity entry naming the client and the approver", async () => {
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
@@ -650,8 +587,6 @@ test("approving writes one activity entry naming the client and the approver", a
 });
 
 test("the raw token never reaches the activity trail or the connection DTO", async () => {
-  // `createToken` returns a live bearer that this flow drops on the floor. If it
-  // ever leaked, revoking the OAuth connection would leave it working.
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
@@ -659,21 +594,12 @@ test("the raw token never reaches the activity trail or the connection DTO", asy
     await as(OWNER, () => listActivity()),
     await as(OWNER, () => listTokens()),
   ]);
-  // The 12-character `prefix` is shown on purpose (`deplo_abc1••••••••`), so the
-  // thing to hunt is a FULL secret: 24 random bytes as base64url is 32 chars.
   const fullSecret = /deplo_[A-Za-z0-9_-]{20,}/.exec(dump);
   assert.equal(fullSecret, null, `a raw bearer escaped: ${fullSecret?.[0]}`);
   assert.ok(!dump.includes("token_hash"), dump.slice(0, 200));
 });
 
-/* ------------------------------------------------------------------ */
-/* Static invariants                                                   */
-/* ------------------------------------------------------------------ */
-
 test("the consent path mints through createToken and never inserts a token itself", async () => {
-  // The highest-value test in this file. Every runtime assertion above proves
-  // the mint is correct TODAY; this proves there is no second construction site
-  // that could drift away from `withinActor` next month.
   const { readFileSync } = await import("node:fs");
   const src = readFileSync("lib/data/mcp-clients.ts", "utf8");
   for (const forbidden of [
@@ -689,8 +615,6 @@ test("the consent path mints through createToken and never inserts a token itsel
 });
 
 test("the consent path never names instance administration in code", async () => {
-  // Comments are stripped first: the docblock explaining WHY instance
-  // administration is unreachable is the thing we most want kept.
   const { readFileSync } = await import("node:fs");
   const code = readFileSync("lib/data/mcp-clients.ts", "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -703,7 +627,6 @@ test("the consent path never names instance administration in code", async () =>
 });
 
 test("the connection appears in the API tokens list, marked", async () => {
-  // One screen still answers "who can act in this team".
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
@@ -713,16 +636,6 @@ test("the connection appears in the API tokens list, marked", async () => {
   assert.equal(tokens[0].mcp, true, "the robot mark did not reach the list");
 });
 
-/* ------------------------------------------------------------------ */
-/* Bearer connections - the half this list used to be blind to          */
-/* ------------------------------------------------------------------ */
-
-/**
- * A bearer token has no registered client row: what makes it an agent is having
- * spoken the protocol.
- */
-
-/** Mint an ordinary bearer token, the way the connect wizard does. */
 async function bearer(name: string, userId = OWNER) {
   const { token } = await as(userId, () =>
     createToken({ name, capabilities: ["view", "deploy_apps"] }),
@@ -730,7 +643,6 @@ async function bearer(name: string, userId = OWNER) {
   return token.id;
 }
 
-/** The stamp `/api/mcp` takes once a token really speaks the protocol. */
 async function markSpokeMcp(tokenId: string) {
   await pg.query(
     `update api_tokens set mcp_last_used_at = now() where id = $1`,
@@ -749,8 +661,6 @@ test("a bearer token that has spoken MCP counts as an agent, and is marked", asy
 });
 
 test("a token that has never spoken MCP is not an agent", async () => {
-  // This is a CI credential, and counting it would tell a company an AI agent
-  // is in their infrastructure when none is.
   await bearer("Nightly CI");
   assert.equal(await as(OWNER, () => countMcpAgents()), 0);
   assert.equal((await as(OWNER, () => listTokens()))[0].mcp, false);
@@ -794,8 +704,8 @@ test("mcpTokenConnected answers only for your own token", async () => {
   await markSpokeMcp(id);
   assert.equal(await as(OWNER, () => mcpTokenConnected(id)), true);
 
-  // Somebody else's token answers FALSE, not an error: an error would confirm
-  // the row exists to somebody with no business knowing it does.
+  // Somebody else's token answers FALSE, not an error: an error would confirm the row exists to
+  // somebody with no business knowing it does.
   const theirs = await bearer("Their Cursor", MEMBER);
   await markSpokeMcp(theirs);
   assert.equal(await as(OWNER, () => mcpTokenConnected(theirs)), false);

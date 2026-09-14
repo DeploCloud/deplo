@@ -20,23 +20,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { wwwCounterpart, type WwwRedirect } from "@/lib/www-redirect";
-import type { CertProvider, DomainEntrypoint } from "@/lib/types";
+import type { CertProvider, DomainEntrypoint } from "@/lib/types/domain";
 
-/** The two entrypoints the proxy's static config defines, labelled
- * outcome-first because `websecure` is Traefik vocabulary, not a consequence. */
+// The two entrypoints the proxy's static config defines.
 export const ENTRYPOINTS: { value: DomainEntrypoint; label: string }[] = [
   { value: "websecure", label: "HTTPS - websecure (:443)" },
   { value: "web", label: "HTTP - web (:80)" },
 ];
 
-/** Sentinel for "derive the entrypoint from the certificate". NOT a Traefik
- * entrypoint: it is the ABSENCE of a manual choice, so it stays out of
- * `ENTRYPOINTS` and `DomainConfigState` and needs no data-layer change. */
+// Sentinel for "derive from the certificate": the absence of a manual choice, not a Traefik entrypoint.
 const ENTRYPOINT_AUTO = "auto";
 
-/** Certificate providers. The dropdown is the single TLS control - picking one
- * is how a domain opts INTO HTTPS. "None" is first because it is the default;
- * a Cloudflare-proxied host selects "Cloudflare" on its own. */
+// Certificate providers - the dropdown is the single TLS control, and picking one is how a domain opts into HTTPS.
 export const CERT_PROVIDERS: { value: CertProvider; label: string }[] = [
   { value: "none", label: "None (no certificate)" },
   { value: "letsencrypt", label: "Let's Encrypt" },
@@ -44,34 +39,29 @@ export const CERT_PROVIDERS: { value: CertProvider; label: string }[] = [
   { value: "custom", label: "Installed on the server" },
 ];
 
-/** The editable per-domain routing values, held as form state by the caller. */
+// The editable per-domain routing values, held as form state by the caller.
 export interface DomainConfigState {
   port: string;
-  /** Whether the user manages the entrypoint by hand. Off ⇒ it's derived from
-   * the certificate provider; on ⇒ `entrypoint` below is sent verbatim. */
+  // Off ⇒ the entrypoint is derived from the certificate provider; on ⇒ `entrypoint` is sent verbatim.
   manualEntrypoint: boolean;
   entrypoint: DomainEntrypoint;
-  /** Certificate provider - the single TLS control. "none" ⇒ plain HTTP. */
+  // The single TLS control. "none" ⇒ plain HTTP.
   certProvider: CertProvider;
-  /** Raw comma-separated middlewares text, split on submit. */
+  // Raw comma-separated text, split on submit.
   middlewares: string;
-  /** Internal path prefix the router matches (Traefik PathPrefix). */
+  // Internal path prefix the router matches (Traefik PathPrefix).
   path: string;
-  /** Strip the path prefix before forwarding (Traefik stripprefix middleware). */
+  // Strip the path prefix before forwarding (Traefik stripprefix middleware).
   stripPath: boolean;
-  /** Compose-stack only: which compose service this host targets ("" ⇒ default). */
+  // Compose-stack only: which compose service this host targets ("" ⇒ default).
   service: string;
-  /** Something else answers for this hostname, so its DNS never points here and
-   * the check can only ever say `misconfigured`. Routes it anyway. */
+  // Its DNS never points here, so the check can only ever say `misconfigured`. Routed anyway.
   proxied: boolean;
-  /** Which half of this hostname's `www` pair serves the app. Derived from the
-   * app's rows by the caller (never a stored flag) and posted back on save. */
+  // Derived from the app's rows by the caller (never a stored flag) and posted back on save.
   www: WwwRedirect;
 }
 
-/** Seed form state from a domain, or defaults for a new one. A NEW domain gets
- * no certificate; an existing row with an absent provider keeps the legacy
- * `letsencrypt` reading, because that is what the deploy edge actually runs. */
+// Seed form state from a domain. An existing row with no provider reads as legacy `letsencrypt`, which is what the deploy edge runs.
 export function initialDomainConfig(
   domain?: {
     port?: number | null;
@@ -84,8 +74,7 @@ export function initialDomainConfig(
     proxied?: boolean;
   },
   defaultPort?: number,
-  /** The `www` pairing the app's rows currently describe (`deriveWwwRedirect`).
-   * Defaults to `none`, which is right for a brand-new domain. */
+  // The pairing the app's rows describe (`deriveWwwRedirect`); `none` for a brand-new domain.
   www: WwwRedirect = "none",
 ): DomainConfigState {
   return {
@@ -107,7 +96,7 @@ export function initialDomainConfig(
   };
 }
 
-/** Split the comma-separated middlewares text into a trimmed, non-empty array. */
+// Split the comma-separated middlewares text into a trimmed, non-empty array.
 export function parseMiddlewares(text: string): string[] {
   return text
     .split(",")
@@ -115,15 +104,11 @@ export function parseMiddlewares(text: string): string[] {
     .filter(Boolean);
 }
 
-/** Validate and resolve form state into the action payload, or an error string.
- * A compose stack requires both service and port. `entrypoint` is tri-state:
- * a value means manual, `null` means auto - and `none` always forces `null`. */
+// Resolve form state into the action payload. `entrypoint` is tri-state: a value is manual, `null` is auto, and "none" forces `null`.
 export function resolveDomainConfig(
   state: DomainConfigState,
   isCompose: boolean,
-  /** The hostname the dialog holds. A `www` pairing is dropped when the hostname
-   * has no counterpart, or editing the host would post a pairing the server
-   * can only reject. */
+  // A `www` pairing is dropped when the hostname has no counterpart - the server can only reject one.
   hostname?: string,
 ):
   | {
@@ -170,9 +155,7 @@ export function resolveDomainConfig(
     stripPrefix: path ? state.stripPath : false,
     service,
     proxied: state.proxied,
-    // Sent as-is, including when unchanged: the pairing is derived from the app's
-    // rows, so posting the current value is a no-op server-side and posting a
-    // different one is the whole edit.
+    // Sent as-is: the pairing is derived from the app's rows, so the current value is a no-op server-side.
     www:
       hostname !== undefined && wwwCounterpart(hostname) == null
         ? "none"
@@ -180,16 +163,10 @@ export function resolveDomainConfig(
   };
 }
 
-/**
- * What the advanced panel holds, for the closed header. Only parts that DIVERGE
- * from a new domain's defaults are emitted, so a first-run dialog does not greet
- * a newcomer with "No certificate". Middlewares are counted, never named.
- */
+// Only the parts that diverge from a new domain's defaults, so a first-run dialog summarises nothing.
 export function advancedSummary(
   state: DomainConfigState,
-  /** The hostname the dialog currently holds, so the summary can name the
-   * hostname a `www` pairing redirects. Absent ⇒ the pairing is summarised
-   * generically. */
+  // Absent ⇒ a `www` pairing is summarised without naming the hostname.
   hostname?: string,
 ): string {
   const parts: string[] = [];
@@ -213,10 +190,6 @@ export function advancedSummary(
   return parts.join(" · ");
 }
 
-/**
- * A titled group of fields - the same fieldset/legend rhythm
- * `LimitGroup` uses in `components/apps/settings/resource-limits-form.tsx`.
- */
 function FieldGroup({
   icon: Icon,
   title,
@@ -237,10 +210,7 @@ function FieldGroup({
   );
 }
 
-/**
- * The shared per-domain routing fields, rendered identically in the Add and Edit
- * dialogs so the two never drift.
- */
+// The shared per-domain routing fields, rendered identically in the Add and Edit dialogs so the two never drift.
 export function DomainConfigFields({
   state,
   onChange,
@@ -253,19 +223,12 @@ export function DomainConfigFields({
   state: DomainConfigState;
   onChange: (next: DomainConfigState) => void;
   idPrefix: string;
-  /** Compose service names for the service selector; empty ⇒ single-image. */
+  // Compose service names for the service selector; empty ⇒ single-image.
   services?: string[];
-  /**
-   * Whether this domain's DNS check found it proxied through Cloudflare (status
-   * `cloudflare`).
-   */
+  // True when this domain's DNS check came back `cloudflare`.
   proxied?: boolean;
-  /** The public IPv4 of the server this app runs on, so the Cloudflare note can
-   * name the address the proxied record must point at. */
   serverIp?: string;
-  /** The hostname currently typed in the dialog's Domain field, so the route
-   * preview shows the real URL as it is typed. Purely presentational - it never
-   * enters `DomainConfigState` nor the mutation payload. */
+  // Purely presentational - it never enters `DomainConfigState` nor the mutation payload.
   hostname?: string;
 }) {
   const set = <K extends keyof DomainConfigState>(
@@ -277,9 +240,7 @@ export function DomainConfigFields({
   const noCert = state.certProvider === "none";
   const rawPath = state.path.trim();
   const hasPath = rawPath.length > 0;
-  // The same two checks `resolveDomainConfig` runs, with its own error strings:
-  // the rewrite preview must never illustrate a config that will be rejected on
-  // submit, and saying why beats showing nothing.
+  // The same two checks `resolveDomainConfig` runs: the preview must never illustrate a config the submit rejects.
   const pathError = !hasPath
     ? null
     : !rawPath.startsWith("/")
@@ -290,16 +251,12 @@ export function DomainConfigFields({
   const sampleIn = `${rawPath.replace(/\/+$/, "")}/users`;
   const sampleOut = state.stripPath ? "/users" : sampleIn;
 
-  // "auto" is the displayed value whenever no manual choice applies. With no
-  // certificate `resolveDomainConfig` ignores the manual flag, so the control
-  // shows (and locks to) the truth rather than a stale override.
+  // With no certificate `resolveDomainConfig` ignores the manual flag, so the control shows auto rather than a stale override.
   const entrypointValue =
     noCert || !state.manualEntrypoint ? ENTRYPOINT_AUTO : state.entrypoint;
   const summary = advancedSummary(state, hostname);
 
-  // The `www` pair of the hostname currently typed. Null for a hostname that has no
-  // meaningful one (an `api.` subdomain, a generated nip.io host) - the whole group
-  // is then absent rather than offering a choice about a hostname nobody would use.
+  // Null for a hostname with no meaningful pair (an `api.` subdomain, a generated nip.io host).
   const host = (hostname ?? "").trim();
   const counterpart = wwwCounterpart(host);
   const showWww = counterpart != null && (!hasPath || state.www !== "none");
@@ -311,10 +268,7 @@ export function DomainConfigFields({
       {proxied && <CloudflareNote serverIp={serverIp} />}
       {isCompose && (
         <div className="space-y-2">
-          {/**
-           * The stack's containers, by their compose service name - the same names the Logs
-           * and Console pickers list for this app.
-           */}
+          {/* The stack's containers, by the same compose service names the Logs and Console pickers list. */}
           <FieldLabel
             htmlFor={`${idPrefix}-service`}
             info="Which container of this app's compose stack serves this domain."
@@ -361,8 +315,7 @@ export function DomainConfigFields({
           value={state.port}
           onChange={(e) => set("port", e.target.value)}
           placeholder="e.g. 8080"
-          // Spinner-hiding lifted verbatim from `LimitField` - native arrows
-          // collide with a mono value and nobody steps a port by one.
+          // Native spinner arrows collide with a mono value; same hiding as `LimitField`.
           className="[appearance:textfield] font-mono text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
@@ -379,8 +332,7 @@ export function DomainConfigFields({
           <Select
             value={state.certProvider}
             onValueChange={(v) =>
-              // Written as ONE onChange, never two set() calls: a second set() would spread the
-              // stale `state` and drop the first key.
+              // ONE onChange, never two set() calls: the second would spread the stale `state` and drop the first key.
               onChange({
                 ...state,
                 certProvider: v as CertProvider,
@@ -418,10 +370,7 @@ export function DomainConfigFields({
           >
             Entrypoint
           </FieldLabel>
-          {/**
-           * One stable control replaces a disabled checkbox, a conditionally-mounted Select
-           * and two muted paragraphs that used to swap in the same slot.
-           */}
+          {/* One stable control rather than a checkbox and a Select swapping in the same slot. */}
           <Select
             value={entrypointValue}
             disabled={noCert}
@@ -454,16 +403,12 @@ export function DomainConfigFields({
         </div>
       </FieldGroup>
 
-      {/**
-       * Expert territory: collapsed on every open, in Add AND in Edit, so the two dialogs
-       * can never drift and the first-run path never meets it.
-       */}
+      {/* Collapsed on every open, in Add and in Edit, so the first-run path never meets it. */}
       <Accordion type="single" collapsible className="border-t border-border">
         <AccordionItem value="advanced" className="border-none">
           <AccordionTrigger className="group gap-3 rounded-md py-3 hover:no-underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
             <span className="flex min-w-0 flex-1 items-center gap-3">
-              {/* shrink-0 so the title never wraps to two lines while the
-                  summary (which owns `truncate`) is what gives way. */}
+              {/* shrink-0 so the title never wraps while the summary, which owns `truncate`, gives way. */}
               <span className="shrink-0 group-hover:underline">
                 Advanced settings
               </span>
@@ -522,9 +467,7 @@ export function DomainConfigFields({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No redirect</SelectItem>
-                      {/* Both directions, spelled with the real hostnames rather
-                          than the words "www"/"non-www": the option a user reads
-                          is exactly the pair of rows the server will write. */}
+                      {/* Real hostnames, not "www"/"non-www": the option reads as the pair of rows the server writes. */}
                       <SelectItem value="toThis">
                         {counterpart} → {host}
                       </SelectItem>
@@ -534,8 +477,6 @@ export function DomainConfigFields({
                     </SelectContent>
                   </Select>
                   {state.www !== "none" && (
-                    // Said once, next to the control that causes it: the one thing the user still has
-                    // to do themselves is point the second hostname's DNS here.
                     <p className="text-xs text-muted-foreground">
                       <span className="font-mono">{redirectingHost}</span> is
                       added as a domain of this app. Point its DNS at this
@@ -563,8 +504,7 @@ export function DomainConfigFields({
                   id={`${idPrefix}-path`}
                   value={state.path}
                   onChange={(e) =>
-                    // Emptying the path also clears strip, so retyping a path
-                    // never resurrects a toggle the user can't currently see.
+                    // Emptying the path clears strip, so retyping a path never resurrects a toggle the user can't see.
                     onChange({
                       ...state,
                       path: e.target.value,
@@ -580,10 +520,7 @@ export function DomainConfigFields({
                 />
               </div>
 
-              {/**
-               * Revealed by the user's own keystroke, never a disabled stub: strip is a property
-               * OF the path, so it only exists once one does.
-               */}
+              {/* Strip is a property OF the path, so it exists only once one does. */}
               {hasPath && (
                 <div className="space-y-2 rounded-md border border-border px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
@@ -644,8 +581,7 @@ export function DomainConfigFields({
                   id={`${idPrefix}-middlewares`}
                   value={state.middlewares}
                   onChange={(e) => set("middlewares", e.target.value)}
-                  // One short, provider-neutral example: the five-item list
-                  // overflowed the field, and it wraps happily in the tooltip.
+                  // One short example: the five-item list overflowed the field.
                   placeholder="redirect-https"
                   autoComplete="off"
                   spellCheck={false}

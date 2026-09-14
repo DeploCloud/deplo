@@ -8,13 +8,9 @@ import { useLiveDatabaseStatus } from "@/components/storage/database-live-status
 import { runtimeNotice } from "@/components/apps/live-logs";
 import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import type { ConsoleInstance } from "@/lib/data/console";
-import type { DatabaseStatus } from "@/lib/types";
+import type { DatabaseStatus } from "@/lib/types/database";
 
-/**
- * Live runtime logs for a database - a thin wrapper over the app ContainerLogs
- * pointed at the database logs route. Feeds it the runtime poll so a crash-
- * looping engine is followed across its restarts, exactly like an app's logs.
- */
+// DatabaseLogs streams a database's runtime logs, following the engine across restarts.
 export function DatabaseLogs({
   id,
   title,
@@ -26,29 +22,20 @@ export function DatabaseLogs({
   toolbar,
 }: {
   id: string;
-  /** The database's name and the way back to its Overview: the toolbar is the
-   *  only heading this route has. Omitted on the general Logs page, where the
-   *  target picker shows the name itself. */
   title?: PaneTitle;
   status: DatabaseStatus;
   instances: ConsoleInstance[];
   streamable: boolean;
-  /** The owning host's agent honours a log time window (`logs.timerange`). */
+  // The owning host's agent honours a log time window (`logs.timerange`).
   supportsTimeline: boolean;
-  /** The instance ceiling on that window, in days. */
   logMaxDays: number;
-  /** Extra toolbar controls, forwarded untouched: the general Logs page passes
-   *  its target picker. A database has no build to switch to, so unlike an App
-   *  there is no Runtime/Build control to compose in beside it. */
   toolbar?: React.ReactNode;
 }) {
   const status = useLiveDatabaseStatus(serverStatus);
   const runtime = useDatabaseRuntime(id, { enabled: status === "running" });
 
   if (!streamable && !instances.length) {
-    // The toolbar ROW stays even with nothing to stream: on the general Logs
-    // page it holds the target picker, and answering "nothing here" by taking
-    // away the only way to look elsewhere is a dead end.
+    // The toolbar row stays even with nothing to stream: on the general Logs page it holds the target picker.
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
@@ -56,8 +43,7 @@ export function DatabaseLogs({
           <PaneTitleLink title={title} />
           {toolbar}
         </div>
-        {/* Centred in what is left of the frame: an explanation pinned to the
-            top of a viewport-tall empty pane reads as a page that half-loaded. */}
+        {/* Centred in what is left of the frame: pinned to the top it reads as a half-loaded page. */}
         <div className="flex min-h-0 flex-1 items-center justify-center p-8">
           <p className="max-w-100 text-center text-sm text-muted-foreground">
             No container on the host to stream logs from. Redeploy the database

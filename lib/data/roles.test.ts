@@ -10,8 +10,8 @@ import {
   membershipCapabilities as membershipCapabilitiesTable,
   memberships as membershipsTable,
   teamRoles as teamRolesTable,
-  projects as projectsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { projects as projectsTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -21,19 +21,12 @@ import {
   USER_1,
 } from "./identity-test-helpers";
 import { CAPABILITY_PRESETS } from "../membership-shared";
-import { ALL_CAPABILITIES } from "../types";
-import { listMembers, updateMember } from "./members";
-import {
-  createRole,
-  deleteRole,
-  listRoles,
-  resetRole,
-  updateRole,
-} from "./roles";
-
-/**
- * Team roles against pglite.
- */
+import { ALL_CAPABILITIES } from "../types/identity";
+import { updateMember } from "./members/assignment";
+import { listMembers } from "./members/roster";
+import { resetRole } from "./roles/builtin-roles";
+import { createRole, deleteRole, updateRole } from "./roles/role-editing";
+import { listRoles } from "./roles/role-list";
 
 let db: TestDb;
 let pg: PGlite;
@@ -83,15 +76,12 @@ test("the three defaults are seeded on first read and the owner adopts theirs", 
     "freshly seeded = unmodified",
   );
 
-  // The founder's pre-roles membership adopted the Owner role, so the member
-  // list names it instead of reading "Custom".
   const me = (await asOwner(() => listMembers())).find(
     (m) => m.userId === USER_1,
   )!;
   assert.equal(me.roleName, "Owner");
   assert.equal(me.roleId, byName(roles, "Owner").id);
 
-  // Idempotent: a second read seeds nothing more.
   const again = await asOwner(() => listRoles());
   assert.equal(again.length, 3);
 });
@@ -161,7 +151,6 @@ test("editing a role rewrites the capabilities of everyone holding it", async ()
   await asOwner(() => updateMember({ userId: "dev2", roleId: role.id }));
   assert.deepEqual(await capsOf("dev1"), ["deploy_apps", "view"]);
 
-  // Re-scoping the role reaches both members in the same write.
   await asOwner(() =>
     updateRole({
       id: role.id,
@@ -180,7 +169,6 @@ test("editing a role rewrites the capabilities of everyone holding it", async ()
     "view",
   ]);
 
-  // …and taking a permission away reaches them too.
   await asOwner(() =>
     updateRole({ id: role.id, name: "Reader", capabilities: [] }),
   );
@@ -215,7 +203,6 @@ test("the Owner default is locked, and a default reverts to its preset", async (
     /can't be edited/,
   );
 
-  // Re-scope the Member default, then reset it - the member follows both ways.
   await asOwner(() =>
     updateRole({
       id: member.id,
@@ -265,7 +252,6 @@ test("deleting a role: refused while held, refused for defaults, allowed when fr
     /Default roles can't be deleted/,
   );
 
-  // Move the member off it, then the delete goes through.
   await asOwner(() => updateMember({ userId: "m1", roleId: builtinMember.id }));
   await asOwner(() => deleteRole(role.id));
   const left = await asOwner(() => listRoles());
@@ -318,7 +304,6 @@ test("a non-owner can't author or assign a role above their own rank", async () 
       { id: "m1", teamId: TEAM_A, role: "viewer", capabilities: ["view"] },
     ],
   });
-  // Authoring: the manager may run backups on nothing - they don't hold it.
   await assert.rejects(
     () =>
       asUser("mgr", () =>
@@ -326,14 +311,12 @@ test("a non-owner can't author or assign a role above their own rank", async () 
       ),
     /only give a role permissions you hold yourself/,
   );
-  // …but a role within their own set is fine.
   const ok = await asUser("mgr", () =>
     createRole({ name: "Shipper", capabilities: ["deploy_apps"] }),
   );
   assert.deepEqual(ok.capabilities, ["view", "deploy_apps"]);
 
-  // Assigning: an owner-authored role that outranks them is refused outright,
-  // rather than quietly assigned with fewer permissions than it says.
+  // Refused outright, not quietly assigned with fewer permissions than it says.
   const powerful = await asOwner(() =>
     createRole({ name: "Infra", capabilities: ["manage_backups"] }),
   );
@@ -346,8 +329,7 @@ test("a non-owner can't author or assign a role above their own rank", async () 
 });
 
 test("a role edit can't strip the team of its last administrator", async () => {
-  // No founder and no owner-role holder: the team's only administrator holds a
-  // custom role, so re-scoping that role is what would lock everyone out.
+  // No founder and no owner-role holder, so this custom role is the only administrator.
   await seedIdentity(db, {
     teams: [{ id: TEAM_A, slug: "alpha", founderUserId: null }],
     users: [
@@ -373,7 +355,6 @@ test("a role edit can't strip the team of its last administrator", async () => {
     "view",
   ]);
 
-  // Dropping manage_members from the role drops it from its only holder.
   await assert.rejects(
     () =>
       asOwner(() =>
@@ -385,7 +366,6 @@ test("a role edit can't strip the team of its last administrator", async () => {
       ),
     /at least one member who can manage members/,
   );
-  // The refusal rolled the whole edit back - role and member are untouched.
   assert.deepEqual(await capsOf(USER_1), [
     "manage_members",
     "manage_roles",
@@ -418,7 +398,6 @@ test("assigning a role stamps the rank the guards read", async () => {
   assert.equal(row.role, "owner", "the Owner role ranks as owner");
   assert.equal(row.roleId, byName(roles, "Owner").id);
 
-  // A custom role ranks as a plain member, however much it grants.
   const custom = await asOwner(() =>
     createRole({
       name: "Almost",
@@ -432,10 +411,6 @@ test("assigning a role stamps the rank the guards read", async () => {
     .where(eq(membershipsTable.userId, "m1"));
   assert.equal(after.role, "member");
 });
-
-/* ------------------------------------------------------------------ */
-/* The audit's regressions on the role WRITE path.                     */
-/* ------------------------------------------------------------------ */
 
 test("an absent field on updateRole means leave it alone, not clear it", async () => {
   await seedIdentity(db, {
@@ -454,9 +429,7 @@ test("an absent field on updateRole means leave it alone, not clear it", async (
   await asOwner(() => updateMember({ userId: "u_dev", roleId: role.id }));
   assert.deepEqual(await capsOf("u_dev"), ["deploy_apps", "view", "view_logs"]);
 
-  // The rename an API client writes: `capabilities` and `requireTwoFactor` are
-  // both optional in the SDL, and both used to be read as "" and false. A bare
-  // rename stripped every holder to `view` and lifted the 2FA mandate.
+  // Both fields are optional in the SDL; a bare rename used to strip every holder.
   await asOwner(() => updateRole({ id: role.id, name: "Deployers" }));
 
   const after = byName(await asOwner(() => listRoles()), "Deployers");
@@ -472,8 +445,6 @@ test("an absent field on updateRole means leave it alone, not clear it", async (
     "a rename wiped every holder's permissions",
   );
 
-  // Sending the field explicitly still replaces it, so this is not a refusal to
-  // write - only a refusal to invent an empty value.
   await asOwner(() =>
     updateRole({ id: role.id, name: "Deployers", capabilities: ["view"] }),
   );
@@ -487,7 +458,7 @@ test("a scope-only edit re-syncs the holders without touching the authored set",
       { id: "u_dev", teamId: TEAM_A, role: "member", capabilities: ["view"] },
     ],
   });
-  const { projects } = await import("../db/schema/control-plane");
+  const { projects } = await import("../db/schema/control-plane/projects");
   await db.insert(projects).values({
     id: "prc_x",
     teamId: TEAM_A,
@@ -505,8 +476,6 @@ test("a scope-only edit re-syncs the holders without touching the authored set",
   await asOwner(() => updateMember({ userId: "u_dev", roleId: role.id }));
   assert.ok((await capsOf("u_dev")).includes("manage_members"));
 
-  // Limiting the role, and NOTHING else - no capabilities in the payload. The
-  // authored set must survive; the EFFECTIVE one must lose the team-wide verb.
   await asOwner(() =>
     updateRole({ id: role.id, name: "Ops", scope: { projectIds: ["prc_x"] } }),
   );
@@ -530,7 +499,7 @@ test("a scoped role is never matched by the legacy rank+capabilities shape", asy
       { id: "u_dev", teamId: TEAM_A, role: "member", capabilities: ["view"] },
     ],
   });
-  const { projects } = await import("../db/schema/control-plane");
+  const { projects } = await import("../db/schema/control-plane/projects");
   await db.insert(projects).values({
     id: "prc_x",
     teamId: TEAM_A,
@@ -547,9 +516,7 @@ test("a scoped role is never matched by the legacy rank+capabilities shape", asy
     }),
   );
 
-  // rank + capabilities says nothing about REACH, and matching compares the
-  // CLAMPED set, which makes a limited role the likeliest match for a short
-  // list. Landing on it handed the membership a boundary nobody asked for.
+  // Matching compares the CLAMPED set, so a limited role was the likeliest match.
   await asOwner(() =>
     updateMember({
       userId: "u_dev",
@@ -571,7 +538,7 @@ test("limiting a built-in marks it edited, so the way back stays offered", async
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
-  const { projects } = await import("../db/schema/control-plane");
+  const { projects } = await import("../db/schema/control-plane/projects");
   await db.insert(projects).values({
     id: "prc_x",
     teamId: TEAM_A,
@@ -583,9 +550,7 @@ test("limiting a built-in marks it edited, so the way back stays offered", async
   const member = byName(await asOwner(() => listRoles()), "Member");
   assert.equal(member.modified, false, "a freshly seeded default is pristine");
 
-  // A re-scope leaves `team_role_capabilities` untouched, so comparing
-  // capabilities alone read this as unchanged: no "Edited" badge in the rail,
-  // and no "Reset to default" on the one role that most needs the way back.
+  // A re-scope leaves `team_role_capabilities` untouched, so a capability compare read it unchanged.
   await asOwner(() =>
     updateRole({
       id: member.id,
@@ -603,9 +568,7 @@ test("limiting a built-in marks it edited, so the way back stays offered", async
 });
 
 test("every capability that exists is reachable: the Owner role holds all of them", async () => {
-  // A NEW capability is easy to ship half-dead: the enum, the gate and the UI all
-  // land, while every capability row already in the database predates it, so nobody,
-  // not even the founder, can use the feature.
+  // A new capability is easy to ship half-dead: nobody, not even the founder, holds it.
   await seedIdentity(db);
   const owner = byName(await asOwner(() => listRoles()), "Owner");
   for (const cap of ALL_CAPABILITIES) {
@@ -615,7 +578,6 @@ test("every capability that exists is reachable: the Owner role holds all of the
     );
   }
 
-  // And the flat set the checks actually read must agree with the role.
   const rows = await db
     .select()
     .from(membershipCapabilitiesTable)
@@ -670,8 +632,7 @@ test("un-scoping a role is bounded to what the actor holds", async () => {
     !(await capsOf("x")).includes("manage_members"),
     "scoped, so the team-wide half is clamped away",
   );
-  // The manager holds neither manage_members nor the whole team: widening the
-  // role's reach would hand x what the manager can't give.
+  // Widening the role's reach would hand x what the manager cannot give.
   await assert.rejects(
     () =>
       asUser("mgr", () =>
@@ -679,10 +640,8 @@ test("un-scoping a role is bounded to what the actor holds", async () => {
       ),
     /permissions you hold yourself/,
   );
-  // A rename by the same manager leaves every holder as they were.
   await asUser("mgr", () => updateRole({ id: role.id, name: "Ops team" }));
   assert.ok(!(await capsOf("x")).includes("manage_members"));
-  // The owner holds it all, so the owner may.
   await asOwner(() =>
     updateRole({ id: role.id, name: "Ops team", scope: null }),
   );

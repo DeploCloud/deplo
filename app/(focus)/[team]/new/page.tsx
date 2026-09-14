@@ -6,13 +6,16 @@ import { hasCapabilityAnywhere, isInstanceAdmin } from "@/lib/membership";
 import { DeploLogo } from "@/components/logo";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
-import { NewAppWizard } from "@/components/apps/new-app-wizard";
+import { NewAppWizard } from "@/components/apps/new-app-wizard/new-app-wizard";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
-import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
+import {
+  listBuildServerChoices,
+  listServerChoices,
+} from "@/lib/data/servers/roster";
 import { listGithubInstallations } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
 import { gitProviderChoices } from "@/lib/git/provider-choices";
-import { listSharedVars } from "@/lib/data/shared-vars";
+import { listSharedVars } from "@/lib/data/shared-vars/team-view";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { instanceHost, productionDomain } from "@/lib/deploy/domains";
 import {
@@ -26,7 +29,7 @@ import {
   templateLogoDataUri,
 } from "@/templates/catalog";
 import { templateAccent } from "@/lib/templates/logo-color";
-import type { DeploySource } from "@/lib/types";
+import type { DeploySource } from "@/lib/types/app";
 
 export const metadata = { title: "New App" };
 
@@ -42,14 +45,12 @@ function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
-/** The wizard's own chrome: the mark, and the one way out. */
 function FocusFrame({
   exitHref,
   narrow,
   children,
 }: {
   exitHref: string;
-  /** A template needs no source picker, so its wizard takes a tighter column. */
   narrow?: boolean;
   children: React.ReactNode;
 }) {
@@ -80,8 +81,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
     placementFromSearchParams(params),
   );
 
-  // The Overview hides its "New app" button without this permission, but the URL
-  // is still typeable (and a template's Deploy button lands here).
+  // The Overview hides its button without this Capability, but the URL is still typeable (a template's Deploy lands here).
   if (!(await hasCapabilityAnywhere("create_apps")))
     return (
       <FocusFrame exitHref={placementHref(placement)}>
@@ -106,8 +106,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const shouldDeploy = one(params.deploy) !== "false";
   const presetSource = SOURCES.find((s) => s === sourceParam) ?? null;
 
-  // The catalogue is a remote service: an unknown slug, a stale link or a
-  // service having a bad day must not take the whole wizard down.
+  // The catalog is a remote service: an unknown slug or a bad day must not take the wizard down.
   const template =
     templateId && variantId
       ? await getTemplateVariant(templateId, variantId).catch(() => null)
@@ -131,18 +130,14 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
       </FocusFrame>
     );
 
-  // Generate the template's public hostname (with its random words baked in) up
-  // front and thread it into the blueprint env. createApp passes this same
-  // string through as the app's `preferred` auto domain, so the value the app
-  // sees matches the domain Traefik routes and the one shown in Domains.
+  // productionDomain bakes in random words, so this exact string is threaded on: createApp stores it as the app's `preferred` auto domain and re-deriving it would give another host.
   const autoDomain = template
     ? productionDomain(template.slug, instanceHost())
     : null;
   const blueprint = template
     ? getTemplateBlueprint(template, { domain: autoDomain ?? undefined })
     : null;
-  // Apps store their logo inline, so the catalog's remote image is fetched once
-  // here: the icon then survives the catalog going away.
+  // Stored inline on the app, so the icon survives the catalog going away.
   const logo = template
     ? await templateLogoDataUri(template.variant.logo)
     : null;
@@ -165,8 +160,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
     listBuildServerChoices(),
     listGithubInstallations(),
     listGitConnections(),
-    // Team-wide and `manage_env`-gated: someone who may create an app but not
-    // manage variables simply gets no Shared tab, never a refused page.
+    // `manage_env`-gated: a creator without it gets no Shared tab, never a refused page.
     listSharedVars().catch(() => []),
     isInstanceAdmin(),
   ]);

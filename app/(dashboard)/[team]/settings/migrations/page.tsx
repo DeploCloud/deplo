@@ -2,12 +2,15 @@ import { notFound } from "next/navigation";
 
 import { canExposePorts, isInstanceAdmin } from "@/lib/membership";
 import { getTeamIdentity } from "@/lib/data/teams";
-import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
+import {
+  listBuildServerChoices,
+  listServerChoices,
+} from "@/lib/data/servers/roster";
+import { listMigrationTargetTeams } from "@/lib/data/migration-import/gates";
 import {
   listAllMigrationRuns,
-  listMigrationTargetTeams,
   resumableMigrationAnywhere,
-} from "@/lib/data/migration-import";
+} from "@/lib/data/migration-import/run-queries";
 import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { MigrationsTabs } from "@/components/settings/migrations/migrations-tabs";

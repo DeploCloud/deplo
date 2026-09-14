@@ -25,28 +25,19 @@ import {
 import {
   __setDnsResolve4ForTest,
   __resetDnsResolve4ForTest,
-} from "../data/domains";
-import {
-  __setAgentConnectorForTest,
-  type AgentConnection,
-} from "../infra/agent-client";
+} from "../data/domains/dns-check";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
+import type { AgentConnection } from "../infra/agent-client/connection";
 import { runWithIdentity } from "../auth/request-context";
-import { createToken } from "../data/tokens";
+import { createToken } from "../data/tokens/mint";
 import { POST } from "@/app/api/mcp/route";
-import type { Capability } from "../types";
-
-/**
- * Working a MULTI-CONTAINER app over MCP, driven at the real `/api/mcp` route:
- * routing, scheduling and reading logs all have to name WHICH container, or the
- * model cannot do what the dashboard does. Ends at the YAML the agent receives.
- */
+import type { Capability } from "../types/identity";
 
 let db: TestDb;
 let pg: PGlite;
 
 const RESOURCE = "https://deplo.test/api/mcp";
 const SERVER_IP = "10.0.0.1";
-/** A five-container analytics stack: three backing services, two web faces. */
 const STACK = `services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.3
@@ -64,7 +55,6 @@ const STACK = `services:
       - "3002:3002"
 `;
 
-/** The stack's containers, as the owning agent lists them. */
 const CONTAINERS = ["backend", "clickhouse", "client", "postgres", "redis"].map(
   (service) => ({
     name: `deplo-analytics-${service}-1`,
@@ -83,7 +73,6 @@ const CONTAINERS = ["backend", "clickhouse", "client", "postgres", "redis"].map(
   }),
 );
 
-/** The last stack the agent was asked to write, per slug. */
 let rerouted = new Map<string, string>();
 
 const TRUNCATE = `truncate table
@@ -93,13 +82,11 @@ const TRUNCATE = `truncate table
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // The operator pointed DNS at the host before adding the domain - what the
-  // manual tells them to do, and what makes the row born `valid` and routable.
+  // DNS already points at the host, which is what makes the domain row born `valid` and routable.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   __setAgentConnectorForTest(agentStub);
 });
 
-/** A stand-in for the owning server's agent: records what it is asked to write. */
 async function agentStub(): Promise<AgentConnection> {
   const conn: Partial<AgentConnection> = {
     readStack: async () => ({ exists: true, yaml: "# an older render\n" }),
@@ -142,7 +129,6 @@ beforeEach(async () => {
   });
 });
 
-/** One JSON-RPC call at the route, exactly as an MCP client makes it. */
 async function rpc(
   bearer: string,
   method: string,
@@ -185,7 +171,6 @@ interface ToolResult {
   content?: { type: string; text?: string }[];
 }
 
-/** Call one tool; return the model-visible text and whether it was an error. */
 async function callTool(
   bearer: string,
   name: string,
@@ -219,7 +204,6 @@ async function domainRows(): Promise<
   return rows.rows;
 }
 
-/** Every Traefik label in the rendered stack, per compose service. */
 function labelsFor(yamlText: string, service: string): string[] {
   const lines = yamlText.split("\n");
   const start = lines.findIndex((l) => l.trim() === `${service}:`);
@@ -235,10 +219,6 @@ function labelsFor(yamlText: string, service: string): string[] {
   return out;
 }
 
-/* ------------------------------------------------------------------ *
- * The wall the operator hit: the tool must ADVERTISE the container
- * ------------------------------------------------------------------ */
-
 test("add_domain advertises the container it routes to", async () => {
   const { raw } = await mintToken();
   const body = await rpc(raw, "tools/list");
@@ -253,15 +233,9 @@ test("add_domain advertises the container it routes to", async () => {
     props?.service,
     `add_domain takes no container argument: ${Object.keys(props ?? {}).join(", ")}`,
   );
-  // Discoverable without guessing: the description has to point at where the
-  // names come from, or a model tries the port, then the service name, then a
-  // combination of both - which is exactly what happened.
+  // Without a pointer to where the names come from, a model tries the port, then the service name, then both.
   assert.match(JSON.stringify(add), /get_app/);
 });
-
-/* ------------------------------------------------------------------ *
- * Adding one, and what the host actually receives
- * ------------------------------------------------------------------ */
 
 test("a domain named onto a container routes to that container", async () => {
   const { raw } = await mintToken();
@@ -280,7 +254,6 @@ test("a domain named onto a container routes to that container", async () => {
   assert.equal(domain.status, "valid");
   assert.equal(domain.primary, true, "the first domain becomes primary");
 
-  // And the router really landed on `client`, not on some default container.
   const stack = rerouted.get("analytics");
   assert.ok(stack, "the agent was never asked to re-apply routing");
   const client = labelsFor(stack!, "client");
@@ -340,10 +313,6 @@ test("list_domains reports the container, so the agent can check its own work", 
   assert.equal(rows[0].service, "client");
 });
 
-/* ------------------------------------------------------------------ *
- * Refusals: every one has to be actionable, and leave no half row
- * ------------------------------------------------------------------ */
-
 test("a multi-container app refuses a domain that names no container", async () => {
   const { raw } = await mintToken();
   const res = await callTool(raw, "add_domain", {
@@ -396,9 +365,7 @@ test("a single-image app refuses a container argument instead of ignoring it", a
 });
 
 test("a container named after Deplo's own infrastructure is refused", async () => {
-  // `postgres`, `traefik` and `deplo` are the names the platform answers to on
-  // the shared network. A domain pointed at one used to be stored, and every
-  // later render of that stack - reroute AND deploy - threw on it.
+  // `postgres`, `traefik` and `deplo` are reserved on the shared network: a domain on one used to store, then throw on every later render.
   const { raw } = await mintToken();
   const res = await callTool(raw, "add_domain", {
     appId: "prj_analytics",
@@ -442,7 +409,7 @@ test("a token without manage_domains cannot add one", async () => {
     (t) => t.name,
   );
   assert.ok(!names.includes("add_domain"), "add_domain must be hidden");
-  // And hidden is not the gate: calling it by name anyway is refused.
+  // Hidden is not the gate: calling it by name anyway is refused.
   const body = await rpc(raw, "tools/call", {
     name: "add_domain",
     arguments: {
@@ -458,10 +425,6 @@ test("a token without manage_domains cannot add one", async () => {
   );
   assert.deepEqual(await domainRows(), []);
 });
-
-/* ------------------------------------------------------------------ *
- * The rest of the domain surface, from an agent's seat
- * ------------------------------------------------------------------ */
 
 test("removing a domain re-applies routing without it", async () => {
   const { raw } = await mintToken();
@@ -506,9 +469,7 @@ test("a second app cannot take a hostname this team already serves", async () =>
 });
 
 test("an argument the tool does not take is refused, not silently dropped", async () => {
-  // What a model does when a parameter is missing: invent a plausible one. A
-  // silent drop is how "I set the container" and "no container was set" end up
-  // being the same call.
+  // A model invents a plausible parameter, and a silent drop makes "I set the container" and "none was set" the same call.
   const { raw } = await mintToken();
   const res = await callTool(raw, "add_domain", {
     appId: "prj_analytics",
@@ -517,19 +478,12 @@ test("an argument the tool does not take is refused, not silently dropped", asyn
     port: 3002,
   });
   assert.equal(res.error, true, res.text);
-  // Refused for the ARGUMENT, not for the missing container: a silent drop would
-  // fail with "select the container" and read as the model's own mistake.
-  // Deplo's own words, and it lists what the tool DOES take, so the next call is
-  // the right one instead of another spelling.
+  // Refused for the ARGUMENT, not the missing container: "select the container" would read as the model's own mistake.
   assert.match(res.text, /takes no argument "container"/);
   assert.match(res.text, /service/, "the refusal must list the real arguments");
   assert.doesNotMatch(res.text, /Select the container this domain routes to/);
   assert.deepEqual(await domainRows(), []);
 });
-
-/* ------------------------------------------------------------------ *
- * Correcting a mistake, and the one-hostname-two-containers shape
- * ------------------------------------------------------------------ */
 
 test("a domain can be moved onto another container without being deleted", async () => {
   const { raw } = await mintToken();
@@ -610,7 +564,6 @@ test("one hostname can serve two containers on different paths", async () => {
   assert.ok(
     labelsFor(stack, "client").some((l) => l.includes("Host(`acme.com`)")),
   );
-  // Both rows are told apart in what the model reads back.
   const listed = await callTool(raw, "list_domains", {
     appId: "prj_analytics",
   });
@@ -620,10 +573,6 @@ test("one hostname can serve two containers on different paths", async () => {
   assert.equal(paths.length, 2);
   assert.ok(paths.includes(null) && paths.includes("/api"));
 });
-
-/* ------------------------------------------------------------------ *
- * The same question for a scheduled command: WHICH container
- * ------------------------------------------------------------------ */
 
 test("a cron job can name the container it runs in", async () => {
   const { raw } = await mintToken(["view", "manage_domains", "manage_crons"]);
@@ -654,10 +603,6 @@ test("a cron job cannot name a container the stack does not have", async () => {
   assert.equal(res.error, true, "a stored typo only shows up at 3am");
   assert.match(res.text, /No container named "worker"/);
 });
-
-/* ------------------------------------------------------------------ *
- * Reading ONE container's logs, named the only way an agent knows it
- * ------------------------------------------------------------------ */
 
 test("logs can be asked for by compose service name", async () => {
   const { raw } = await mintToken(["view", "view_logs"]);
@@ -698,8 +643,7 @@ test("a container that is not in the stack says so", async () => {
 });
 
 test("a host that cannot be reached is reported as saved-but-not-applied", async () => {
-  // The row is committed before the agent is dialled. Told only "unreachable",
-  // an agent retries and collects "Domain already added" instead.
+  // The row is committed before the agent is dialled, so "unreachable" alone makes an agent retry into "already added".
   __setAgentConnectorForTest(async () => {
     throw new Error("agent unreachable");
   });

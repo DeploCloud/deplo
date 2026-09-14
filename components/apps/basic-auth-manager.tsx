@@ -33,13 +33,13 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
+import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
 import {
-  EnvFilters,
   creatorFacet,
   editorFacet,
   updatedFacet,
-  useEnvFilters,
-} from "@/components/env/env-filters";
+} from "@/components/env/env-filters/facets";
+import { useEnvFilters } from "@/components/env/env-filters/use-env-filters";
 import { BasicAuthPasswordCell } from "@/components/apps/basic-auth-password-cell";
 import {
   PendingCards,
@@ -51,18 +51,9 @@ import { timeAgo } from "@/lib/utils";
 import { generatePassword } from "@/lib/password-policy";
 import type { BasicAuthUserDTO } from "@/lib/data/basic-auth";
 
-/**
- * One credential as the shared variables toolbar sees it. `key` is that
- * toolbar's identifying-name field (see `FilterableVar`) - here the username, so
- * the search box matches on it and the A-Z sort orders by it.
- */
 type CredentialRow = BasicAuthUserDTO & { key: string };
 
-/**
- * App Settings → Access. Username/password credentials that gate EVERY domain of
- * the app: when one or more exist, the deploy/reroute pipeline puts a generated
- * Traefik `basicauth` middleware in front of all the app's hostnames.
- */
+// BasicAuthManager edits the credentials that gate every domain of the app.
 export function BasicAuthManager({
   appId,
   users,
@@ -74,13 +65,8 @@ export function BasicAuthManager({
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState<BasicAuthUserDTO | null>(null);
   const router = useRouter();
-  // Credentials being created right now: the dialog already closed, and each
-  // one holds its place in the grid as a pulsing card until the routing is live.
   const { pending } = usePendingCreate();
 
-  // A deleted credential leaves the grid on the click: the row is written away
-  // BEFORE the routing is re-applied, so waiting out the reroute only keeps a
-  // dead card on screen with a live Delete under the cursor.
   const {
     visible: liveUsers,
     remove,
@@ -92,9 +78,6 @@ export function BasicAuthManager({
     [liveUsers],
   );
 
-  // One app's credentials: what/when/who is all there is to slice by - a Project
-  // or an App filter would have exactly one value here. "Added by" is not
-  // persistent, so it only appears once more than one person has added one.
   const facets = React.useMemo(
     () => [
       creatorFacet(rows, "credential"),
@@ -114,8 +97,6 @@ export function BasicAuthManager({
   const hasUsers = rows.length > 0;
   const hasMatches = shown.length > 0;
 
-  // The page's one action, with one home at a time: the toolbar when there are
-  // credentials to act on, the heading row when there are none.
   const addButton = (size: "sm" | "default") => (
     <Button
       size={size}
@@ -229,9 +210,6 @@ export function BasicAuthManager({
             { id },
           );
           if (!res.ok) restore(id);
-          // Refresh either way: the delete commits BEFORE the routing is
-          // re-applied, so an error can still mean the row is gone. Re-reading
-          // is the only way the list stays honest about what exists.
           router.refresh();
           return res;
         }}
@@ -240,15 +218,6 @@ export function BasicAuthManager({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* One credential                                                      */
-/* ------------------------------------------------------------------ */
-
-/**
- * A credential tile: who signs in, the (revealable) password, and the audit line
- * the Environment tab shows as its "Last modified / Modified by" columns -
- * "added by @ada three months ago, password last changed by @linus yesterday".
- */
 function CredentialCard({
   user,
   onEdit,
@@ -322,8 +291,6 @@ function CredentialCard({
         <MetaRow label="Added" author={user.createdBy} at={user.createdAt} />
         <MetaRow
           label="Last change"
-          // Falls back to the creator exactly as the variables table does: a
-          // credential nobody has rotated was last "changed" by whoever added it.
           author={user.updatedBy ?? user.createdBy}
           at={user.updatedAt}
         />
@@ -332,7 +299,6 @@ function CredentialCard({
   );
 }
 
-/** One line of the card's audit block: who, and when. */
 function MetaRow({
   label,
   author,
@@ -356,10 +322,6 @@ function MetaRow({
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Add / change password                                               */
-/* ------------------------------------------------------------------ */
 
 function BasicAuthDialog({
   open,
@@ -385,8 +347,6 @@ function BasicAuthDialog({
   }
 
   function submit() {
-    // Changing a password has nowhere to show progress - the card looks
-    // identical before and after, so that one still resolves in the dialog.
     if (editing) {
       startTransition(async () => {
         const res = await gqlAction<{
@@ -401,9 +361,6 @@ function BasicAuthDialog({
           toast.success("Password updated - live on every domain");
           onOpenChange(false);
         } else {
-          // The dialog stays open (a rejected password must keep what was typed), but the
-          // list behind it is refreshed anyway: the row is written before the routing is
-          // applied, so an error can still leave a change the user needs to see.
           toast.error(res.error);
         }
         router.refresh();
@@ -411,9 +368,6 @@ function BasicAuthDialog({
       return;
     }
 
-    // Adding: the credential belongs in the grid, so it goes there NOW as a
-    // pulsing placeholder and the dialog gets out of the way. What was typed is
-    // kept aside - an error puts the form back exactly as it was.
     const typed = { username: username.trim(), password };
     onOpenChange(false);
     setUsername("");
@@ -474,9 +428,6 @@ function BasicAuthDialog({
                 <div className="relative min-w-0 flex-1">
                   <Input
                     id="basic-auth-password"
-                    // Typed passwords stay covered; a GENERATED one is shown, so
-                    // it can be copied out before the dialog closes - it is about
-                    // to be handed to someone.
                     type={visible ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

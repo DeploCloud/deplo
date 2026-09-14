@@ -1,34 +1,30 @@
 import { eq } from "drizzle-orm";
 
 import {
-  deployments as deploymentsTable,
   apps as appsTable,
   appBuild as appBuildTable,
   appBuildMethodSettings as appBuildMethodSettingsTable,
-  appPreviews as appPreviewsTable,
-  servers as serversTable,
-} from "../db/schema/control-plane";
-import { buildConfigFor } from "../frameworks";
+} from "../db/schema/control-plane/apps";
 import {
-  buildToRow,
-  deploymentToRow,
-  methodSettingsToRow,
-  appToRow,
-} from "./app-graph-rows";
+  deployments as deploymentsTable,
+  appPreviews as appPreviewsTable,
+} from "../db/schema/control-plane/deployments";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
+import { buildConfigFor } from "../frameworks";
+import { appToRow } from "./app-graph-rows/app";
+import { buildToRow, methodSettingsToRow } from "./app-graph-rows/build";
+import { deploymentToRow } from "./app-graph-rows/deployment";
 import type { TestDb } from "../db/test-harness";
-import { DEFAULT_ROLLBACK_KEEP } from "../types";
-import type { App, Deployment, HealthCheck } from "../types";
+import { DEFAULT_ROLLBACK_KEEP } from "../types/app";
+import type { App } from "../types/app";
+import type { HealthCheck } from "../types/container";
+import type { Deployment } from "../types/deployment";
 import { TEAM_A, USER_1 } from "./identity-test-helpers";
-
-/**
- * Shared seeding for the app-graph cut-set (c) data-layer tests (relational-store
- * PLAN Step 4).
- */
 
 export const SERVER_1 = "srv_1";
 const T0 = "2026-01-01T00:00:00.000Z";
 
-/** Truncate every app-graph table (call in `beforeEach` before seeding). */
+// TRUNCATE_PROJECT_GRAPH clears every app-graph table; call it in `beforeEach` before seeding.
 export const TRUNCATE_PROJECT_GRAPH = `truncate table
   team_app_order, team_folder_order,
   shared_env_var_apps, shared_env_var_projects, shared_env_var_environments,
@@ -40,7 +36,6 @@ export const TRUNCATE_PROJECT_GRAPH = `truncate table
   folders, servers
   restart identity cascade;`;
 
-/** The app's slug, for defaulting a seeded deployment's deploy key. */
 async function appSlug(db: TestDb, appId: string): Promise<string> {
   const rows = await db
     .select({ slug: appsTable.slug })
@@ -50,12 +45,10 @@ async function appSlug(db: TestDb, appId: string): Promise<string> {
   return rows[0]?.slug ?? appId;
 }
 
-/** Seed the instance-wide server row a project's `server_id` FK references. */
+// seedServer seeds the instance-wide server row a project's `server_id` FK references.
 export async function seedServer(
   db: TestDb,
   id: string = SERVER_1,
-  /** Give it an enrolled agent. Off by default: most tests want the "never
-   *  called home" host, which is what the un-provisioned errors are about. */
   opts: { provisioned?: boolean } = {},
 ): Promise<void> {
   await db
@@ -88,28 +81,18 @@ export interface SeedAppOpts {
   status?: App["status"];
   source?: App["source"];
   resources?: App["resources"];
-  /** How many previous deployments this app can be rolled back to. */
   rollbackKeep?: number;
-  /** Compose YAML - pair with `source: "compose"` to seed a compose-stack app. */
   compose?: string | null;
-  /** Park the app inside a folder (seed the folder row yourself first). */
   folderId?: string | null;
-  /** File the app under a Project container (seed the project row yourself). */
   projectId?: string | null;
   environmentId?: string | null;
-  /**
-   * Authorship, NOT on the App type (it never reaches the renderer), so it is
-   * written straight onto the row, exactly as `createApp` does.
-   */
   createdByUserId?: string | null;
-  /** Pin the app to a build server (seed that server row first). */
   buildServerId?: string | null;
-  /** Turn OFF "build here if the build server is unreachable". */
   buildFallback?: boolean;
   healthCheck?: HealthCheck | null;
 }
 
-/** Seed one project + its 1-to-1 build / method-settings rows. Returns the id. */
+// seedApp seeds one project plus its 1-to-1 build / method-settings rows and returns the id.
 export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
   const teamId = opts.teamId ?? TEAM_A;
   const serverId = opts.serverId ?? SERVER_1;
@@ -166,8 +149,7 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
   return project.id;
 }
 
-/** Seed a deployment row for a project. `serverId` denormalizes the owning server
- *  onto the row (what the deploy queue drains on) - omit to leave it null. */
+// seedDeployment seeds a deployment row; `serverId` denormalizes the owning server onto it.
 export async function seedDeployment(
   db: TestDb,
   opts: {
@@ -175,28 +157,16 @@ export async function seedDeployment(
     appId: string;
     status?: Deployment["status"];
     createdAt?: string;
-    /** When the build was claimed off the queue - omit to leave it null (a row
-     *  that never started building). */
     startedAt?: string;
     serverId?: string;
-    /** Defaults to production. A preview row also needs `deployKey`/`previewId`. */
     environment?: Deployment["environment"];
-    /** The stack this deploy owns. Defaults to the app slug (what production
-     *  deploys always used); a preview passes `<slug>__pr-<n>`. */
     deployKey?: string;
     previewId?: string | null;
     prNumber?: number | null;
-    /** The image this deploy rendered - set it to make the row a rollback target
-     *  (a build Deplo made), or leave it null for a compose / prebuilt-image one. */
     imageRef?: string | null;
-    /** Mark the row as a rollback TO another deployment (so it occupies no
-     *  retention slot of its own). */
     rollbackOf?: string | null;
-    /** The server this deploy BUILT on, when that was not `serverId`. */
     buildServerId?: string | null;
-    /** The account behind `creator`, for the attribution tests. */
     creatorUserId?: string | null;
-    /** The git host `creator` is a login on - a webhook push. */
     creatorProvider?: string | null;
   },
 ): Promise<void> {
@@ -211,8 +181,6 @@ export async function seedDeployment(
     serverId: opts.serverId ?? SERVER_1,
     buildServerId: opts.buildServerId ?? null,
     environment: opts.environment ?? "production",
-    // Defaults to the app's slug, which is what every production deploy uses.
-    // Seeders that don't care never have to think about the key.
     deployKey: opts.deployKey ?? (await appSlug(db, opts.appId)),
     previewId: opts.previewId ?? null,
     prNumber: opts.prNumber ?? null,
@@ -236,8 +204,7 @@ export async function seedDeployment(
   });
 }
 
-/** Seed a pull request preview row for an app. Defaults to an open, same-repo
- *  preview whose deploy key and host follow the real minting rules. */
+// seedPreview seeds a pull request preview row, defaulting to an open, same-repo preview.
 export async function seedPreview(
   db: TestDb,
   opts: {

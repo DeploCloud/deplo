@@ -4,27 +4,25 @@
  * database - it exercises `lib/migration/*` alone.
  */
 
+import { composePublishesPorts } from "../lib/deploy/compose-lint/host-ports";
 import {
-  composeHasHostBindMount,
-  composeJoinsForeignNetwork,
   composeNeedsHostPrivileges,
-  composePublishesPorts,
   composeUsesExternalMerge,
-} from "../lib/deploy/compose-lint";
+} from "../lib/deploy/compose-lint/host-privileges";
+import { composeJoinsForeignNetwork } from "../lib/deploy/compose-lint/networks";
+import { composeHasHostBindMount } from "../lib/deploy/compose-lint/volumes";
 import {
-  deploEngineFor,
-  envNeedsInterpolation,
   mapBuildSettings,
-  mapDatabase,
-  mapDomains,
-  mapMounts,
   mapResources,
-  mapSource,
-  parseEnvBlob,
   mapPorts,
-  adaptComposeForDeplo,
   unsupportedNotes,
-} from "../lib/migration/map";
+} from "../lib/migration/map/app-settings";
+import { mapSource } from "../lib/migration/map/app-source";
+import { adaptComposeForDeplo } from "../lib/migration/map/compose-adapt";
+import { deploEngineFor, mapDatabase } from "../lib/migration/map/databases";
+import { mapDomains } from "../lib/migration/map/domains";
+import { envNeedsInterpolation, parseEnvBlob } from "../lib/migration/map/env";
+import { mapMounts } from "../lib/migration/map/mounts";
 import type { DokployDbKind } from "../lib/migration/dokploy/client";
 import { normalizeSourceBaseUrl } from "../lib/migration/transport";
 import type { SourceCredential } from "../lib/migration/source";

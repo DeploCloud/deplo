@@ -5,10 +5,12 @@
  */
 import { inArray } from "drizzle-orm";
 
-import { listAllServers, markServerSeen } from "../lib/data/servers";
+import { markServerSeen } from "../lib/data/servers/agent-handshake";
+import { listAllServers } from "../lib/data/servers/roster";
 import { getDb } from "../lib/db/client";
-import { deployments } from "../lib/db/schema/control-plane";
-import { agentPreflight, connectAgent } from "../lib/infra/agent-client";
+import { deployments } from "../lib/db/schema/control-plane/deployments";
+import { connectAgent } from "../lib/infra/agent-client/connect";
+import { agentPreflight } from "../lib/infra/agent-client/preflight";
 
 const [version, baseUrl] = process.argv
   .slice(2)

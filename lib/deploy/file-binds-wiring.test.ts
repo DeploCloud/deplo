@@ -5,7 +5,7 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { appVolumes as appVolumesTable } from "../db/schema/control-plane";
+import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import {
@@ -14,23 +14,17 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
-import {
-  __setAgentConnectorForTest,
-  type AgentConnection,
-} from "../infra/agent-client";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
+import type { AgentConnection } from "../infra/agent-client/connection";
 import { runAgentDeploy } from "./agent-deploy";
-import { rerouteApp } from "./build";
+import { rerouteApp } from "./build/reroute";
 import { stackFilesDir } from "./deploy-key";
 
-/**
- * The pre-flight is wired into the two bring-ups: the deploy stream and the
- * reroute. What matters is the ORDER - the file exists before `compose up`.
- */
+// What matters is the ORDER: the file bind exists before `compose up`, on the deploy stream and on the reroute.
 
 let db: TestDb;
 let pg: PGlite;
 let calls: string[] = [];
-/** Paths the fake host already holds, and what they are. */
 let disk: Record<string, "file" | "folder"> = {};
 
 function grpc(code: number, message: string) {

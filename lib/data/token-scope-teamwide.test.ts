@@ -5,7 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { projects as projectsTable } from "../db/schema/control-plane";
+import { projects as projectsTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity, type TokenGrant } from "../auth/request-context";
 import {
   seedIdentity,
@@ -13,25 +13,26 @@ import {
   TEAM_A,
   USER_1,
 } from "./identity-test-helpers";
-import { ALL_CAPABILITIES } from "../types";
+import { ALL_CAPABILITIES } from "../types/identity";
 
-import { listTokens, createToken } from "./tokens";
-import { listMembers } from "./members";
-import { listRoles } from "./roles";
+import { listTokens } from "./tokens/listing";
+import { createToken } from "./tokens/mint";
+import { listMembers } from "./members/roster";
+import { listRoles } from "./roles/role-list";
 import { listRegistries } from "./registries";
-import { listDestinations } from "./destinations";
-import { listDatabases, getDatabase, getConnectionString } from "./databases";
+import { listDestinations } from "./destinations/listing";
+import {
+  listDatabases,
+  getDatabase,
+  getConnectionString,
+} from "./databases/rows";
 import { listGithubApps } from "./github";
 import { listNotificationChannels } from "./notifications";
 import { getTeam } from "./teams";
-import { listSharedVars } from "./shared-vars";
-import { getServer, listServers, getPrimaryServer } from "./servers";
+import { listSharedVars } from "./shared-vars/team-view";
+import { getServer, listServers, getPrimaryServer } from "./servers/roster";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { setPreviewEnvVar } from "./previews";
-
-/**
- * What a project-scoped API token is refused OUTRIGHT.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -97,8 +98,6 @@ test("every team-wide collection is refused, and says why", async () => {
     await assert.rejects(() => listNotificationChannels(), LIMITED);
     await assert.rejects(() => getTeam(), LIMITED);
     await assert.rejects(() => listSharedVars(), LIMITED);
-    // A host has no per-Project meaning either: its name, address and live
-    // metrics belong to the team, not to one project inside it.
     await assert.rejects(() => listServers(), LIMITED);
     await assert.rejects(() => getPrimaryServer(), LIMITED);
   });

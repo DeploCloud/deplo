@@ -8,16 +8,9 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
-import { reissueBootstrap } from "./servers";
+import { reissueBootstrap } from "./servers/enrollment";
 
 process.env.DEPLO_SECRET = "test-secret-for-bootstrap-url-aaaaaaaa";
-
-/**
- * Which address the install command tells an agent to call home to. During a
- * takeover the panel and its proxy are on loopback ONLY, so the public address
- * answers nothing and no certificate can be read - which refused every command at
- * the one moment recovering from the panel was the only way out.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -57,8 +50,6 @@ beforeEach(async () => {
     host: OTHER,
   });
   process.env.DEPLO_SERVER_IP = HOST_IP;
-  // What a takeover leaves: a public address whose port is bound to loopback, so
-  // nothing answers it and no certificate can be read from here.
   process.env.DEPLO_PUBLIC_URL = "https://deplo-cb00710b.invalid:8443";
   process.env.DEPLO_PANEL_PORT = "3001";
 });

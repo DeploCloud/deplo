@@ -2,11 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { filterScopeTree } from "./token-scope-search";
-import type { ScopeTreeTeam } from "./data/tokens";
+import type { ScopeTreeTeam } from "./data/tokens/scope-tree";
 
-/**
- * The scope search.
- */
 const app = (id: string, name = id, slug = id) => ({
   id,
   name,

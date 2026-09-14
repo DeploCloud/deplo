@@ -1,25 +1,16 @@
-import type { AlertKey } from "./types";
-import { ALL_ALERTS } from "./types";
+import type { AlertKey } from "./types/notification";
+import { ALL_ALERTS } from "./types/notification";
 
-/**
- * The alert catalog - one entry per thing Deplo will tell a team about, plus the
- * categories the notification settings browse them by. The one rule that governs
- * what may be listed here: **every key must have a real emitter**.
- */
-
-/** How an alert is shown in the notification settings. */
+// AlertMeta - how an alert is shown in the notification settings.
 export interface AlertMeta {
   label: string;
-  /** One line, in the terms the dashboard uses. */
   description: string;
-  /** Extra weight in search: words a user might type that aren't in the label. */
+  // Extra weight in search: words a user might type that aren't in the label.
   keywords?: string;
-  /** What a team gets before it ever opens this page. */
   defaultOn: boolean;
 }
 
 export const ALERT_META: Record<AlertKey, AlertMeta> = {
-  /* ---- Deployments ---- */
   deployment_failed: {
     label: "Deployment failed",
     description: "A deployment did not finish.",
@@ -39,7 +30,6 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
 
-  /* ---- Apps ---- */
   app_crash_loop: {
     label: "App keeps restarting",
     description: "An app starts, dies and starts again.",
@@ -47,7 +37,6 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
 
-  /* ---- Databases ---- */
   database_ready: {
     label: "Database ready",
     description: "A new database finished setting up.",
@@ -73,26 +62,22 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
 
-  /* ---- Cron jobs ---- */
   cron_job_failed: {
     label: "Cron job failed",
     description:
       "A scheduled command exited with an error, or its outcome is unknown.",
     keywords: "cron schedule scheduled task command error exit",
-    // On by default: a job that fails at 03:00 and tells nobody is the exact failure a
-    // cron manager exists to prevent.
+    // On by default: a job that fails at 03:00 and tells nobody is the failure a cron manager exists to prevent.
     defaultOn: true,
   },
   cron_job_succeeded: {
     label: "Cron job finished",
     description: "A scheduled command completed successfully.",
     keywords: "cron schedule scheduled task command ok",
-    // Off by default: a nightly job that works is not news, and a team with ten
-    // jobs would get ten mails a night. The run history is where success lives.
+    // Off by default: a nightly job that works is not news, and ten jobs would be ten mails a night.
     defaultOn: false,
   },
 
-  /* ---- Backups & restore ---- */
   backup_succeeded: {
     label: "Backup finished",
     description: "A backup completed and was uploaded.",
@@ -118,7 +103,6 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
 
-  /* ---- Servers & agent ---- */
   server_offline: {
     label: "Server offline",
     description: "A server stopped answering.",
@@ -178,7 +162,6 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
 
-  /* ---- This Deplo instance ---- */
   deplo_update_available: {
     label: "Deplo update available",
     description: "A newer version of Deplo can be installed.",
@@ -186,7 +169,6 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
 
-  /* ---- Security & team ---- */
   member_joined: {
     label: "Member joined",
     description: "Someone was added to the team.",
@@ -236,7 +218,6 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
 
-  /* ---- Domains & TLS ---- */
   certificate_expiring: {
     label: "Certificate expiring",
     description: "A certificate is close to expiring and has not renewed.",
@@ -264,10 +245,7 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
   },
 };
 
-/**
- * The notification settings' browse order. Every alert appears in exactly one
- * category, and a category is a place to LOOK, not a thing to subscribe to.
- */
+// ALERT_CATEGORIES - the settings' browse order; every alert appears in exactly one category.
 export const ALERT_CATEGORIES: {
   key: string;
   label: string;
@@ -365,17 +343,12 @@ export const ALERT_CATEGORIES: {
   },
 ];
 
-/**
- * What a team is subscribed to before it ever opens the settings, and what an
- * alert key added in a LATER release falls back to for every existing team, so a
- * new alert never needs a backfill (`notification_alerts` stores a row only for
- * keys the team has actually decided about).
- */
+// DEFAULT_ALERTS - also the fallback for an alert key added later, so a new alert never needs a backfill.
 export const DEFAULT_ALERTS: AlertKey[] = ALL_ALERTS.filter(
   (a) => ALERT_META[a].defaultOn,
 );
 
-/** Lower-cased haystack for the alert picker's search box. */
+// alertSearchText - lower-cased haystack for the alert picker's search box.
 export function alertSearchText(alert: AlertKey): string {
   const meta = ALERT_META[alert];
   return `${alert} ${meta.label} ${meta.description} ${meta.keywords ?? ""}`
@@ -383,7 +356,7 @@ export function alertSearchText(alert: AlertKey): string {
     .replace(/_/g, " ");
 }
 
-/** Alerts matching a free-text query, in catalog order (empty ⇒ all). */
+// searchAlerts - alerts matching a free-text query, in catalog order; an empty query means all.
 export function searchAlerts(query: string): AlertKey[] {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [...ALL_ALERTS];

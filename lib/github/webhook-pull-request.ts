@@ -3,28 +3,21 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  appPreviews as appPreviewsTable,
-  githubInstallation as githubInstallationTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { appPreviews as appPreviewsTable } from "../db/schema/control-plane/deployments";
+import { githubInstallation as githubInstallationTable } from "../db/schema/control-plane/integrations";
 import {
   parsePullRequestEvent,
   previewIntent,
   type RawPullRequestPayload,
 } from "../deploy/pr-webhook";
-import {
-  closePreview,
-  openOrSyncPreview,
-  refusalMessage,
-} from "../deploy/preview-lifecycle";
+import { closePreview } from "../deploy/preview-lifecycle/close";
+import { refusalMessage } from "../deploy/preview-lifecycle/fork-guard";
+import { openOrSyncPreview } from "../deploy/preview-lifecycle/open-sync";
 import { syncPreviewComment } from "../deploy/preview-comment";
-import { parseRequiredLabels } from "../deploy/preview-lifecycle";
+import { parseRequiredLabels } from "../deploy/preview-lifecycle/settings";
 
-/**
- * The `pull_request` arm of the GitHub webhook - the twin of the `push` arm in
- * [the route](../../app/api/github/webhook/route.ts), and shaped the same way.
- */
+// The `pull_request` arm of the GitHub webhook - twin of the `push` arm in app/api/github/webhook/route.ts.
 export async function handlePullRequestDelivery(
   raw: string,
   appId: string,
@@ -148,9 +141,7 @@ export async function handlePullRequestDelivery(
         },
       );
 
-      // Tell the pull request what happened, whatever happened. A refusal that
-      // leaves no trace is the worst outcome: the contributor waits for a
-      // preview that was never going to come.
+      // Always tell the pull request what happened: a silent refusal leaves the contributor waiting for a preview that never comes.
       if (res.previewId && res.refusal?.kind === "awaiting-approval") {
         void syncPreviewComment(res.previewId, { kind: "awaiting-approval" });
       } else if (res.previewId && res.refusal?.kind === "evicted") {

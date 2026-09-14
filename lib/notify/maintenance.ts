@@ -3,12 +3,12 @@ import "server-only";
 import { and, eq, isNotNull, lt, notExists, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   gitConnections as gitConnectionsTable,
   githubApps as githubAppsTable,
-  servers as serversTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/integrations";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { oauthClient, oauthConsent, verification } from "../db/schema/auth";
 import { decryptSecret } from "../crypto";
 import { sweepRateLimits } from "../security";
@@ -19,24 +19,20 @@ import {
   missingAccess,
   type AccessRequirement,
 } from "../git/provider-access";
-import { sweepDomainDns } from "../data/domains";
+import { sweepDomainDns } from "../data/domains/dns-check";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo } from "../data/updates";
-import { sweepFinishedMigrationMarks } from "../data/migration-import";
-import { connectAgent } from "../infra/agent-client";
+import { sweepFinishedMigrationMarks } from "../data/migration-import/run-report";
+import { connectAgent } from "../infra/agent-client/connect";
 import {
   dispatchAlert,
   dispatchServerAlert,
   dispatchToTeams,
 } from "./dispatch";
 import { allTeamIds } from "./server-teams";
-import type { GitProviderId } from "../types";
+import type { GitProviderId } from "../types/git";
 
-/**
- * The things nobody polls.
- */
-
-/** Warn this far ahead of a certificate expiring. */
+// Warn this far ahead of a certificate expiring.
 const CERT_WARN_DAYS = 21;
 
 export async function runMaintenanceSweep(): Promise<void> {
@@ -45,31 +41,21 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("domain dns", sweepDomainDns);
   await settle("git tokens", checkGitConnections);
   await settle("github app access", checkGithubAppAccess);
-  // Housekeeping rather than a check: closed rate-limit windows are already
-  // treated as absent, this just stops a year of guessed addresses accumulating
-  // as dead rows.
+  // Closed rate-limit windows already read as absent; this only sweeps the dead rows.
   await settle("rate limits", sweepRateLimits);
   await settle("migration marks", sweepFinishedMigrationMarks);
   await settle("oauth clients", sweepAbandonedOauthClients);
   await settle("expired challenges", sweepExpiredVerifications);
 }
 
-/**
- * Drop `verification` rows whose deadline has passed. Better Auth consumes a
- * challenge on first use and never comes back for the ones nobody finishes, and it
- * ships no pruning of its own.
- */
+// Better Auth never comes back for an unfinished challenge and ships no pruning of its own.
 async function sweepExpiredVerifications(): Promise<void> {
   await getDb()
     .delete(verification)
     .where(lt(verification.expiresAt, new Date()));
 }
 
-/**
- * Drop OAuth clients that registered and then never got approved. RFC 7591
- * registration has to be open, claude.ai and ChatGPT cannot pre-register, so
- * anyone who can reach the instance can create rows here.
- */
+// RFC 7591 registration has to stay open, so anyone who can reach the instance creates rows here.
 async function sweepAbandonedOauthClients(): Promise<void> {
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   await getDb()
@@ -87,7 +73,6 @@ async function sweepAbandonedOauthClients(): Promise<void> {
     );
 }
 
-/** One failing step must never stop the others. */
 async function settle(what: string, fn: () => Promise<void>): Promise<void> {
   try {
     await fn();
@@ -96,7 +81,6 @@ async function settle(what: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-/** A newer Deplo. Instance-wide, so every team hears it. */
 async function checkDeploUpdate(): Promise<void> {
   const info = await getUpdateInfo();
   if (!info.updateAvailable || !info.latest) return;
@@ -104,8 +88,7 @@ async function checkDeploUpdate(): Promise<void> {
   if (teams.length === 0) return;
   await dispatchToTeams(teams, {
     key: "deplo_update_available",
-    // The VERSION is the dedupe state, so a fresh release re-fires at once
-    // instead of waiting out the weekly nag.
+    // The VERSION is the dedupe state, so a fresh release re-fires instead of waiting out the nag.
     dedupe: { id: "deplo-update", state: info.latest },
     title: `Deplo ${info.latest} is available`,
     body: `This instance is on ${info.current}.`,
@@ -113,17 +96,12 @@ async function checkDeploUpdate(): Promise<void> {
   });
 }
 
-/**
- * Custom certificates a human uploaded. Let's Encrypt renews itself at 30 days,
- * so anything still inside three weeks is a manual certificate that nothing is
- * going to renew.
- */
+// Let's Encrypt renews itself at 30 days, so anything inside three weeks is a manual certificate.
 async function checkCustomCertificates(): Promise<void> {
   const rows = await getDb()
     .select({ id: serversTable.id, name: serversTable.name })
     .from(serversTable)
-    // A migration source has no Traefik stack of ours to read: dialing it would
-    // only ever produce a miss, on a machine we are borrowing.
+    // A migration source has no Traefik stack of ours to read: only ever a miss.
     .where(
       and(
         isNotNull(serversTable.agentCertPem),
@@ -161,11 +139,6 @@ async function checkCustomCertificates(): Promise<void> {
   }
 }
 
-/**
- * Git connection tokens. A revoked or expired token is the one failure mode a user
- * cannot see coming: nothing changes in Deplo, and the first symptom is a deploy
- * failing on `git clone` at the worst possible moment.
- */
 async function checkGitConnections(): Promise<void> {
   const rows = await getDb().select().from(gitConnectionsTable);
   for (const row of rows) {
@@ -181,8 +154,7 @@ async function checkGitConnections(): Promise<void> {
       .set(patch)
       .where(eq(gitConnectionsTable.id, row.id));
 
-    // Independent of health: a token can be perfectly valid and still be missing
-    // a scope, which is the failure nobody sees coming.
+    // A token can be perfectly valid and still be missing a scope, so this runs either way.
     raiseMissingAccess(
       row.teamId,
       `gitconn:${row.id}`,
@@ -206,8 +178,7 @@ async function checkGitConnections(): Promise<void> {
     dispatchAlert({
       teamId: row.teamId,
       key: "git_connection_failing",
-      // The state is what changed, so a token that goes from expiring to
-      // revoked re-fires instead of being swallowed as a repeat.
+      // The state is what changed, so expiring to revoked re-fires instead of being swallowed.
       dedupe: {
         id: `gitconn:${row.id}`,
         state: patch.health === "failing" ? "failing" : "expiring",
@@ -225,11 +196,7 @@ async function checkGitConnections(): Promise<void> {
   }
 }
 
-/**
- * What each connected GitHub App is allowed to do, asked of GitHub. The pull
- * request half is only raised for a team that uses previews somewhere - nobody
- * needs telling about a feature they never turned on.
- */
+// The pull-request half is only raised for a team that uses previews somewhere.
 async function checkGithubAppAccess(): Promise<void> {
   const db = getDb();
   const apps = await db
@@ -264,7 +231,6 @@ async function checkGithubAppAccess(): Promise<void> {
   }
 }
 
-/** One alert for both halves, so the two can never word the same gap differently. */
 function raiseMissingAccess(
   teamId: string,
   dedupeId: string,
@@ -275,8 +241,7 @@ function raiseMissingAccess(
   dispatchAlert({
     teamId,
     key: "git_access_missing",
-    // The state is WHAT is missing, so a second permission disappearing re-fires
-    // instead of hiding behind the first.
+    // The state is WHAT is missing, so a second permission disappearing re-fires.
     dedupe: {
       id: dedupeId,
       state: missing
@@ -292,8 +257,6 @@ function raiseMissingAccess(
   });
 }
 
-/** Warn this far ahead of a git token expiring. */
 const TOKEN_WARN_DAYS = 7;
 
-/** Exported so a future Advanced panel reads this instead of forking it. */
 export { CERT_WARN_DAYS };

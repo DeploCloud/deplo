@@ -1,4 +1,4 @@
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { avatarUrlFor } from "@/lib/avatar";
 import { listMyPasskeys } from "@/lib/data/passkeys";
 import { listMySessions } from "@/lib/data/sessions";

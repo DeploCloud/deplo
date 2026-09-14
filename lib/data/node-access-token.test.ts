@@ -4,19 +4,15 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  folderGrants as folderGrantsTable,
-  folders as foldersTable,
-} from "../db/schema/control-plane";
+import { folderGrants as folderGrantsTable } from "../db/schema/control-plane/access-control";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity, type TokenGrant } from "../auth/request-context";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { nodeCapabilities } from "./node-access";
-import type { Capability } from "../types";
+import type { Capability } from "../types/identity";
 
-/**
- * The API-token intersection at the NODE level (ADR-0016 §8).
- */
+// The API-token intersection at the NODE level (ADR-0016 §8).
 
 let db: TestDb;
 let pg: PGlite;
@@ -91,7 +87,6 @@ beforeEach(async () => {
     updatedAt: T0,
   });
   await seedApp(db, { id: APP, teamId: TEAM_A, folderId: FLD });
-  // The creator holds a node grant that EXCEEDS their team role.
   await db.insert(folderGrantsTable).values(
     (["manage_env", "delete_apps"] as Capability[]).map((c) => ({
       folderId: FLD,
@@ -102,12 +97,10 @@ beforeEach(async () => {
 });
 
 test("a token never inherits its creator's node grant", async () => {
-  // Over a cookie session the grant applies in full.
   const mine = await asUser(() => nodeCapabilities({ kind: "app", id: APP }));
   assert.ok(mine.includes("manage_env"));
   assert.ok(mine.includes("delete_apps"));
 
-  // The same request made with a token that was granted neither must hold neither.
   const viaToken = await asToken(() =>
     nodeCapabilities({ kind: "app", id: APP }),
   );
@@ -131,8 +124,6 @@ test("a token holding the capability keeps it at the node", async () => {
 });
 
 test("a NARROWED token also loses the team-wide capabilities at a node", async () => {
-  // Scoped below the whole team (to this one app), so PROJECT_SCOPED_CAPABILITIES
-  // applies on top of the token's own set - same rule as everywhere else.
   const viaToken = await asToken(
     () => nodeCapabilities({ kind: "app", id: APP }),
     {

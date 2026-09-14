@@ -10,26 +10,14 @@ import {
   type YAMLMap,
 } from "yaml";
 
-import { composeTruthy } from "./compose-lint";
+import { composeTruthy } from "./compose-lint/document";
 
-/**
- * The `deplo-traefik` stack file, control-plane side. Re-rendering from a template
- * would silently drop all of it, and the operator would find out when their
- * certificates stopped renewing.
- */
-
-/** The container the installer creates. A Traefik under any other name is not ours. */
+// The host's stack file is EDITED in place: re-rendering it from a template silently drops
+// the operator's own config, and they find out when their certificates stop renewing.
+// The container the installer creates. A Traefik under any other name is not ours.
 export const TRAEFIK_CONTAINER = "deplo-traefik";
 
-/* ------------------------------------------------------------------ */
-/* The Let's Encrypt account email                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * The address this host's certificates are issued under, read off its own flags.
- * That is a different answer from "no email set" and the caller must be able to
- * tell them apart, because only one of the two is worth offering to change.
- */
+// The address this host's certificates are issued under, read off its own flags.
 export function acmeEmail(currentYaml: string): string | null {
   const resolver = stackCertResolver(currentYaml);
   if (resolver === null) return null;
@@ -41,10 +29,7 @@ export function acmeEmail(currentYaml: string): string | null {
   return found ? found.slice(flag.length) : "";
 }
 
-/**
- * The name of the ACME resolver this host actually defines, or null when it
- * defines none - a proxy that terminates TLS with certificates from elsewhere.
- */
+// The name of the ACME resolver this host defines, or null when it defines none.
 export function stackCertResolver(currentYaml: string): string | null {
   let command: string[];
   try {
@@ -59,11 +44,7 @@ export function stackCertResolver(currentYaml: string): string | null {
   return certResolver(command);
 }
 
-/**
- * Point this host's ACME resolver at a different account email. Throws when the
- * stack has no ACME resolver: adding a bare email flag to a proxy that issues no
- * certificates would write a setting that does nothing and report it as applied.
- */
+// Point this host's ACME resolver at a different account email. Throws when it has none.
 export function withAcmeEmail(currentYaml: string, email: string): string {
   const address = email.trim();
   if (!address)
@@ -83,46 +64,27 @@ export function withAcmeEmail(currentYaml: string, email: string): string {
   const resolver = certResolver(command);
   const flag = `--certificatesresolvers.${resolver}.acme.email=`;
   const next = command.filter((c) => !c.startsWith(flag));
-  // Appended rather than inserted in place: flag order is irrelevant to Traefik,
-  // and appending keeps the diff on the host's file to one line.
   next.push(`${flag}${address}`);
   setList(doc, service, "command", next);
   return dump(doc);
 }
 
-/* ------------------------------------------------------------------ */
-/* Custom certificates                                                 */
-/* ------------------------------------------------------------------ */
-
-/** One certificate the operator brought themselves: the PEM chain and its key. */
+// One certificate the operator brought themselves: the PEM chain and its key.
 export type CustomCertificate = { certPem: string; keyPem: string };
 
-/** Our compose configs, the files they become, and the directory we serve them from. */
 const CERT_CONFIG = "deplo-certificates";
 const CERT_FILE = "deplo-certificates.yml";
 const PANEL_CONFIG = "deplo-panel";
 const PANEL_FILE = "deplo-panel.yml";
-/**
- * The fallback certificate `install.sh` mints once and Traefik serves for any name
- * no other certificate claims. Nothing here writes it - it is listed so removing
- * the panel's route or the last custom certificate does not strip the file
- * provider out from under it.
- */
+// install.sh's fallback certificate. Nothing here writes it - it is listed so removing the
+// panel's route or the last custom certificate does not strip the file provider out from under it.
 const DEFAULT_CERT_CONFIG = "deplo-default-cert";
-/**
- * Every dynamic-config file Deplo owns. Membership decides one thing: whether the
- * file provider is still needed after one of them is removed.
- */
 const OUR_CONFIGS = [CERT_CONFIG, PANEL_CONFIG, DEFAULT_CERT_CONFIG];
 const DEPLO_DYNAMIC_DIR = "/deplo-dynamic";
 const FILE_DIRECTORY_FLAG = "--providers.file.directory=";
 const FILE_WATCH_FLAG = "--providers.file.watch=true";
 
-/**
- * The certificates Deplo installed on this host, read back out of its own stack
- * file - the same read-live-not-stored rule the ACME email follows, so a host
- * someone edited by hand reports what it is actually serving.
- */
+// The certificates Deplo installed on this host, read back out of its own stack file.
 export function traefikCertificates(currentYaml: string): CustomCertificate[] {
   let text: unknown;
   try {
@@ -151,17 +113,10 @@ export function traefikCertificates(currentYaml: string): CustomCertificate[] {
     .filter((c) => c.certPem && c.keyPem);
 }
 
-/**
- * Install (or, with an empty list, remove) custom certificates on a host. Traefik
- * reads certificates only from its FILE provider, and the agent exposes no RPC
- * that writes an arbitrary path (ADR-0006), so both ride in the stack file as a
- * compose `configs` entry with inline content, mounted 0400. An operator's own
- * file provider is respected; one pinned to a single `filename` is a refusal.
- *
- * ponytail: the KEY sits in the host's compose file in cleartext, so the exposure
- * is "whoever can read it", i.e. root. Closing it needs an agent RPC that writes a
- * secret file, at which point the stack would carry a path instead of a PEM.
- */
+// Custom certificates ride in the stack file as a compose `configs` entry: the agent writes no arbitrary path (ADR-0006).
+// ponytail: the KEY sits in the host's compose file in cleartext, so the exposure
+// is "whoever can read it", i.e. root. Closing it needs an agent RPC that writes a
+// secret file, at which point the stack would carry a path instead of a PEM.
 export function withTraefikCertificates(
   currentYaml: string,
   certificates: CustomCertificate[],
@@ -170,12 +125,8 @@ export function withTraefikCertificates(
   const service = traefikService(doc);
   withRedirectFallback(doc, service);
 
-  // Read before dropping: our config file is a Traefik dynamic-config file like
-  // any other, and an operator may have added a `tls.options` block or a
-  // middleware to it. Only the certificates in it are ours to rewrite.
   const currentContent = doc.getIn(["configs", CERT_CONFIG, "content"]);
 
-  // Ours always comes off first, so installing twice replaces rather than stacks.
   dropOurConfig(doc, service, CERT_CONFIG);
 
   if (certificates.length === 0) {
@@ -194,10 +145,6 @@ export function withTraefikCertificates(
   return dump(doc);
 }
 
-/**
- * Our dynamic-config file: the current one with only its `tls.certificates`
- * replaced, or a fresh one when there is nothing readable to keep.
- */
 function certificateFile(
   current: unknown,
   certificates: CustomCertificate[],
@@ -215,20 +162,12 @@ function certificateFile(
     if (parsed.errors.length === 0 && isMap(parsed.contents)) {
       try {
         return write(parsed);
-      } catch {
-        // Something in there is not the shape a Traefik config has - a `tls:`
-        // holding a string, say. Nothing to preserve then, and a certificate
-        // must still install: whatever was in the file was not working either.
-      }
+      } catch {}
     }
   }
   return write(new Document({}));
 }
 
-/**
- * Mount one of our dynamic-config files into the host's Traefik, declaring the
- * file provider when the host has none.
- */
 function mountDeploConfig(
   doc: Stack,
   service: YAMLMap,
@@ -263,10 +202,6 @@ function mountDeploConfig(
   doc.setIn(["configs", name], doc.createNode({ content }));
 }
 
-/**
- * Take the file provider back out, but only when it was ours AND nothing else of
- * ours still needs it.
- */
 function dropFileProvider(doc: Stack, service: YAMLMap, removed: string): void {
   const configs = doc.get("configs", true);
   const othersRemain =
@@ -291,8 +226,6 @@ function dropFileProvider(doc: Stack, service: YAMLMap, removed: string): void {
   );
 }
 
-/** The file provider's directory when the stack already declares one. Throws for
- *  a provider pinned to one filename - see mountDeploConfig. */
 function fileProviderDir(command: string[], purpose: string): string | null {
   if (command.some((c) => c.startsWith("--providers.file.filename=")))
     throw new Error(
@@ -302,11 +235,6 @@ function fileProviderDir(command: string[], purpose: string): string | null {
   return found ? found.slice(FILE_DIRECTORY_FLAG.length) : null;
 }
 
-/**
- * The operator's read-only mount that would swallow a file written into `dir`, if
- * there is one - its container path, so the message can name it. Refusing before
- * the write is the whole difference between a sentence and an outage.
- */
 function readOnlyMountOver(service: YAMLMap, dir: string): string | null {
   const mounts = service.get("volumes", true);
   if (!isSeq(mounts)) return null;
@@ -314,8 +242,6 @@ function readOnlyMountOver(service: YAMLMap, dir: string): string | null {
     let target = "";
     let readOnly = false;
     if (isScalar(entry)) {
-      // Short form: `source:target[:opts]`, where opts is a comma-separated list
-      // that `ro` may share with others (`ro,z` on SELinux hosts).
       const parts = String(entry.value).split(":");
       if (parts.length < 2) continue;
       target = parts[1];
@@ -330,11 +256,6 @@ function readOnlyMountOver(service: YAMLMap, dir: string): string | null {
   return null;
 }
 
-/**
- * Take one of our configs off both the service and the top level, in either
- * compose syntax, leaving every other entry, and the comments attached to them,
- * where they are.
- */
 function dropOurConfig(doc: Stack, service: YAMLMap, name: string): void {
   const mounts = service.get("configs", true);
   if (isSeq(mounts)) {
@@ -348,69 +269,35 @@ function dropOurConfig(doc: Stack, service: YAMLMap, name: string): void {
   }
 }
 
-/** The config a service `configs` entry names, in either syntax (`- name` or
- *  `- source: name`). */
 function configSource(entry: unknown): string {
   if (isScalar(entry)) return String(entry.value);
   if (isMap(entry)) return String(entry.get("source") ?? "");
   return "";
 }
 
-/* ------------------------------------------------------------------ */
-/* The panel's own route                                               */
-/* ------------------------------------------------------------------ */
-
-/**
- * The router that publishes Deplo itself. Also the name of its service and the
- * key both live under in our dynamic-config file.
- */
 const PANEL_ROUTER = "deplo-panel";
 
-/**
- * The router that keeps the panel reachable when its domain does not: a generated
- * nip.io host that resolves to this server with no DNS to set up. It replaces the
- * open `<ip>:3000` port that used to be the way back in.
- */
 const PANEL_FALLBACK_ROUTER = "deplo-panel-fallback";
 
-/**
- * How this host publishes the Deplo panel.
- */
+// How this host publishes the Deplo panel.
 export type PanelRoute = {
-  /** The host the panel answers on. */
   domain: string;
-  /** The generated host it ALSO answers on, or null when it is already {@link
-   *  domain}. See {@link PANEL_FALLBACK_ROUTER}. */
   fallbackDomain: string | null;
-  /** https on :443, or plain http on :80. */
   https: boolean;
-  /** The ACME resolver its certificate is ordered from. Null = none, and
-   *  meaningless when {@link https} is false. */
   certResolver: string | null;
-  /** Where Traefik forwards, e.g. `http://deplo:3000`. Read live, never assumed. */
   target: string;
 };
 
-/**
- * The panel's router priority, and why it is 2 rather than 1. A whole-host router
- * must stay a FALLBACK so an app's own route on the same host outranks it, which
- * is what a low number buys.
- */
+// A whole-host router must stay a FALLBACK so an app's own route on the same host outranks
+// it, while still beating the entrypoint redirect pinned at 1.
 const PANEL_PRIORITY = 2;
 
-/** Where the entrypoint redirect is pinned so an explicit route can outrank it. */
 const REDIRECT_PRIORITY = 1;
 
-/**
- * Where the panel lives on a host `install.sh` set up: the control plane's own
- * compose service name, resolved by Docker DNS on the shared `deplo` network. The
- * caller proves the guess answers before writing it - see `adoptPanelRoute`.
- */
+// Where the panel lives on a host `install.sh` set up: the control plane's own compose service name.
 export const DEFAULT_PANEL_TARGET = "http://deplo:3000";
 
-/**
- * The panel route this host serves, or null when Deplo does not own one.
- */
+// The panel route this host serves, or null when Deplo does not own one.
 export function panelRoute(currentYaml: string): PanelRoute | null {
   let content: unknown;
   try {
@@ -454,24 +341,18 @@ export function panelRoute(currentYaml: string): PanelRoute | null {
       (http?.routers?.[PANEL_FALLBACK_ROUTER] as { rule?: unknown } | undefined)
         ?.rule,
     ),
-    // The presence of `tls` IS the answer: a router without it terminates
-    // nothing, which is what plain http means here.
     https: router.tls !== undefined && router.tls !== null,
     certResolver: typeof resolver === "string" && resolver ? resolver : null,
     target,
   };
 }
 
-/** The single host a ``Host(`x`)`` rule names, or null for anything else. */
 function ruleHost(rule: unknown): string | null {
   if (typeof rule !== "string") return null;
   return rule.match(/^Host\(`([^`]+)`\)$/)?.[1] ?? null;
 }
 
-/**
- * Publish the Deplo panel on this host's proxy (or, with `null`, stop). Callers
- * must say so.
- */
+// Publish the Deplo panel on this host's proxy (or, with `null`, stop).
 export function withPanelRoute(
   currentYaml: string,
   route: PanelRoute | null,
@@ -480,8 +361,6 @@ export function withPanelRoute(
   const service = traefikService(doc);
   withRedirectFallback(doc, service);
 
-  // Read before dropping, same as the certificates: the file is a Traefik config
-  // like any other and an operator may have put a middleware of their own in it.
   const currentContent = doc.getIn(["configs", PANEL_CONFIG, "content"]);
   dropOurConfig(doc, service, PANEL_CONFIG);
 
@@ -517,18 +396,12 @@ export function withPanelRoute(
   return dump(doc);
 }
 
-/**
- * Our dynamic-config file for the panel: the current one with only OUR router
- * and service replaced, for the same reason {@link certificateFile} preserves
- * the rest - an operator who added a middleware to it keeps it.
- */
 function panelFile(current: unknown, route: PanelRoute): string {
   const router = (host: string) => ({
     rule: `Host(\`${host}\`)`,
     entryPoints: [route.https ? "websecure" : "web"],
     service: PANEL_ROUTER,
     priority: PANEL_PRIORITY,
-    // No `tls` key at all on http - its absence is what makes the route plain.
     ...(route.https
       ? { tls: route.certResolver ? { certResolver: route.certResolver } : {} }
       : {}),
@@ -538,9 +411,6 @@ function panelFile(current: unknown, route: PanelRoute): string {
       ["http", "routers", PANEL_ROUTER],
       doc.createNode(router(route.domain)),
     );
-    // Two routers, one service. Dropped rather than left stale when the panel's
-    // own address IS the generated host: two identical rules at one priority is
-    // a conflict Traefik resolves by picking one.
     if (route.fallbackDomain && route.fallbackDomain !== route.domain) {
       doc.setIn(
         ["http", "routers", PANEL_FALLBACK_ROUTER],
@@ -565,19 +435,12 @@ function panelFile(current: unknown, route: PanelRoute): string {
     if (parsed.errors.length === 0 && isMap(parsed.contents)) {
       try {
         return write(parsed);
-      } catch {
-        // Not the shape a Traefik config has. Nothing to preserve then, and the
-        // panel must still be routed: whatever was in there was not working.
-      }
+      } catch {}
     }
   }
   return write(new Document({}));
 }
 
-/**
- * Pin this host's http-to-https entrypoint redirect BELOW the routes on it, so a
- * route that asks for plain http is actually served over plain http.
- */
 function withRedirectFallback(doc: Stack, service: YAMLMap): void {
   const command = listOf(service.get("command", true));
   const redirection = command.find((c) =>
@@ -593,14 +456,6 @@ function withRedirectFallback(doc: Stack, service: YAMLMap): void {
   ]);
 }
 
-/* ------------------------------------------------------------------ */
-/* Internals                                                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * A hostname, lower-cased and proven to be one, for the two rules this module
- * writes: ``Host(`<domain>`)``.
- */
 function assertRoutableHost(raw: string, missingMessage: string): string {
   const domain = raw.trim().toLowerCase();
   if (!domain) throw new Error(missingMessage);
@@ -609,9 +464,6 @@ function assertRoutableHost(raw: string, missingMessage: string): string {
   return domain;
 }
 
-/**
- * The host's stack, parsed as a YAML document and edited in place.
- */
 type Stack = Document.Parsed;
 
 function parseCompose(text: string): Stack {
@@ -627,11 +479,6 @@ function parseCompose(text: string): Stack {
   return doc;
 }
 
-/**
- * The service holding Traefik. Matched by container_name first (the installer
- * pins `deplo-traefik`), then by image, then by the conventional `traefik` key,
- * so a hand-renamed service still resolves.
- */
 function traefikServiceNode(doc: Stack): YAMLMap | null {
   const services = doc.get("services", true);
   if (!isMap(services)) return null;
@@ -664,11 +511,6 @@ function traefikService(doc: Stack): YAMLMap {
   return service;
 }
 
-/**
- * compose accepts `labels`/`command` as either a list or a map (`KEY: value`).
- * Everything here works on the list form, which is also what the installer
- * writes and what every other Deplo renderer emits.
- */
 function listOf(node: unknown): string[] {
   if (isSeq(node)) return node.items.map(scalar);
   if (isMap(node))
@@ -677,17 +519,13 @@ function listOf(node: unknown): string[] {
   return [];
 }
 
-/** A node's scalar text, for the flag and label lists this module reads. */
 function scalar(node: unknown): string {
   if (isScalar(node)) return String(node.value);
   return node == null ? "" : String(node);
 }
 
-/**
- * Replace a `command`/`labels` list, KEEPING the item nodes that survive.
- * Rebuilding that list from strings would leave every flag in place and drop every
- * line explaining them.
- */
+// KEEPS the item nodes that survive: rebuilding the list from strings would leave every flag
+// in place and drop every line explaining them.
 function setList(
   doc: Stack,
   owner: YAMLMap,
@@ -719,24 +557,17 @@ function setList(
   else owner.set(key, doc.createNode(next));
 }
 
-/** A `--flag=value` / `label=value` entry's name, i.e. what makes two entries the
- *  same setting with different values. Valueless entries are their own name. */
 function entryName(entry: string): string {
   const eq = entry.indexOf("=");
   return eq === -1 ? entry : entry.slice(0, eq);
 }
 
-/** Append one entry to a service list, creating the list if it has none. */
 function addTo(doc: Stack, owner: YAMLMap, key: string, value: unknown): void {
   const node = owner.get(key, true);
   if (isSeq(node)) node.add(doc.createNode(value));
   else owner.set(key, doc.createNode([value]));
 }
 
-/**
- * The ACME resolver this stack actually defines, read off its own flags rather
- * than assumed.
- */
 function certResolver(command: string[]): string {
   for (const flag of command) {
     const m = flag.match(/^--certificatesresolvers\.([^.]+)\./);
@@ -746,8 +577,7 @@ function certResolver(command: string[]): string {
 }
 
 function dump(doc: Stack): string {
-  // lineWidth 0 disables folding - a wrapped basicauth hash or a wrapped
-  // `Host(...)` rule is still valid YAML but unreadable in the file the operator
-  // may end up looking at on the host.
+  // lineWidth 0 disables folding - a wrapped basicauth hash or `Host(...)` rule is valid
+  // YAML but unreadable in the file an operator may open on the host.
   return doc.toString({ lineWidth: 0 });
 }

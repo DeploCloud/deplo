@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { TOKEN_PRESETS, presetIdFor, tokenPreset } from "./token-presets";
 import { CAPABILITY_META } from "./capabilities";
-import { ALL_CAPABILITIES } from "./types";
+import { ALL_CAPABILITIES } from "./types/identity";
 
 test("every template is a well-formed capability set", () => {
   for (const p of TOKEN_PRESETS) {
@@ -16,8 +16,7 @@ test("every template is a well-formed capability set", () => {
       p.capabilities.length,
       `${p.id} repeats a capability`,
     );
-    // Also catches a name that isn't in the catalog at all: filtering
-    // ALL_CAPABILITIES can only ever produce known names, in canonical order.
+    // Filtering ALL_CAPABILITIES yields only known names, so an unknown one is caught here too.
     assert.deepEqual(
       p.capabilities,
       ALL_CAPABILITIES.filter((c) => p.capabilities.includes(c)),
@@ -26,9 +25,6 @@ test("every template is a well-formed capability set", () => {
   }
 });
 
-/**
- * The assertion with teeth.
- */
 test("only Root access hands out a sensitive capability, and it hands out everything", () => {
   const root = TOKEN_PRESETS.find((p) => p.id === "root");
   assert.ok(root);

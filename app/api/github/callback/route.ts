@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   exchangeManifestCode,
   readConnectState,
@@ -8,14 +8,9 @@ import {
 import { createGithubApp } from "@/lib/data/github";
 import { resolvePublicBaseUrl } from "@/lib/public-url";
 
-/**
- * GitHub App manifest callback. GitHub redirects here after the user creates the
- * App, with a one-time `code` and the `state` we issued.
- */
+// GET is GitHub's App-manifest callback: a one-time `code` plus the `state` we issued.
 export async function GET(request: NextRequest) {
-  // Public base URL, not request.nextUrl.origin: behind a reverse proxy the
-  // latter is the internal origin (e.g. http://localhost:3000), which would
-  // send the browser to the wrong host on the error/login redirects.
+  // Not request.nextUrl.origin: behind a reverse proxy that is the internal origin, so redirects would leave the public host.
   const origin = resolvePublicBaseUrl(request.headers);
   const settings = new URL("/settings/git", origin);
 
@@ -38,7 +33,6 @@ export async function GET(request: NextRequest) {
   try {
     const conversion = await exchangeManifestCode(code);
     await createGithubApp(conversion);
-    // Straight on to installing the App on the user's account/repos.
     const install = new URL(`${conversion.html_url}/installations/new`);
     if (started.returnTo) {
       install.searchParams.set(

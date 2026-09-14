@@ -22,20 +22,22 @@ process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
-  domains as domainsTable,
-  envVars as envVarsTable,
-  environments as environmentsTable,
-  folders as foldersTable,
   membershipCapabilities as membershipCapabilitiesTable,
-  projects as projectsTable,
-  registries as registriesTable,
   teamRoles as teamRolesTable,
   teamRoleCapabilities as teamRoleCapabilitiesTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
+import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
+import { registries as registriesTable } from "../db/schema/control-plane/integrations";
+import {
+  environments as environmentsTable,
+  folders as foldersTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane/projects";
 import { schema } from "./schema";
 import { type GraphQLContext } from "./context";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import {
   seedIdentity,
@@ -54,7 +56,7 @@ import {
   seedBackup,
   seedRun,
 } from "../data/backup-test-helpers";
-import { ALL_CAPABILITIES } from "../types";
+import { ALL_CAPABILITIES } from "../types/identity";
 import { eq } from "drizzle-orm";
 import { encryptSecret } from "../crypto";
 import {
@@ -62,18 +64,10 @@ import {
   __resetQueueForTest,
 } from "../deploy/deploy-queue";
 
-/**
- * The CROSS-TEAM matrix: every mutation and every query of the public API, driven
- * by a full-powered owner of team A, handed team B's ids.
- */
-
 let db: TestDb;
 let pg: PGlite;
 const T0 = "2026-01-01T00:00:00.000Z";
 
-/**
- * Team B's resources - everything an argument could name.
- */
 const B = {
   app: "prj_teamb_app",
   project: "prc_teamb",
@@ -116,8 +110,7 @@ async function seedAll(): Promise<void> {
   await seedServer(db);
   await seedServer(db, B.server);
 
-  // Team A needs one of everything too, so a mutation that reads the ACTIVE
-  // team first doesn't fail for an unrelated reason.
+  // Team A needs one of everything too, so a mutation reading the ACTIVE team first still runs.
   await db.insert(projectsTable).values([
     {
       id: "prc_a",
@@ -303,12 +296,16 @@ async function seedAll(): Promise<void> {
       createdAt: T0,
     },
   ]);
-  // NOT an instance admin: instance administration is global by design, and a
-  // global admin reaching another team is the feature, not the leak.
+  // NOT an instance admin: a global admin reaching another team is the feature, not the leak.
   await db
-    .update((await import("../db/schema/control-plane")).users)
+    .update((await import("../db/schema/control-plane/identity")).users)
     .set({ isInstanceAdmin: false })
-    .where(eq((await import("../db/schema/control-plane")).users.id, USER_1));
+    .where(
+      eq(
+        (await import("../db/schema/control-plane/identity")).users.id,
+        USER_1,
+      ),
+    );
 }
 
 after(async () => {
@@ -317,11 +314,6 @@ after(async () => {
   await pg.close();
 });
 
-/* ------------------------------------------------------------------ */
-/* Which of team B's ids an argument names                             */
-/* ------------------------------------------------------------------ */
-
-/** Argument name → the team-B id it should be handed. */
 const BY_ARG: Record<string, string> = {
   appId: B.app,
   appIds: B.app,
@@ -342,7 +334,6 @@ const BY_ARG: Record<string, string> = {
   teamIds: TEAM_B,
 };
 
-/** Mutation name → what its bare `id` / `ids` argument names. */
 function bareIdFor(mutation: string): string | null {
   const m = mutation.toLowerCase();
   if (m.includes("folder")) return B.folder;
@@ -409,7 +400,6 @@ function selectionFor(type: GraphQLOutputType): string {
     : "";
 }
 
-/** Mutations that are not about a foreign id at all (auth, account, setup). */
 const SKIP = new Set([
   "login",
   "logout",
@@ -477,9 +467,8 @@ async function asOwnerOfA(): Promise<{
   return { ctx, identity };
 }
 
-/** A fingerprint of everything team B owns - any change is a cross-team write. */
 async function snapshotB(): Promise<string> {
-  const cp = await import("../db/schema/control-plane");
+  const cp = await import("../db/schema");
   const counts = await Promise.all([
     db.select().from(cp.apps).where(eq(cp.apps.teamId, TEAM_B)),
     db.select().from(cp.folders).where(eq(cp.folders.teamId, TEAM_B)),
@@ -518,9 +507,7 @@ test("no mutation touches another team's rows", async () => {
         ),
         new Promise((r) => setTimeout(() => r("timeout"), 15_000)),
       ]);
-    } catch {
-      /* a throw is a refusal */
-    }
+    } catch {}
     const after = await snapshotB();
     if (before !== after) touched.push(m.name);
   }
@@ -531,11 +518,6 @@ test("no mutation touches another team's rows", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Reads: does any query hand back team B's data?                      */
-/* ------------------------------------------------------------------ */
-
-/** A selection deep enough to actually surface leaked values, not `__typename`. */
 function deepSelection(type: GraphQLOutputType, depth = 0): string {
   if (isNonNullType(type) || isListType(type))
     return deepSelection((type as { ofType: GraphQLOutputType }).ofType, depth);
@@ -543,7 +525,7 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
   const fields = Object.values(type.getFields());
   const parts: string[] = ["__typename"];
   for (const f of fields) {
-    if (f.args.some((a) => isNonNullType(a.type))) continue; // needs args we can't guess
+    if (f.args.some((a) => isNonNullType(a.type))) continue;
     const inner = deepSelection(f.type, depth + 1);
     if (inner) {
       if (depth >= 2) continue;
@@ -555,8 +537,7 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
   return ` { ${parts.join(" ")} }`;
 }
 
-/** Strings that only exist inside team B. A SERVER is deliberately shared
- *  across teams (the one cross-team resource), so it is not a sentinel. */
+// A SERVER is deliberately shared across teams, so it is not a sentinel.
 const SENTINELS = [
   B.app,
   "b-app",
@@ -626,9 +607,7 @@ test("no query hands back another team's data", async () => {
     const hit = SENTINELS.filter((sentinel) => body.includes(sentinel));
     if (hit.length > 0) leaks.push(`${q.name} → ${hit.join(", ")}`);
   }
-  // THE CONTROL: the same documents, run by team B's own owner, must surface
-  // those sentinels, otherwise the sweep above proves nothing about leaks, only
-  // that the queries returned nothing at all.
+  // THE CONTROL: team B's own owner must surface those sentinels, or the sweep proves nothing.
   const owner: RequestIdentity = { userId: B.user, teamId: TEAM_B };
   const ownerCtx = await runWithIdentity(
     owner,
@@ -652,9 +631,7 @@ test("no query hands back another team's data", async () => {
       const body = JSON.stringify(r.data ?? {});
       for (const sentinel of SENTINELS)
         if (body.includes(sentinel)) seen.add(sentinel);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }
   assert.ok(
     seen.size >= SENTINELS.length - 2,

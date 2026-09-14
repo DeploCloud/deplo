@@ -5,20 +5,12 @@ import { eq, isNull, and } from "drizzle-orm";
 import { loadAppGraph } from "../data/app-graph-load";
 import { teamSlugById } from "../data/teams";
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  appPreviews as appPreviewsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { appPreviews as appPreviewsTable } from "../db/schema/control-plane/deployments";
 import { TransientGithubError, upsertPullRequestComment } from "../github/app";
 import { githubFullName } from "../github/repo-id";
 import { PUBLIC_URL_PLACEHOLDER, resolveManifestBaseUrl } from "../public-url";
 import { withTeam } from "../team-path";
-
-/**
- * The ONE comment Deplo keeps on a pull request, edited in place. A pull request
- * with twenty pushes must still have one Deplo comment, not twenty, so the
- * comment id is stored on the preview row and every later transition is a `PATCH`.
- */
 
 const MARKER = "<!-- deplo-preview -->";
 
@@ -28,11 +20,10 @@ export type PreviewCommentState =
   | { kind: "failed" }
   | { kind: "destroyed" }
   | { kind: "awaiting-approval" }
-  /** Stopped by the app's own limit; the pull request is still open. */
   | { kind: "evicted"; max: number }
   | { kind: "refused"; reason: string };
 
-/** The comment body for one state. Markdown, no emoji, no ellipsis. */
+// previewCommentBody - the comment body for one state. Markdown, no emoji, no ellipsis.
 export function previewCommentBody(input: {
   state: PreviewCommentState;
   url: string;
@@ -80,20 +71,14 @@ export function previewCommentBody(input: {
 
   const parts = [MARKER, "### Deplo preview", "", table];
   if (note) parts.push("", note);
-  // A link to `https://your-deplo-host` is worse than no link at all.
   if (input.buildLogUrl) parts.push("", `[Build logs](${input.buildLogUrl})`);
   return parts.join("\n") + "\n";
 }
 
-/** The pauses between attempts at GitHub: a 502 is usually over in seconds. */
+// COMMENT_RETRY_DELAYS_MS - the pauses between attempts at GitHub.
 export const COMMENT_RETRY_DELAYS_MS = [2_000, 6_000, 15_000];
 
-/**
- * Run `fn`, asking again after each delay while it fails with a transient error.
- * Anything else propagates at once. The caller is fire-and-forget, so the wait
- * costs nobody anything; without it a GitHub hiccup left "Building" on a pull
- * request whose preview had been ready for hours.
- */
+// retryTransient - run `fn` again after each delay while it fails with a transient error.
 export async function retryTransient<T>(
   fn: () => Promise<T>,
   delays: readonly number[],
@@ -113,15 +98,12 @@ export async function retryTransient<T>(
 
 let disabledForTest = false;
 
-/** Test-only: the callers fire this and forget it, and a stray query landing in
- *  the next test's pglite transaction is a hang, not a failure. */
+// __disablePreviewCommentsForTest - a stray fire-and-forget query hangs the next test's pglite.
 export function __disablePreviewCommentsForTest(): void {
   disabledForTest = true;
 }
 
-/**
- * Push the current state of a preview onto its pull request.
- */
+// syncPreviewComment - push the current state of a preview onto its pull request.
 export async function syncPreviewComment(
   previewId: string,
   state: PreviewCommentState,
@@ -135,8 +117,6 @@ export async function syncPreviewComment(
       .limit(1);
     const p = rows[0];
     if (!p) return;
-    // The app can turn the comment off. One guard here covers every caller: the deploy
-    // outcome, the open, the sync and the teardown.
     const wanted = await getDb()
       .select({ comment: appsTable.previewComment })
       .from(appsTable)
@@ -176,7 +156,6 @@ export async function syncPreviewComment(
       COMMENT_RETRY_DELAYS_MS,
     );
     // Compare-and-set: two rapid `synchronize` deliveries must not both post.
-    // A loser simply keeps the winner's id and PATCHes it next time.
     if (commentId && commentId !== p.commentId) {
       await getDb()
         .update(appPreviewsTable)

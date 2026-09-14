@@ -10,7 +10,7 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { domains as domainsTable } from "../db/schema/control-plane";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
@@ -18,25 +18,15 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
+import { ensureAutoDomain } from "./domains/auto-domains";
+import { addDomain, updateDomain } from "./domains/crud";
 import {
-  addDomain,
-  ensureAutoDomain,
-  routableRoutes,
-  setPrimaryDomain,
-  updateDomain,
   verifyDomain,
   __setDnsResolve4ForTest,
   __resetDnsResolve4ForTest,
-} from "./domains";
-
-/**
- * Domain DNS auto-check semantics: adding (and renaming) a domain checks its DNS
- * at write time so a pre-pointed host is born routable with zero manual steps, an
- * unresolvable host reads `pending` (not the accusatory `misconfigured`, reserved
- * for DNS that resolves to the WRONG address), and `verifyDomain` reports
- * `statusChanged` so the resolver can skip the routing re-apply on the no-change
- * checks the domains page runs on its interval.
- */
+} from "./domains/dns-check";
+import { setPrimaryDomain } from "./domains/primary-domain";
+import { routableRoutes } from "./domains/routes";
 
 const SERVER_IP = "10.0.0.1"; // seedServer's ip - the classify target
 const CLOUDFLARE_IP = "104.16.1.1"; // inside Cloudflare's 104.16.0.0/13
@@ -69,10 +59,6 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/* ------------------------------------------------------------------ */
-/* addDomain checks DNS at write time                                   */
-/* ------------------------------------------------------------------ */
-
 test("addDomain: a host already pointing at the server is born valid + ssl", async () => {
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const d = await asUser1(() => addDomain("prj_1", "live.example.io", {}));
@@ -85,9 +71,6 @@ test("addDomain: a Cloudflare-proxied host is born cloudflare + ssl", async () =
   const d = await asUser1(() => addDomain("prj_1", "cf.example.io", {}));
   assert.equal(d.status, "cloudflare");
   assert.equal(d.ssl, true);
-  // Cloudflare already serves this host over HTTPS, so the certificate provider
-  // follows the detection instead of leaving the row on the cert-less default,
-  // no trip into Advanced settings to make Deplo agree with the proxy.
   assert.equal(d.certProvider, "cloudflare");
   const [row] = await db.select().from(domainsTable);
   assert.equal(row.certProvider, "cloudflare", "the choice must be persisted");
@@ -129,23 +112,17 @@ test("addDomain: a host resolving elsewhere is born misconfigured", async () => 
   assert.equal(d.ssl, false);
 });
 
-/* ------------------------------------------------------------------ */
-/* verifyDomain: statuses + the statusChanged flag                      */
-/* ------------------------------------------------------------------ */
-
 test("verifyDomain: pending → valid reports statusChanged; re-verify doesn't", async () => {
   __setDnsResolve4ForTest(async () => []);
   const d = await asUser1(() => addDomain("prj_1", "flip.example.io", {}));
   assert.equal(d.status, "pending");
 
-  // DNS record lands - the next check (the page's automatic one) flips it.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const flipped = await asUser1(() => verifyDomain(d.id));
   assert.equal(flipped.status, "valid");
   assert.equal(flipped.ssl, true);
   assert.equal(flipped.statusChanged, true, "the flip must report a change");
 
-  // Same answer again ⇒ no change ⇒ the caller can skip re-applying routing.
   const again = await asUser1(() => verifyDomain(d.id));
   assert.equal(again.status, "valid");
   assert.equal(again.statusChanged, false, "a settled re-check is a no-op");
@@ -165,9 +142,6 @@ test("verifyDomain: pending → cloudflare also settles the certificate provider
   const d = await asUser1(() => addDomain("prj_1", "later-cf.example.io", {}));
   assert.equal(d.certProvider, "none");
 
-  // The record lands behind the orange cloud - the same check that discovers the
-  // proxy hands the certificate to it, so the router moves to websecure without
-  // the user touching anything.
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   const flipped = await asUser1(() => verifyDomain(d.id));
   assert.equal(flipped.status, "cloudflare");
@@ -176,8 +150,6 @@ test("verifyDomain: pending → cloudflare also settles the certificate provider
   const [row] = await db.select().from(domainsTable);
   assert.equal(row.certProvider, "cloudflare");
 
-  // Idempotent: re-checking a settled proxied domain changes nothing, so the
-  // caller can still skip the routing re-apply.
   const again = await asUser1(() => verifyDomain(d.id));
   assert.equal(again.certProvider, "cloudflare");
   assert.equal(again.statusChanged, false, "a settled re-check is a no-op");
@@ -186,9 +158,7 @@ test("verifyDomain: pending → cloudflare also settles the certificate provider
 test("verifyDomain: a proxied domain the user moved off Cloudflare is left alone", async () => {
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   const d = await asUser1(() => addDomain("prj_1", "own-cert.example.io", {}));
-  // The user overrides the automatic choice from the Edit dialog…
   await asUser1(() => updateDomain(d.id, { certProvider: "letsencrypt" }));
-  // …and no later check may undo it, or the override would last 30 seconds.
   const checked = await asUser1(() => verifyDomain(d.id));
   assert.equal(checked.status, "cloudflare");
   assert.equal(checked.certProvider, "letsencrypt");
@@ -199,9 +169,7 @@ test("verifyDomain: un-proxying a domain never strips the certificate it gained"
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   const d = await asUser1(() => addDomain("prj_1", "grey.example.io", {}));
   assert.equal(d.certProvider, "cloudflare");
-  // Orange cloud switched off: the host now points straight here. The provider
-  // stays - dropping a live site back to plain HTTP is never the safe guess, and
-  // `cloudflare` is a valid grey-cloud (DNS-01) choice in its own right.
+  // The provider stays: dropping a live site back to plain HTTP is never the safe guess.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const checked = await asUser1(() => verifyDomain(d.id));
   assert.equal(checked.status, "valid");
@@ -217,10 +185,6 @@ test("verifyDomain: wrong-address DNS settles misconfigured", async () => {
   assert.equal(checked.ssl, false);
   assert.equal(checked.statusChanged, true);
 });
-
-/* ------------------------------------------------------------------ */
-/* updateDomain: a rename re-checks the NEW host                        */
-/* ------------------------------------------------------------------ */
 
 test("rename to a pre-pointed host keeps the domain routable (checked at write)", async () => {
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
@@ -244,8 +208,7 @@ test("rename onto a proxied host picks up the Cloudflare certificate too", async
   const d = await asUser1(() => addDomain("prj_1", "plain.example.io", {}));
   assert.equal(d.certProvider, "none");
 
-  // The Edit dialog posts the whole config, so an untouched dropdown re-sends
-  // the stored `none`, which must NOT read as "the user chose plain HTTP".
+  // The Edit dialog posts the whole config, so a re-sent `none` is not a user choice.
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   await asUser1(() =>
     updateDomain(d.id, { name: "moved-cf.example.io", certProvider: "none" }),
@@ -262,8 +225,6 @@ test("rename onto a proxied host respects a certificate the user DID change", as
     addDomain("prj_1", "was-le.example.io", { certProvider: "letsencrypt" }),
   );
 
-  // Same save moves the dropdown to None: an explicit change always wins over
-  // the automatic pick, so the domain lands on plain HTTP as asked.
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   await asUser1(() =>
     updateDomain(d.id, { name: "now-cf.example.io", certProvider: "none" }),
@@ -275,7 +236,6 @@ test("rename onto a proxied host respects a certificate the user DID change", as
 });
 
 test("rename of the generated nip.io domain checks the new host, not its provenance", async () => {
-  // The row a fresh app starts with: Deplo's own nip.io host, born valid.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   await ensureAutoDomain("prj_1", {
     slug: "app",
@@ -286,8 +246,6 @@ test("rename of the generated nip.io domain checks the new host, not its provena
   assert.equal(auto.source, "auto");
   assert.equal(auto.status, "valid");
 
-  // The user edits that row and types their own hostname, which points nowhere
-  // yet. It must NOT inherit the nip.io row's valid/ssl.
   __setDnsResolve4ForTest(async () => []);
   await asUser1(() => updateDomain(auto.id, { name: "mine.example.io" }));
   const [renamed] = await db.select().from(domainsTable);
@@ -307,13 +265,8 @@ test("rename to an unresolvable host drops to pending and stops ssl", async () =
   assert.equal(renamed.ssl, false);
 });
 
-/* ------------------------------------------------------------------ */
-/* A proxy that is not Cloudflare                                       */
-/* ------------------------------------------------------------------ */
-
 test("proxied: a host answered by another proxy is routed, not dropped", async () => {
-  // A CDN / reverse proxy answers for the hostname, so its A record is the
-  // proxy's and the check can only ever say `misconfigured`.
+  // A CDN's A record is the proxy's, so the DNS check can only ever say misconfigured.
   __setDnsResolve4ForTest(async () => [ELSEWHERE_IP]);
   const d = await asUser1(() =>
     addDomain("prj_1", "cdn.example.io", { proxied: true }),

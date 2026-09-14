@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { buildDeployRequest } from "./agent-deploy";
 import { SourceKind, BuildKind } from "../agent/gen/agent";
-import type { BuildConfig } from "../types";
+import type { BuildConfig } from "../types/build";
 
 function baseBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
   return {
@@ -24,11 +24,6 @@ function baseBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
   };
 }
 
-/**
- * A multi-service compose stack deploys to a REMOTE server through the agent (Part
- * C).
- */
-
 const base = {
   deployId: "dep_1",
   slug: "myapp",
@@ -47,13 +42,12 @@ test("compose plan → SOURCE_KIND_COMPOSE, no build, no single image to pull", 
   assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_COMPOSE);
   assert.equal(req.buildKind, BuildKind.BUILD_KIND_NONE);
   assert.equal(req.pullImage, false);
-  // No build context is tarred for a compose stack.
   assert.equal(req.contextTar.length, 0);
 });
 
 test("a compose stack's bring-up pulls every service's image, the operator's flags after", async () => {
-  // `docker compose up -d` alone pulls only a MISSING image, so a redeploy of a
-  // `:latest` stack kept running the old one.
+  // `docker compose up -d` alone pulls only a MISSING image, so a redeploy of a `:latest`
+  // stack kept running the old one.
   const plain = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },
@@ -65,7 +59,6 @@ test("a compose stack's bring-up pulls every service's image, the operator's fla
     composeUpArgs: ["--wait"],
   });
   assert.deepEqual(withFlags.composeUpArgs, ["--pull", "always", "--wait"]);
-  // The operator's own pull policy wins.
   const optedOut = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },
@@ -98,8 +91,6 @@ test("compose plan carries the rendered YAML and the decrypted env for the --env
     plan: { kind: "compose", mounts: [] },
   });
   assert.equal(req.composeYaml, base.composeYaml);
-  // The env rides separately (the agent writes it to a 0600 env-file); it is NOT
-  // expected to be inlined into the compose YAML for the multi-service path.
   assert.deepEqual(req.env, base.env);
 });
 
@@ -128,12 +119,6 @@ test("compose plan with no mounts sends an empty mounts list", async () => {
   assert.deepEqual(req.mounts, []);
 });
 
-/**
- * Heavy build methods (static/nixpacks/buildpacks/railpack) now run agent-side.
- * The git arm can't probe the tree, so it keys purely off the method - these pin
- * that mapping.
- */
-
 test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfile", async () => {
   const req = await buildDeployRequest({
     ...base,
@@ -154,16 +139,10 @@ test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfil
   );
   assert.equal(req.buildSpec?.method, "nixpacks");
   assert.equal(req.buildSpec?.installCommand, "npm ci");
-  // Unpinned Nixpacks/Railpack default to a current Node major (see buildSpecFor).
   assert.equal(req.buildSpec?.runtimeVersion, "24");
   assert.equal(req.buildSpec?.runtimeLanguage, "node");
 });
 
-/**
- * Build-time env parity: when the control plane renders a GENERATED Dockerfile
- * (legacy/auto method, tree not probeable here), the resolved env-var NAMES must
- * ride into the body as ARG/ENV declarations - the agent then feeds the values as
- */
 test("git plan with a legacy/auto method embeds the env NAMES (not values) in the generated Dockerfile", async () => {
   const req = await buildDeployRequest({
     ...base,
@@ -172,8 +151,6 @@ test("git plan with a legacy/auto method embeds the env NAMES (not values) in th
       url: "https://x@github.com/o/r.git",
       branch: "main",
       subdir: "",
-      // A legacy method string outside today's union: not heavy, not
-      // "dockerfile" → the generated-Dockerfile arm.
       build: baseBuild({ buildMethod: "auto" as BuildConfig["buildMethod"] }),
     },
   });
@@ -210,8 +187,6 @@ test("git plan with the static method → BUILD_KIND_STATIC + a BuildSpec", asyn
   assert.equal(req.buildSpec?.staticSinglePageApp, true);
 });
 
-/* ---- the two freshness switches ------------------------------------- */
-
 const gitPlan = {
   kind: "git" as const,
   url: "https://x@github.com/o/r.git",
@@ -235,8 +210,6 @@ test("no-cache and force-recreate ride the request independently", async () => {
   assert.equal(fresh.noBuildCache, true);
   assert.equal(fresh.forceRecreate, false);
 
-  // "Rebuild container" on a compose stack: nothing to build, but the containers
-  // must be replaced - the case `up -d` alone silently skips.
   const rebuilt = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },
@@ -246,9 +219,6 @@ test("no-cache and force-recreate ride the request independently", async () => {
   assert.equal(rebuilt.noBuildCache, false);
 });
 
-/**
- * The IMAGE plan serves two opposite jobs, and `pull` is what tells them apart.
- */
 test("a prebuilt docker-image source PULLS its registry ref", async () => {
   const req = await buildDeployRequest({
     ...base,
@@ -271,7 +241,6 @@ test("a ROLLBACK runs the host's own image with no build and no pull", async () 
   assert.equal(req.buildKind, BuildKind.BUILD_KIND_NONE);
   assert.equal(req.pullImage, false);
   assert.equal(req.imageRef, "deplo/myapp:dpl_abc123");
-  // Nothing is shipped to build from: the image already exists on that host.
   assert.equal(req.contextTar.length, 0);
   assert.equal(req.git, undefined);
   assert.equal(req.buildSpec, undefined);

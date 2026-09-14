@@ -13,29 +13,20 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { sharedEnvVars as sharedVarsTable } from "../db/schema/control-plane/env-vars";
 import {
   projects as projectsTable,
   environments as environmentsTable,
-  apps as appsTable,
   folders as foldersTable,
-  sharedEnvVars as sharedVarsTable,
-  activities as activitiesTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { decryptSecret } from "../crypto";
-import {
-  saveSharedVar,
-  deleteSharedVar,
-  setSharedVarAppLink,
-  listSharedVars,
-  listSharedVarsForApp,
-  loadSharedVarsForApp,
-} from "./shared-vars";
-
-/**
- * Data-layer tests for the unified shared-variable model (ADR-0010, opt-in per
- * ADR-0012): the three availability scopes + per-app link, ≥1-scope validation,
- * secret masking, team isolation, and the deploy loader, which injects ONLY the
- */
+import { setSharedVarAppLink } from "./shared-vars/app-links";
+import { listSharedVarsForApp } from "./shared-vars/app-view";
+import { saveSharedVar, deleteSharedVar } from "./shared-vars/authoring";
+import { loadSharedVarsForApp } from "./shared-vars/deploy-entries";
+import { listSharedVars } from "./shared-vars/team-view";
 
 let db: TestDb;
 let pg: PGlite;
@@ -65,13 +56,10 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
-      // A second TEAM_A member (member ⇒ has manage_env) - the authorship tests
-      // need an editor who is NOT the creator.
       { id: "user_3", teamId: TEAM_A, role: "member" },
     ],
   });
   await seedServer(db);
-  // A project with two environments in TEAM_A.
   await db.insert(projectsTable).values({
     id: PRJ,
     teamId: TEAM_A,
@@ -108,7 +96,6 @@ beforeEach(async () => {
       updatedAt: T0,
     },
   ]);
-  // app_p lives in the project's Development environment; app_top is top-level.
   await seedApp(db, { id: "app_p", slug: "app-p", teamId: TEAM_A });
   await seedApp(db, { id: "app_top", slug: "app-top", teamId: TEAM_A });
   await db
@@ -124,7 +111,6 @@ const asUser2 = <T>(fn: () => Promise<T>): Promise<T> =>
 const asUser3 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: "user_3", teamId: TEAM_A }, fn);
 
-/** Create a shared var and return its id (looked up by key). */
 async function mkVar(input: {
   key: string;
   value?: string;
@@ -159,7 +145,6 @@ test("create + list is decorated and team-scoped", async () => {
     ["TEAMWIDE"],
   );
   assert.equal(a[0]!.teamWide, true);
-  // Another team sees nothing.
   assert.deepEqual(await asUser2(() => listSharedVars()), []);
 });
 
@@ -194,12 +179,11 @@ test("saveSharedVar rejects a var with no sharing mode", async () => {
 });
 
 test("a link-only var (the migrated shared-group shape) can still be saved", async () => {
-  // Migration 0027 explodes every legacy shared GROUP var into a var with per-app
-  // LINKS and NO modes. If the ≥1-mode rule rejected that shape, every migrated
-  // group variable would be permanently unsavable (you could never rotate its value).
+  // Migration 0027 explodes every legacy shared GROUP var into per-app LINKS and NO
+  // modes; if the >= 1-mode rule rejected that shape, every migrated group variable
+  // would be permanently unsavable.
   const id = await asUser1(() => mkVar({ key: "FROMGROUP", teamWide: true }));
   await asUser1(() => setSharedVarAppLink(id, "app_p", true));
-  // Strip the only mode → now it reaches app_p purely through the link.
   await asUser1(() =>
     saveSharedVar({
       id,
@@ -216,7 +200,6 @@ test("a link-only var (the migrated shared-group shape) can still be saved", asy
   assert.equal(v!.teamWide, false);
   assert.equal(v!.value, "rotated");
   assert.deepEqual(v!.appIds, ["app_p"]);
-  // It still injects into the linked app.
   assert.deepEqual(
     (await loadSharedVarsForApp("app_p")).map((e) => e.key),
     ["FROMGROUP"],
@@ -243,8 +226,6 @@ test("a var with neither a mode nor a link is rejected", async () => {
 });
 
 test("an omitted target set means every runtime", async () => {
-  // An App belongs to exactly ONE Environment, so the legacy production/preview
-  // picker is gone from every dialog.
   await asUser1(() =>
     saveSharedVar({
       key: "NOTARGET",
@@ -260,9 +241,6 @@ test("an omitted target set means every runtime", async () => {
 });
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
-  // The dialogs no longer send targets. A legacy production-only variable must not
-  // silently widen to every runtime on a value edit. (Plain on purpose: a secret
-  // takes no value edit at all - env-secret-immutable.test.ts.)
   const id = await asUser1(() =>
     mkVar({
       key: "STRIPE_LIVE_KEY",
@@ -286,12 +264,10 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
   );
   const [v] = await asUser1(() => listSharedVars());
   assert.deepEqual(v!.targets, ["production"]);
-  // The deploy loader still sees the narrow set.
   assert.deepEqual(
     (await loadSharedVarsForApp("app_p")).map((e) => e.targets),
     [["production"]],
   );
-  // An explicit set still replaces them.
   await asUser1(() =>
     saveSharedVar({
       id,
@@ -311,9 +287,6 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
 });
 
 test("the appIds whole-set replace is folder-gated on every link it adds or removes", async () => {
-  // `link` is the HIGHEST deploy precedence, so a member holding team `manage_env`
-  // but no grant on the folder must not be able to inject a var into an app inside
-  // it, nor to unlink one (that silently strips the var off the app's next deploy).
   await db.insert(foldersTable).values({
     id: FLD,
     teamId: TEAM_A,
@@ -329,7 +302,6 @@ test("the appIds whole-set replace is folder-gated on every link it adds or remo
     .set({ folderId: FLD })
     .where(eq(appsTable.id, "app_p"));
 
-  // ADD: user_3 has team manage_env but no access to FLD.
   await assert.rejects(
     asUser3(() =>
       saveSharedVar({
@@ -346,7 +318,6 @@ test("the appIds whole-set replace is folder-gated on every link it adds or remo
   );
   assert.deepEqual(await asUser1(() => listSharedVars()), []);
 
-  // REMOVE: the folder owner links it; user_3 can't drop the link by re-saving.
   const id = await asUser1(() =>
     mkVar({ key: "GATED", teamWide: true, appIds: ["app_p"] }),
   );
@@ -367,12 +338,10 @@ test("the appIds whole-set replace is folder-gated on every link it adds or remo
   assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
     "app_p",
   ]);
-  // An UNCHANGED link is not a new write - resending it doesn't need the grant.
   await asUser3(() => saveSharedVar(save(["app_p"])));
   assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
     "app_p",
   ]);
-  // The folder owner can unlink.
   await asUser1(() => saveSharedVar(save([])));
   assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, []);
 });
@@ -382,7 +351,6 @@ test("authorship: create stamps both columns, an edit only touches updatedBy", a
   const [created] = await asUser1(() => listSharedVars());
   assert.equal(created!.createdBy?.id, USER_1);
   assert.equal(created!.updatedBy?.id, USER_1);
-  // A different member rotates the value - the creator must not be rewritten.
   await asUser3(() =>
     saveSharedVar({
       id: created!.id,
@@ -397,11 +365,9 @@ test("authorship: create stamps both columns, an edit only touches updatedBy", a
   const [edited] = await asUser1(() => listSharedVars());
   assert.equal(edited!.createdBy?.id, USER_1);
   assert.equal(edited!.updatedBy?.id, "user_3");
-  // Identity only, never an email. `avatarUrl` is DERIVED from the address
-  // server-side (a Gravatar hash) precisely so the address itself never leaves
-  // the data layer, so it is asserted apart from the rest: pinning the hash here
-  // would only re-state the seed's email in a second place, and what this test
-  // is actually guarding is that the email is not in the DTO at all.
+  // `avatarUrl` is DERIVED server-side from the address so the email never leaves the
+  // data layer; asserted apart, since what this guards is that the email is not in the
+  // DTO at all.
   const { avatarUrl, ...identity } = edited!.updatedBy!;
   assert.deepEqual(identity, {
     id: "user_3",
@@ -429,8 +395,6 @@ test("linking a var to an app stamps the author (a scope change IS a modificatio
 });
 
 test("appIds shares with specific apps and whole-set replaces the link junction", async () => {
-  // A var reaching apps ONLY through explicit links is legal (it is the shape
-  // migration 0027 produced) - the wizard's "specific apps" scope mints it.
   const id = await asUser1(() =>
     mkVar({ key: "APPSCOPED", appIds: ["app_p"] }),
   );
@@ -465,8 +429,6 @@ test("appIds is filtered to the active team's apps", async () => {
 });
 
 test("an empty appIds set with no mode reaches nothing and is rejected", async () => {
-  // The caller OWNS the link set when it sends one, so the stored links can't
-  // vouch for reach - they are about to be deleted.
   const id = await asUser1(() => mkVar({ key: "EMPTIED", appIds: ["app_p"] }));
   await assert.rejects(
     asUser1(() =>
@@ -486,10 +448,8 @@ test("an empty appIds set with no mode reaches nothing and is rejected", async (
 });
 
 test("listSharedVarsForApp returns EVERY team var so any can be linked", async () => {
-  // Including one scoped to an environment this app does not live in - scopes
-  // are suggestions, not gates, so any team var can be opted into from any app.
   await asUser1(() => mkVar({ key: "OTHERENV", environmentIds: [ENV_PROD] }));
-  const rows = await asUser1(() => listSharedVarsForApp("app_top")); // top-level app
+  const rows = await asUser1(() => listSharedVarsForApp("app_top"));
   const other = rows.find((r) => r.key === "OTHERENV")!;
   assert.ok(other, "an out-of-scope var is still listed (linkable)");
   assert.equal(other.linked, false);
@@ -498,9 +458,6 @@ test("listSharedVarsForApp returns EVERY team var so any can be linked", async (
 });
 
 test("listSharedVarsForApp reads values like the Variables page does", async () => {
-  // The app's own table shows what its next deploy will get, so a shared PLAIN
-  // value is readable there (same `manage_env` gate as the Shared tab) while a
-  // shared SECRET stays masked - an app page is not a reveal path.
   await asUser1(() =>
     mkVar({ key: "PLAIN", value: "readable", teamWide: true }),
   );
@@ -523,17 +480,11 @@ test("a secret shared var is masked, and NOTHING reads it back", async () => {
   const [v] = await asUser1(() => listSharedVars());
   assert.equal(v!.masked, true);
   assert.notEqual(v!.value, "s3cr3t");
-  // There is no reveal path left: `revealSharedVar` is gone, and the only other
-  // way the plaintext ever surfaced was flipping the row to plain, which
-  // `saveSharedVar` now refuses (see env-secret-immutable.test.ts).
   const forApp = await asUser1(() => listSharedVarsForApp("app_p"));
   assert.notEqual(forApp.find((r) => r.key === "SECRET")!.value, "s3cr3t");
 });
 
 test("a scope-only edit of a secret keeps the stored value", async () => {
-  // The wizard sends the MASK back for a secret while it changes WHO gets it -
-  // the one write a secret still accepts. `keepValue` is what stops that mask
-  // from being encrypted over the real value.
   const id = await asUser1(() =>
     mkVar({ key: "S", value: "real", type: "secret", teamWide: true }),
   );
@@ -553,7 +504,6 @@ test("a scope-only edit of a secret keeps the stored value", async () => {
   assert.deepEqual(after.projectIds, [PRJ], "the scope DID change");
   assert.equal(after.type, "secret");
   assert.equal(after.masked, true);
-  // Not blanked, not overwritten with dots: the ciphertext still opens.
   const [row] = await db
     .select({ valueEnc: sharedVarsTable.valueEnc })
     .from(sharedVarsTable)
@@ -562,8 +512,6 @@ test("a scope-only edit of a secret keeps the stored value", async () => {
 });
 
 test("loadSharedVarsForApp: an availability scope alone injects NOTHING (opt-in, ADR-0012)", async () => {
-  // Team-wide, project and environment scopes only say who MAY opt in, no app
-  // receives any of these until it links the var itself.
   await asUser1(() => mkVar({ key: "TW", teamWide: true }));
   await asUser1(() => mkVar({ key: "PROJ", projectIds: [PRJ] }));
   await asUser1(() => mkVar({ key: "EDEV", environmentIds: [ENV_DEV] }));
@@ -578,7 +526,6 @@ test("loadSharedVarsForApp: a per-app link injects, and only into the linked app
     (await loadSharedVarsForApp("app_top")).map((e) => e.key),
     ["LINKED"],
   );
-  // The team-wide scope does not leak it into the unlinked app.
   assert.deepEqual(await loadSharedVarsForApp("app_p"), []);
 });
 
@@ -597,7 +544,6 @@ test("listSharedVarsForApp annotates linked / inScope / scope", async () => {
   assert.equal(proj.linked, false, "in scope is NOT applied");
   assert.equal(proj.inScope, true);
   assert.equal(proj.scope, "project");
-  // The environment scope is the most specific and wins the scope label.
   assert.equal(edev.scope, "environment");
 });
 
@@ -609,7 +555,6 @@ test("setSharedVarAppLink toggles the link and is team-gated", async () => {
   await asUser1(() => setSharedVarAppLink(id, "app_top", false));
   const off = await asUser1(() => listSharedVarsForApp("app_top"));
   assert.equal(off.find((r) => r.key === "L")!.linked, false);
-  // Another team can't touch this var.
   await assert.rejects(
     asUser2(() => setSharedVarAppLink(id, "app_top", true)),
     /not found/i,
@@ -626,18 +571,9 @@ test("deleteSharedVar removes it (and its scope + link rows cascade)", async () 
   assert.deepEqual(await loadSharedVarsForApp("app_p"), []);
 });
 
-/* ------------------------------------------------------------------ */
-/* The value-only edit (SharedVarEditDialog)                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * Exactly the payload components/env/shared-var-edit-dialog.tsx sends: the scope
- * fields round-tripped verbatim off the DTO, and `appIds` / `targets` ABSENT,
- * which is the whole contract that makes a value edit unable to change what the
- * variable reaches. These tests exist to fail loudly if that contract ever
- * quietly changes (e.g. `appIds` starting to arrive as `[]`, which REPLACES the
- * link set with nothing).
- */
+// Exactly the payload components/env/shared-var-edit-dialog.tsx sends: `appIds` /
+// `targets` ABSENT, which is what keeps a value edit from changing what the variable
+// reaches (`appIds: []` REPLACES the link set with nothing).
 async function editValueLikeDialog(
   dto: {
     id: string;
@@ -652,7 +588,6 @@ async function editValueLikeDialog(
   await saveSharedVar({
     id: dto.id,
     key: dto.key,
-    // The dialog prefills the field with the DTO's value - the MASK for a secret.
     value: patch.value ?? dto.value,
     type: patch.type ?? "plain",
     teamIds: dto.teamWide ? [TEAM_A] : [],
@@ -679,20 +614,18 @@ test("a value-only edit leaves the per-app links, the modes and the targets alon
 
     const after = await dtoOf("SCOPED");
     assert.equal(after.value, "after", "the value IS what changed");
-    // Everything that decides what the variable reaches is untouched.
     assert.deepEqual(after.appIds, ["app_top"], "per-app link survived");
     assert.deepEqual(after.projectIds, [PRJ]);
     assert.deepEqual(after.environmentIds, []);
     assert.equal(after.teamWide, false);
-    // An edit must never WIDEN a production-only variable into other runtimes.
     assert.deepEqual(after.targets, ["production"]);
   });
 });
 
 test("a value-only edit of a LINK-ONLY variable still saves (links count as reach)", async () => {
   await asUser1(async () => {
-    // The shape migration 0027 gives every var exploded out of a legacy group:
-    // links, no modes. The reach check must read the STORED links.
+    // The shape migration 0027 gives every var exploded out of a legacy group: links, no
+    // modes. The reach check must read the STORED links.
     await mkVar({ key: "LINKONLY", value: "v1", appIds: ["app_p"] });
     const before = await dtoOf("LINKONLY");
     await editValueLikeDialog(before, { value: "v2" });
@@ -717,9 +650,6 @@ test("a secret is frozen: the mask round-trip can no longer downgrade it", async
       "the DTO never carries the plaintext",
     );
 
-    // THE hole this test used to assert as correct: flip secret → plain without
-    // touching the prefilled mask, and the row kept its ciphertext while the label
-    // changed, so the very next list decrypted it for anyone holding `manage_env`.
     await assert.rejects(
       () => editValueLikeDialog(masked, { type: "plain" }),
       /cannot be edited/i,
@@ -729,7 +659,6 @@ test("a secret is frozen: the mask round-trip can no longer downgrade it", async
     assert.equal(after.masked, true);
     assert.notEqual(after.value, "s3cret");
 
-    // Typing a new value over it is refused too - a secret is write-once.
     await assert.rejects(
       () => editValueLikeDialog(masked, { value: "n3w", type: "secret" }),
       /cannot be edited/i,
@@ -741,8 +670,6 @@ test("an orphaned variable stays editable (its only scope was deleted)", async (
   const id = await asUser1(() =>
     mkVar({ key: "ORPHAN", environmentIds: [ENV_DEV] }),
   );
-  // Exactly what deleting the environment does: the junction cascades and the
-  // variable is left reaching nothing.
   await db.delete(environmentsTable).where(eq(environmentsTable.id, ENV_DEV));
   await asUser1(() =>
     saveSharedVar({
@@ -757,7 +684,6 @@ test("an orphaned variable stays editable (its only scope was deleted)", async (
   );
   const [v] = await asUser1(() => listSharedVars());
   assert.equal(v!.value, "repaired");
-  // A NEW variable still cannot be authored unreachable.
   await assert.rejects(
     () =>
       asUser1(() =>
@@ -780,7 +706,6 @@ test("a twin - same key AND same reach - is refused, other scopes are not", asyn
     () => asUser1(() => mkVar({ key: "TWIN", teamWide: true })),
     /already shared with the same/i,
   );
-  // The same key for a different audience is the point of the model.
   await asUser1(() => mkVar({ key: "TWIN", projectIds: [PRJ] }));
   assert.equal(
     (await asUser1(() => listSharedVars())).filter((v) => v.key === "TWIN")

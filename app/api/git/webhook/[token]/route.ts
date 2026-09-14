@@ -1,20 +1,14 @@
 import { eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
-import {
-  apps as appsTable,
-  gitConnections as gitConnectionsTable,
-} from "@/lib/db/schema/control-plane";
+import { apps as appsTable } from "@/lib/db/schema/control-plane/apps";
+import { gitConnections as gitConnectionsTable } from "@/lib/db/schema/control-plane/integrations";
 import { decryptSecret } from "@/lib/crypto";
 import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
-import { providerFor } from "@/lib/git/providers";
+import { providerFor } from "@/lib/git/providers/registry";
 import { readTextCapped } from "@/lib/http/body-cap";
 
-/**
- * Inbound push webhook for every git provider that is not GitHub. Sniffing headers
- * to guess the provider would be both fragile and a way to pick the verification
- * rule from attacker-controlled input.
- */
+// POST is the push webhook for every non-GitHub provider; sniffing headers would let attacker-controlled input pick the verification rule.
 export async function POST(
   request: Request,
   ctx: { params: Promise<{ token: string }> },
@@ -30,21 +24,16 @@ export async function POST(
       .where(eq(gitConnectionsTable.webhookToken, token))
       .limit(1)
   )[0];
-  // No connection for this URL. 404 rather than a hint: the token is the only
-  // thing standing between the internet and this endpoint.
+  // 404 rather than a hint: the token is the only thing between the internet and this endpoint.
   if (!conn) return new Response("not found", { status: 404 });
 
   const api = providerFor(conn.provider).api;
   if (!api) return new Response("not found", { status: 404 });
 
   const secret = decryptSecret(conn.webhookSecretEnc);
-  // An unreadable secret is NOT an unsigned delivery. A connection is always minted
-  // WITH a secret, so empty here means the ciphertext stopped opening - refuse,
-  // exactly as the GitHub route does on the same condition.
+  // A connection is always minted WITH a secret, so empty here means the ciphertext stopped opening - not an unsigned delivery.
   const verdict = secret ? api.verify(secret, request.headers, raw) : "bad";
   if (verdict === "bad") {
-    // Same trap GitHub's route names: a rotated DEPLO_SECRET leaves a webhook
-    // secret that no longer decrypts, and then every delivery 401s forever.
     console.warn(
       `[git-webhook] 401 invalid signature for ${conn.provider} connection ${conn.id}` +
         (secret
@@ -53,9 +42,7 @@ export async function POST(
     );
     return new Response("invalid signature", { status: 401 });
   }
-  // `unsigned` is Bitbucket with no secret configured on its side: there is
-  // nothing to check, and the unguessable token in this URL is what
-  // authenticated the request - the same bar the deploy hook clears.
+  // `unsigned` is Bitbucket with no secret on its side: the unguessable token in this URL is what authenticated the request.
 
   let payload: unknown;
   try {
@@ -64,8 +51,7 @@ export async function POST(
     return new Response("bad payload", { status: 400 });
   }
 
-  // One delivery can move several refs (pushing two branches at once), so each
-  // parsed ref is dispatched on its own.
+  // One delivery can move several refs (two branches pushed at once), so each is dispatched on its own.
   const pushes = api.parsePush(request.headers, payload);
   if (pushes.length === 0) return new Response("ok", { status: 200 });
 

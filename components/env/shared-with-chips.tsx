@@ -5,22 +5,17 @@ import { Boxes, Layers, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
-import type { SharedVarDTO } from "@/lib/data/shared-vars";
+import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 
-/** How many named scopes a chip row spells out before it starts counting. */
 const CHIP_LIMIT = 2;
 
-/** `key` is the row's id: two apps (or two projects) may share a display name. */
 type Chip = { key: string; name: string; icon: React.ReactNode };
 
 const glyph = (Icon: React.ComponentType<{ className?: string }>) => (
   <Icon className="size-3 shrink-0" />
 );
 
-/**
- * WHO a shared variable is available to (and which apps added it), BY NAME, not
- * by count. An app wears its own logo, the way it does everywhere else.
- */
+// SharedWithChips - who a shared variable is available to, by name rather than by count.
 export function SharedWithChips({
   v,
   limit = CHIP_LIMIT,
@@ -43,8 +38,6 @@ export function SharedWithChips({
     })),
   ].filter((g) => g.length > 0);
 
-  // Its only project / environment / app was deleted: the cell would otherwise be
-  // blank, which reads as "still shared" rather than "reaches nothing".
   if (groups.length === 0)
     return (
       <span className="text-xs text-muted-foreground">

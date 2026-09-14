@@ -7,17 +7,14 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
-// build.ts reads DEPLO_DATA_DIR at module load - point it somewhere throwaway
-// before the module graph pulls it in.
+// build.ts reads DEPLO_DATA_DIR at module load, so this must precede the imports.
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-creator-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  activities as activitiesTable,
-  apps as appsTable,
-  deployments as deploymentsTable,
-} from "../db/schema/control-plane";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import {
@@ -27,16 +24,13 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
 import { __setRunnerForTest, __resetQueueForTest } from "./deploy-queue";
-import { startDeployment } from "./build";
-import { deployPreviewRow } from "./preview-lifecycle";
+import { startDeployment } from "./build/deploy-start";
+import { deployPreviewRow } from "./preview-lifecycle/deploy";
 import { dispatchPushEvent } from "./git-webhook-dispatch";
-import { listDeployments, getDeployment } from "../data/deployments";
-
-/**
- * Who a deployment is credited to: a push credits an account on the git host, a
- * person credits their own. The column is what the UI reads to pick a mark, so a
- * path that forgets it silently draws a stranger as a member of the team.
- */
+import {
+  listDeployments,
+  getDeployment,
+} from "../data/deployments/deployment-queries";
 
 let db: TestDb;
 let pg: PGlite;
@@ -47,14 +41,12 @@ const APP = "svc_x";
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // Nothing may reach a real host: the queue's runner is the only way out.
   __setRunnerForTest(async () => {});
 });
 
 after(async () => {
   __resetQueueForTest();
-  // These deploys are never run to completion, so their queued log flush is still
-  // in flight - let it land while the test database is still the one it writes to.
+  // Queued log flushes are still in flight; let them land before the test db goes.
   await new Promise((r) => setTimeout(r, 250));
   __resetTestDb();
   await pg.close();
@@ -105,7 +97,6 @@ test("a push credits the pushing account on its host, never a user here", async 
   const credit = await creditOf(rows[0]!.id);
   assert.equal(credit.creator, "IdraDev");
   assert.equal(credit.provider, "github");
-  // The whole point: no account here is hunted for a login that belongs to GitHub.
   assert.equal(credit.userId, null);
 });
 
@@ -152,7 +143,6 @@ test("a preview somebody here redeployed credits them, not the host", async () =
   assert.equal((await creditOf(depId!)).provider, null);
 });
 
-/** One push, dispatched exactly as a verified delivery would. */
 async function push(creator: string, provider: string): Promise<void> {
   await dispatchPushEvent({
     match: eq(appsTable.id, APP),

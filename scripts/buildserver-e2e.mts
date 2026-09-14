@@ -6,10 +6,10 @@
 // Relative, like every other script here: an absolute path off this box
 // resolves nowhere else, and `tsc` on a checkout that is not /root/projects
 // answers TS2307 for all four plus an implicit `any` per callback.
-import { connectAgent } from "../lib/infra/agent-client";
+import { connectAgent } from "../lib/infra/agent-client/connect";
 import { copyImageBetween } from "../lib/data/volume-migration";
 import { SourceKind, BuildKind } from "../lib/agent/gen/agent";
-import { listAllServers } from "../lib/data/servers";
+import { listAllServers } from "../lib/data/servers/roster";
 
 const SLUG = "zz-buildsrv-probe";
 const TAG = `deplo/${SLUG}:${Date.now().toString(16).slice(-12)}`;

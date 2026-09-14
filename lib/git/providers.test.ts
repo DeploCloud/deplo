@@ -2,14 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 
-import { PROVIDERS, providerFor, tokenHelpUrl } from "./providers";
+import { PROVIDERS, providerFor, tokenHelpUrl } from "./providers/registry";
 import { shouldAutoDeploy } from "../deploy/git-webhook";
-
-/**
- * The two things a provider adapter must not get subtly wrong: deciding a delivery
- * is authentic, and turning that delivery into the ref/tag/file-list shape the
- * (already tested) auto-deploy rules read.
- */
 
 const SECRET = "s3cr3t-webhook";
 const hmac = (body: string) =>
@@ -23,8 +17,6 @@ const api = (id: "gitlab" | "bitbucket" | "gitea") => {
   return a;
 };
 
-/* ---- verification ---------------------------------------------------- */
-
 test("gitlab: the shared token must match exactly", () => {
   const gl = api("gitlab");
   assert.equal(
@@ -35,8 +27,7 @@ test("gitlab: the shared token must match exactly", () => {
     gl.verify(SECRET, headers({ "x-gitlab-token": "nope" }), ""),
     "bad",
   );
-  // A missing header is a forgery, not an unsigned delivery: GitLab always sends
-  // back the token it was configured with.
+  // A missing header is a forgery, not an unsigned delivery: GitLab always sends back the token it was configured with.
   assert.equal(gl.verify(SECRET, headers({}), ""), "bad");
 });
 
@@ -55,7 +46,6 @@ test("gitea: hex HMAC in its own header, or GitHub's prefixed one", () => {
     ),
     "ok",
   );
-  // A signature over a different body must not pass.
   assert.equal(
     gt.verify(SECRET, headers({ "x-gitea-signature": hmac("other") }), body),
     "bad",
@@ -78,12 +68,9 @@ test("bitbucket: signed when a secret is set, refused when the signature is miss
     bb.verify(SECRET, headers({ "x-hub-signature": "sha256=deadbeef" }), body),
     "bad",
   );
-  // No header at all: Deplo registers every hook with a secret, and Bitbucket
-  // signs whenever one is set - so an unsigned delivery is not Bitbucket's.
+  // Deplo registers every hook with a secret and Bitbucket signs whenever one is set, so an unsigned delivery is not Bitbucket's.
   assert.equal(bb.verify(SECRET, headers({}), body), "bad");
 });
-
-/* ---- push parsing ---------------------------------------------------- */
 
 test("gitlab: a branch push carries its ref, files and newest message", () => {
   const [p] = api("gitlab").parsePush(
@@ -207,8 +194,7 @@ test("bitbucket: no file list means path filters fall open", () => {
     },
   );
   assert.deepEqual(p.event.changedPaths, []);
-  // Bitbucket sends no changed files, so a watch-path allowlist cannot be
-  // evaluated and must NOT silently block every deploy.
+  // Bitbucket sends no changed files, so a watch-path allowlist cannot be evaluated and must NOT silently block every deploy.
   assert.equal(
     shouldAutoDeploy(
       { branch: "main", triggerType: "push", watchPaths: ["apps/**"] },
@@ -230,11 +216,8 @@ test("bitbucket: a non-push event key yields nothing", () => {
   );
 });
 
-/* ---- catalogue ------------------------------------------------------- */
-
 test("plain git carries credentials and nothing else", () => {
   assert.equal(PROVIDERS.git.api, null);
-  // Anything unrecognised degrades to it rather than throwing.
   assert.equal(providerFor("svn"), PROVIDERS.git);
 });
 
@@ -250,11 +233,7 @@ test("the token help link resolves against a self-hosted base URL", () => {
   assert.equal(tokenHelpUrl("git", "https://git.acme.com"), "");
 });
 
-/**
- * A secret that no longer decrypts (`decryptSecret` fails closed to `""` after a
- * `DEPLO_SECRET` rotation) must never verify. The route refuses on an empty secret
- * before any of them is called, and this is the second lock on the same door.
- */
+// A secret that no longer decrypts (`decryptSecret` fails closed to `""` after a `DEPLO_SECRET` rotation) must never verify: second lock on the route's own refusal.
 test("an empty secret never verifies, whatever arrives", () => {
   const headers = (h: Record<string, string>) => new Headers(h);
   assert.equal(

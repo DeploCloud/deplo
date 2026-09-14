@@ -1,6 +1,6 @@
 import Link from "@/components/ui/link";
 import { redirect } from "next/navigation";
-import { checkSetupKey, isSetupNeeded } from "@/lib/auth";
+import { checkSetupKey, isSetupNeeded } from "@/lib/auth/setup";
 import { noteBrowserReached } from "@/lib/data/takeover";
 import { AuthChrome } from "@/components/auth/auth-chrome";
 import { InvalidLinkGraphic } from "@/components/auth/invalid-link-graphic";
@@ -11,11 +11,8 @@ import { docsUrl } from "@/lib/docs";
 export const metadata = { title: "Set up Deplo" };
 
 export default async function SetupPage(props: PageProps<"/setup">) {
-  // Once an account exists the wizard is done; send people to sign in.
   if (!(await isSetupNeeded())) redirect("/login");
-  // On a takeover this is the first page a browser can reach, and reaching it is
-  // what tells the waiting installer that its port is open - true of a visitor
-  // with no key too, so this stays ahead of the check.
+  // Tells the waiting installer its port is open, true of a keyless visitor too, so it precedes the check.
   await noteBrowserReached();
 
   const raw = (await props.searchParams).key;
@@ -29,8 +26,6 @@ export default async function SetupPage(props: PageProps<"/setup">) {
         {state === "ok" ? (
           <OnboardingWizard setupKey={key} />
         ) : (
-          // Same shape as a dead registration link, and for the same reason: no
-          // intro animation in front of a screen that only says "not this way".
           <>
             <AuthChrome />
             <div className="deplo-stagger w-full max-w-sm text-center">

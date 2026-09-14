@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildPhases } from "./build-phases";
-import type { LogLine } from "./types";
+import type { LogLine } from "./types/deployment";
 
 /** The real `dpl_cce7fdbd9565e3f3` shape: railpack, 79s, two clone lines. */
 const STARTED = "2026-08-27T19:39:14.522Z";

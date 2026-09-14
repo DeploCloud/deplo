@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseConsoleInfo } from "@/lib/data/database-console";
 import { hasCapability } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";

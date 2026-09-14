@@ -7,11 +7,11 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb, getDb } from "../db/client";
-import { servers as serversTable } from "../db/schema/control-plane";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
-import { getServerById } from "./servers";
+import { getServerById } from "./servers/roster";
 import {
   checkServerHealth,
   checkAllServerHealth,
@@ -20,14 +20,9 @@ import {
 } from "./server-health";
 import { HEALTH_MESSAGES } from "../infra/server-health";
 
-/**
- * The health prober's DB behaviour, hermetically: no gRPC, no sockets.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
-/** A provisioned agent. The fingerprint is UNIQUE-indexed, so each server needs its own. */
 const agent = (fp: string) => ({
   port: 9443,
   certFingerprint: fp,
@@ -65,10 +60,7 @@ const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: "user_member", teamId: TEAM_A }, fn);
 
 test("a provisioning server is never probed and never demoted", async () => {
-  // No agent has called home, so there is nothing on the other end to dial. If the
-  // prober touched it, `resolveTarget` would throw AgentUnreachableError from a pure DB
-  // read and every server awaiting its first call-home would flip to `offline`.
-  await seedServerRow(db, { id: "srv_new", status: "provisioning" }); // no agent
+  await seedServerRow(db, { id: "srv_new", status: "provisioning" });
 
   const server = await asAdmin(() => checkServerHealth("srv_new"));
 
@@ -105,17 +97,14 @@ test("recordServerHealth persists the status, the reason and the observation tim
 });
 
 test("a late-landing older probe cannot overwrite a newer observation", async () => {
-  // Probes do not finish in the order they start: a 3s "offline" probe launched first
-  // can land after a 50ms "online" probe launched second. Watermarking on probe-START
-  // time is what stops the row from settling on the outcome that happened to be slowest.
   await seedServerRow(db, { id: "srv_1", status: "online", agent: AGENT });
 
-  await recordServerHealth("srv_1", { status: "online", message: null }, T2); // newer
+  await recordServerHealth("srv_1", { status: "online", message: null }, T2);
   await recordServerHealth(
     "srv_1",
     { status: "offline", message: "stale" },
     T1,
-  ); // older
+  );
 
   const stored = (await getServerById("srv_1"))!;
   assert.equal(stored.status, "online", "the older probe was ignored");
@@ -150,9 +139,6 @@ test("a successful probe also refreshes the heartbeat; a failed one does not", a
 });
 
 test("claimProbe advances the throttle lease but NEVER the freshness watermark", async () => {
-  // The load-bearing invariant. status_checked_at is the UI's confidence signal; if the
-  // lease advanced it, an inconclusive probe (timeout / skip) would leave a stale status
-  // wearing a fresh timestamp - a confident green painted for a host nobody reached.
   await seedServerRow(db, { id: "srv_1", status: "online", agent: AGENT });
 
   assert.equal(await claimProbe("srv_1", true), true);
@@ -170,9 +156,6 @@ test("claimProbe advances the throttle lease but NEVER the freshness watermark",
 });
 
 test("a fresh observation suppresses a redundant ambient claim", async () => {
-  // If the 1s metrics poll just observed the server, the Servers page has no reason to
-  // re-dial - the claim skips when status_checked_at is already fresh, even if the lease
-  // is stale.
   const justNow = new Date(Date.now() - 1_000).toISOString();
   await seedServerRow(db, {
     id: "srv_1",
@@ -188,8 +171,6 @@ test("a fresh observation suppresses a redundant ambient claim", async () => {
 });
 
 test("a trust-revoked server (empty-string fingerprint) is fenced out like an unprovisioned one", async () => {
-  // removeServer revokes trust by writing "" (not NULL); the fence must treat that
-  // exactly like a never-provisioned row, or a probe would dial a server mid-removal.
   await seedServerRow(db, {
     id: "srv_revoked",
     status: "online",
@@ -230,9 +211,6 @@ test("the throttle collapses a burst of page loads into ONE dial", async () => {
 });
 
 test("a forced check bypasses the ambient throttle but still respects a floor", async () => {
-  // "Force" means "ignore the 15s window", not "dial as fast as you can click" - the
-  // floor is the only backstop against a mashed button (or a scripted bearer-token
-  // caller) turning the control plane into a fan-out dialer.
   const eightSecondsAgo = new Date(Date.now() - 8_000).toISOString();
   await seedServerRow(db, {
     id: "srv_1",
@@ -277,7 +255,6 @@ test("both health checks are instance-admin only, and reject BEFORE any dial", a
     /instance admin/i,
   );
 
-  // The gate fired before the prober could claim anything.
   const stored = (await getServerById("srv_1"))!;
   assert.equal(
     stored.statusCheckedAt,

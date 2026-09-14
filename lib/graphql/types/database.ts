@@ -4,46 +4,42 @@ import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import { pubSub } from "../pubsub";
 import { memberScopeFor } from "@/lib/data/node-scope";
 import { acceptDataCopyLoss } from "@/lib/data/data-copy";
+import { moveDatabaseToEnvironment } from "@/lib/data/databases/environment-move";
+import {
+  setDatabaseRunning,
+  restartDatabase,
+  redeployDatabase,
+  rebuildDatabase,
+  deleteDatabase,
+} from "@/lib/data/databases/lifecycle";
+import { setDatabaseMounts } from "@/lib/data/databases/mounts";
+import { createDatabase } from "@/lib/data/databases/provision";
+import { rotateDatabasePassword } from "@/lib/data/databases/rotate-password";
 import {
   listDatabases,
   getDatabase,
   getDatabaseForTeam,
   getConnectionString,
-  createDatabase,
-  moveDatabaseToEnvironment,
-  updateDatabase,
-  renameDatabase,
-  updateDatabaseLogo,
   reorderDatabases,
-  updateDatabaseResources,
-  updateDatabaseImage,
-  setDatabaseMounts,
-  setDatabaseRunning,
-  restartDatabase,
-  redeployDatabase,
-  rebuildDatabase,
-  rotateDatabasePassword,
-  deleteDatabase,
+  type DatabaseDTO,
+} from "@/lib/data/databases/rows";
+import { updateDatabase } from "@/lib/data/databases/server-move";
+import {
   generateAvailableDbPort,
   hostPortsInUse,
-  type DatabaseDTO,
-} from "@/lib/data/databases";
-import type { ResourceLimitsInput } from "@/lib/data/apps";
+} from "@/lib/data/databases/server-ports";
+import {
+  renameDatabase,
+  updateDatabaseLogo,
+  updateDatabaseResources,
+  updateDatabaseImage,
+} from "@/lib/data/databases/settings";
+import type { ResourceLimitsInput } from "@/lib/data/apps/resources";
 import { hasCapability } from "@/lib/membership";
 
-/* ------------------------------------------------------------------ */
-/* Local enums (not in the shared enums.ts)                            */
-/* ------------------------------------------------------------------ */
-
-// DatabaseStatus is local to this domain - define it here rather than in the
-// shared enums file. No hyphens, so the plain value list is fine.
 export const DatabaseStatusEnum = builder.enumType("DatabaseStatus", {
   values: ["running", "stopped", "provisioning", "error"] as const,
 });
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 export const DatabaseRef = builder
   .objectRef<DatabaseDTO>("Database")
@@ -71,9 +67,7 @@ export const DatabaseRef = builder
       }),
       type: t.field({ type: DatabaseTypeEnum, resolve: (d) => d.type }),
       version: t.exposeString("version"),
-      // The engine login + logical DB, shown read-only in the edit dialog (both
-      // are create-only). The password is NEVER a field - reveal it only via the
-      // revealConnection mutation.
+      // The password is NEVER a field - reveal it only via the revealConnection mutation.
       username: t.exposeString("username"),
       dbName: t.exposeString("dbName"),
       status: t.field({ type: DatabaseStatusEnum, resolve: (d) => d.status }),
@@ -88,7 +82,6 @@ export const DatabaseRef = builder
       port: t.exposeInt("port"),
       connectionStringMasked: t.exposeString("connectionStringMasked"),
       exposedPublicly: t.exposeBoolean("exposedPublicly"),
-      // The published host port when exposedPublicly is true; null otherwise.
       exposedPort: t.exposeInt("exposedPort", { nullable: true }),
       resources: t.field({
         type: ResourceLimitsRef,
@@ -143,10 +136,6 @@ const DatabaseMountRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const DatabaseMountInputType = builder.inputType("DatabaseMountInput", {
   description:
     "One config file to write next to the database's stack and bind-mount into " +
@@ -165,26 +154,17 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     name: t.string({ required: true }),
     type: t.field({ type: DatabaseTypeEnum, required: true }),
     version: t.string({ required: true }),
-    // The server to provision the database on. Optional: omitted defaults to the
-    // sole server when there is exactly one (Step 0 - DB-on-agent).
     serverId: t.id({ required: false }),
-    // Where the database lives - the same placement an App takes, and the network
-    // it answers on. Omitted ⇒ the team's top level.
     environmentId: t.id({ required: false }),
-    // Optional custom credentials, applied ONLY at first init against an empty volume
-    // (the images honor POSTGRES_USER/DB, MYSQL_DATABASE, etc. only on first boot), so
-    // they are create-only / display-only thereafter.
+    // Custom credentials apply ONLY at first init: the images honor POSTGRES_USER/DB and friends on first boot.
     username: t.string({ required: false }),
     dbName: t.string({ required: false }),
     password: t.string({ required: false }),
     exposedPublicly: t.boolean({ required: false }),
-    // The host port to publish on when exposedPublicly is true. Required by the
-    // data layer in that case (validated + agent-checked for availability there).
     exposedPort: t.int({ required: false }),
   }),
 });
 
-// Exposure + server location are editable post-create.
 const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {
   fields: (t) => ({
     exposedPublicly: t.boolean({ required: true }),
@@ -193,9 +173,6 @@ const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {
   }),
 });
 
-// Expert overrides (Settings → Advanced). Absent field = leave unchanged;
-// explicit null = clear back to the derived/default value. Applied on the next
-// redeploy or settings-driven reroute - the row is truth, the container follows.
 const UpdateDatabaseImageInputType = builder.inputType(
   "UpdateDatabaseImageInput",
   {
@@ -227,10 +204,6 @@ const HostPortCheckRef = builder
       }),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   databases: t.field({
@@ -272,10 +245,6 @@ builder.queryFields((t) => ({
       hostPortsInUse(String(serverId), ports),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations (every database server action)                            */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   createDatabase: t.field({
@@ -570,16 +539,11 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/** Reload a database by id after a void mutation so we can return the entity. */
 async function reloadDatabase(id: string): Promise<DatabaseDTO> {
   const db = await getDatabase(id);
   if (!db) throw new Error("Database not found");
   return db;
 }
-
-/* ------------------------------------------------------------------ */
-/* Subscriptions                                                       */
-/* ------------------------------------------------------------------ */
 
 builder.subscriptionFields((t) => ({
   databaseStatus: t.field({
@@ -588,8 +552,7 @@ builder.subscriptionFields((t) => ({
       "Emits the database whenever its status changes (provisioning → running, " +
       "start/stop, redeploy, …). Fires once immediately with the current " +
       "snapshot, then on every change; ends when the database is deleted.",
-    // Same gating as appStatus: `loggedIn` opens the stream, the generator
-    // enforces team ownership through the cookie-free seam.
+    // `loggedIn` opens the stream; the generator enforces team ownership.
     authScopes: { loggedIn: true },
     args: { id: t.arg.string({ required: true }) },
     subscribe: (_root, { id }, ctx) =>
@@ -598,27 +561,21 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-// Exported for the SSE test (same contract as appStatusStream): it must stay
-// cookie-free across iteration ticks - a subscription's async iterator runs AFTER
-// the HTTP handler returned the streaming Response, so `cookies()` is no longer
+// databaseStatusStream must stay cookie-free: the iterator runs after the streaming Response returned.
 export async function* databaseStatusStream(
   id: string,
   teamId: string | null,
   userId: string | null,
 ): AsyncGenerator<DatabaseDTO> {
   if (!teamId || !userId) throw new Error("Database not found");
-  // The REACH check, resolved from the principal the context carries rather than from
-  // the request.
+  // The REACH check, resolved from the principal the context carries, not the request.
   if (await memberScopeFor(userId, teamId))
     throw new Error("Database not found");
   const first = await getDatabaseForTeam(id, teamId);
   if (!first) throw new Error("Database not found");
 
-  // Initial snapshot - a fresh subscriber paints current state immediately.
   yield first;
 
-  // Forward each change ping as a freshly-reloaded snapshot. A deleted database
-  // reloads to null → end the stream.
   for await (const changedId of pubSub.subscribe("databaseChanged", id)) {
     const next = await getDatabaseForTeam(changedId, teamId);
     if (!next) return;

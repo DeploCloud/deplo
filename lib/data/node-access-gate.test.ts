@@ -4,21 +4,15 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  folderGrants as folderGrantsTable,
-  folders as foldersTable,
-} from "../db/schema/control-plane";
+import { folderGrants as folderGrantsTable } from "../db/schema/control-plane/access-control";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { listAllAppEnv, listEnv, upsertEnv } from "./env";
-import { deleteSharedVar, listSharedVars, saveSharedVar } from "./shared-vars";
-import type { Capability } from "../types";
-
-/**
- * The gate, end to end: `requireAppCapability` is what makes an override usable,
- * and what keeps it from becoming team-wide.
- */
+import { deleteSharedVar, saveSharedVar } from "./shared-vars/authoring";
+import { listSharedVars } from "./shared-vars/team-view";
+import type { Capability } from "../types/identity";
 
 let db: TestDb;
 let pg: PGlite;
@@ -75,7 +69,6 @@ beforeEach(async () => {
   });
   await seedApp(db, { id: APP_IN_PROD, teamId: TEAM_A, folderId: FLD_PROD });
   await seedApp(db, { id: APP_ELSEWHERE, teamId: TEAM_A });
-  // The whole grant: manage_env on Prod, and nothing at the team level.
   await db
     .insert(folderGrantsTable)
     .values({ folderId: FLD_PROD, userId: DEV, capability: "manage_env" });
@@ -125,8 +118,6 @@ test("the team's shared-variable library stays closed to a node-only holder", as
     }),
   );
   await as(DEV, async () => {
-    // Both of these read or destroy a TEAM resource with no node dimension, so
-    // they stay behind the team capability however many folders you hold.
     await assert.rejects(() => listSharedVars(), /permission/i);
     await assert.rejects(() => deleteSharedVar(varId), /permission/i);
   });

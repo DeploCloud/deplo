@@ -1,4 +1,4 @@
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { twoFactorMandateForCurrentUser } from "@/lib/membership";
 import {
   passkeyCountsForThisRequest,
@@ -12,11 +12,7 @@ import { SecurityTabs } from "@/components/settings/security/security-tabs";
 
 export const metadata = { title: "Settings · Security" };
 
-/**
- * The account's own security settings. Deliberately NOT team-scoped (it is in
- * `NON_TEAM_SETTINGS_PREFIXES`): a member locked out of a team by that team's 2FA
- * policy has to be able to reach this page to get back in.
- */
+// SettingsSecurityPage is NOT team-scoped (NON_TEAM_SETTINGS_PREFIXES): a member locked out by a team's 2FA policy must still reach it.
 export default async function SettingsSecurityPage() {
   const [user, requiredBy, sessions, passkeys] = await Promise.all([
     getCurrentUser(),
@@ -24,9 +20,7 @@ export default async function SettingsSecurityPage() {
     listMySessions(),
     listMyPasskeys(),
   ]);
-  // Two questions, and the card needs both (ADR-0024 §3). Owning a usable passkey is
-  // what makes turning the authenticator app OFF allowed - the server asks exactly
-  // that, so the button must agree with it.
+  // ADR-0024 §3: owning a usable passkey is what allows turning the authenticator app OFF, and the server asks exactly that.
   const hasPasskey = user ? await userHasPasskey(user.id) : false;
   const passkeyStanding = !hasPasskey
     ? ("none" as const)

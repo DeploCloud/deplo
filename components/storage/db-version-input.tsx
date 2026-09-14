@@ -5,13 +5,9 @@ import {
   VersionCombobox,
   type VersionItem,
 } from "@/components/apps/version-combobox";
-import type { DatabaseType } from "@/lib/types";
+import type { DatabaseType } from "@/lib/types/database";
 
-/**
- * Database engine version input with an autocomplete dropdown synced live to
- * Docker Hub (via `/api/database-versions?engine=…`), so the list tracks new
- * engine releases automatically instead of a hardcoded set.
- */
+// DbVersionInput - engine version autocomplete, synced live to Docker Hub via `/api/database-versions`.
 export function DbVersionInput({
   engine,
   value,
@@ -25,8 +21,7 @@ export function DbVersionInput({
   id?: string;
   className?: string;
 }) {
-  // Re-fetch when the engine changes: the combobox loads once per mount, so key
-  // it on the engine (below) to reset. `load` closes over the current engine.
+  // The combobox loads once per mount, so it is keyed on the engine (below) to re-fetch.
   const load = React.useCallback(async (): Promise<VersionItem[]> => {
     const r = await fetch(
       `/api/database-versions?engine=${encodeURIComponent(engine)}`,

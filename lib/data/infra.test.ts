@@ -5,12 +5,12 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import {
-  activities as activitiesTable,
   githubApps as githubAppsTable,
   githubInstallation as githubInstallationTable,
-  servers as serversTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/integrations";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
@@ -20,13 +20,8 @@ import {
   seedGithubInstallation,
   seedServerRow,
 } from "./infra-test-helpers";
-import {
-  getServer,
-  getServerById,
-  listServers,
-  markServerSeen,
-  observedTraefik,
-} from "./servers";
+import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
+import { getServer, getServerById, listServers } from "./servers/roster";
 import {
   listGithubApps,
   listGithubInstallations,
@@ -34,12 +29,6 @@ import {
   removeGithubApp,
 } from "./github";
 import { recordActivity, listActivity } from "./activity";
-
-/**
- * Data-layer tests for the infra / integrations cut-set (e) against pglite
- * (relational-store PLAN Step 6): `servers`,
- * `github_apps`(+`github_installation`), `activities`.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -70,10 +59,6 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/* ------------------------------------------------------------------ */
-/* servers                                                             */
-/* ------------------------------------------------------------------ */
-
 test("servers: listServers is creation-ordered; assembleServer rebuilds agent/bootstrap", async () => {
   await seedServerRow(db, {
     id: "srv_b",
@@ -101,12 +86,10 @@ test("servers: listServers is creation-ordered; assembleServer rebuilds agent/bo
       ["srv_a", "srv_b"],
       "by createdAt ascending",
     );
-    // srv_a was seeded with a bootstrap (provisioning) and no agent.
     const a = list.find((s) => s.id === "srv_a")!;
     assert.equal(a.agent, undefined);
     assert.equal(a.bootstrap?.tokenHash, "th");
     assert.equal(a.bootstrap?.usedAt, null);
-    // srv_b was seeded provisioned (agent present, no bootstrap).
     const b = list.find((s) => s.id === "srv_b")!;
     assert.equal(b.agent?.certFingerprint, "fp");
     assert.equal(b.agent?.version, "1.0");
@@ -126,7 +109,7 @@ test("servers: markServerSeen updates lastSeenAt + traefik, and pins version onl
     traefikEnabled: false,
     agent: { port: 9443, certFingerprint: "fp", certPem: "p", version: "1.0" },
   });
-  await seedServerRow(db, { id: "srv_unprov", traefikEnabled: false }); // no agent
+  await seedServerRow(db, { id: "srv_unprov", traefikEnabled: false });
 
   await markServerSeen("srv_prov", "2.0", true);
   await markServerSeen("srv_unprov", "9.9", true);
@@ -158,8 +141,7 @@ test("servers: observedTraefik reports nothing when the Hello never looked", () 
     observedTraefik({ dockerAvailable: true, traefikRunning: false }),
     false,
   );
-  // The agent FORCES traefikRunning false when Docker is unreachable - it has no
-  // container list to match against. That is "we didn't look", not "it's off".
+  // The agent FORCES traefikRunning false when Docker is unreachable: "we did not look", not "it is off".
   assert.equal(
     observedTraefik({ dockerAvailable: false, traefikRunning: false }),
     undefined,
@@ -174,8 +156,6 @@ test("servers: markServerSeen keeps the last-known traefik flag when nothing was
     agent: { port: 9443, certFingerprint: "fp", certPem: "p", version: "1.0" },
   });
 
-  // A Hello that reached the agent but not Docker. Writing its forced-false through
-  // would flip a good badge to "off" for a question nobody actually asked.
   await markServerSeen(
     "srv_dockerless",
     "2.0",
@@ -196,15 +176,10 @@ test("servers: markServerSeen keeps the last-known traefik flag when nothing was
 });
 
 test("servers: markServerSeen swallows an unknown id (best-effort)", async () => {
-  // No throw, no row touched.
   await markServerSeen("ghost", "1.0", true);
   const rows = await db.select().from(serversTable);
   assert.equal(rows.length, 0);
 });
-
-/* ------------------------------------------------------------------ */
-/* github                                                              */
-/* ------------------------------------------------------------------ */
 
 test("github: listGithubApps is team-scoped and folds in installations (no secrets)", async () => {
   await seedGithubApp(db, {
@@ -231,9 +206,7 @@ test("github: listGithubApps is team-scoped and folds in installations (no secre
     assert.equal(apps[0]!.id, "gha_a");
     assert.equal(apps[0]!.installations.length, 1);
     assert.equal(apps[0]!.installations[0]!.installationId, 11);
-    // Source pickers label an installation by its App, not by the account.
     assert.equal(apps[0]!.installations[0]!.appName, "AppA");
-    // The DTO never leaks the secrets.
     assert.equal("clientSecretEnc" in apps[0]!, false);
     assert.equal("privateKeyEnc" in apps[0]!, false);
 
@@ -261,7 +234,6 @@ test("github: upsertInstallation is idempotent on the numeric id and keeps creat
       accountType: "Organization",
       avatarUrl: "u2",
     });
-    // Same row (one installation per numeric id), refreshed fields.
     assert.equal(second.id, first.id);
     assert.equal(second.accountLogin, "octo-renamed");
     assert.equal(second.accountType, "Organization");
@@ -314,10 +286,6 @@ test("github: removeGithubApp cascades its installations in one delete", async (
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* activities                                                          */
-/* ------------------------------------------------------------------ */
-
 test("activities: recordActivity writes a relational row resolved to the explicit team", async () => {
   await asUser1(async () => {
     await recordActivity("member", "did X", "owner", null, TEAM_A);
@@ -339,8 +307,6 @@ test("activities: recordActivity falls back to the first team when none resolves
 });
 
 test("activities: listActivity is team-scoped, newest-first, and seq breaks a same-instant tie", async () => {
-  // Three activities at the SAME timestamp in team_a - insertion order (seq) must
-  // break the tie deterministically, newest (last inserted) first.
   await seedActivity(db, {
     id: "act_1",
     teamId: TEAM_A,
@@ -359,7 +325,6 @@ test("activities: listActivity is team-scoped, newest-first, and seq breaks a sa
     createdAt: T0,
     message: "third",
   });
-  // A different team's activity must not appear.
   await seedActivity(db, {
     id: "act_b",
     teamId: TEAM_B,

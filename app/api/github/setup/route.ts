@@ -1,18 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { resolveInstallationAccount } from "@/lib/github/app";
 import { readConnectState } from "@/lib/github/manifest";
 import { upsertInstallation } from "@/lib/data/github";
 import { resolvePublicBaseUrl } from "@/lib/public-url";
 
-/**
- * Post-install redirect. GitHub sends the user here after they install (or update)
- * the App, with `installation_id`.
- */
+// GET is GitHub's post-install redirect, carrying `installation_id`.
 export async function GET(request: NextRequest) {
-  // Build redirects against the public base URL, NOT request.nextUrl.origin:
-  // behind a reverse proxy the latter is the internal origin (e.g.
-  // http://localhost:3000), which would send the browser to the wrong host.
+  // Behind a reverse proxy request.nextUrl.origin is the internal origin, so a redirect built on it lands on the wrong host.
   const origin = resolvePublicBaseUrl(request.headers);
   const settings = new URL("/settings/git", origin);
 
@@ -39,8 +34,7 @@ export async function GET(request: NextRequest) {
       accountType: resolved.account.accountType,
       avatarUrl: resolved.account.avatarUrl,
     });
-    // Back where the connect started, with the same one-shot flag the panel
-    // uses - the toast lives in the app shell, so it fires on any page.
+    // The toast lives in the app shell, so the one-shot flag fires on whatever page the connect started from.
     const back =
       readConnectState(request.nextUrl.searchParams.get("state"), user.id)
         ?.returnTo ?? null;

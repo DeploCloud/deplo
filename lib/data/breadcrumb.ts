@@ -3,10 +3,8 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import {
   currentMemberScope,
   reachesWholeTeam,
@@ -15,21 +13,15 @@ import {
 import { listFolders } from "./folders";
 import { appScopeWhere } from "./app-graph-load";
 import { appInScope } from "./node-scope";
-import { listProjects } from "./projects";
+import { listProjects } from "./projects/read";
 import type { BreadcrumbGraph } from "../breadcrumb-model";
 
-/**
- * The lightweight team snapshot the topbar breadcrumb navigates over: every
- * VISIBLE folder (id/name/parentId), every team app reduced to its grouping links
- * (slug/name/folder/project/environment) plus the logo its menu entry wears, and
- */
+// getBreadcrumbGraph returns the team snapshot the topbar breadcrumb navigates over.
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   const teamId = await requireActiveTeamId();
-  // The apps here are queried directly rather than through `listApps`, so the role
-  // scope has to be applied by hand - `appScopeWhere` answers for a token only.
+  // appScopeWhere answers for a token only, so the role scope is applied by hand.
   const roleScope = await currentMemberScope();
-  // Storage is a TEAM-WIDE list (`requireTeamWide` in listDatabases), so a member
-  // narrowed to part of the team sees none of it.
+  // Storage is a TEAM-WIDE list (requireTeamWide in listDatabases): a narrowed member sees none.
   const [folders, projects, appRows, teamWide] = await Promise.all([
     listFolders(),
     listProjects(),

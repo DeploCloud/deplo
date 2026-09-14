@@ -1,6 +1,6 @@
 import "server-only";
 
-import { assertUser } from "../auth";
+import { assertUser } from "../auth/current-user";
 import {
   currentIdentity,
   runWithIdentity,
@@ -8,33 +8,25 @@ import {
 } from "../auth/request-context";
 import { foldQuery, matchRank, matchesQuery } from "../match-query";
 import { getActiveTeamId } from "../membership";
-import type {
-  AppStatus,
-  DatabaseStatus,
-  DatabaseType,
-  DomainStatus,
-  ID,
-  ServerStatus,
-} from "../types";
+import type { AppStatus } from "../types/app";
+import type { DatabaseStatus, DatabaseType } from "../types/database";
+import type { DomainStatus } from "../types/domain";
+import type { ID } from "../types/identity";
+import type { ServerStatus } from "../types/server";
 import { listCatalog } from "@/templates/catalog";
-import { listApps } from "./apps";
-import { listTeamCronJobs } from "./crons";
-import { listDatabases } from "./databases";
-import { listDomains } from "./domains";
+import { listApps } from "./apps/listing";
+import { listTeamCronJobs } from "./crons/listing";
+import { listDatabases } from "./databases/rows";
+import { listDomains } from "./domains/crud";
 import { listAllEnvironmentsForTeam } from "./environments";
 import { listFolders } from "./folders";
-import { listMembers } from "./members";
-import { listProjects } from "./projects";
-import { listRoles } from "./roles";
-import { listServers } from "./servers";
+import { listMembers } from "./members/roster";
+import { listProjects } from "./projects/read";
+import { listRoles } from "./roles/role-list";
+import { listServers } from "./servers/roster";
 import { listMyTeams } from "./teams";
 
-/**
- * Find anything in Deplo by name, slug or id, across every team the caller can
- * reach. Backs the command palette and the MCP `find` tool.
- */
-
-/** The team a hit was found in - what the caller actually asked for. */
+// SearchTeam - the team a hit was found in.
 export interface SearchTeam {
   id: ID;
   name: string;
@@ -42,7 +34,7 @@ export interface SearchTeam {
   avatarUrl: string | null;
 }
 
-/** Enough to recognise an app and to call `getApp`/`app(slug:)` next. */
+// SearchApp - enough to recognise an app and call `getApp` next.
 export interface SearchApp {
   id: ID;
   name: string;
@@ -62,7 +54,7 @@ export interface SearchDatabase {
   team: SearchTeam;
 }
 
-/** Servers are the one resource shared across teams, so a hit names no team. */
+// SearchServer - servers are shared across teams, so a hit names no team.
 export interface SearchServer {
   id: ID;
   name: string;
@@ -117,9 +109,7 @@ export interface SearchMember {
   name: string;
   username: string;
   roleName: string | null;
-  /** Their picture, already resolved (upload, else Gravatar, else null). */
   avatarUrl: string | null;
-  /** The monogram's fill, for when there is no picture. */
   avatarColor: string;
   team: SearchTeam;
 }
@@ -130,13 +120,12 @@ export interface SearchCron {
   schedule: string;
   enabled: boolean;
   targetKind: string;
-  /** The App's slug or the Database's id - the deep link, either way. */
   targetRef: string;
   targetName: string;
   team: SearchTeam;
 }
 
-/** The catalogue is public and has no team. */
+// SearchTemplate - the catalogue is public and has no team.
 export interface SearchTemplate {
   slug: string;
   name: string;
@@ -184,11 +173,6 @@ export const ALL_SEARCH_KINDS: SearchKind[] = [
   "template",
 ];
 
-/**
- * The most results one search may answer with, per kind. The cap matters because
- * the caller with the strongest reason to search is an AI agent, and a two-letter
- * query across a big instance would otherwise return every app it can see.
- */
 const MAX_HITS = 50;
 
 const EMPTY: SearchResults = {
@@ -205,17 +189,12 @@ const EMPTY: SearchResults = {
   templates: [],
 };
 
-/** A hit, annotated with what orders it. `home` is 0 for the active team. */
 interface Ranked<T> {
   home: 0 | 1;
   rank: number;
   hit: T;
 }
 
-/**
- * Keep the rows that match, annotated with how well. {@link matchesQuery} stays
- * the gate; the rank only orders what it let through.
- */
 function rank<S, T>(
   rows: S[],
   fieldsOf: (row: S) => string[],
@@ -232,11 +211,6 @@ function rank<S, T>(
   return out;
 }
 
-/**
- * Active team first, then how well it matched. Ties keep the incoming order,
- * which is each list's own manual order - what the user already arranged.
- * `key` dedupes a row reachable from several teams (a server on `all_teams`).
- */
 function top<T>(rows: Ranked<T>[], key?: (hit: T) => string): T[] {
   const sorted = rows
     .sort((a, b) => a.home - b.home || a.rank - b.rank)
@@ -247,10 +221,7 @@ function top<T>(rows: Ranked<T>[], key?: (hit: T) => string): T[] {
   return [...seen.values()].slice(0, MAX_HITS);
 }
 
-/**
- * Run a team-scoped read as this caller, in `teamId`, answering `[]` when that
- * team refuses. A gate that throws for one kind must not cost the others.
- */
+// Answers `[]` when that team refuses: a gate that throws for one kind must not cost the others.
 async function inTeam<T>(
   identity: RequestIdentity | null,
   userId: ID,
@@ -259,9 +230,7 @@ async function inTeam<T>(
 ): Promise<T[]> {
   try {
     return await runWithIdentity(
-      // The token grant rides along untouched when there is one, so a bearer
-      // client stays clamped in every team it reaches. A cookie session has no
-      // grant and is unclamped, exactly as it is anywhere else.
+      // The token grant rides along, so a bearer client stays clamped in every team.
       { ...(identity ?? {}), userId, teamId },
       read,
     );
@@ -277,13 +246,12 @@ export async function search(
   if (!foldQuery(query)) return EMPTY;
 
   const want = new Set(kinds);
-  // Resolved once, up front: React `cache()` is inert outside a render, so every
-  // read below would otherwise re-resolve the session it already knows.
+  // Resolved once: React `cache()` is inert outside a render, so every read below
+  // would otherwise re-resolve the session it already knows.
   const identity = currentIdentity();
   const user = await assertUser();
   const activeTeamId = await getActiveTeamId();
-  // Already clamped to the teams a bearer token's scope names, so a token that
-  // reaches one team searches one team.
+  // Already clamped to the teams a bearer token's scope names.
   const teams = await listMyTeams();
 
   const found = await Promise.all(
@@ -324,11 +292,7 @@ export async function search(
         on("cron", listTeamCronJobs),
       ]);
 
-      // The `teamId` check is belt and braces, and worth the line: were this ever
-      // called from an RSC, the zero-arg `cache()` on the team resolution would
-      // hand every branch the first team's rows, and this turns that into missing
-      // results rather than another team's. Only the DTOs that carry a teamId can
-      // do it - TeamEnvironment, Domain, MemberDTO and Server have none.
+      // Belt and braces: a mis-resolved team means missing rows, never another team's.
       const mine = <R extends { teamId: string }>(rows: R[]) =>
         rows.filter((r) => r.teamId === t.id);
 
@@ -467,8 +431,6 @@ export async function search(
     }),
   );
 
-  // The catalogue is public and identical in every team, so it is read once - and
-  // a dead catalogue service must not fail the whole search.
   const templates = want.has("template")
     ? rank(
         await listCatalog().catch(() => []),
@@ -482,8 +444,8 @@ export async function search(
   return {
     apps: top(found.flatMap((f) => f.apps)),
     databases: top(found.flatMap((f) => f.databases)),
-    // A server on `all_teams` is reachable from every team, so it would
-    // otherwise come back once per team.
+    // A server on `all_teams` is reachable from every team, so it would otherwise
+    // come back once per team.
     servers: top(
       found.flatMap((f) => f.servers),
       (s) => s.id,

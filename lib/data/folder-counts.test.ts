@@ -5,17 +5,14 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { folders as foldersTable } from "../db/schema/control-plane";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
 import { createFolder, listFolders, moveAppToFolder } from "./folders";
-import { createProject, listProjects, moveAppToProject } from "./projects";
-
-/**
- * Integration tests for the LIVE COUNTS on folder and project tiles against
- * pglite.
- */
+import { createProject } from "./projects/lifecycle";
+import { moveAppToProject } from "./projects/placement";
+import { listProjects } from "./projects/read";
 
 let db: TestDb;
 let pg: PGlite;
@@ -51,7 +48,6 @@ beforeEach(async () => {
 
 test("folder appCount covers the whole subtree, subfolderCount stays immediate", async () => {
   await asOwner(async () => {
-    // top → mid → leaf, with one service at each level.
     const top = await createFolder("Top");
     const mid = await createFolder("Mid", null, top.id);
     const leaf = await createFolder("Leaf", null, mid.id);
@@ -66,7 +62,6 @@ test("folder appCount covers the whole subtree, subfolderCount stays immediate",
     assert.equal(byId.get(top.id)?.appCount, 3, "top sees its whole subtree");
     assert.equal(byId.get(mid.id)?.appCount, 2, "mid sees itself + leaf");
     assert.equal(byId.get(leaf.id)?.appCount, 1);
-    // The "· N folders" part of the tile label stays IMMEDIATE children only.
     assert.equal(byId.get(top.id)?.subfolderCount, 1);
     assert.equal(byId.get(mid.id)?.subfolderCount, 1);
     assert.equal(byId.get(leaf.id)?.subfolderCount, 0);
@@ -75,8 +70,6 @@ test("folder appCount covers the whole subtree, subfolderCount stays immediate",
 
 test("an empty parent over populated subfolders no longer reads 0", async () => {
   await asOwner(async () => {
-    // The reported shape: a top-level folder holding only subfolders, with the
-    // services living in (some of) the subfolders.
     const parent = await createFolder("Parent");
     const a = await createFolder("A", null, parent.id);
     const b = await createFolder("B", null, parent.id);
@@ -99,8 +92,7 @@ test("project appCount reaches services inside a legacy folder-in-project subtre
     const p = await createProject("Container");
     const legacy = await createFolder("Legacy");
     const nested = await createFolder("Nested", null, legacy.id);
-    // A LEGACY folder-in-project row (pre-ADR-0009; the UI can no longer write
-    // this) - its services must still count toward the project.
+    // A LEGACY folder-in-project row (pre-ADR-0009), which the UI can no longer write.
     await db
       .update(foldersTable)
       .set({ projectId: p.id })

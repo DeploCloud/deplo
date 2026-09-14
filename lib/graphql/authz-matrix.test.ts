@@ -21,30 +21,22 @@ import {
 
 import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  membershipCapabilities as membershipCapabilitiesTable,
-  projects as projectsTable,
-} from "../db/schema/control-plane";
+import { membershipCapabilities as membershipCapabilitiesTable } from "../db/schema/control-plane/access-control";
+import { projects as projectsTable } from "../db/schema/control-plane/projects";
 import { schema } from "./schema";
 import { buildContext, type GraphQLContext } from "./context";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { PROJECT_SCOPED_CAPABILITIES } from "../membership-shared";
-import { createToken } from "../data/tokens";
+import { createToken } from "../data/tokens/mint";
 import {
   seedIdentity,
   TEAM_A,
   TEAM_B,
   USER_1,
 } from "../data/leaf-test-helpers";
-import { ALL_CAPABILITIES, type Capability } from "../types";
-
-/**
- * The API-surface authorization matrix: EVERY field of the public GraphQL API,
- * against EVERY capability, over both principals that can call it - a member
- * acting through the dashboard's session and an API token acting on its own.
- */
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 
 let db: TestDb;
 let pg: PGlite;
@@ -63,12 +55,7 @@ after(async () => {
   await pg.close();
 });
 
-/**
- * A fresh instance: an owner who is also the instance admin (USER_1, the token
- * minter of last resort) and the matrix subject - a plain member whose
- * capabilities every test rewrites, and who is NOT an instance admin, so an `$any:
- * { instanceAdmin, capability }` field is decided by the capability.
- */
+// The subject is NOT an instance admin, so an `$any` field is decided by the capability.
 async function reset(caps: Capability[]): Promise<void> {
   await truncateAll(pg);
   await seedIdentity(db, {
@@ -97,10 +84,6 @@ async function setCaps(caps: Capability[]): Promise<void> {
     })),
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* The endpoint inventory, read off the built schema                    */
-/* ------------------------------------------------------------------ */
 
 type Gate =
   | { kind: "capability"; cap: Capability; orInstanceAdmin: boolean }
@@ -136,11 +119,7 @@ function gateOf(field: GraphQLField<unknown, unknown>): Gate {
   return { kind: "none" };
 }
 
-/**
- * A literal for one input type. Ids are deliberately unreachable: this drives
- * the gate, and a caller who is refused for holding the wrong permission is
- * refused before an argument is ever read.
- */
+// Ids are deliberately unreachable: a wrong-permission caller is refused before an arg is read.
 function inputLiteral(type: GraphQLInputType, depth = 0): string {
   if (isNonNullType(type)) return inputLiteral(type.ofType, depth);
   if (isListType(type)) return `[${inputLiteral(type.ofType, depth)}]`;
@@ -162,10 +141,8 @@ function inputLiteral(type: GraphQLInputType, depth = 0): string {
     }
   }
   if (isInputObjectType(type)) {
-    if (depth > 3) return "{}"; // a self-referencing input can't recurse forever
-    // EVERY field, not only the required ones: a resolver that validates its
-    // input before it authorizes would otherwise answer "choose a role" and
-    // look, to this matrix, like a gate that let the caller through.
+    if (depth > 3) return "{}";
+    // EVERY field: a resolver that validates before it authorizes would look like an open gate.
     return `{${Object.values(type.getFields())
       .map((f) => `${f.name}: ${inputLiteral(f.type, depth + 1)}`)
       .join(", ")}}`;
@@ -209,7 +186,7 @@ const ENDPOINTS: Endpoint[] = (
     : [],
 );
 
-/** Executable here: a subscription needs a live source, and none is gated on a capability. */
+// A subscription needs a live source, and none is gated on a capability.
 const EXECUTABLE = ENDPOINTS.filter((e) => e.kind !== "subscription");
 const byCapability = new Map<Capability, Endpoint[]>();
 for (const e of EXECUTABLE) {
@@ -217,16 +194,11 @@ for (const e of EXECUTABLE) {
     byCapability.set(e.gate.cap, [...(byCapability.get(e.gate.cap) ?? []), e]);
 }
 
-/* ------------------------------------------------------------------ */
-/* Principals + execution                                              */
-/* ------------------------------------------------------------------ */
-
 interface Principal {
   ctx: GraphQLContext;
   identity: RequestIdentity;
 }
 
-/** What the dashboard is: a session, no token, nothing clamped. */
 async function asMember(userId = USER_M, teamId = TEAM_A): Promise<Principal> {
   const identity: RequestIdentity = { userId, teamId };
   const ctx = await runWithIdentity(
@@ -242,7 +214,6 @@ async function asMember(userId = USER_M, teamId = TEAM_A): Promise<Principal> {
   return { ctx, identity };
 }
 
-/** What an external client is: the real bearer path, header and all. */
 async function asToken(raw: string): Promise<Principal | null> {
   const ctx = await buildContext(
     new Request("http://localhost/api/graphql", {
@@ -252,7 +223,6 @@ async function asToken(raw: string): Promise<Principal | null> {
   return ctx.identity ? { ctx, identity: ctx.identity } : null;
 }
 
-/** Mint a token owned by `userId` with exactly `caps` (plus the `view` floor). */
 async function mintToken(
   caps: Capability[],
   userId = USER_1,
@@ -269,7 +239,7 @@ const REFUSED =
 
 const EXEC_TIMEOUT_MS = 20_000;
 
-/** Run one endpoint as one principal. A timeout counts as "the gate let it through". */
+// A timeout counts as "the gate let it through".
 async function call(p: Principal, e: Endpoint): Promise<string[]> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<"timeout">((resolve) => {
@@ -302,38 +272,23 @@ async function call(p: Principal, e: Endpoint): Promise<string[]> {
 const refused = (messages: string[]): boolean =>
   messages.some((m) => REFUSED.test(m));
 
-/**
- * Endpoints that legitimately need MORE than their declared capability - an
- * instance grant, a per-app switch, or a second capability an OPTIONAL argument
- * asks for - listed one by one so "this one takes two gates" is a decision
- * somebody wrote down rather than a hole the matrix stopped noticing.
- */
+// Endpoints that legitimately need MORE than their declared capability, listed one by one.
 const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["M.generateAvailableDbPort", /permission to publish ports/i],
   ["Q.hostPortsInUse", /permission to publish ports/i],
   ["Q.databaseCronJobs", /database.*console/i],
   ["M.createCronJob", /database.*console/i],
   ["M.setCronEnabled", /database.*console/i],
-  // `sharedVarIds` links a team's shared variables to the new app, which is an
-  // env act; creating an app without that argument needs only `create_apps`.
+  // The optional `sharedVarIds` is an env act; without it createApp needs only `create_apps`.
   ["M.createApp", /permission to manage environment variables/i],
 ]);
 
-/** True if the refusal is the documented non-capability one for this endpoint. */
 function refusedByGrant(e: Endpoint, messages: string[]): boolean {
   const expected = NEEDS_INSTANCE_GRANT.get(e.label);
   return Boolean(expected && messages.some((m) => expected.test(m)));
 }
 
-/* ------------------------------------------------------------------ */
-/* 1. Inventory: nothing reaches the API without declaring a gate       */
-/* ------------------------------------------------------------------ */
-
-/**
- * The only fields that may answer an anonymous caller. The two passkey ones are
- * public for the same reason `login` is: they ARE a sign-in, so requiring a
- * session would be circular.
- */
+// Public on purpose: the passkey pair IS a sign-in, so requiring a session would be circular.
 const PUBLIC_FIELDS = new Set([
   "Q.me",
   "Q.apiContext",
@@ -363,12 +318,7 @@ test("every field of the API declares a gate, and only the auth surface is publi
 });
 
 test("every capability the catalogue offers is either enforced on the API or enforced below it", () => {
-  // Not every capability names a field: the folder verbs and `delete_team` are gated
-  // inside the data layer instead (their fields are `loggedIn`), and `view` is the
-  // floor no field asks for.
-  // `manage_tokens` and `manage_mcp` gate no field either: they decide WHERE a
-  // member's personal tokens reach (`tokenReach`) and where they may speak MCP
-  // (`listMcpTeams`), read by the identity builder and the MCP door.
+  // These name no field: they are gated inside the data layer, or are the `view` floor.
   const enforcedBelow = new Set<Capability>([
     "view",
     "organize_folders",
@@ -387,10 +337,6 @@ test("every capability the catalogue offers is either enforced on the API or enf
     `capabilities no field is gated on: ${orphans.join(", ")}`,
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* 2. The matrix, per capability, for a member and for a token          */
-/* ------------------------------------------------------------------ */
 
 for (const [cap, endpoints] of byCapability) {
   test(`${cap}: a member holding everything else is refused by all ${endpoints.length} of its endpoints`, async () => {
@@ -469,10 +415,6 @@ for (const [cap, endpoints] of byCapability) {
   });
 }
 
-/* ------------------------------------------------------------------ */
-/* 3. The instance-admin surface                                        */
-/* ------------------------------------------------------------------ */
-
 const ADMIN_ENDPOINTS = EXECUTABLE.filter(
   (e) => e.gate.kind === "instanceAdmin",
 );
@@ -489,8 +431,7 @@ test(`a member holding all ${ALL_CAPABILITIES.length} capabilities reaches none 
 
 test("an instance admin's token administers the instance only when it was granted that", async () => {
   await reset(ALL_CAPABILITIES);
-  // Minted by the instance admin, holding every team capability - but not the
-  // instance-admin switch, which is opt-in per token.
+  // Every team capability, but not the instance-admin switch, which is opt-in per token.
   const raw = await mintToken(ALL_CAPABILITIES, USER_1);
   const principal = await asToken(raw);
   assert.ok(principal, "the token must authenticate");
@@ -510,18 +451,11 @@ test("an instance admin's token administers the instance only when it was grante
   );
 });
 
-/**
- * The same question for the SUBSCRIPTIONS, which {@link EXECUTABLE} leaves out. A
- * subscription's whole body is a generator, so it never reaches the data layer's
- * `requireInstanceAdmin` - the field scope is the only gate it has.
- */
+// A subscription's generator never reaches `requireInstanceAdmin`: the field scope is its only gate.
 const ADMIN_SUBSCRIPTIONS = ENDPOINTS.filter(
   (e) => e.kind === "subscription" && e.gate.kind === "instanceAdmin",
 );
 
-/**
- * Open one subscription as one principal and pull its FIRST event.
- */
 async function open(p: Principal, e: Endpoint): Promise<string[]> {
   const result = await runWithIdentity(p.identity, () =>
     subscribe({ schema, document: parse(e.doc), contextValue: p.ctx }),
@@ -558,8 +492,7 @@ test(`an instance admin's token can't open the ${ADMIN_SUBSCRIPTIONS.length} adm
     `a token that was never given instance administration opened: ${leaks.join(", ")}`,
   );
 
-  // The control: with the switch ON, the very same stream opens - the gate is
-  // the token's grant, not a subscription nobody can ever reach.
+  // The control: with the switch ON the same stream opens, so the gate is the token's grant.
   const admin = await asToken(
     await mintToken(ALL_CAPABILITIES, USER_1, { instanceAdmin: true }),
   );
@@ -573,16 +506,10 @@ test(`an instance admin's token can't open the ${ADMIN_SUBSCRIPTIONS.length} adm
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* 4. A token is never more than its creator                            */
-/* ------------------------------------------------------------------ */
-
 test("a token granted everything can do nothing its creator has since lost", async () => {
   await reset(ALL_CAPABILITIES);
   const raw = await mintToken(ALL_CAPABILITIES, USER_M);
-  // The creator is cut back AFTER the token was minted: nothing is
-  // materialised, so the clamp has to bite on the next request. `manage_tokens`
-  // stays, or the token would not reach the team at all (tested below).
+  // Cut back AFTER minting: nothing is materialised, so the clamp bites on the next request.
   await setCaps(["manage_tokens"]);
   const principal = await asToken(raw);
   assert.ok(
@@ -605,14 +532,9 @@ test("a token granted everything can do nothing its creator has since lost", asy
     [],
     `reachable after the creator lost everything: ${leaks.join(", ")}`,
   );
-  // And without `manage_tokens` the token no longer reaches the team at all.
   await setCaps([]);
   assert.equal(await asToken(raw), null, "the token must stop resolving");
 });
-
-/* ------------------------------------------------------------------ */
-/* 5. Depth strips: a narrowed token loses every team-wide capability   */
-/* ------------------------------------------------------------------ */
 
 test("a token narrowed to one project loses every capability that has no per-project meaning", async () => {
   await reset(ALL_CAPABILITIES);
@@ -651,10 +573,6 @@ test("a token narrowed to one project loses every capability that has no per-pro
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* 6. No credential at all                                              */
-/* ------------------------------------------------------------------ */
-
 test(`an anonymous caller is refused by all ${EXECUTABLE.length - PUBLIC_FIELDS.size} non-public fields`, async () => {
   await reset(ALL_CAPABILITIES);
   const principal: Principal = {
@@ -685,9 +603,9 @@ test("a rejected bearer token is anonymous, not the member it names", async () =
   const raw = await mintToken(ALL_CAPABILITIES, USER_M);
   for (const bad of [
     "deplo_totally_made_up",
-    raw.slice(0, -1), // one character off
+    raw.slice(0, -1),
     raw.toUpperCase(),
-    `${raw} `.replace("deplo_", "Deplo_"), // the prefix check is exact
+    `${raw} `.replace("deplo_", "Deplo_"),
     "not_a_deplo_token",
     "",
   ]) {
@@ -732,7 +650,6 @@ test("a suspended account's token authenticates as nobody", async () => {
 
 test("the team hint can pick a team the token holds, and never one it doesn't", async () => {
   await reset(ALL_CAPABILITIES);
-  // The creator joins a second team; the token is scoped to the first only.
   await pg.exec(
     `insert into memberships (id, user_id, team_id, role, created_at) values ('mem_b', '${USER_M}', '${TEAM_B}', 'member', '${T0}');`,
   );

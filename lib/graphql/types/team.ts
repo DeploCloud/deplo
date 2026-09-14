@@ -11,21 +11,11 @@ import {
 } from "@/lib/data/teams";
 import { deleteTeam } from "@/lib/data/team-delete";
 import { transferTeamOwnership } from "@/lib/data/team-ownership";
-import type { Team, TeamSummary } from "@/lib/types";
+import type { Team, TeamSummary } from "@/lib/types/team";
 
-/* ------------------------------------------------------------------ */
-/* Enums                                                               */
-/* ------------------------------------------------------------------ */
-
-// The plan union ("pro" | "enterprise") is team-local, not shared in
-// enums.ts, so we define it here and export nothing.
 const TeamPlanEnum = builder.enumType("TeamPlan", {
   values: ["pro", "enterprise"] as const,
 });
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 export const TeamRef = builder.objectRef<Team>("Team").implement({
   description: "A team that owns apps, infra and members.",
@@ -48,9 +38,6 @@ export const TeamRef = builder.objectRef<Team>("Team").implement({
   }),
 });
 
-// A team as it appears in the switcher: the viewer's role in it plus its size.
-// listMyTeams returns Team & { role, memberCount }, so we mirror that as a
-// distinct type rather than overloading the bare Team object.
 export const TeamMembershipRef = builder
   .objectRef<TeamSummary>("TeamMembership")
   .implement({
@@ -68,23 +55,13 @@ export const TeamMembershipRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const UpdateTeamInputType = builder.inputType("UpdateTeamInput", {
   fields: (t) => ({
-    // Both optional: omitted means "leave it as it is". A rename must not
-    // rewrite the security policy, and a policy toggle must not echo the name
-    // back and clobber a rename made elsewhere.
+    // Both optional: omitted means "leave it as it is", so a rename cannot rewrite the 2FA policy.
     name: t.string({ required: false }),
     requireTwoFactor: t.boolean({ required: false }),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   viewerTeam: t.field({
@@ -108,10 +85,6 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Mutations (every team server action)                                */
-/* ------------------------------------------------------------------ */
-
 builder.mutationFields((t) => ({
   updateTeam: t.field({
     type: TeamRef,
@@ -133,8 +106,7 @@ builder.mutationFields((t) => ({
   }),
   reorderMyTeams: t.field({
     type: "Boolean",
-    // NOT capability-gated, and deliberately: this is nobody's team setting, it is
-    // where YOUR switcher puts things.
+    // NOT capability-gated, and deliberately: this is where YOUR switcher puts things.
     authScopes: { loggedIn: true },
     description:
       "Set the current user's own order for the topbar team switcher, first to last. Personal, never team-wide: nobody else's list moves. Ids the user is not a member of are ignored, and any team left out of the list keeps its place at the end. Returns true.",
@@ -146,9 +118,7 @@ builder.mutationFields((t) => ({
   }),
   transferTeamOwnership: t.field({
     type: "Boolean",
-    // manage_team is the FLOOR, not the gate - the data layer additionally
-    // requires the caller to BE the team's primary owner, which no capability
-    // expresses.
+    // manage_team is the FLOOR: the data layer additionally requires the caller to BE the primary owner.
     authScopes: { capability: "manage_team" },
     description:
       "Hand the active team to another member, who is put on the Owner role " +
@@ -193,8 +163,7 @@ builder.mutationFields((t) => ({
   }),
   deleteTeam: t.field({
     type: "Boolean",
-    // loggedIn only: the founder/instance-admin gate (tighter than any
-    // capability - see lib/data/team-delete.ts) is enforced in the data layer.
+    // loggedIn only: the founder/instance-admin gate is enforced in the data layer.
     authScopes: { loggedIn: true },
     description:
       "Permanently delete a team. teamId must be the ACTIVE team (the delete " +

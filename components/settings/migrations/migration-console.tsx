@@ -28,7 +28,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { copyText } from "@/lib/clipboard";
 import { gql } from "@/lib/graphql-client";
-import { FacetMenu, type EnvFacet } from "@/components/env/env-filters";
+import { FacetMenu } from "@/components/env/env-filters/facet-menu";
+import type { EnvFacet } from "@/components/env/env-filters/types";
 import type { ReportItem } from "./types";
 
 /**

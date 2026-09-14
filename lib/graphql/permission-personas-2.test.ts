@@ -6,14 +6,24 @@ process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import {
   folderGrants as folderGrantsTable,
-  folders as foldersTable,
   memberships as membershipsTable,
   projectGrants as projectGrantsTable,
-  users as usersTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { users as usersTable } from "../db/schema/control-plane/identity";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { reachableCapabilities } from "../membership";
 import { capabilitiesForRole } from "../membership-shared";
+import {
+  appLookup,
+  field,
+  gql,
+  ids,
+  mintToken,
+  passed,
+  refused,
+  throwawayApp,
+} from "./permission-lab-test-helpers/drive-schema";
 import {
   APP_A_PROD,
   APP_A_STG,
@@ -29,7 +39,6 @@ import {
   FLD_P,
   GRANTEE,
   HR,
-  M,
   MEMBER,
   NEWBIE,
   OTHER,
@@ -37,39 +46,20 @@ import {
   OWNER2,
   PRJ_A,
   PRJ_B,
-  Q,
   SOLO,
   SYSADMIN,
   TEAM,
   VIEWER,
-  appLookup,
-  envInput,
-  field,
-  gql,
-  ids,
+} from "./permission-lab-test-helpers/fixture-ids";
+import { M, envInput, newApp } from "./permission-lab-test-helpers/mutations";
+import { Q } from "./permission-lab-test-helpers/queries";
+import {
   installLab,
   lab,
-  mintToken,
-  newApp,
-  passed,
-  refused,
   settle,
-  throwawayApp,
-} from "./permission-lab-test-helpers";
-
-/**
- * Second pass over the permission lab: the people and moves the first pass did
- * not cover - the instance admin who is not a member, the second owner, reach
- * handed out on a whole project or folder, what moving and deleting folders does
- * to the shares inside them, and the less common ways in (narrow tokens, a
- * role-level 2FA mandate, a suspended account).
- */
+} from "./permission-lab-test-helpers/seed-lab";
 
 installLab();
-
-/* ------------------------------------------------------------------ */
-/* People with power from outside the team                            */
-/* ------------------------------------------------------------------ */
 
 test("an instance admin who is not a member administers the team, and works in it not at all", async () => {
   const inOwn = (doc: string, vars: Record<string, unknown> = {}) =>
@@ -167,10 +157,6 @@ test("a second owner administers everyone but the founder", async () => {
   refused(await gql(OWNER2, Q.apps), "and they are out");
 });
 
-/* ------------------------------------------------------------------ */
-/* Reach handed out on a container                                     */
-/* ------------------------------------------------------------------ */
-
 test("a member given one project holds it whole, environments included", async () => {
   const saved = await gql(OWNER, M.setMemberAccess, {
     input: {
@@ -232,10 +218,6 @@ test("a member given one folder holds its subtree, and a nearer app grant wins i
   );
   refused(await gql(VIEWER, M.redeploy, { appId: APP_TOP }), "outside");
 });
-
-/* ------------------------------------------------------------------ */
-/* Shares follow the folder, not the app                              */
-/* ------------------------------------------------------------------ */
 
 test("moving an app in and out of a shared folder moves the grantee's power with it", async () => {
   refused(await gql(GRANTEE, M.redeploy, { appId: APP_TOP }), "not shared yet");
@@ -315,10 +297,6 @@ test("a share can carry only what the sharer holds on the folder", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Bulk actions ask per app                                            */
-/* ------------------------------------------------------------------ */
-
 test("a bulk delete is refused as a whole when one app is out of reach", async () => {
   refused(
     await gql(SOLO, M.deleteApps, { ids: [APP_X] }),
@@ -340,10 +318,6 @@ test("a bulk delete is refused as a whole when one app is out of reach", async (
   );
   await settle();
 });
-
-/* ------------------------------------------------------------------ */
-/* Narrow tokens                                                        */
-/* ------------------------------------------------------------------ */
 
 test("a token limited to a folder or an app sees exactly that", async () => {
   const { token: folderToken } = await mintToken(OWNER, {
@@ -407,10 +381,6 @@ test("a member whose role is limited cannot mint a token at all", async () => {
   refused(minted, "manage_tokens is team-wide, and a limited role holds none");
 });
 
-/* ------------------------------------------------------------------ */
-/* Policies on the person                                              */
-/* ------------------------------------------------------------------ */
-
 test("a role-level two-factor mandate locks out that role's holders and nobody else", async () => {
   passed(
     await gql(OWNER, M.updateRole, {
@@ -426,7 +396,6 @@ test("a role-level two-factor mandate locks out that role's holders and nobody e
   passed(await gql(VIEWER, Q.apps), "Viewer is untouched");
   passed(await gql(HR, Q.apps), "so is a hand-picked set");
 
-  // HR is moved onto a role and then tries to put the mandate on it themselves.
   const managers = field<{ id: string }>(
     await gql(OWNER, M.createRole, {
       input: { name: "Managers", capabilities: ["view", "manage_roles"] },
@@ -467,10 +436,6 @@ test("a suspended account resolves nothing, in the dashboard and through its tok
     .where(eq(usersTable.id, OWNER));
   passed(await gql(OWNER, Q.apps), "and back");
 });
-
-/* ------------------------------------------------------------------ */
-/* What a limited member is told                                        */
-/* ------------------------------------------------------------------ */
 
 test("search and the activity trail are cut to what a limited member reaches", async () => {
   passed(
@@ -608,7 +573,6 @@ test("switching to a team you are not in is refused, and a folder of the lab sta
 });
 
 test("creating an app is decided where it lands: a project grant can take create_apps away", async () => {
-  // Member holds create_apps team-wide; inside Project B a grant says deploy only.
   await lab.db
     .insert(projectGrantsTable)
     .values({ projectId: PRJ_B, userId: MEMBER, capability: "deploy_apps" });
@@ -650,7 +614,7 @@ test("a token dies with the permission its owner was put back on a role without"
     await gql(OWNER, M.updateMember, { input: { userId: MEMBER, roleId } }),
     "back on plain Member, which carries no manage_tokens",
   );
-  const { authenticateToken } = await import("../data/tokens");
+  const { authenticateToken } = await import("../data/tokens/authenticate");
   assert.equal(
     await authenticateToken(raw, null),
     null,

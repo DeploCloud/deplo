@@ -5,26 +5,19 @@ import * as React from "react";
 import { Combobox } from "@/components/shared/combobox";
 import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
-import type { DatabaseType } from "@/lib/types";
+import type { DatabaseType } from "@/lib/types/database";
 
-/** One thing a schedule can back up, as the picker needs it. */
+// BackupTargetOption is one thing a schedule can back up, as the picker needs it.
 export interface BackupTargetOption {
   id: string;
   name: string;
-  /** The app's slug, or the database's engine - what tells two same-named ones
-   *  apart, and the second thing typing searches. */
   detail?: string | null;
   serverId?: string | null;
-  /** An app's logo, or a database's own; a database with none falls back to its
-   *  engine's brand mark. */
   logo?: string | null;
-  /** Databases only - picks the engine mark. */
   type?: DatabaseType;
 }
 
-/**
- * Pick the app or database a schedule backs up, by typing.
- */
+// TargetCombobox picks the app or database a schedule backs up, by typing.
 export function TargetCombobox({
   targets,
   value,
@@ -41,7 +34,6 @@ export function TargetCombobox({
   disabled?: boolean;
 }) {
   const noun = kind === "app" ? "app" : "database";
-  /** The thing's own icon - the one its card and its header already wear. */
   const mark = (t: BackupTargetOption) =>
     kind === "app" ? (
       <AppLogo logo={t.logo ?? null} size={20} />
@@ -70,7 +62,6 @@ export function TargetCombobox({
         hasItems ? `No ${noun} matches that` : `No ${noun}s in this team yet`
       }
       disabled={disabled}
-      // The same mark the rows carry, kept in the field once one is picked.
       renderLeading={mark}
       renderOption={(t) => (
         <span className="flex min-w-0 items-center gap-2">

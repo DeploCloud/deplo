@@ -21,20 +21,24 @@ process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
-  appBasicAuthUsers as basicAuthTable,
-  domains as domainsTable,
-  envVars as envVarsTable,
-  folders as foldersTable,
   folderGrants as folderGrantsTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+} from "../db/schema/control-plane/access-control";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import {
+  appBasicAuthUsers as basicAuthTable,
+  domains as domainsTable,
+} from "../db/schema/control-plane/domains";
+import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
+import {
+  folders as foldersTable,
   projects as projectsTable,
-  apps as appsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { schema } from "./schema";
 import { type GraphQLContext } from "./context";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { seedIdentity, TEAM_A, TEAM_B } from "../data/identity-test-helpers";
 import {
@@ -42,23 +46,16 @@ import {
   seedServer,
   seedDeployment,
 } from "../data/app-graph-test-helpers";
-import { ALL_CAPABILITIES } from "../types";
+import { ALL_CAPABILITIES } from "../types/identity";
 import { encryptSecret } from "../crypto";
 import {
   __setRunnerForTest,
   __resetQueueForTest,
 } from "../deploy/deploy-queue";
 
-/**
- * The CROSS-TEAM matrix: every field of the public API, driven by a bearer token
- * that authenticated into team ALPHA holding nothing but `view`, aimed squarely at
- * team BETA's ids - a team its creator owns outright.
- */
-
 let db: TestDb;
 let pg: PGlite;
 const T0 = "2026-01-01T00:00:00.000Z";
-/** Owner of alpha; also a full-capability member of beta. */
 const BOTH = "u_both";
 const MEM_IN_B = "mem_both_in_b";
 
@@ -159,10 +156,6 @@ async function seedAll(): Promise<void> {
   });
 }
 
-/* ------------------------------------------------------------------ */
-/* Document generation (one per schema field, every arg filled)        */
-/* ------------------------------------------------------------------ */
-
 const BY_ARG: Record<string, string> = {
   appId: B.app,
   appIds: B.app,
@@ -242,11 +235,6 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
   return ` { ${parts.join(" ")} }`;
 }
 
-/**
- * Skipped by name, and each for a reason that is not "it fails": - the auth verbs
- * own the session itself and take no team; - `deleteTeam` / `deleteUser` /
- * `removeUserFromTeam` tear down the fixture the remaining documents are measured
- */
 const SKIP = new Set([
   "me",
   "apiContext",
@@ -279,11 +267,6 @@ function docsFor(kind: "query" | "mutation") {
     });
 }
 
-/* ------------------------------------------------------------------ */
-/* Principals                                                          */
-/* ------------------------------------------------------------------ */
-
-/** A bearer token minted in ALPHA, granted `view` and nothing else. */
 const READ_ONLY_IN_ALPHA: RequestIdentity = {
   userId: BOTH,
   teamId: TEAM_A,
@@ -295,7 +278,6 @@ const READ_ONLY_IN_ALPHA: RequestIdentity = {
   },
 };
 
-/** The control: beta's own owner over a cookie session. */
 const OWNER_IN_BETA: RequestIdentity = { userId: BOTH, teamId: TEAM_B };
 
 async function principalFor(identity: RequestIdentity) {
@@ -324,7 +306,6 @@ async function run(
   ])) as { data?: unknown; errors?: readonly { message: string }[] };
 }
 
-/** Everything of beta's a mutation could plausibly move. */
 async function snapshot(): Promise<string> {
   const rows = await Promise.all([
     db.select().from(appsTable).where(eq(appsTable.teamId, TEAM_B)),

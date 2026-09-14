@@ -17,16 +17,8 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { cleanResourceLimits, updateAppResources } from "./apps";
+import { cleanResourceLimits, updateAppResources } from "./apps/resources";
 import { loadAppGraph } from "./app-graph-load";
-
-/**
- * Per-app resource limits: the pure validator (`cleanResourceLimits`) and the
- * team-scoped writer (`updateAppResources`). The writer round-trips through the
- * relational assembler (all-null ⇒ `resources: null`) and refuses a cross-team id.
- */
-
-/* ---- cleanResourceLimits (pure) ------------------------------------- */
 
 test("cleanResourceLimits: empty input ⇒ every dimension uncapped", () => {
   const r = cleanResourceLimits({});
@@ -68,12 +60,10 @@ test("cleanResourceLimits: rejects non-integers and out-of-range values", () => 
 });
 
 test("cleanResourceLimits: cross-field coherence (Docker's own rules)", () => {
-  // reservation must not exceed the hard limit
   assert.throws(
     () => cleanResourceLimits({ memoryMb: 256, memoryReservationMb: 512 }),
     /reservation can't exceed/i,
   );
-  // swap needs a memory limit, and must be ≥ it
   assert.throws(
     () => cleanResourceLimits({ swapMb: 512 }),
     /before a swap limit/i,
@@ -82,7 +72,6 @@ test("cleanResourceLimits: cross-field coherence (Docker's own rules)", () => {
     () => cleanResourceLimits({ memoryMb: 1024, swapMb: 512 }),
     /at least the memory limit/i,
   );
-  // a coherent memory+swap pair is fine
   const ok = cleanResourceLimits({ memoryMb: 512, swapMb: 1024 });
   assert.equal(ok.swapMb, 1024);
 });
@@ -90,11 +79,8 @@ test("cleanResourceLimits: cross-field coherence (Docker's own rules)", () => {
 test("cleanResourceLimits: cpuset must be a core list", () => {
   assert.throws(() => cleanResourceLimits({ cpuset: "abc" }), /core list/);
   assert.equal(cleanResourceLimits({ cpuset: "0,2-3" }).cpuset, "0,2-3");
-  // Blank/whitespace collapses to unset, not an error.
   assert.equal(cleanResourceLimits({ cpuset: "  " }).cpuset, null);
 });
-
-/* ---- updateAppResources (team-scoped writer) ------------------------ */
 
 let db: TestDb;
 let pg: PGlite;
@@ -137,14 +123,12 @@ test("updateAppResources round-trips through the assembler", async () => {
   assert.equal(app?.resources?.memoryMb, 512);
   assert.equal(app?.resources?.cpuMilli, 500);
   assert.equal(app?.resources?.pidsLimit, 100);
-  // Untouched dimensions stay uncapped.
   assert.equal(app?.resources?.storageGb, null);
 });
 
 test("clearing every field ⇒ resources assembles back to null", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await asUser1(async () => {
-    // First set a limit, then clear the whole set.
     await updateAppResources("prj_1", { memoryMb: 256 });
     assert.equal((await loadAppGraph("prj_1"))?.resources?.memoryMb, 256);
     await updateAppResources("prj_1", {});
@@ -154,13 +138,11 @@ test("clearing every field ⇒ resources assembles back to null", async () => {
 });
 
 test("updateAppResources refuses a cross-team app id", async () => {
-  // App lives in TEAM_B; acting as a TEAM_A member must not reach it.
   await seedApp(db, { id: "prj_b", teamId: TEAM_B });
   await assert.rejects(
     asUser1(() => updateAppResources("prj_b", { memoryMb: 512 })),
     /not found/i,
   );
-  // And the row is unchanged.
   const app = await loadAppGraph("prj_b");
   assert.equal(app?.resources, null);
 });

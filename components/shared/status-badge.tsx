@@ -1,12 +1,10 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import type {
-  DeploymentStatus,
-  DatabaseStatus,
-  DomainStatus,
-  ServerStatus,
-  DestinationStatus,
-} from "@/lib/types";
+import type { DestinationStatus } from "@/lib/types/backup";
+import type { DatabaseStatus } from "@/lib/types/database";
+import type { DeploymentStatus } from "@/lib/types/deployment";
+import type { DomainStatus } from "@/lib/types/domain";
+import type { ServerStatus } from "@/lib/types/server";
 
 type AnyStatus =
   | DeploymentStatus
@@ -22,19 +20,14 @@ type AnyStatus =
   | "failed"
   | "never"
   | "running"
-  // Live container states, derived from the agent (lib/apps/display-status.ts).
   | "restarting"
   | "unhealthy"
   | "down"
-  // An app that has never been deployed at all (lib/apps/display-status.ts).
   | "not_deployed"
-  // A pull request preview from a fork, held until a maintainer approves it.
   | "blocked"
-  // A pull request preview stopped to stay within the app's own limit.
   | "evicted";
 
 const COLORS: Record<string, string> = {
-  // green
   ready: "bg-[var(--success)]",
   running: "bg-[var(--success)]",
   online: "bg-[var(--success)]",
@@ -42,52 +35,28 @@ const COLORS: Record<string, string> = {
   connected: "bg-[var(--success)]",
   active: "bg-[var(--success)]",
   success: "bg-[var(--success)]",
-  // amber - in-progress / transitioning. "stopping" is the transient state
-  // between a Stop click and the container settling to "idle"; it shares the
-  // deploying colour so "something is happening" reads the same everywhere.
   building: "bg-[var(--warning)]",
   queued: "bg-[var(--warning)]",
   stopping: "bg-[var(--warning)]",
-  // A backup is being put back in place: the stack is down on purpose, for as
-  // long as the untar takes.
   restoring: "bg-[var(--warning)]",
   provisioning: "bg-[var(--warning)]",
   pending: "bg-[var(--warning)]",
   unverified: "bg-[var(--warning)]",
   blocked: "bg-[var(--warning)]",
   evicted: "bg-muted-foreground",
-  // A domain proxied through Cloudflare, sitting beside `unverified` for the same
-  // reason: it IS unverified.
   cloudflare: "bg-[var(--warning)]",
-  // Docker is restart-looping the container: it is neither up nor off, it is
-  // dying and being started again. Amber + a pulse, like every other "something
-  // is happening" state - the red is saved for the deploy that failed outright.
   restarting: "bg-[var(--warning)]",
-  // Running, and failing its own healthcheck. Up is not the same as working.
   unhealthy: "bg-[var(--warning)]",
-  // A server whose agent answers but whose host is degraded (Docker unreachable):
-  // up, but nothing can deploy there. Amber, not red, the box is not down, and
-  // deliberately not grey, which would make a broken host look merely stopped.
   warning: "bg-[var(--warning)]",
   never: "bg-muted-foreground",
-  // red - a genuine failure/unreachable state (a crash, a build error, a server
-  // that's down). NOT a user-initiated stop; that is "idle" below.
   error: "bg-destructive",
   failed: "bg-destructive",
   misconfigured: "bg-destructive",
   offline: "bg-destructive",
-  // Deplo believes this app is deployed and up, and the host has nothing
-  // running. Nobody asked for that, so it is a failure, not a "stopped" - grey
-  // here would read as "off on purpose", which is the lie we are removing.
   down: "bg-destructive",
-  // neutral / grey - "off, but healthy". "idle" is an app the user stopped: it
-  // reads as a calm "Stopped", deliberately distinct from the red error states so
-  // a stopped container is never mistaken for a crashed one.
   idle: "bg-muted-foreground",
   stopped: "bg-muted-foreground",
   canceled: "bg-muted-foreground",
-  // Nothing was ever built for this app. Grey for the same reason "idle" is:
-  // nothing is wrong, there is just nothing running yet.
   not_deployed: "bg-muted-foreground",
 };
 
@@ -100,8 +69,6 @@ const PULSE = new Set([
   "restarting",
 ]);
 
-// Maps each status to a translucent Badge variant, used when a caller opts into
-// `tinted` (e.g. a green "Online" chip).
 const VARIANTS: Record<
   string,
   "success" | "warning" | "destructive" | "muted"
@@ -163,29 +130,13 @@ export function StatusDot({
   );
 }
 
-/**
- * Friendlier labels for a few raw status keys - the ones whose raw key would
- * read as the wrong thing. Every other status falls back to its capitalized key.
- */
 const LABELS: Record<string, string> = {
   idle: "Stopped",
-  // Never built, never started. "Stopped" would say someone stopped it, which
-  // is the one thing that did not happen - an imported app has simply not shipped
-  // yet, and the only control that makes sense on it is a first Deploy.
   not_deployed: "Not deployed",
-  // A fork's preview waiting on a maintainer, not a failure, and not something
-  // Deplo is doing. "Blocked" would read like an error; this names the action.
   blocked: "Needs approval",
-  // Not an error and not a failure: the app hit its own `Live previews` limit and
-  // this was the one nobody had touched in the longest, so it was stopped to seat a
-  // newer pull request.
   evicted: "Over the limit",
   active: "Running",
-  // "Not running", never "Stopped": the app is supposed to be up. The wording
-  // has to make an unasked-for outage impossible to mistake for a deliberate one.
   down: "Not running",
-  // A domain something answers for in front of this server - Cloudflare's
-  // anycast, or a proxy the owner declared.
   cloudflare: "Proxied",
 };
 
@@ -195,13 +146,7 @@ export function StatusBadge({
   labels,
 }: {
   status: AnyStatus;
-  /**
-   * Fill the badge with a translucent, status-coloured background (per
-   * {@link VARIANTS}) instead of the default outline - e.g. a green "Online"
-   * chip. Off by default so existing call sites are unaffected.
-   */
   tinted?: boolean;
-  /** Per-status label overrides merged over the defaults, e.g. `{ active: "Online" }`. */
   labels?: Record<string, string>;
 }) {
   const key = String(status);

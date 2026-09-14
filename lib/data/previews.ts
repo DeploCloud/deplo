@@ -5,27 +5,27 @@ import "server-only";
 import { cache } from "@/lib/request-cache";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { encryptSecret } from "../crypto";
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  appPreviews as appPreviewsTable,
-  appPreviewEnvVars as appPreviewEnvVarsTable,
-  githubInstallation as githubInstallationTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { appPreviews as appPreviewsTable } from "../db/schema/control-plane/deployments";
+import { appPreviewEnvVars as appPreviewEnvVarsTable } from "../db/schema/control-plane/env-vars";
+import { githubInstallation as githubInstallationTable } from "../db/schema/control-plane/integrations";
 import {
   closePreview,
-  deployPreviewRow,
   destroyPreviewsForApp,
+  stopPreviewsForServerChange,
+} from "../deploy/preview-lifecycle/close";
+import { deployPreviewRow } from "../deploy/preview-lifecycle/deploy";
+import { refusalMessage } from "../deploy/preview-lifecycle/fork-guard";
+import { openOrSyncPreview } from "../deploy/preview-lifecycle/open-sync";
+import {
   forkPolicyOf,
-  openOrSyncPreview,
   parseRequiredLabels,
   previewSettings,
-  refusalMessage,
-  stopPreviewsForServerChange,
   type PreviewForkPolicy,
-} from "../deploy/preview-lifecycle";
+} from "../deploy/preview-lifecycle/settings";
 import { isValidPreviewBaseDomain } from "../deploy/domains";
 import {
   listOpenPullRequests,
@@ -38,27 +38,14 @@ import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { loadAppGraph } from "./app-graph-load";
 import { requireFolderCapabilityForApp } from "./folder-access";
-import { assertPreviewBaseNotAnotherTeams } from "./domains";
-import { canHostWorkloads, listServersForTeam } from "./servers";
+import { assertPreviewBaseNotAnotherTeams } from "./domains/hostname-claim";
+import { canHostWorkloads, listServersForTeam } from "./servers/roster";
 import { requireAppCapability } from "./node-access";
-import { secretImmutable } from "../types";
+import { secretImmutable } from "../types/env";
 
-/**
- * The gated surface for **pull request previews** - the security boundary the UI
- * and GraphQL go through.
- */
-
-/** The runtime state of one preview, as the UI renders it. */
+// PreviewState - the runtime state of one preview, as the UI renders it.
 export type PreviewState =
-  | "blocked"
-  | "queued"
-  | "building"
-  | "active"
-  | "error"
-  | "idle"
-  /** Stopped by the app's own limit, not by the pull request. Its stack is gone
-   *  but the row keeps its key and host, so Redeploy revives the same URL. */
-  | "evicted";
+  "blocked" | "queued" | "building" | "active" | "error" | "idle" | "evicted";
 
 export interface AppPreviewDTO {
   id: string;
@@ -72,54 +59,37 @@ export interface AppPreviewDTO {
   headRepo: string;
   isFork: boolean;
   approved: boolean;
-  /** The commit that was approved, when a fork preview was unblocked. */
   approvedSha: string | null;
   status: PreviewState;
   url: string;
   host: string;
-  /** Closed pull requests keep their row until the reaper prunes it. */
   closed: boolean;
   latestDeploymentId: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/**
- * Why the Pull requests page cannot show previews, if it cannot. Resolved
- * server-side into ONE value so the page is a switch rather than a pile of
- * client-side guesses, and so a user is never left wondering why nothing builds.
- */
+// PreviewsUnavailable - the ONE server-side reason the Pull requests page cannot show previews.
 export type PreviewsUnavailable =
   "not-github" | "no-installation" | "app-needs-update" | "disabled";
 
 export interface AppPreviewsView {
   appId: string;
-  /** null ⇒ previews work; otherwise the single reason they do not. */
   unavailable: PreviewsUnavailable | null;
-  /** The branch pull requests must target to get a preview. */
   branch: string;
-  /** Deep link to this GitHub App's permissions page, when one is knowable. */
   githubSettingsUrl: string | null;
-  /** What the App is missing, named as GitHub names it. Empty when nothing is. */
   githubMissingAccess: AccessRequirement[];
   enabled: boolean;
   baseDomain: string | null;
   maxActive: number;
   ttlDays: number;
   forkPolicy: PreviewForkPolicy;
-  /** Where previews run. null ⇒ the app's own server. */
   serverId: string | null;
-  /** HTTPS on preview hosts. Always false without a base domain. */
   https: boolean;
-  /** Rebuild when the pull request receives a new commit. */
   autoDeploy: boolean;
-  /** Container port. null ⇒ the app's build port. */
   port: number | null;
-  /** Build a pull request that is still a draft. */
   buildDrafts: boolean;
-  /** Post and keep updating the sticky comment on the pull request. */
   comment: boolean;
-  /** A pull request must carry ONE of these. Empty ⇒ no filter. */
   requiredLabels: string[];
   previews: AppPreviewDTO[];
 }
@@ -136,9 +106,7 @@ function toDTO(r: typeof appPreviewsTable.$inferSelect): AppPreviewDTO {
     baseBranch: r.baseBranch,
     headRepo: r.headRepo,
     isFork: r.isFork,
-    // Approval is per COMMIT for a fork (see `approvePreview`), so "approved"
-    // has to mean "this head was approved" and not "something once was" - a
-    // stale true is a button the UI hides on the exact push that needs it.
+    // Per COMMIT for a fork: a stale true hides the button on the push that needs it.
     approved: r.isFork
       ? Boolean(r.approvedSha) && r.approvedSha === r.headSha
       : Boolean(r.approvedAt),
@@ -153,8 +121,7 @@ function toDTO(r: typeof appPreviewsTable.$inferSelect): AppPreviewDTO {
   };
 }
 
-/** The app, confirmed to belong to the active team. Throws like every other
- *  data-layer probe - an id from another team reads as "not found". */
+// The app, confirmed to belong to the active team: another team's id reads as not found.
 async function ownedApp(appId: string) {
   const teamId = await requireActiveTeamId();
   const app = await loadAppGraph(appId);
@@ -162,16 +129,10 @@ async function ownedApp(appId: string) {
   return app;
 }
 
-/**
- * Everything the Pull requests page renders, in one read: whether previews can
- * work at all, the branch they watch, the app's settings, and the previews
- * themselves (open first, then most recently touched).
- */
+// listAppPreviews - everything the Pull requests page renders, in one read.
 export const listAppPreviews = cache(
   async (appId: string): Promise<AppPreviewsView> => {
-    // The team check alone is not a gate: an app can sit in a folder this member cannot
-    // see, and a bare `ownedApp` would hand its pull requests, branch and preview URLs
-    // straight over.
+    // The team check is not a gate: an app in a folder this member cannot see stays hidden.
     await requireAppCapability(appId, "manage_previews");
     const app = await ownedApp(appId);
     const settings = (await previewSettings(appId))!;
@@ -184,8 +145,7 @@ export const listAppPreviews = cache(
     } else if (!app.repo.installationId) {
       unavailable = "no-installation";
     } else {
-      // The App must be subscribed to `pull_request` deliveries. Nothing arrives
-      // otherwise, and a user staring at an empty list deserves to know why.
+      // The App must be subscribed to pull_request deliveries, or nothing ever arrives.
       const ready = await githubAppPreviewReadiness(app.repo.installationId);
       githubSettingsUrl = ready.settingsUrl;
       githubMissingAccess = ready.missing;
@@ -194,8 +154,7 @@ export const listAppPreviews = cache(
     }
     if (!unavailable && !settings.enabled) unavailable = "disabled";
 
-    // Open first, then most recently touched. `asc(state)` put "closed" ahead of
-    // "open" and every finished pull request above the ones being reviewed.
+    // asc(state) would put "closed" ahead of "open", so the order is a case expression.
     const rows = await getDb()
       .select()
       .from(appPreviewsTable)
@@ -229,11 +188,7 @@ export const listAppPreviews = cache(
   },
 );
 
-/**
- * Whether the GitHub App behind an installation can actually drive previews. Read
- * live (never stored) because the operator fixes it on github.com, not here, and a
- * stale "needs update" badge would be worse than none.
- */
+// Read live, never stored: the operator fixes this on github.com, and a stale badge is worse.
 async function githubAppPreviewReadiness(installationId: string): Promise<{
   ready: boolean;
   settingsUrl: string | null;
@@ -257,9 +212,7 @@ async function githubAppPreviewReadiness(installationId: string): Promise<{
   };
 }
 
-/** The open pull requests of an app's repo, for the "Deploy a pull request"
- *  picker. `deploy`-gated: it spends a GitHub API call and only ever precedes a
- *  deploy. */
+// listOpenPullRequestsForApp - the repo's open pull requests for the picker; it spends a GitHub call.
 export async function listOpenPullRequestsForApp(
   appId: string,
 ): Promise<GithubPullRequestSummary[]> {
@@ -271,11 +224,7 @@ export async function listOpenPullRequestsForApp(
   return listOpenPullRequests(app.repo.installationId, full);
 }
 
-/**
- * Build a preview for a specific open pull request, on purpose. A member with
- * `deploy` clicking this on a FORK is exactly the approval the fork guard asks
- * for, so it approves in the same act.
- */
+// deployPullRequest - build a preview for one open pull request; on a FORK the click is the approval.
 export async function deployPullRequest(
   appId: string,
   prNumber: number,
@@ -319,16 +268,14 @@ export async function deployPullRequest(
   return dto;
 }
 
-/** Rebuild an existing preview at its current head. */
+// redeployPreview - rebuild an existing preview at its current head.
 export async function redeployPreview(
   previewId: string,
 ): Promise<AppPreviewDTO> {
   await requireCapability("manage_previews");
   const p = await ownedPreview(previewId);
   await requireFolderCapabilityForApp(p.appId, "manage_previews");
-  // Per COMMIT for a fork: a preview approved three pushes ago is not an
-  // approval of what Redeploy would build now. Same rule `openOrSyncPreview`
-  // applies to a webhook, so the button and the push cannot disagree.
+  // Per COMMIT for a fork: an approval three pushes ago is not an approval of this head.
   if (p.isFork ? p.approvedSha !== p.headSha : !p.approvedAt) {
     throw new Error("Approve this fork pull request before building it");
   }
@@ -337,11 +284,7 @@ export async function redeployPreview(
   return previewById(previewId);
 }
 
-/**
- * Unblock a fork's pull request and build it. Approval is per pull request, not
- * per commit: a click for every push would be unusable, and it is how GitHub's own
- * "Approve and run" behaves.
- */
+// approvePreview - unblock a fork's pull request and build it.
 export async function approvePreview(
   previewId: string,
 ): Promise<AppPreviewDTO> {
@@ -356,9 +299,7 @@ export async function approvePreview(
       approvedByUserId: userId,
       approvedAt: now,
       approvedSha: p.headSha,
-      // Deliberately NOT `status: "queued"`. Leaving the row `blocked` is what lets
-      // `deployPreviewRow` see that it holds no slot and claim one - moving it here would
-      // seat the fork without evicting anything and put the app over its own limit.
+      // Deliberately NOT "queued": blocked is what lets deployPreviewRow claim a slot.
       updatedAt: now,
     })
     .where(
@@ -379,8 +320,7 @@ export async function approvePreview(
   return previewById(previewId);
 }
 
-/** Destroy a preview's containers and volumes now. Reversible: the next push to
- *  the pull request builds it again (unless previews are switched off). */
+// destroyPreview - destroy a preview's containers and volumes now; the next push builds it again.
 export async function destroyPreview(previewId: string): Promise<boolean> {
   await requireCapability("manage_previews");
   const p = await ownedPreview(previewId);
@@ -388,23 +328,19 @@ export async function destroyPreview(previewId: string): Promise<boolean> {
   return closePreview(previewId, "destroyed from Deplo");
 }
 
-/** Per-app preview settings. Everything but the switch is advanced. */
+// AppPreviewSettingsInput - per-app preview settings; everything but the switch is advanced.
 export interface AppPreviewSettingsInput {
   enabled?: boolean;
-  /** `preview.example.com`; empty string clears it back to the nip.io default. */
   baseDomain?: string | null;
   maxActive?: number | null;
   ttlDays?: number | null;
   forkPolicy?: string | null;
-  /** Empty/null ⇒ back to the app's own server. */
   serverId?: string | null;
   https?: boolean;
   autoDeploy?: boolean;
-  /** Null/0 ⇒ back to the app's build port. */
   port?: number | null;
   buildDrafts?: boolean;
   comment?: boolean;
-  /** Newline-separated. Empty ⇒ no filter. */
   requiredLabels?: string | null;
 }
 
@@ -428,14 +364,11 @@ export async function setAppPreviewSettings(
         `"${clean}" is not a hostname. Use something like preview.example.com, and point a wildcard DNS record at this server.`,
       );
     }
-    // A preview host never goes in the `domains` table, so the cross-team hostname
-    // guard there does not see it - and every preview under this base gets a Traefik
-    // router and an ACME order.
+    // A preview host never enters `domains`, so the cross-team guard there cannot see it.
     if (clean) await assertPreviewBaseNotAnotherTeams(clean, membership.teamId);
     patch.previewBaseDomain = clean || null;
   }
   if (input.maxActive !== undefined) {
-    // A cap, not a quota - bounded generously, and never clamped silently.
     if (
       input.maxActive != null &&
       (input.maxActive < 1 || input.maxActive > 50)
@@ -457,29 +390,20 @@ export async function setAppPreviewSettings(
   }
   if (input.serverId !== undefined) {
     const wanted = (input.serverId ?? "").trim();
-    // Servers are cross-team-SHARED but still access-controlled (`all_teams` + per-team
-    // grants), so the check is ACCESSIBILITY, not mere existence: a member must not
-    // point previews at a server their team can't use (the preview then deploys there
-    // unguarded).
+    // Servers are shared but access-controlled: the check is accessibility, not existence.
     if (wanted) {
       const usable = await listServersForTeam(membership.teamId);
       const picked = usable.find((s) => s.id === wanted);
       if (!picked) throw new Error("That server is not available to this team");
-      // Accessible is not the same as usable: a preview is a deploy, so the specialised
-      // roles are refused here exactly as `createApp` refuses them - this check only
-      // asked about access, so a storage/build host, or another platform's machine, could
-      // be pinned here through the API.
+      // Accessible is not usable: a preview is a deploy, so a storage/build host is refused.
       if (!canHostWorkloads(picked))
         throw new Error(
           "Nothing is deployed on that server - pick one that runs apps",
         );
     }
-    // The app's own server IS the default, so storing it explicitly would only
-    // pin what is already true and survive a later app move.
+    // The app's own server IS the default, so storing it would pin what is already true.
     patch.previewServerId = wanted && wanted !== app.serverId ? wanted : null;
-    // The stacks that are up live on the OLD machine, and every lifecycle verb
-    // finds a preview's host through this very column - so they are stopped now,
-    // while the column still names where they are. Redeploy rebuilds them there.
+    // Stopped while the column still names the OLD machine: every lifecycle verb reads it.
     const current = (await previewSettings(appId))?.serverId ?? app.serverId;
     const next = patch.previewServerId ?? app.serverId;
     if (next !== current) await stopPreviewsForServerChange(appId, next);
@@ -501,14 +425,11 @@ export async function setAppPreviewSettings(
     ) {
       throw new Error("Enter a port between 1 and 65535");
     }
-    // 0 and null both mean "back to the app's build port" - a cleared number
-    // input sends one or the other depending on the browser.
+    // 0 and null both mean the app's build port - a cleared number input sends either.
     patch.previewPort = input.port ? input.port : null;
   }
   if (input.requiredLabels !== undefined) {
-    // Stored as the user typed it, minus the noise: the textarea is theirs, and
-    // `parseRequiredLabels` is what normalises for matching. Re-joining the
-    // parsed set here is what stops the field growing blank lines every save.
+    // Re-joining the parsed set is what stops the field growing blank lines every save.
     const labels = parseRequiredLabels(input.requiredLabels);
     if (labels.length > 20) {
       throw new Error("Keep the label filter to 20 labels or fewer");
@@ -524,8 +445,6 @@ export async function setAppPreviewSettings(
     )
     .returning({ id: appsTable.id });
   if (rows.length === 0) throw new Error("App not found");
-  // Turning previews OFF destroys the stacks that are up. The confirm dialog says how
-  // many first.
   if (input.enabled === false) await destroyPreviewsForApp(appId);
   if (input.enabled !== undefined) {
     await recordActivity(
@@ -537,12 +456,7 @@ export async function setAppPreviewSettings(
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Preview-only variable overrides (advanced)                          */
-/* ------------------------------------------------------------------ */
-
-/** An override, masked exactly like every other stored secret: the ciphertext is
- *  never projected, and there is no reveal path. */
+// PreviewEnvVarDTO - an override, masked like every stored secret: no ciphertext, no reveal path.
 export interface PreviewEnvVarDTO {
   key: string;
   type: string;
@@ -654,11 +568,7 @@ export async function deletePreviewEnvVar(
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Internals                                                           */
-/* ------------------------------------------------------------------ */
-
-/** A preview row, confirmed to hang off an app of the active team. */
+// A preview row, confirmed to hang off an app of the active team.
 async function ownedPreview(
   previewId: string,
 ): Promise<typeof appPreviewsTable.$inferSelect> {

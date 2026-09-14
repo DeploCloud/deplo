@@ -2,7 +2,7 @@ import "server-only";
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { Capability } from "../types";
+import type { Capability } from "../types/identity";
 
 /**
  * Identity override for non-cookie callers (the public GraphQL API).

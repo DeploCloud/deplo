@@ -1,20 +1,17 @@
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
-import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
-import { listScopeTree } from "@/lib/data/tokens";
+import { instancePublicBaseUrl } from "@/lib/data/instance-settings/settings-store";
+import { listScopeTree } from "@/lib/data/tokens/scope-tree";
 import { countMcpAgents } from "@/lib/data/mcp-clients";
 import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
-import { ConnectWizard } from "@/components/settings/mcp/connect-wizard";
+import { ConnectWizard } from "@/components/settings/mcp/connect-wizard/wizard";
 import { McpSwitchMenu } from "@/components/settings/mcp/mcp-switch-menu";
-import { MCP_TOOLS } from "@/lib/mcp/tools";
+import { MCP_TOOLS } from "@/lib/mcp/tools/catalog";
 
 export const metadata = { title: "Settings · MCP Server" };
 
-/**
- * The tool table, flattened for the browser.
- */
 const TOOL_SUMMARIES = MCP_TOOLS.map((t) => ({
   name: t.name,
   title: t.title,
@@ -25,8 +22,7 @@ const TOOL_SUMMARIES = MCP_TOOLS.map((t) => ({
 }));
 
 export default async function McpSettingsPage() {
-  // The scope picker behind the wizard needs whole-team reach, so a narrowed
-  // role stops here - same gate as API tokens, which this page mints.
+  // The scope picker needs whole-team reach - same gate as the API tokens this page mints.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess

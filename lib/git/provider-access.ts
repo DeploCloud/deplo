@@ -1,24 +1,15 @@
-import type { GitProviderId } from "../types";
+import type { GitProviderId } from "../types/git";
 
-/**
- * What each git host has to let Deplo do, in that host's own words. ONE list per
- * provider, used to request the access, to check it, and to tell the user what to
- * tick - so the three can never drift apart.
- * https://deplo.build/docs/guides/git-providers
- */
+// ONE list per provider - requesting the access, checking it and the user's checklist all read it, so the three cannot drift.
+// https://deplo.build/docs/guides/git-providers
 
 export interface AccessRequirement {
-  /**
-   * The key a granted set is matched against. GitHub spells a permission
-   * `<name>:<level>` and an event `event:<name>`; the others use the scope name
-   * the provider prints.
-   */
+  // The key a granted set is matched against: GitHub spells a permission `<name>:<level>` and an event `event:<name>`.
   key: string;
-  /** The provider's OWN label, so it reads like the screen that has to be fixed. */
+  // The provider's OWN label, so it matches the screen the user has to fix.
   label: string;
-  /** What stops working without it. One line, no Docker, no jargon. */
   unlocks: string;
-  /** `previews` is only ever reported for a repo that uses pull request previews. */
+  // `previews` is only ever reported for a repo that uses pull request previews.
   feature: "core" | "previews";
 }
 
@@ -100,7 +91,7 @@ const GITEA: AccessRequirement[] = [
   },
 ];
 
-/** Every requirement, per provider. A plain git server asks for nothing. */
+// Every requirement, per provider. A plain git server asks for nothing.
 export const PROVIDER_ACCESS: Record<
   GitProviderId | "github",
   AccessRequirement[]
@@ -112,7 +103,7 @@ export const PROVIDER_ACCESS: Record<
   git: [],
 };
 
-/** What a provider must allow, for the checklist. `previews` adds the optional half. */
+// What a provider must allow, for the checklist. `previews` adds the optional half.
 export function requiredAccess(
   provider: GitProviderId | "github",
   opts: { previews?: boolean } = {},
@@ -122,11 +113,7 @@ export function requiredAccess(
   );
 }
 
-/**
- * What is required but not granted. An empty `granted` set is a real answer
- * (nothing is allowed); `null` means the provider does not report its scopes, and
- * then nothing is missing - a checklist is honest, an accusation is not.
- */
+// A null `granted` means the provider does not report its scopes, so nothing is missing; an empty set is a real answer.
 export function missingAccess(
   provider: GitProviderId | "github",
   granted: ReadonlySet<string> | null,
@@ -136,21 +123,14 @@ export function missingAccess(
   return requiredAccess(provider, opts).filter((r) => !granted.has(r.key));
 }
 
-/** The scopes line the connect dialog prints, derived rather than restated. */
+// The scopes line the connect dialog prints, derived rather than restated.
 export function tokenScopesLine(provider: GitProviderId | "github"): string {
   return requiredAccess(provider)
     .map((r) => r.label)
     .join(", ");
 }
 
-/* ------------------------------------------------------------------ */
-/* Readers: what a provider REPORTS, expanded to the keys it satisfies */
-/* ------------------------------------------------------------------ */
-
-/**
- * The requirement keys a stored scope line covers, or null when the provider
- * reported nothing. Null is what keeps a checklist from becoming an accusation.
- */
+// The requirement keys a stored scope line covers, or null when the provider reported nothing.
 export function grantedFromScopes(
   provider: GitProviderId | "github",
   tokenScopes: string,
@@ -160,10 +140,10 @@ export function grantedFromScopes(
   return provider === "gitlab" ? gitlabGranted(scopes) : new Set(scopes);
 }
 
-/** GitHub's levels are cumulative: `write` also satisfies `read`. */
+// GitHub's levels are cumulative: `write` also satisfies `read`.
 const GITHUB_LEVELS = ["read", "write", "admin"];
 
-/** The keys a GitHub App's declared permissions + events actually cover. */
+// The keys a GitHub App's declared permissions + events actually cover.
 export function githubGranted(
   permissions: Record<string, string>,
   events: string[],
@@ -177,7 +157,7 @@ export function githubGranted(
   return out;
 }
 
-/** The keys a GitLab token's scopes cover. `api` is the superset of the read ones. */
+// The keys a GitLab token's scopes cover. `api` is the superset of the read ones.
 export function gitlabGranted(scopes: string[]): Set<string> {
   const out = new Set(scopes);
   if (out.has("api")) {
@@ -188,7 +168,7 @@ export function gitlabGranted(scopes: string[]): Set<string> {
   return out;
 }
 
-/** The permissions + events a GitHub App manifest must ask for. */
+// The permissions + events a GitHub App manifest must ask for.
 export function githubManifestAccess(): {
   permissions: Record<string, string>;
   events: string[];

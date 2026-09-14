@@ -3,12 +3,9 @@ import "server-only";
 import { cache } from "@/lib/request-cache";
 import { and, eq, sql } from "drizzle-orm";
 
-import {
-  assertUser,
-  authHeaders,
-  currentSessionId,
-  markSessionAuthMethod,
-} from "../auth";
+import { assertUser, currentSessionId } from "../auth/current-user";
+import { authHeaders } from "../auth/session-cookies";
+import { markSessionAuthMethod } from "../auth/session-records";
 import { requireAuth } from "../auth/better-auth";
 import { requirePersonalSession } from "../auth/request-context";
 import { getDb } from "../db/client";
@@ -18,22 +15,13 @@ import { passkeyRelyingParty } from "../public-url";
 import { recordActivity } from "./activity";
 import { stepUpPassword } from "./two-factor";
 
-/**
- * The account's passkeys - Settings -> Security. USER-scoped, never team-scoped,
- * for the same reason `lib/data/sessions.ts` is: a credential belongs to a person.
- */
+// Passkeys are USER-scoped, never team-scoped: a credential belongs to a person.
 
-/** More than this and the list stops being something a person can read. */
 const MAX_PASSKEYS = 20;
 
-/** What kind of thing holds the credential, for the row's icon and subtitle. */
+// PasskeyKind is what holds the credential, for the row's icon and subtitle.
 export type PasskeyKind = "synced" | "device" | "securityKey";
 
-/**
- * The authenticator's own answer, not the name: a roaming transport means a key
- * you can unplug, and `backedUp` is the platform saying it copied the credential
- * into someone's keychain.
- */
 function passkeyKind(
   transports: string | null,
   backedUp: boolean,
@@ -46,19 +34,13 @@ function passkeyKind(
 
 export interface PasskeyDTO {
   id: string;
-  /** The label the person gave it, e.g. "Chrome on macOS". */
   name: string;
-  /** Null only for a row written before the plugin started stamping it. */
   createdAt: string | null;
-  /**
-   * False for a credential minted for a DIFFERENT panel address (or before Deplo
-   * recorded which).
-   */
   usableHere: boolean;
   kind: PasskeyKind;
 }
 
-/** The passkeys on this account, newest first. */
+// listMyPasskeys lists the passkeys on this account, newest first.
 export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
   requirePersonalSession("your passkeys");
   const user = await assertUser();
@@ -74,14 +56,11 @@ export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
     })
     .from(passkeyTable)
     .where(eq(passkeyTable.userId, user.id))
-    // NULLS LAST, not the Postgres default: a row with no timestamp is the
-    // oldest thing here, and defaulting it to the top of a "newest first" list
-    // would be the one place the order lies.
+    // NULLS LAST, not the Postgres default: an undated row is the oldest thing here, never the newest.
     .orderBy(sql`${passkeyTable.createdAt} desc nulls last`);
   return rows.map((r) => ({
     id: r.id,
-    // The column is nullable because the library can write `undefined`; Deplo
-    // always sends a label, so this only covers a row it did not create.
+    // The column is nullable because the library can write undefined; Deplo always sends a label.
     name: r.name?.trim() || "Passkey",
     createdAt: r.createdAt ? r.createdAt.toISOString() : null,
     usableHere: rpId !== null && r.rpId === rpId,
@@ -89,10 +68,7 @@ export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
   }));
 });
 
-/**
- * Begin registration: the creation options the browser hands to
- * `navigator.credentials.create`.
- */
+// startPasskeyRegistration returns the creation options for navigator.credentials.create.
 export async function startPasskeyRegistration(
   password: string,
 ): Promise<unknown> {
@@ -102,8 +78,7 @@ export async function startPasskeyRegistration(
       "Passkeys need this panel to be reachable at its own https address.",
     );
   const user = await stepUpPassword(password);
-  // A ceiling rather than a rate limit: the step-up limiter already bounds how
-  // FAST these arrive, and nothing about the feature needs an unbounded list.
+  // A ceiling, not a rate limit: the step-up limiter already bounds how fast these arrive.
   if ((await countMyPasskeys(user.id)) >= MAX_PASSKEYS)
     throw new Error(
       `This account already has ${MAX_PASSKEYS} passkeys. Remove one before adding another.`,
@@ -114,11 +89,7 @@ export async function startPasskeyRegistration(
   });
 }
 
-/**
- * Finish registration with what the authenticator produced. The rpID goes on the
- * credential, because the plugin does not record it and a passkey whose hostname
- * is unknown cannot be told apart from one that still works.
- */
+// finishPasskeyRegistration verifies the authenticator's answer and stamps the rpID the plugin never records.
 export async function finishPasskeyRegistration(input: {
   response: unknown;
   name: string;
@@ -151,11 +122,7 @@ export async function finishPasskeyRegistration(input: {
   };
 }
 
-/**
- * Relabel a passkey. Defense in depth is the house rule, and this is the only gate
- * standing between one account and another's row - leaving it to a library
- * middleware means the boundary moves whenever that library does.
- */
+// renamePasskey relabels one passkey; the userId clause here is the gate, not a library middleware.
 export async function renamePasskey(input: {
   id: string;
   name: string;
@@ -173,11 +140,7 @@ export async function renamePasskey(input: {
     throw new Error("That passkey is no longer on this account.");
 }
 
-/**
- * Remove a passkey. The count and the delete share a transaction, with the
- * account's rows locked `FOR UPDATE`: two "remove" clicks racing each other would
- * otherwise both see two passkeys, both pass the guard, and both delete.
- */
+// deletePasskey removes one; count and delete share a transaction (FOR UPDATE) so two clicks cannot race.
 export async function deletePasskey(input: {
   id: string;
   password: string;
@@ -201,9 +164,7 @@ export async function deletePasskey(input: {
       .for("update");
     const target = mine.find((p) => p.id === input.id);
     if (!target) throw new Error("That passkey is no longer on this account.");
-    // Only the ones that still work here count towards the policy: a credential
-    // minted for another address satisfies nothing, so removing it can never be
-    // what leaves the account short.
+    // Only credentials that still work here count: one minted elsewhere satisfies nothing.
     const usable = mine.filter((p) => rpId !== null && p.rpId === rpId);
     const losingTheLastOne =
       usable.length <= 1 && usable.some((p) => p.id === input.id);
@@ -222,7 +183,6 @@ export async function deletePasskey(input: {
   await announce(user.id, user.username, `Removed the ${name} passkey`);
 }
 
-/** How many passkeys this account holds, usable here or not. */
 async function countMyPasskeys(userId: string): Promise<number> {
   const rows = await getDb()
     .select({ id: passkeyTable.id })
@@ -231,9 +191,6 @@ async function countMyPasskeys(userId: string): Promise<number> {
   return rows.length;
 }
 
-/**
- * File an account-security event in every team the person belongs to.
- */
 async function announce(
   userId: string,
   actor: string,

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { buildSchema, parse, validate } from "graphql";
 
 // The client's inline `/* GraphQL */` documents are never checked at build time:
@@ -27,9 +27,9 @@ test("every inline GraphQL document in the client is valid", () => {
   let checked = 0;
 
   for (const file of [...walk("app"), ...walk("components"), ...walk("lib")]) {
-    // lib/mcp/tools.ts has its own validation test.
+    // lib/mcp/tools/ has its own validation test.
     if (file.endsWith(".test.ts") || file.endsWith(".test.tsx")) continue;
-    if (file.endsWith(join("lib", "mcp", "tools.ts"))) continue;
+    if (file.includes(join("lib", "mcp", "tools") + sep)) continue;
     const src = readFileSync(file, "utf8");
     if (!src.includes("/* GraphQL */")) continue;
 

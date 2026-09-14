@@ -2,12 +2,9 @@
 
 import yaml from "../yaml";
 
-import type { ResourceLimits } from "../types";
+import type { ResourceLimits } from "../types/container";
 
-/**
- * Per-app resource limits → the `docker compose up` service keys that ENFORCE
- * them.
- */
+// Per-app resource limits → the `docker compose up` service keys that enforce them.
 export function resourceLimitsToComposeKeys(
   r: ResourceLimits | null | undefined,
 ): Record<string, unknown> {
@@ -23,7 +20,6 @@ export function resourceLimitsToComposeKeys(
   if (r.pidsLimit != null) out.pids_limit = r.pidsLimit;
   if (r.shmSizeMb != null) out.shm_size = `${r.shmSizeMb}m`;
   if (r.storageGb != null) out.storage_opt = { size: `${r.storageGb}G` };
-  // `ulimits` is a nested map; emit it only when at least one sub-limit is set.
   const ulimits: Record<string, number> = {};
   if (r.nofile != null) ulimits.nofile = r.nofile;
   if (r.nproc != null) ulimits.nproc = r.nproc;
@@ -32,11 +28,7 @@ export function resourceLimitsToComposeKeys(
   return out;
 }
 
-/**
- * Render the resource-limit keys as a YAML FRAGMENT indented `indent` spaces - for
- * the string-built single-image path (`renderCompose`), which has no service
- * object to mutate.
- */
+// The resource-limit keys as a YAML fragment indented `indent` spaces, for the string-built renderCompose path.
 export function renderResourceLimitsYaml(
   r: ResourceLimits | null | undefined,
   indent: number,
@@ -54,10 +46,7 @@ export function renderResourceLimitsYaml(
   );
 }
 
-/**
- * Overlay resource-limit keys onto a compose-stack service, EXISTING-WINS: a key
- * the service already declares in its own compose is never overridden.
- */
+// Overlay resource-limit keys onto a compose-stack service, existing-wins: its own compose keys are never overridden.
 export function mergeResourceLimits(
   svc: Record<string, unknown>,
   r: ResourceLimits | null | undefined,
@@ -68,7 +57,6 @@ export function mergeResourceLimits(
   }
 }
 
-/** milli-CPUs → the fractional-core string compose wants (`500` → "0.5", `2000` → "2"). */
 function milliToCpuString(milli: number): string {
   return String(milli / 1000);
 }

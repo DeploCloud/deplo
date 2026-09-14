@@ -1,18 +1,11 @@
 import {
   memberships,
   membershipCapabilities,
-  teams,
-  users,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { teams, users } from "../db/schema/control-plane/identity";
 import { capabilitiesForRole } from "../membership-shared";
 import type { TestDb } from "../db/test-harness";
-import type { Capability, Role } from "../types";
-
-/**
- * Shared seeding for the leaf cut-set data-layer tests (relational-store PLAN Step
- * 2). So this seeds ONLY the relational identity tables - there is no JSONB store
- * left to reset.
- */
+import type { Capability, Role } from "../types/identity";
 
 export const TEAM_A = "team_a";
 export const TEAM_B = "team_b";
@@ -23,16 +16,12 @@ const T0 = "2026-01-01T00:00:00.000Z";
 interface SeedTeam {
   id: string;
   slug: string;
-  /**
-   * Whether this team allows AI agents over MCP.
-   */
   mcpEnabled?: boolean;
 }
 interface SeedUser {
   id: string;
   teamId: string;
   role?: Role;
-  /** Override the role's preset - for gates that need a deliberately narrow set. */
   capabilities?: Capability[];
 }
 
@@ -44,11 +33,7 @@ const DEFAULT_USERS: SeedUser[] = [
   { id: USER_1, teamId: TEAM_A, role: "owner" },
 ];
 
-/**
- * Seed identity into the pglite FK roots. Defaults to two teams (alpha/beta) and
- * one owner user in alpha - enough for "owner can mutate" + "cross-team
- * isolation" assertions. Call in `beforeEach` AFTER truncating.
- */
+// seedIdentity seeds the pglite FK roots: two teams and one owner user by default.
 export async function seedIdentity(
   db: TestDb,
   opts: { teams?: SeedTeam[]; users?: SeedUser[] } = {},
@@ -56,7 +41,6 @@ export async function seedIdentity(
   const seedTeams = opts.teams ?? DEFAULT_TEAMS;
   const seedUsers = opts.users ?? DEFAULT_USERS;
 
-  // FK roots in pglite.
   await db.insert(teams).values(
     seedTeams.map((t) => ({
       id: t.id,
@@ -80,8 +64,6 @@ export async function seedIdentity(
       updatedAt: T0,
     })),
   );
-  // Memberships + capabilities are relational as of cut-set (b): the authz
-  // backbone (`membershipFor`/`teamsForUser`/`requireCapability`) reads them.
   await db.insert(memberships).values(
     seedUsers.map((u) => ({
       id: `mem_${u.id}`,

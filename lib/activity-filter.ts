@@ -1,4 +1,4 @@
-import type { ActivityType } from "./types";
+import type { ActivityType } from "./types/activity";
 
 /** How many rows a page of the feed holds, first one included. */
 export const ACTIVITY_PAGE_SIZE = 40;
@@ -17,11 +17,9 @@ export interface ActivityParams {
   actorUserIds: string[];
   types: ActivityType[];
   resourceIds: string[];
-  /** One of {@link ACTIVITY_RANGES}, or "" for all time / a custom range. */
   range: string;
-  /** `YYYY-MM-DD`, inclusive. Set only for a custom range. */
   from: string;
-  /** `YYYY-MM-DD`, inclusive. Set only for a custom range. */
+  /** `YYYY-MM-DD`, INCLUSIVE. Set only for a custom range. */
   to: string;
 }
 
@@ -75,8 +73,7 @@ export function parseActivityParams(
   };
 }
 
-/** The href for a set of filters, on the team-wide page or on a resource's own
- *  Activity tab. Defaults are omitted, so "no filters" is `base` itself. */
+// The href for a set of filters, with the defaults omitted, so "no filters" is `base` itself.
 export function activityHref(p: ActivityParams, base = "/activity"): string {
   const q = new URLSearchParams();
   if (p.actorUserIds.length) q.set("actor", p.actorUserIds.join(","));
@@ -89,7 +86,6 @@ export function activityHref(p: ActivityParams, base = "/activity"): string {
   }
   const s = q.toString();
   if (!s) return base;
-  // The base may already carry a query, e.g. the tab a scoped feed lives on.
   return `${base}${base.includes("?") ? "&" : "?"}${s}`;
 }
 
@@ -109,14 +105,9 @@ export const MONTH_SHORT = [
   "Dec",
 ];
 
-/** What the rail counts over when the reader has picked no dates of their own. */
 const DEFAULT_COUNT_RANGE = ACTIVITY_RANGES.find((r) => r.value === "30d")!;
 
-/**
- * Turn the picked range into the half-open window the query wants. A custom `to`
- * is the last day the reader means to INCLUDE, so it becomes the start of the
- * day after.
- */
+// Turn the picked range into the half-open window the query wants.
 export function activityWindow(
   p: ActivityParams,
   now = Date.now(),
@@ -126,17 +117,14 @@ export function activityWindow(
     return { from: new Date(now - preset.days * 86_400_000).toISOString() };
   return {
     from: p.from ? `${p.from}T00:00:00.000Z` : undefined,
+    // A custom `to` is the last day the reader means to INCLUDE, so it becomes the start of the day after.
     to: p.to
       ? new Date(Date.parse(`${p.to}T00:00:00.000Z`) + 86_400_000).toISOString()
       : undefined,
   };
 }
 
-/**
- * The window the rail's counts describe: the reader's own dates when they picked
- * any, else the last 30 days. `activities` has no retention and grows for ever,
- * so an aggregate over it is never left unbounded.
- */
+// The reader's own dates, else the last 30 days: `activities` has no retention, so an aggregate over it is never left unbounded.
 export function activityCountWindow(
   p: ActivityParams,
   now = Date.now(),
@@ -152,11 +140,7 @@ export function activityCountWindow(
 export type ActivityScope =
   { kind: "resource"; resourceId: string } | { kind: "actor"; userId: string };
 
-/**
- * What a scoped page queries. The pin BEATS the URL: a person's own page is not
- * a place `?actor=` may widen to somebody else, and the facet it fixes is left
- * out of the filter row precisely because there is nothing left to pick.
- */
+// What a scoped page queries: the pin BEATS the URL, so `?actor=` cannot widen a person's own page to somebody else.
 export function scopedActivityFilter(
   p: ActivityParams,
   scope: ActivityScope,
@@ -186,7 +170,6 @@ export function activityCountWindowLabel(p: ActivityParams): string {
   return DEFAULT_COUNT_RANGE.label;
 }
 
-/** `2026-08-15` -> `15 Aug`. Sliced, never parsed, like every other date here. */
 function day(iso: string): string {
   const [, month, d] = iso.split("-");
   return `${Number(d)} ${MONTH_SHORT[Number(month) - 1]}`;

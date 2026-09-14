@@ -20,23 +20,27 @@ process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
-  appBasicAuthUsers as basicAuthTable,
-  domains as domainsTable,
-  envVars as envVarsTable,
-  folders as foldersTable,
   folderGrants as folderGrantsTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
-  projects as projectsTable,
   teamRoles as teamRolesTable,
-  teams as teamsTable,
-  apiTokens as apiTokensTable,
-  apps as appsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { apiTokens as apiTokensTable } from "../db/schema/control-plane/api-tokens";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import {
+  appBasicAuthUsers as basicAuthTable,
+  domains as domainsTable,
+} from "../db/schema/control-plane/domains";
+import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
+import {
+  folders as foldersTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane/projects";
 import { schema } from "./schema";
 import { type GraphQLContext } from "./context";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { seedIdentity, TEAM_A } from "../data/identity-test-helpers";
 import {
@@ -44,17 +48,12 @@ import {
   seedServer,
   seedDeployment,
 } from "../data/app-graph-test-helpers";
-import { ALL_CAPABILITIES } from "../types";
+import { ALL_CAPABILITIES } from "../types/identity";
 import { encryptSecret } from "../crypto";
 import {
   __setRunnerForTest,
   __resetQueueForTest,
 } from "../deploy/deploy-queue";
-
-/**
- * The ROLE FLOOR: every field of the public API, driven by a real member of the
- * team whose role grants nothing at all.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -113,9 +112,7 @@ async function seedAll(): Promise<void> {
     createdAt: T0,
     updatedAt: T0,
   });
-  // A TOP-LEVEL folder owned by nobody in particular: a folder the zero-capability
-  // member can see is the interesting case (folder privacy would otherwise mask
-  // every missing capability check behind "you can't see it anyway").
+  // Owned by the subject: folder privacy would otherwise mask every missing capability check.
   await db.insert(foldersTable).values({
     id: F.folder,
     teamId: TEAM_A,
@@ -164,10 +161,6 @@ async function seedAll(): Promise<void> {
     createdAt: T0,
   });
 }
-
-/* ------------------------------------------------------------------ */
-/* Document generation                                                 */
-/* ------------------------------------------------------------------ */
 
 const BY_ARG: Record<string, string> = {
   appId: F.app,
@@ -251,9 +244,6 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
   return ` { ${parts.join(" ")} }`;
 }
 
-/**
- * Skipped by name.
- */
 const SKIP = new Set([
   "me",
   "apiContext",
@@ -275,8 +265,7 @@ const SKIP = new Set([
   "revokeOtherSessions",
   "markNotificationsRead",
   "dismissNotification",
-  // Starting your OWN team is not a capability in anyone else's team - the
-  // creator becomes its owner, and nothing of the seeded team moves.
+  // Starting your OWN team is not a capability in anyone else's team.
   "createTeam",
 ]);
 
@@ -324,7 +313,6 @@ async function run(
   ])) as { data?: unknown; errors?: readonly { message: string }[] };
 }
 
-/** Everything a mutation could plausibly move, plus the authz backbone itself. */
 const WATCHED = [
   appsTable,
   foldersTable,
@@ -346,7 +334,6 @@ async function snapshot(): Promise<string> {
   );
 }
 
-/** The same snapshot with one table left out - see the carve-out below. */
 async function snapshotWithout(
   excluded: (typeof WATCHED)[number],
 ): Promise<string> {
@@ -357,11 +344,7 @@ async function snapshotWithout(
   );
 }
 
-/**
- * Mutations a member with NO capability may still write through, and why. Only a
- * write to the actor's OWN preferences belongs here, never anything another
- * member, another team, or an authorization check can read.
- */
+// Only a write to the actor's OWN preferences belongs here, never one another member can read.
 const OWN_PREFERENCES_ONLY = ["reorderMyTeams"];
 
 test("a member holding no capability can't move a single row", async () => {
@@ -382,7 +365,6 @@ test("a member holding no capability can't move a single row", async () => {
 });
 
 test("the carve-out is real: each exempted mutation still only touches its own actor", async () => {
-  // A guard on the guard.
   for (const name of OWN_PREFERENCES_ONLY) {
     const m = docsFor("mutation").find((d) => d.name === name);
     assert.ok(m, `${name} is exempted but is not a mutation`);

@@ -4,21 +4,18 @@ import yaml from "../yaml";
 
 import { decryptSecretOrThrow } from "../crypto";
 import { hostVolumeName, usesComposeStack } from "../utils";
-import { composeOwnVolumeKeys } from "../deploy/compose-lint";
+import { composeOwnVolumeKeys } from "../deploy/compose-lint/volumes";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import { loadEnvVarsForApp } from "./app-graph-load";
 import {
   loadAutoInjectedVarsForApp,
   loadSharedVarsForApp,
-} from "./shared-vars";
-import { connectAgent } from "../infra/agent-client";
-import type { App, VolumeMount } from "../types";
+} from "./shared-vars/deploy-entries";
+import { connectAgent } from "../infra/agent-client/connect";
+import type { App } from "../types/app";
+import type { VolumeMount } from "../types/container";
 
-/**
- * Build the {@link ProjectDescriptor} the agent's Backup/Restore RPC needs from a
- * project, resolving Deplo's three persistent-state shapes into a FLAT list of
- * on-host docker volume names plus the files-dir flag and the compose/env
- */
+// What the agent's Backup/Restore RPC needs from a project.
 export interface ProjectBackupDescriptor {
   slug: string;
   /** On-host docker volume names to tar (named + compose-stack; host mounts excluded). */
@@ -33,10 +30,7 @@ export interface ProjectBackupDescriptor {
   mounts: { path: string; content: string }[];
 }
 
-/**
- * The exact decrypted env a project runs with in production - the snapshot the
- * restore re-Reroutes.
- */
+// The exact decrypted env a project runs with in production.
 export async function appEnvSnapshot(
   appId: string,
 ): Promise<Record<string, string>> {
@@ -53,17 +47,13 @@ export async function appEnvSnapshot(
     sharedVars,
     autoInjected,
   )) {
-    // Strict: this descriptor is what a RESTORE writes back as the app's real
-    // `.env`, so a value that silently became "" would not break the backup -
-    // it would break the recovery, months later, at the worst possible moment.
+    // Strict: a value that silently became "" would break the RESTORE, not the backup.
     out[e.key] = decryptSecretOrThrow(e.valueEnc, `The variable ${e.key}`);
   }
   return out;
 }
 
-/**
- * The on-host docker volume names for a SINGLE-CONTAINER project's named volumes.
- */
+// The on-host docker volume names for a SINGLE-CONTAINER project's named volumes.
 export function namedVolumeHostNames(
   slug: string,
   volumes: VolumeMount[] | null | undefined,
@@ -73,16 +63,7 @@ export function namedVolumeHostNames(
     .map((v) => hostVolumeName(slug, v.name));
 }
 
-/**
- * The on-host docker volume names for a COMPOSE-STACK project, parsed from the
- * rendered stack YAML's TOP-LEVEL `volumes:` block. We still back them up (they
- * hold the stack's data) but never project-prefix them.
- */
-/**
- * Deplo owns the `deplo-` host-volume namespace: every per-app volume it derives
- * lives there (`deplo-<slug>_<key>` for compose, `deplo-<slug>-<name>` for single-
- * container).
- */
+// Deplo owns the `deplo-` host-volume namespace: every per-app volume it derives lives there.
 function assertNotReservedVolumeName(
   slug: string,
   name: string,
@@ -119,14 +100,12 @@ export function composeStackVolumeHostNames(
       name?: unknown;
       external?: unknown;
     };
-    // A top-level `name:` pins the host volume name verbatim (external or not).
     if (typeof s.name === "string" && s.name) {
       assertNotReservedVolumeName(slug, s.name, own);
       names.push(s.name);
       continue;
     }
-    // `external` can be `true` (bool) or, in the deprecated long form, an object that
-    // may itself carry a `name`.
+    // `external` is `true`, or the deprecated long form: an object that may carry a `name`.
     if (s.external && typeof s.external === "object") {
       const ext = s.external as { name?: unknown };
       const n = typeof ext.name === "string" && ext.name ? ext.name : key;
@@ -139,24 +118,16 @@ export function composeStackVolumeHostNames(
       names.push(key);
       continue;
     }
-    // A Deplo-owned (non-external, unnamed) volume gets Compose's default
-    // `<project>_<key>` name, and the project is always `deplo-<slug>`.
+    // Compose names an unnamed volume `<project>_<key>`, and the project is `deplo-<slug>`.
     names.push(`deplo-${slug}_${key}`);
   }
   return names;
 }
 
-/**
- * The exact shape a Docker named volume must have, MIRRORING the agent's
- * `volumeNamePattern` (deplo-agent backup_tar.go) so the control plane rejects a
- * bad name with an actionable message INSTEAD of letting the agent fail opaquely
- */
+// MIRRORS the agent's `volumeNamePattern` (deplo-agent backup_tar.go).
 const AGENT_VOLUME_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 
-/**
- * Validate every resolved host volume name against the agent's rule, throwing a
- * clear, actionable error on the first bad one.
- */
+// Validate every resolved host volume name against the agent's rule.
 export function assertSafeVolumeNames(slug: string, names: string[]): void {
   for (const name of names) {
     if (!AGENT_VOLUME_NAME.test(name) || name.includes("..")) {
@@ -173,22 +144,15 @@ export function assertSafeVolumeNames(slug: string, names: string[]): void {
   }
 }
 
-/**
- * The on-host docker volume names to COPY on an app server MOVE. Names are
- * validated with {@link assertSafeVolumeNames} by the caller before they reach the
- * wire.
- */
+// The on-host docker volume names to COPY on an app server MOVE.
 export function appMoveVolumeNames(
   project: App,
   renderedYaml: string,
 ): string[] {
   const slug = project.slug;
   if (!usesComposeStack(project)) {
-    // Single-container: only pinned `name:` named volumes (host mounts already
-    // excluded by namedVolumeHostNames). None of these are ever "external".
     return namedVolumeHostNames(slug, project.volumes);
   }
-  // Compose-stack: re-derive from the rendered YAML but drop external volumes.
   let doc: unknown;
   try {
     doc = yaml.load(renderedYaml);
@@ -197,16 +161,13 @@ export function appMoveVolumeNames(
   }
   const volumes = (doc as { volumes?: unknown } | null)?.volumes;
   if (!volumes || typeof volumes !== "object") return [];
-  // The stack's own Storage-settings volumes are pinned inside Deplo's namespace
-  // BY Deplo - they must move with the app, not trip the reserved-name guard.
+  // Deplo pins the app's Storage volumes itself: they must not trip the reserved-name guard.
   const own = new Set(namedVolumeHostNames(slug, project.volumes));
   const names: string[] = [];
   for (const [key, spec] of Object.entries(
     volumes as Record<string, unknown>,
   )) {
     const s = (spec ?? {}) as { name?: unknown; external?: unknown };
-    // Skip external volumes - Deplo doesn't own them, so a move must not relocate
-    // them (they stay the operator's responsibility on whatever host declares them).
     if (s.external === true || (s.external && typeof s.external === "object")) {
       continue;
     }
@@ -220,10 +181,7 @@ export function appMoveVolumeNames(
   return names;
 }
 
-/**
- * Every host volume this app owns BY NAME - what a teardown reclaims when no
- * compose file on the host can name them (an app never deployed there).
- */
+// Every host volume this app owns BY NAME - what a teardown reclaims.
 export function appOwnVolumeNames(project: App): string[] {
   return [
     ...namedVolumeHostNames(project.slug, project.volumes),
@@ -233,10 +191,7 @@ export function appOwnVolumeNames(project: App): string[] {
   ];
 }
 
-/**
- * What a move leaves on the old host ON PURPOSE: host paths and `external:`
- * volumes are not Deplo's to relocate. Named so the deploy log can say so.
- */
+// What a move leaves on the old host ON PURPOSE: host paths and `external:` volumes.
 export function appMoveLeftBehind(
   project: App,
   renderedYaml: string,
@@ -269,17 +224,13 @@ export function appMoveLeftBehind(
   return out;
 }
 
-/**
- * Build the full backup descriptor for a project.
- */
+// Build the full backup descriptor for a project.
 export async function buildProjectDescriptor(
   project: App,
 ): Promise<ProjectBackupDescriptor> {
   const slug = project.slug;
   const composeStack = usesComposeStack(project);
 
-  // The rendered stack on the agent's disk is the snapshot we capture and, for a
-  // compose-stack project, the source for the host volume names. Read it once.
   const conn = await connectAgent(project.serverId);
   let stack: { exists: boolean; yaml: string };
   try {
@@ -290,25 +241,18 @@ export async function buildProjectDescriptor(
 
   const composeYaml = stack.exists ? stack.yaml : "";
   const volumeNames = composeStack
-    ? // The app's Storage volumes are pinned by the RENDERER inside Deplo's
-      // namespace, so they are enumerated from the YAML like any other stack
-      // volume, but exempted from the guard that rejects a user-pinned one.
+    ? // Deplo's RENDERER pins the app's Storage volumes, exempt from the reserved-name guard.
       composeStackVolumeHostNames(
         slug,
         composeYaml,
         namedVolumeHostNames(slug, project.volumes),
       )
     : namedVolumeHostNames(slug, project.volumes);
-  // Fail fast with a clear message before any agent work, rather than letting the
-  // agent reject a bad name opaquely after it starts streaming the archive.
   assertSafeVolumeNames(slug, volumeNames);
 
   return {
     slug,
     volumeNames,
-    // Single-container apps keep their config files under the files dir only when they
-    // have project-path mounts or `mounts`; a compose-stack project's `./` bind mounts
-    // also land there.
     includeFiles: appHasFilesDir(project),
     composeYaml,
     envSnapshot: await appEnvSnapshot(project.id),
@@ -319,11 +263,7 @@ export async function buildProjectDescriptor(
   };
 }
 
-/**
- * Whether a project could have a files dir (<stacks>/files/<slug>) worth
- * archiving: a compose-stack project (its `./x` bind mounts + template mounts live
- * there), any project with template `mounts`, or any with a `project`-type volume
- */
+// Whether a project could have a files dir (<stacks>/files/<slug>) worth archiving.
 export function appHasFilesDir(project: App): boolean {
   if (usesComposeStack(project)) return true;
   if ((project.mounts ?? []).length > 0) return true;

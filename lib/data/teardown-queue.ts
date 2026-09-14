@@ -5,26 +5,21 @@ import "server-only";
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  pendingTeardowns,
-  servers as serversTable,
-} from "../db/schema/control-plane";
+import { pendingTeardowns } from "../db/schema/control-plane/deployments";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { newId, nowIso } from "../ids";
-import { connectAgent, type AgentConnection } from "../infra/agent-client";
+import { connectAgent } from "../infra/agent-client/connect";
+import type { AgentConnection } from "../infra/agent-client/connection";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { mapLimit } from "../utils";
 import { recordActivity } from "./activity";
 
-/**
- * The teardown queue: a stack that must die, kept until the host says it did. A
- * row IS the intent and outlives both the app row and the team. Three rules make
- * it safe: written BEFORE the agent is dialed; matched on the `deplo.project`
- * LABEL, never the reusable slug; and verified on the container list, because
- * DestroyStack's `ok` lies in both directions.
- *
- * ponytail: the verdict covers containers, not volumes - no agent RPC lists
- * volumes. Upgrade path: a ListVolumes RPC, then check both here.
- */
+// Three rules keep it safe: the row is written BEFORE the agent is dialed; matched on the
+// `deplo.project` LABEL, never the reusable slug; verified on the container list, because
+// DestroyStack's `ok` lies in both directions.
+
+// ponytail: the verdict covers containers, not volumes - no agent RPC lists
+// volumes. Upgrade path: a ListVolumes RPC, then check both here.
 
 /** One stack that must be destroyed on one host. */
 export interface TeardownEntry {
@@ -37,17 +32,11 @@ export interface TeardownEntry {
   label: string;
   /** NULL for a deleted team, which is also "nowhere to report to". */
   teamId: string | null;
-  /**
-   * Volumes to reclaim BY NAME on the destroy, on top of what `down -v` finds.
-   */
+  /** Volumes to reclaim BY NAME on the destroy, on top of what `down -v` finds. */
   reclaimVolumes?: string[];
 }
 
-/**
- * Delay before attempt N+1, saturating on the last rung: 1m, 5m, 15m, 1h, 6h,
- * 24h, 24h. Short at the start (a restarting agent is back in seconds), long at
- * the end (a host down for a day is a decision somebody made).
- */
+// Delay before attempt N+1, saturating on the last rung: 1m, 5m, 15m, 1h, 6h, 24h, 24h.
 const BACKOFF_MS = [
   60_000,
   5 * 60_000,
@@ -61,20 +50,16 @@ const BACKOFF_MS = [
 /** Attempts before Deplo gives up, the inline one included. 8 spans ~4 days. */
 export const MAX_TEARDOWN_ATTEMPTS = 8;
 
-/** Rows per drain. Each can burn the 3-minute stack deadline on a dead host, so
- *  8 at 4-way concurrency bounds one drain near 6 minutes. */
+/** Rows per drain: 8 at 4-way concurrency bounds one drain near 6 minutes. */
 const DRAIN_BATCH = 8;
 
 /** Teardowns dialed at once, matching the bulk delete's own fan-out. */
 const DRAIN_CONCURRENCY = 4;
 
-/**
- * How long a freshly queued teardown is left alone.
- */
+/** How long a freshly queued teardown is left alone. */
 const INLINE_GRACE_MS = 4 * 60_000;
 
-/** How long a given-up teardown waits before a reachable host earns it a new
- *  ladder. Long enough that a stack failing for its OWN reasons cannot spin. */
+/** How long a given-up teardown waits before a reachable host earns it a new ladder. */
 const REOPEN_AFTER_MS = 60 * 60_000;
 
 /** How recently the host must have been seen to count as reachable again. */
@@ -99,10 +84,7 @@ export function __setTeardownDialForTest(
   dial = fn ?? connectAgent;
 }
 
-/**
- * What to do after a failed attempt. Pure, so the ladder is testable without a
- * host. `attempts` is the count INCLUDING the failure just recorded.
- */
+// What to do after a failed attempt. `attempts` INCLUDES the failure just recorded.
 export function nextTeardownAttempt(
   attempts: number,
   now: Date,
@@ -113,10 +95,7 @@ export function nextTeardownAttempt(
   return { giveUp: false, at: new Date(now.getTime() + step).toISOString() };
 }
 
-/**
- * Record the intents. One statement, `ON CONFLICT DO NOTHING`: a second enqueue
- * for the same stack must be a no-op rather than a second ladder of retries.
- */
+// Record the intents. One statement, `ON CONFLICT DO NOTHING`: a second enqueue is a no-op.
 export async function enqueueTeardowns(
   entries: TeardownEntry[],
 ): Promise<void> {
@@ -156,9 +135,7 @@ async function stackContainers(
     .listInstances(entry.projectLabel, entry.deployKey, "")
     .catch(() => null);
   if (rows === null) return null;
-  // The label already scopes the answer to the doomed thing, so this only has to
-  // separate deploy keys that SHARE one: `blink` must not count `blink__pr-3`'s
-  // containers as survivors of its own teardown.
+  // Separate deploy keys that share a label: `blink` must not count `blink__pr-3`'s containers.
   const key = entry.deployKey;
   return rows
     .map((r) => r.name)
@@ -168,11 +145,7 @@ async function stackContainers(
     });
 }
 
-/**
- * One verified attempt. `verifyFirst` is for a RETRY, where the key may have been
- * reclaimed since: nothing of ours left on the host means the work is done, and
- * destroying anyway would tear down whatever took the key.
- */
+// `verifyFirst` is for a RETRY: the key may have been reclaimed, and destroying would kill it.
 async function attemptTeardown(
   entry: TeardownEntry,
   opts: { verifyFirst: boolean },
@@ -195,8 +168,7 @@ async function attemptTeardown(
       entry.reclaimVolumes,
     );
     const left = await stackContainers(conn, entry);
-    // An agent too old for the probe (or one that errored on it) answers null:
-    // we cannot verify, so the destroy's own verdict stands.
+    // An agent too old for the probe answers null: unverifiable, so the destroy's verdict stands.
     if (left === null)
       return {
         gone: res.ok,
@@ -266,11 +238,7 @@ async function recordFailure(
   );
 }
 
-/**
- * Say what happened. A row with no team belongs to a team that no longer exists,
- * and `recordActivity` would fall back to the OLDEST team on the instance - a
- * stranger's audit trail.
- */
+// No team: `recordActivity` would fall back to the oldest team - a stranger's audit trail.
 async function announce(
   entry: TeardownEntry,
   message: string,
@@ -305,10 +273,7 @@ async function serverFacts(
   };
 }
 
-/**
- * Queue the intent, then try it once. Writes no Activity of its own: the caller
- * owns that copy, because the bulk delete aggregates twenty apps into ONE line.
- */
+// Queue the intent, then try it once. Writes no Activity: the caller owns that copy.
 export async function teardownOrQueue(entry: TeardownEntry): Promise<boolean> {
   await enqueueTeardowns([entry]);
   const { name, offline } = await serverFacts(entry.serverId);
@@ -326,10 +291,7 @@ export async function teardownOrQueue(entry: TeardownEntry): Promise<boolean> {
   return true;
 }
 
-/**
- * Forget a queued teardown of `deployKey` on `serverId`: called when that very
- * stack is brought up there again on purpose, or the retry would destroy it.
- */
+// Forget a queued teardown: that very stack is being brought up there again on purpose.
 export async function dropTeardown(
   serverId: string,
   deployKey: string,
@@ -344,10 +306,7 @@ export async function dropTeardown(
     );
 }
 
-/**
- * Retry every teardown that is due. Called from the reaper tick, under its lease,
- * so two instances never dial the same host for the same stack. Never throws.
- */
+// Retry every teardown that is due. Called from the reaper tick, under its lease. Never throws.
 export async function drainTeardowns(now: Date = new Date()): Promise<void> {
   await reopenReachableTeardowns(now).catch((e) =>
     console.error("[deplo] could not reopen teardowns:", errMsg(e)),
@@ -414,10 +373,6 @@ export async function pendingTeardownsForServer(
   return rows[0]?.n ?? 0;
 }
 
-/**
- * Give a new ladder to teardowns Deplo gave up on, once their host is answering
- * again.
- */
 async function reopenReachableTeardowns(now: Date): Promise<void> {
   const db = getDb();
   const reachable = db

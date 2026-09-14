@@ -11,16 +11,18 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   deployments as deploymentsTable,
   deploymentLogs,
-  domains as domainsTable,
+} from "../db/schema/control-plane/deployments";
+import { teamAppOrder } from "../db/schema/control-plane/display-order";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
+import {
   envVars as envVarsTable,
   envVarTargets as envVarTargetsTable,
-  apps as appsTable,
   sharedEnvVarApps,
-  teamAppOrder,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/env-vars";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
@@ -30,41 +32,25 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { __resetDeploymentLogBuffers } from "./deployment-logs";
+import { createApp } from "./apps/create";
+import { deleteApp, deleteApps, resumeAppDeletes } from "./apps/delete";
+import { listApps, reorderApps, summarizeForTeam } from "./apps/listing";
+import { renameApp } from "./apps/settings";
+import { ensureAutoDomain, ensureExtraDomain } from "./domains/auto-domains";
+import { addDomain, listDomains } from "./domains/crud";
 import {
-  listApps,
-  reorderApps,
-  deleteApp,
-  deleteApps,
-  renameApp,
-  resumeAppDeletes,
-  createApp,
-  summarizeForTeam,
-} from "./apps";
-import {
-  addDomain,
-  setPrimaryDomain,
-  listDomains,
-  ensureAutoDomain,
-  ensureExtraDomain,
-  uniqueAutoDomainName,
-  routableRoutes,
   __setDnsResolve4ForTest,
   __resetDnsResolve4ForTest,
-} from "./domains";
+} from "./domains/dns-check";
+import { uniqueAutoDomainName } from "./domains/hostname-claim";
+import { setPrimaryDomain } from "./domains/primary-domain";
+import { routableRoutes } from "./domains/routes";
 import { loadDomainsForApp } from "./app-graph-load";
 import { nipDomain, nipEmbeddedIp } from "../deploy/domains";
 import { upsertEnv, listEnv } from "./env";
-import {
-  saveSharedVar,
-  setSharedVarAppLink,
-  listSharedVars,
-} from "./shared-vars";
-
-/**
- * Step 4 app-graph data-layer tests (relational-store PLAN §3 cut-set (c) / §9
- * Step 4): the deleteApp CASCADE (no orphaned deployments/logs/env/
- * domains/shared-group attachments), the two-concurrent primary-domain race, the
- */
+import { setSharedVarAppLink } from "./shared-vars/app-links";
+import { saveSharedVar } from "./shared-vars/authoring";
+import { listSharedVars } from "./shared-vars/team-view";
 
 let db: TestDb;
 let pg: PGlite;
@@ -72,9 +58,7 @@ let pg: PGlite;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // addDomain/updateDomain now check DNS at write time; stub the resolver so
-  // the suite never hits the network. "Resolves nowhere" ⇒ every added custom
-  // domain is born `pending`, the pre-check status these tests always assumed.
+  // Stub the DNS resolver: nothing resolves, so every added domain is born pending.
   __setDnsResolve4ForTest(async () => []);
 });
 
@@ -100,15 +84,10 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/* ------------------------------------------------------------------ */
-/* deleteApp CASCADE - the orphan-bug fix                          */
-/* ------------------------------------------------------------------ */
-
 test("deleteApp cascades every child + shared-var link (no orphans)", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await seedApp(db, { id: "prj_2", status: "active" });
   await seedDeployment(db, { id: "dpl_1", appId: "prj_1" });
-  // A log line on prj_1's deployment.
   await db.insert(deploymentLogs).values({
     deploymentId: "dpl_1",
     ts: "2026-01-01T00:00:00.000Z",
@@ -117,7 +96,6 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
   });
 
   await asUser1(async () => {
-    // An env var + a domain on prj_1.
     await upsertEnv({
       appId: "prj_1",
       key: "K",
@@ -126,7 +104,6 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
       type: "plain",
     });
     await addDomain("prj_1", "app.example.io", {});
-    // A shared var linked to BOTH apps (the orphan the old bug leaked).
     await saveSharedVar({
       key: "SHARED",
       value: "1",
@@ -142,7 +119,6 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
     await deleteApp("prj_1");
   });
 
-  // prj_1 and ALL its children are gone; prj_2 untouched.
   assert.equal((await db.select({ n: count() }).from(appsTable))[0]!.n, 1);
   assert.equal(
     (await db.select({ n: count() }).from(deploymentsTable))[0]!.n,
@@ -169,7 +145,6 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
     0,
     "domains cascade",
   );
-  // The per-app link to prj_1 is GONE (cascaded); the prj_2 link survives.
   const links = await db.select().from(sharedEnvVarApps);
   assert.deepEqual(
     links.map((l) => l.appId),
@@ -178,23 +153,17 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* deleting_at - the delete is irreversible before the host catches up */
-/* ------------------------------------------------------------------ */
-
 test("an app being deleted is locked, unlisted, and finished at boot", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await seedApp(db, { id: "prj_2", status: "active" });
-  // What `startAppDelete` leaves behind the instant someone confirms - stamped,
-  // teardown still running (or, here, its process already gone).
+  // What startAppDelete leaves the instant someone confirms: stamped, teardown running.
   await db
     .update(appsTable)
     .set({ deletingAt: "2026-08-12T00:00:00.000Z" })
     .where(eq(appsTable.id, "prj_1"));
 
   await asUser1(async () => {
-    // Every app-shaped mutation goes through requireAppCapability, so one
-    // refusal covers all of them - rename stands in for the whole set.
+    // Every app-shaped mutation goes through requireAppCapability: rename stands in.
     await assert.rejects(
       () => renameApp("prj_1", "Second thoughts"),
       /being deleted/,
@@ -205,25 +174,17 @@ test("an app being deleted is locked, unlisted, and finished at boot", async () 
       /being deleted/,
       "including a second delete",
     );
-    // The READ side drops it too: a card nobody can use, that only the next
-    // navigation would ever clear, is worse than one that leaves at once.
     const listed = await listApps();
     assert.deepEqual(
       listed.map((p) => p.id),
       ["prj_2"],
     );
-    // A multi-select that happens to include it deletes the others anyway.
     assert.equal(await deleteApps(["prj_1", "prj_2"]), 1);
   });
 
-  // Boot picks up what a control plane that died mid-teardown left stamped.
   await resumeAppDeletes();
   assert.equal((await db.select({ n: count() }).from(appsTable))[0]!.n, 0);
 });
-
-/* ------------------------------------------------------------------ */
-/* setPrimaryDomain - single-UPDATE flip + concurrent race            */
-/* ------------------------------------------------------------------ */
 
 test("setPrimaryDomain flips exactly one primary per project", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
@@ -238,7 +199,7 @@ test("setPrimaryDomain flips exactly one primary per project", async () => {
     assert.equal(primaries.length, 1, "exactly one primary");
     assert.equal(primaries[0]!.id, domBId, "the chosen domain is primary");
   });
-  // The partial-unique `(project_id) WHERE is_primary` holds at the DB level.
+  // The partial-unique (project_id) WHERE is_primary holds at the DB level.
   const dbPrimaries = await db
     .select({ n: count() })
     .from(domainsTable)
@@ -255,8 +216,7 @@ test("two concurrent setPrimaryDomain calls leave exactly one primary", async ()
     const b = await addDomain("prj_1", "b.example.io", {});
     aId = a.id;
     bId = b.id;
-    // Fire both flips "concurrently" (pglite serializes on the event loop, but
-    // the single-UPDATE + partial-unique guarantees a consistent end state).
+    // pglite serializes on the event loop; the single UPDATE + partial unique is the guarantee.
     await Promise.all([setPrimaryDomain(aId), setPrimaryDomain(bId)]);
   });
   const primaries = await db
@@ -266,15 +226,10 @@ test("two concurrent setPrimaryDomain calls leave exactly one primary", async ()
   assert.equal(primaries.length, 1, "exactly one primary survives the race");
 });
 
-/* ------------------------------------------------------------------ */
-/* Ordering junction - reorderApps                                 */
-/* ------------------------------------------------------------------ */
-
 test("reorderApps writes the team_app_order junction; dead ids drop", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await seedApp(db, { id: "prj_2", status: "active" });
   await asUser1(async () => {
-    // Reorder with a dead id ("ghost") that must be dropped.
     await reorderApps(["prj_2", "ghost", "prj_1"]);
   });
   const rows = await db
@@ -289,7 +244,6 @@ test("reorderApps writes the team_app_order junction; dead ids drop", async () =
       ["prj_1", 1],
     ],
   );
-  // listApps honours the manual order.
   await asUser1(async () => {
     const list = await listApps();
     assert.deepEqual(
@@ -299,13 +253,9 @@ test("reorderApps writes the team_app_order junction; dead ids drop", async () =
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* Cookie-free summary lookups (the SSE seam) + team scoping           */
-/* ------------------------------------------------------------------ */
-
 test("summarizeForTeam is cookie-free and team-scoped", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, status: "active" });
-  // No runWithIdentity wrapper - proves it never reads a cookie/active team.
+  // No runWithIdentity wrapper - proves it never reads a cookie or active team.
   const mine = await summarizeForTeam("prj_1", TEAM_A, USER_1);
   assert.ok(mine, "found for the owning team");
   assert.equal(mine!.id, "prj_1");
@@ -328,7 +278,6 @@ test("env vars + targets round-trip through the relational layer", async () => {
     assert.equal(list[0]!.masked, true, "secret is masked in the DTO");
     assert.deepEqual([...list[0]!.targets].sort(), ["preview", "production"]);
   });
-  // The value is stored encrypted (not plaintext).
   const rows = await db
     .select()
     .from(envVarsTable)
@@ -339,8 +288,7 @@ test("env vars + targets round-trip through the relational layer", async () => {
 test("an app env var records its author and defaults to every runtime", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
-    // No targets: the picker is gone from the UI (an App belongs to exactly ONE
-    // Environment), so the var reaches every runtime.
+    // No targets: an App belongs to exactly ONE Environment, so the var reaches every runtime.
     await upsertEnv({ appId: "prj_1", key: "K", value: "v", type: "plain" });
     const [v] = await listEnv("prj_1");
     assert.deepEqual([...v!.targets].sort(), ["preview", "production"]);
@@ -351,9 +299,7 @@ test("an app env var records its author and defaults to every runtime", async ()
 });
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
-  // The dialogs no longer send targets. A legacy production-only variable must
-  // not silently widen to every runtime on a value edit. (Plain on purpose: a
-  // secret accepts no edit at all - see env-secret-immutable.test.ts.)
+  // A legacy production-only variable must not silently widen to every runtime on a value edit.
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
@@ -371,7 +317,6 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
     });
     const [v] = await listEnv("prj_1");
     assert.deepEqual(v!.targets, ["production"]);
-    // An explicit set still replaces them.
     await upsertEnv({
       appId: "prj_1",
       key: "STRIPE",
@@ -385,9 +330,6 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
 });
 
 test("re-saving a secret is refused outright, targets and all", async () => {
-  // This used to be the keep-value contract: the edit dialog prefilled a secret with
-  // the MASK, and re-sending it preserved the stored ciphertext so a targets-only
-  // edit couldn't wipe the value.
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
@@ -449,14 +391,8 @@ test("shared-var link attach/detach toggles the junction", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* createApp slug uniqueness under concurrency                     */
-/* ------------------------------------------------------------------ */
-
 test("two concurrent same-name createApp calls both succeed with distinct slugs", async () => {
-  // createApp reads the server picklist from the relational `servers` table;
-  // `beforeEach`'s `seedServer(db)` already seeded `srv_1`. "upload" source skips
-  // the post-commit deploy (no agent dial), keeping the test hermetic.
+  // "upload" skips the post-commit deploy (no agent dial), keeping the test hermetic.
   const input = {
     name: "My App",
     source: "upload" as const,
@@ -465,8 +401,6 @@ test("two concurrent same-name createApp calls both succeed with distinct slugs"
   const [a, b] = await asUser1(() =>
     Promise.all([createApp(input), createApp(input)]),
   );
-  // Both persisted, with DISTINCT slugs (the second retried past the unique
-  // violation onto the next free suffix).
   assert.notEqual(
     a.slug,
     b.slug,
@@ -481,22 +415,16 @@ test("two concurrent same-name createApp calls both succeed with distinct slugs"
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Generated-domain uniqueness (no duplicate hostnames, globally)      */
-/* ------------------------------------------------------------------ */
-
 const IP = "1.2.3.4";
 
 test("uniqueAutoDomainName never returns a host that already exists globally", async () => {
   await seedApp(db, { id: "prj_u", slug: "uniq" });
-  // Pre-occupy 25 hosts under the same label+IP so generation must dodge them.
   const taken = new Set<string>();
   await asUser1(async () => {
     for (let i = 0; i < 25; i++) {
       const name = await uniqueAutoDomainName("uniq", IP);
       assert.ok(!taken.has(name), `generated a duplicate: ${name}`);
       taken.add(name);
-      // Persist it so the NEXT call must avoid it too (global check).
       await ensureExtraDomain("prj_u", name, {
         port: 80,
         service: null,
@@ -505,7 +433,6 @@ test("uniqueAutoDomainName never returns a host that already exists globally", a
       });
     }
   });
-  // Every persisted domain name is distinct.
   const rows = await loadDomainsForApp("prj_u");
   assert.equal(new Set(rows.map((d) => d.name)).size, rows.length);
   assert.equal(rows.length, 25);
@@ -514,7 +441,6 @@ test("uniqueAutoDomainName never returns a host that already exists globally", a
 test("ensureExtraDomain regenerates (not skips) when the template host collides with ANOTHER project", async () => {
   await seedApp(db, { id: "prj_a", slug: "alpha" });
   await seedApp(db, { id: "prj_b", slug: "beta" });
-  // App A claims a host.
   const shared = `shared-charming-otter-${"01020304"}.nip.io`;
   await asUser1(() =>
     ensureExtraDomain("prj_a", shared, {
@@ -524,8 +450,6 @@ test("ensureExtraDomain regenerates (not skips) when the template host collides 
       ip: IP,
     }),
   );
-  // App B is handed the SAME host by its (hypothetical) template - it must
-  // get a fresh unique host, NOT silently skip and NOT duplicate A's host.
   await asUser1(() =>
     ensureExtraDomain("prj_b", shared, {
       port: 80,
@@ -546,7 +470,6 @@ test("ensureExtraDomain regenerates (not skips) when the template host collides 
     IP,
     "B's host still encodes the IP",
   );
-  // A keeps the original; the two never share a name.
   const aDomains = await loadDomainsForApp("prj_a");
   assert.equal(aDomains[0].name, shared);
 });
@@ -578,9 +501,7 @@ test("ensureExtraDomain is idempotent on the SAME project (re-run does not dupli
 });
 
 test("a template's displaced domain gets an address of its own, not silence", async () => {
-  // garage-s3's web-ui variant with `primary = true` on the WEB UI: the UI takes the
-  // generated main host, so the S3 API, which is the entry that declared that host,
-  // is left asking for a name the primary now owns.
+  // The web-ui variant takes the generated main host, leaving the S3 API asking for a taken name.
   const serverIp = "10.0.0.1"; // `beforeEach`'s seedServer(db)
   const main = nipDomain("garage-s3", "bold-otter", serverIp);
   const app = await asUser1(() =>
@@ -630,7 +551,6 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
   await seedApp(db, { id: "prj_x", slug: "xeno" });
   await seedApp(db, { id: "prj_y", slug: "yeti" });
   const preferred = `pref-keen-puma-${"01020304"}.nip.io`;
-  // X claims `preferred` as its primary.
   const xName = await asUser1(() =>
     ensureAutoDomain("prj_x", {
       slug: "xeno",
@@ -640,7 +560,6 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
     }),
   );
   assert.equal(xName, preferred);
-  // Y is given the SAME preferred - it must regenerate a distinct primary.
   const yName = await asUser1(() =>
     ensureAutoDomain("prj_y", {
       slug: "yeti",
@@ -653,27 +572,16 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
   assert.equal(nipEmbeddedIp(yName), IP);
 });
 
-/* ------------------------------------------------------------------ */
-/* Path-routed domains - a hostname carries one row per path          */
-/* ------------------------------------------------------------------ */
-
-/**
- * `pathPrefix` lets several rows share ONE hostname, which the data layer used to
- * kill twice: the new row was inserted `pending` while `routableRoutes` routes
- * only `valid` (DNS is a property of the HOSTNAME, not the path), and the row's
- * prefix had to survive the round trip into the rendered route.
- */
+// DNS is a property of the HOSTNAME, not the path, so a path row routes off its verified sibling.
 
 test("a path row on an already-verified hostname inherits its DNS status (and routes)", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
-    // ensureAutoDomain inserts a `valid` row - the verified sibling.
     const auto = await ensureAutoDomain("prj_1", {
       slug: "app",
       ip: "1.2.3.4",
       defaultPort: 80,
     });
-    // A SECOND row on the same hostname, path-routed to another port.
     const api = await addDomain("prj_1", auto, {
       port: 8080,
       pathPrefix: "/api",
@@ -685,7 +593,6 @@ test("a path row on an already-verified hostname inherits its DNS status (and ro
       "same hostname, already-proven DNS ⇒ routable immediately, not stuck pending",
     );
 
-    // Both rows reach the router, and the path row keeps its full config.
     const routes = await routableRoutes("prj_1");
     assert.equal(
       routes.length,
@@ -703,7 +610,6 @@ test("a path row on an already-verified hostname inherits its DNS status (and ro
 test("a path row on an UNVERIFIED hostname stays pending (DNS is still unproven)", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
-    // No verified sibling for this hostname ⇒ the DNS really is unchecked.
     const d = await addDomain("prj_1", "fresh.example.io", {
       pathPrefix: "/api",
     });
@@ -716,10 +622,6 @@ test("a path row on an UNVERIFIED hostname stays pending (DNS is still unproven)
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* Certificate defaults, no cert is registered unless opted in        */
-/* ------------------------------------------------------------------ */
-
 test("addDomain without a certProvider is born WITHOUT a certificate (`none`)", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
@@ -729,7 +631,6 @@ test("addDomain without a certProvider is born WITHOUT a certificate (`none`)", 
       "none",
       "omitted provider ⇒ no certificate",
     );
-    // An explicit choice is stored verbatim - opting in still works.
     const secure = await addDomain("prj_1", "secure.example.io", {
       certProvider: "letsencrypt",
     });
@@ -741,9 +642,7 @@ test("auto domains are born plain-HTTP unless the blueprint opted into TLS", asy
   await seedApp(db, { id: "prj_1", slug: "plain" });
   await seedApp(db, { id: "prj_2", slug: "tls" });
   await asUser1(async () => {
-    // No TLS choice (a wizard app / template with no https URLs) ⇒ `none`.
     await ensureAutoDomain("prj_1", { slug: "plain", ip: IP, defaultPort: 80 });
-    // A blueprint that expects HTTPS passes letsencrypt for ALL its hosts.
     await ensureAutoDomain("prj_2", {
       slug: "tls",
       ip: IP,

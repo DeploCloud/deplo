@@ -20,18 +20,13 @@ import {
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
 import { captureFetch, type FetchCapture } from "./fetch-capture-test-helpers";
 import { __resetCooldowns } from "./cooldown";
 import { dispatchAlertNow } from "./dispatch";
-import type { AlertKey, NotificationChannel } from "../types";
+import type { AlertKey, NotificationChannel } from "../types/notification";
 
-/**
- * The dispatcher end to end against pglite: settings in the database, real channel
- * senders, one stubbed `fetch`. The first test is the regression net for the whole
- * feature - it pins the exact body each channel puts on the wire.
- */
-
+// The first test is the regression net: it pins the exact body each channel puts on the wire.
 let db: TestDb;
 let pg: PGlite;
 let capture: FetchCapture | null = null;
@@ -61,10 +56,7 @@ afterEach(() => {
   capture = null;
 });
 
-/**
- * One configured channel per kind that POSTs, so a single alert produces nine
- * comparable calls, each subscribed to the same list.
- */
+// One channel per kind that POSTs, so one alert produces nine comparable calls.
 async function seedChannels(alerts: AlertKey[]): Promise<void> {
   const kinds: [NotificationChannel, Partial<Record<string, unknown>>][] = [
     ["discord", { url: "https://discord/hook" }],
@@ -121,12 +113,10 @@ test("one alert reaches every enabled channel, in each one's own shape", async (
   assert.equal(capture.calls.length, 9);
   const by = (host: string) =>
     capture!.calls.find((c) => c.url.includes(host))!;
-  // The team is on the link: whoever clicks it lands in the team the alert is
-  // about, not in whatever one their browser last had.
+  // The team is on the link, so a click lands in the alert's team, not the browser's last one.
   const link = "https://deplo.acme.com/alpha/apps/api";
   const body = "The build log has the error that stopped it.";
 
-  // Discord is the one structured payload: an embed, not a line of text.
   const { timestamp, ...embed } = (
     by("discord").body as { embeds: Record<string, unknown>[] }
   ).embeds[0];
@@ -177,7 +167,6 @@ test("one alert reaches every enabled channel, in each one's own shape", async (
   assert.equal(generic.url, link);
   assert.equal(typeof generic.ts, "string");
 
-  // The two channels that authenticate with a header, not a body field.
   assert.equal(by("gotify").headers["X-Gotify-Key"], "gotify-token");
   assert.equal(by("ntfy").headers.Authorization, "Bearer ntfy-token");
   // Gotify's token must never ride in the URL, where an access log would keep it.
@@ -188,8 +177,7 @@ test("one alert reaches every enabled channel, in each one's own shape", async (
 
 test("a channel only gets the alerts IT subscribed to", async () => {
   await seedChannels(["deployment_failed"]);
-  // Two channels of the SAME kind, deliberately: the one thing that used to be
-  // impossible to express, and the one an `alerts[kind]` lookup gets wrong.
+  // Two channels of the SAME kind, deliberately: what an `alerts[kind]` lookup used to get wrong.
   await asUser1(() =>
     saveNotificationChannel(null, {
       kind: "slack",
@@ -352,8 +340,7 @@ test("a repeated condition is deduped, and the state change gets through", async
 });
 
 test("the link names the team the alert is about", async () => {
-  // USER_1 joins beta and configures ITS channel: the alert is beta's, and the
-  // link has to say so - the dispatcher runs with no active team of its own.
+  // The dispatcher runs with no active team of its own, so the link has to name the alert's team.
   const id = `mem_${USER_1}_${TEAM_B}`;
   await db.insert(membershipsTable).values({
     id,

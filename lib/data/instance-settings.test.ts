@@ -5,7 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { instanceSettings } from "../db/schema/control-plane";
+import { instanceSettings } from "../db/schema/control-plane/instance";
 import { passkey, session } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -14,33 +14,32 @@ import {
   TEAM_A,
 } from "./identity-test-helpers";
 import { seedServerRow, TRUNCATE_INFRA } from "./infra-test-helpers";
-import { __setDnsResolve4ForTest, __resetDnsResolve4ForTest } from "./domains";
 import {
-  getInstanceSettings,
-  getPanelAddressImpact,
-  getPanelHttps,
-  instancePublicBaseUrl,
-  moveWithRollback,
+  __setDnsResolve4ForTest,
+  __resetDnsResolve4ForTest,
+} from "./domains/dns-check";
+import {
   noRouteReason,
   normalizePanelUrl,
+  checkPanelDns,
+} from "./instance-settings/panel-address";
+import { getPanelAddressImpact } from "./instance-settings/panel-address-impact";
+import {
+  getPanelHttps,
+  moveWithRollback,
   setPanelFallback,
   setPanelHttps,
   setPanelUrl,
+} from "./instance-settings/panel-route";
+import {
+  getInstanceSettings,
+  instancePublicBaseUrl,
   setGravatarEnabled,
-  checkPanelDns,
-} from "./instance-settings";
+} from "./instance-settings/settings-store";
 import { gravatarEnabled } from "../avatar";
 import { panelRoute, withPanelRoute } from "../deploy/traefik-stack";
-import {
-  __setAgentConnectorForTest,
-  type AgentConnection,
-} from "../infra/agent-client";
-
-/**
- * The panel address is not an ordinary text setting: it is interpolated into
- * copy-and-run strings, above all a server's install command, which the operator
- * pastes into a ROOT shell.
- */
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
+import type { AgentConnection } from "../infra/agent-client/connection";
 
 let db: TestDb;
 let pg: PGlite;
@@ -80,8 +79,6 @@ test("a bare domain is stored as an https URL", () => {
     normalizePanelUrl("  deplo.example.com/  "),
     "https://deplo.example.com",
   );
-  // An explicit http stays http: it is the advanced opt-out, for an address no
-  // certificate can be issued for.
   assert.equal(
     normalizePanelUrl("http://deplo.internal"),
     "http://deplo.internal",
@@ -89,8 +86,6 @@ test("a bare domain is stored as an https URL", () => {
 });
 
 test("an IP address is not a panel address, in either scheme", () => {
-  // No certificate authority issues for a bare address, and the panel is not
-  // served without one. Deplo generates a hostname rather than offering this.
   for (const bad of [
     "10.0.0.4",
     "http://10.0.0.4:3000",
@@ -123,8 +118,6 @@ test("anything that could escape a shell, or carry credentials, is refused", () 
 });
 
 test("the settings name the instance owner, and null when nobody holds it", async () => {
-  // Unowned is an ordinary state (a pre-0038 instance that never backfilled), so
-  // the read answers null instead of inventing an owner for the header to print.
   assert.equal(
     (await asUser(ADMIN, () => getInstanceSettings())).ownerName,
     null,
@@ -161,7 +154,6 @@ test("a stored address wins over the one the box was installed with", async (t) 
     else process.env.DEPLO_PUBLIC_URL = previous;
   });
 
-  // Nothing stored: the install-time value is what Deplo hands out.
   assert.equal(
     await asUser(ADMIN, () => instancePublicBaseUrl()),
     "https://installed.example.com",
@@ -175,25 +167,12 @@ test("a stored address wins over the one the box was installed with", async (t) 
     "https://moved.example.com",
   );
 
-  // Clearing it hands the answer back to the environment rather than leaving an
-  // instance with no address at all.
   const cleared = await asUser(ADMIN, () => setPanelUrl(null));
   assert.equal(cleared.storedPanelUrl, null);
   assert.equal(cleared.panelUrl, "https://installed.example.com");
   assert.equal(cleared.panelUrlSource, "environment");
 });
 
-/* ------------------------------------------------------------------ */
-/* What moving the address would break                                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * The dialog in front of the address field states facts, and these are the two
- * ways facts go wrong: counting things that are not affected (a wall of red in
- * front of a save that changes nothing), and missing the one thing that is gone
- * for good. A passkey cannot be moved to a new hostname and nothing warns about
- * it anywhere else.
- */
 async function seedPasskeyAndSession(rpId: string) {
   await db.insert(passkey).values({
     id: `pk_${rpId}`,
@@ -264,8 +243,6 @@ test("a new hostname counts the passkeys and sessions it takes with it", async (
 
 test("a passkey minted for another address is not counted as a loss", async () => {
   await withPanelUrl("https://deplo.example.com", async () => {
-    // It is already dead: it belongs to an address this panel does not answer
-    // on, so reporting it would inflate what this change costs.
     await seedPasskeyAndSession("previous.example.com");
     const impact = await asUser(ADMIN, () =>
       getPanelAddressImpact("moved.example.com"),
@@ -296,10 +273,6 @@ test("only an instance admin can ask what an address would break", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The panel's own certificate                                         */
-/* ------------------------------------------------------------------ */
-
 test("how the panel is served is instance-admin only, both to read and to change", async () => {
   await assert.rejects(() => asUser(MEMBER, () => getPanelHttps()), /admin/i);
   await assert.rejects(
@@ -309,8 +282,6 @@ test("how the panel is served is instance-admin only, both to read and to change
 });
 
 test("a Deplo whose own host is not added as a server says so, rather than failing", async () => {
-  // The panel's box is a server like any other and an operator may simply not
-  // have added it yet. That is an answer with a fix in it, not an error.
   const cert = await asUser(ADMIN, () => getPanelHttps());
   assert.equal(cert.domain, null);
   assert.equal(cert.fallbackDomain, null);
@@ -325,9 +296,6 @@ test("a Deplo whose own host is not added as a server says so, rather than faili
 });
 
 test("storing an address still works when there is no route of ours to move", async () => {
-  // The address field is also the tool an operator reaches for when their box has
-  // moved. Refusing to store it because no host answers would take away the
-  // recovery path along with the feature.
   const saved = await asUser(ADMIN, () => setPanelUrl("still.example.com"));
   assert.equal(saved.panelUrl, "https://still.example.com");
 });
@@ -359,8 +327,6 @@ test("an address that does not answer puts the panel back where it was", async (
       }),
     /did not answer[\s\S]*still on old\.example\.com/i,
   );
-  // The rollback is the point: without the second apply the operator is locked
-  // out of both addresses and the only way back is a shell on the box.
   assert.deepEqual(applied, ["new.example.com", "old.example.com"]);
 });
 
@@ -382,9 +348,6 @@ test("an address that answers is kept, and nothing is put back", async () => {
 });
 
 test("no route of ours: only a panel with no domain at all is a refusal", () => {
-  // A Deplo served straight on a port has nothing to route and nothing to
-  // secure: it needs a domain first, and saying anything else sends the operator
-  // to the wrong place.
   assert.match(
     noRouteReason("http://203.0.113.10:3000") ?? "",
     /domain address/i,
@@ -392,21 +355,11 @@ test("no route of ours: only a panel with no domain at all is a refusal", () => 
   assert.match(noRouteReason("http://203.0.113.10") ?? "", /domain address/i);
   assert.match(noRouteReason("http://localhost:3000") ?? "", /domain address/i);
 
-  // A routable domain is NOT a refusal: the panel is published by its own
-  // container's labels, and Deplo can take that over rather than sending anyone
-  // back to the installer.
   assert.equal(noRouteReason("https://deplo.example.com"), null);
-  // A nip.io host is routable too - it is the address a fresh install hands out.
   assert.equal(noRouteReason("https://deplo.203-0-113-10.nip.io"), null);
 });
 
-/* ------------------------------------------------------------------ */
-/* Gravatar                                                            */
-/* ------------------------------------------------------------------ */
-
 test("Gravatar defaults OFF, and only an instance admin can turn it on", async () => {
-  // No settings row at all is a fresh instance, and it must not have opted every
-  // member's browser into telling gravatar.com who they are.
   assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
 
   await assert.rejects(
@@ -416,8 +369,7 @@ test("Gravatar defaults OFF, and only an instance admin can turn it on", async (
   );
   assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
 
-  // And a row born of an UNRELATED setting takes the column's own default, which
-  // is the half a schema change alone would leave behind (migration 0142).
+  // A row born of an unrelated setting takes the column's own default (migration 0142).
   await db
     .insert(instanceSettings)
     .values({ id: "default", updatedAt: "2024-01-01T00:00:00.000Z" });
@@ -426,8 +378,6 @@ test("Gravatar defaults OFF, and only an instance admin can turn it on", async (
 
 test("setGravatarEnabled round-trips, and the read is ungated", async () => {
   await asUser(ADMIN, () => setGravatarEnabled(false));
-  // Read as the MEMBER: the flag is consulted while building every DTO that
-  // names a person, so a gate here would take the whole dashboard down for them.
   assert.equal(await asUser(MEMBER, () => gravatarEnabled()), false);
   assert.equal(
     (await asUser(ADMIN, () => getInstanceSettings())).gravatarEnabled,
@@ -437,8 +387,6 @@ test("setGravatarEnabled round-trips, and the read is ungated", async () => {
   await asUser(ADMIN, () => setGravatarEnabled(true));
   assert.equal(await asUser(MEMBER, () => gravatarEnabled()), true);
 });
-
-/* ---- Where the panel's own address points ------------------------- */
 
 const HOST_IP = "203.0.113.10";
 
@@ -455,20 +403,15 @@ test("the panel's DNS check classifies the address the instance answers on", asy
   };
 
   try {
-    // Points straight here.
     assert.equal((await at([HOST_IP])).status, "valid");
-    // Cloudflare's anycast range: routed, but the origin is not readable.
     assert.equal((await at(["104.16.0.1"])).status, "cloudflare");
-    // Somewhere else entirely - the one case that still needs the A record.
     const off = await at(["198.51.100.7"]);
     assert.equal(off.status, "misconfigured");
     assert.deepEqual(off.resolved, ["198.51.100.7"]);
-    // Nothing answered yet.
     assert.equal((await at([])).status, "pending");
     assert.equal((await at([])).host, "panel.example.com");
 
-    // A bare address needs no record, so there is nothing to check. Only a
-    // pre-change install still has one: it cannot be set here any more.
+    // A bare address needs no record, so there is nothing to check.
     await asUser(ADMIN, () => setPanelUrl(null));
     await withPanelUrl(`http://${HOST_IP}:3000`, async () => {
       assert.equal((await at([HOST_IP])).status, "unknown");
@@ -484,11 +427,7 @@ test("only an instance admin may ask", async () => {
   await assert.rejects(() => asUser(MEMBER, checkPanelDns));
 });
 
-/* ------------------------------------------------------------------ */
-/* The generated backup address                                        */
-/* ------------------------------------------------------------------ */
-
-/** HOST_IP as the hex label of the generated host. */
+// HOST_IP as the hex label of the generated host.
 const FALLBACK = "deplo-cb00710a.nip.io";
 
 const TRAEFIK_STACK = `services:
@@ -510,7 +449,6 @@ const panelStack = (domain = "panel.example.com") =>
     target: "http://deplo:3000",
   });
 
-/** A host that answers with its stack file and keeps whatever is applied to it. */
 function fakeHost(yaml: string) {
   const state = { yaml };
   __setAgentConnectorForTest(async () => {
@@ -557,13 +495,10 @@ test("the backup address goes off, and stays off when the scheme moves", async (
     assert.equal(off.panelFallbackDisabled, true);
     assert.equal(panelRoute(host.yaml)?.fallbackDomain, null);
 
-    // The whole reason the choice is stored: every address and scheme change
-    // re-seeds that router, and used to put it straight back.
     await asUser(ADMIN, () => setPanelHttps(false));
     assert.equal(panelRoute(host.yaml)?.https, false);
     assert.equal(panelRoute(host.yaml)?.fallbackDomain, null);
 
-    // An address that routes nowhere is not the one that keeps working.
     const impact = await asUser(ADMIN, () =>
       getPanelAddressImpact("moved.example.com"),
     );

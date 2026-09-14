@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseLogsInfo } from "@/lib/data/database-console";
 import { DatabaseLogs } from "@/components/storage/database-logs";
-import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types";
+import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types/deployment";
 
 export const metadata = { title: "Logs" };
 

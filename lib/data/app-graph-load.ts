@@ -6,47 +6,43 @@ import { getDb } from "../db/client";
 import { inAppScope, narrowedScope } from "../auth/request-context";
 import type { DbTx } from "../db/client";
 import {
-  deployments,
-  domains,
-  domainMiddlewares,
-  envVars,
-  envVarTargets,
   apps,
   appBuild,
   appBuildMethodSettings,
   appMounts,
   appPorts,
   appVolumes,
-} from "../db/schema/control-plane";
-import type { Deployment, Domain, EnvVar, App, DeploySource } from "../types";
+} from "../db/schema/control-plane/apps";
+import { deployments } from "../db/schema/control-plane/deployments";
+import { domains, domainMiddlewares } from "../db/schema/control-plane/domains";
+import { envVars, envVarTargets } from "../db/schema/control-plane/env-vars";
+import type { App, DeploySource } from "../types/app";
+import type { Deployment } from "../types/deployment";
+import type { Domain } from "../types/domain";
+import type { EnvVar } from "../types/env";
 import {
-  assembleDeployment,
-  assembleDomain,
-  assembleEnvVar,
   assembleApp,
-  domainToRow,
-  domainMiddlewaresToRows,
-  envVarToRow,
-  envVarTargetsToRows,
-  type DomainMiddlewareRow,
-  type DomainRow,
-  type EnvVarRow,
-  type EnvVarTargetRow,
   type AppChildRows,
   type AppRow,
-} from "./app-graph-rows";
+} from "./app-graph-rows/app";
+import { assembleDeployment } from "./app-graph-rows/deployment";
+import {
+  assembleDomain,
+  domainToRow,
+  domainMiddlewaresToRows,
+  type DomainMiddlewareRow,
+  type DomainRow,
+} from "./app-graph-rows/domain";
+import {
+  assembleEnvVar,
+  envVarToRow,
+  envVarTargetsToRows,
+  type EnvVarRow,
+  type EnvVarTargetRow,
+} from "./app-graph-rows/env-var";
 
-/**
- * The READ seam for the project graph (relational-store PLAN §6 "Reads /
- * performance - batch-load is mandatory").
- */
 type DbReader = ReturnType<typeof getDb> | DbTx;
 
-/* ------------------------------------------------------------------ */
-/* Child batch-loading                                                 */
-/* ------------------------------------------------------------------ */
-
-/** All child rows for a set of project ids, grouped by project id. */
 async function loadChildrenByAppIds(
   db: DbReader,
   ids: string[],
@@ -62,7 +58,6 @@ async function loadChildrenByAppIds(
     });
   if (ids.length === 0) return out;
 
-  // One query per child table over the whole id set (NOT per project).
   const [builds, settings, volumes, ports, mounts] = await Promise.all([
     db.select().from(appBuild).where(inArray(appBuild.appId, ids)),
     db
@@ -94,11 +89,6 @@ async function loadChildrenByAppIds(
   return out;
 }
 
-/* ------------------------------------------------------------------ */
-/* App loaders                                                     */
-/* ------------------------------------------------------------------ */
-
-/** Assemble a list of {@link App}s from their parent rows + batch-loaded children. */
 async function assembleApps(db: DbReader, rows: AppRow[]): Promise<App[]> {
   if (rows.length === 0) return [];
   const children = await loadChildrenByAppIds(
@@ -108,11 +98,7 @@ async function assembleApps(db: DbReader, rows: AppRow[]): Promise<App[]> {
   return rows.map((r) => assembleApp(r, children.get(r.id)!));
 }
 
-/**
- * One project + all its children in a bounded query set, or null if absent. The
- * aggregate loader (PLAN §6 "One aggregate project loader"). NOT team-scoped -
- * callers that need a team check pass `teamId` or filter the result.
- */
+// One project + all its children in a bounded query set, or null if absent. NOT team-scoped.
 export async function loadAppGraph(
   id: string,
   db: DbReader = getDb(),
@@ -153,15 +139,7 @@ export async function loadAppsByIds(
   return assembleApps(db, rows);
 }
 
-/* ------------------------------------------------------------------ */
-/* Summary preload (the N+1 killer for listApps/summarize)         */
-/* ------------------------------------------------------------------ */
-
-/**
- * The per-team data `summarize` needs as a PURE function (PLAN §6 "`summarize()`
- * is N+1"): the latest deployment per project (one query) and the domain count per
- * project (one GROUP BY), so a list of N apps costs a bounded number of queries
- */
+// The per-team data `summarize` needs as a PURE function: latest deployment + domain count.
 export interface SummaryPreload {
   latestDeployments: Map<string, Deployment>;
   domainCounts: Map<string, number>;
@@ -203,10 +181,6 @@ export async function preloadSummaries(
   return { latestDeployments, domainCounts };
 }
 
-/* ------------------------------------------------------------------ */
-/* Deployment loaders                                                  */
-/* ------------------------------------------------------------------ */
-
 /** A single deployment by id (null if absent). */
 export async function loadDeployment(
   id: string,
@@ -220,11 +194,7 @@ export async function loadDeployment(
   return rows[0] ? assembleDeployment(rows[0]) : null;
 }
 
-/**
- * A project's deployments, newest-first with the deterministic `seq` tie-break
- * (PLAN §5/§6 "Push ORDER BY created_at DESC, seq DESC + LIMIT into SQL"). The
- * optional `limit` is the list push-down - slicing happens in SQL, not memory.
- */
+// A project's deployments, newest-first with the `seq` tie-break; `limit` is pushed into SQL.
 export async function loadDeploymentsForApp(
   appId: string,
   opts: { limit?: number } = {},
@@ -239,11 +209,6 @@ export async function loadDeploymentsForApp(
   return rows.map(assembleDeployment);
 }
 
-/* ------------------------------------------------------------------ */
-/* Domain loaders                                                      */
-/* ------------------------------------------------------------------ */
-
-/** Assemble domains from rows, batch-loading their middlewares. */
 async function assembleDomains(
   db: DbReader,
   rows: DomainRow[],
@@ -310,11 +275,6 @@ export async function loadDomainsForApps(
   return assembleDomains(db, rows);
 }
 
-/* ------------------------------------------------------------------ */
-/* EnvVar loaders                                                      */
-/* ------------------------------------------------------------------ */
-
-/** Assemble env vars from rows, batch-loading their targets. */
 async function assembleEnvVars(
   db: DbReader,
   rows: EnvVarRow[],
@@ -370,9 +330,7 @@ export async function loadEnvVar(
   return e ?? null;
 }
 
-/**
- * Insert {@link EnvVar}s + their target junction rows (one multi-row insert each).
- */
+// Insert the EnvVars + their target junction rows (one multi-row insert each).
 export async function insertEnvVars(
   db: DbReader,
   vars: EnvVar[],
@@ -383,15 +341,7 @@ export async function insertEnvVars(
   if (targets.length > 0) await db.insert(envVarTargets).values(targets);
 }
 
-/* ------------------------------------------------------------------ */
-/* Project scope (API tokens)                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * The scope predicate for any query over `apps`, or undefined when the caller
- * isn't narrowed below the whole of its active team (every browser request, an
- * unrestricted token, and a token holding this team wholly).
- */
+// The scope predicate for any query over `apps`, or undefined when the caller isn't narrowed.
 export function appScopeWhere(): SQL | undefined {
   const scope = narrowedScope();
   if (!scope) return undefined;
@@ -401,17 +351,12 @@ export function appScopeWhere(): SQL | undefined {
   if (scope.folderIds.length > 0)
     clauses.push(inArray(apps.folderId, scope.folderIds));
   if (scope.appIds.length > 0) clauses.push(inArray(apps.id, scope.appIds));
-  // Nothing left in the scope (every node it named was deleted): reaches no app
-  // at all. Spelled out rather than relying on `inArray(col, [])`, whose
-  // behaviour has changed across Drizzle versions.
+  // Fail closed: `inArray(col, [])` has changed behaviour across Drizzle versions.
   if (clauses.length === 0) return sql`false`;
   return clauses.length === 1 ? clauses[0] : or(...clauses)!;
 }
 
-/**
- * Load a project only if it belongs to `teamId` (the standard ownership gate as a
- * single call): the full assembled {@link App} or null when absent / not owned.
- */
+// Load a project only if it belongs to `teamId`: the assembled App, or null.
 export async function loadTeamApp(
   appId: string,
   teamId: string,
@@ -421,11 +366,7 @@ export async function loadTeamApp(
   return p && p.teamId === teamId && inAppScope(p) ? p : null;
 }
 
-/**
- * What the app deploys from, or null when it isn't this team's (or is outside
- * the caller's scope) - the existence check of `appInTeam` plus the one column
- * a message about the deploy needs.
- */
+// What the app deploys from, or null when it isn't this team's or is outside the caller's scope.
 export async function appSourceInTeam(
   appId: string,
   teamId: string,
@@ -453,6 +394,4 @@ export async function appInTeam(
   return rows.length > 0;
 }
 
-// NOTE: shared env GROUPS were replaced by the unified individual shared-var
-// model (ADR-0010). Their loaders live in lib/data/shared-vars.ts now
-// (loadSharedVarsForApp for the deploy edge, listSharedVars for the UI).
+// Shared env GROUPS are gone: the unified model lives in lib/data/shared-vars/ (ADR-0010).

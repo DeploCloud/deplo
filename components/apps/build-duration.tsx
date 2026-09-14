@@ -4,19 +4,11 @@ import * as React from "react";
 
 import { isDeploymentLive } from "@/lib/deployment-status";
 import { formatBuildDuration } from "@/lib/utils";
-import type { DeploymentStatus } from "@/lib/types";
+import type { DeploymentStatus } from "@/lib/types/deployment";
 
-/**
- * Repaint cadence. The label renders milliseconds only in its first second, and
- * a running build has no reason to repaint faster than the seconds it will show
- * for the rest of its life.
- */
 const TICK_MS = 1000;
 
-/**
- * "Build time" - the one deployment field that has to be honest WHILE it is still
- * happening.
- */
+// BuildDuration - build time, kept honest while the build is still running.
 export function BuildDuration({
   status,
   startedAt,
@@ -24,9 +16,7 @@ export function BuildDuration({
   className,
 }: {
   status: DeploymentStatus;
-  /** When the build started running; null while it is still queued. */
   startedAt: string | null;
-  /** The measured build time, once the deployment has settled. */
   buildDurationMs: number | null;
   className?: string;
 }) {

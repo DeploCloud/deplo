@@ -14,13 +14,7 @@ import {
   fmtMemMb,
   fmtCpu,
 } from "./resource-limits-model";
-import type { ResourceLimits } from "../types";
-
-/**
- * The Resources form's pure data model: string ⇄ number mapping (notably CPU
- * cores ⇄ milli-CPUs), ""→null clearing, dirty-key stability, and preset match.
- * This is the UI's only non-declarative logic, so it's tested without a browser.
- */
+import type { ResourceLimits } from "../types/container";
 
 function mk(p: Partial<ResourceLimits>): ResourceLimits {
   return {
@@ -102,7 +96,6 @@ test("dirty key is stable: a form built from saved limits matches its snapshot",
   const a = serializeResourceForm(resourcesToForm(r));
   const b = serializeResourceForm(resourcesToForm(r));
   assert.equal(a, b);
-  // A change flips the key.
   const edited = { ...resourcesToForm(r), memoryMb: "1024" };
   assert.notEqual(serializeResourceForm(edited), a);
 });
@@ -115,12 +108,11 @@ test("preset detection matches Memory + CPU exactly", () => {
     cpuCores: String(small.cpuCores),
   };
   assert.equal(activeResourcePreset(form)?.label, "Small");
-  // A tweaked memory value no longer matches any preset.
   assert.equal(activeResourcePreset({ ...form, memoryMb: "1000" }), undefined);
 });
 
 test("a size fits an unknown host, and a known host on both axes", () => {
-  const small = RESOURCE_PRESETS[2]; // 1 GB, 1 CPU
+  const small = RESOURCE_PRESETS[2];
   assert.equal(sizeFitsHost(small, null), true);
   assert.equal(sizeFitsHost(small, { memoryMb: 0, cpuCores: 0 }), true);
   assert.equal(sizeFitsHost(small, { memoryMb: 2048, cpuCores: 2 }), true);
@@ -140,17 +132,14 @@ test("the peak of a window is its highest memory and CPU, in form units", () => 
 });
 
 test("the suggestion is the smallest preset with 1.5x headroom that fits", () => {
-  // 480 MB × 1.5 = 720 → Small (1 GB); 0.4 CPU × 1.5 = 0.6 → Small too.
   assert.equal(
     suggestedSize({ memoryMb: 480, cpuCores: 0.4 }, null)?.label,
     "Small",
   );
-  // CPU alone can push the size up: 1.5 cores needs 2.25 → Large.
   assert.equal(
     suggestedSize({ memoryMb: 480, cpuCores: 1.5 }, null)?.label,
     "Large",
   );
-  // A host too small for Large skips it: nothing preset fits, so 2x rounded.
   assert.deepEqual(
     suggestedSize(
       { memoryMb: 480, cpuCores: 1.5 },
@@ -158,13 +147,11 @@ test("the suggestion is the smallest preset with 1.5x headroom that fits", () =>
     ),
     { label: "Custom", memoryMb: 1024, cpuCores: 3 },
   );
-  // Past every preset: twice the peak, rounded up to 256 MB / 0.25 CPU.
   assert.deepEqual(suggestedSize({ memoryMb: 3000, cpuCores: 2.1 }, null), {
     label: "Custom",
     memoryMb: 6144,
     cpuCores: 4.25,
   });
-  // No headroom on the host at all: no suggestion rather than a wrong one.
   assert.equal(
     suggestedSize(
       { memoryMb: 3000, cpuCores: 2.1 },

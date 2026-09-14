@@ -7,7 +7,7 @@ import {
   healthCheckProblem,
   healthCheckToForm,
 } from "./health-check-model";
-import type { HealthCheck } from "../types";
+import type { HealthCheck } from "../types/container";
 
 /** The form's data model: strings in, a check (or nothing) out. */
 

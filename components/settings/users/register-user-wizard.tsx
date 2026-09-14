@@ -35,7 +35,7 @@ import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { capabilitiesForRole } from "@/lib/membership-shared";
 import { cn } from "@/lib/utils";
-import type { Capability, Role } from "@/lib/types";
+import type { Capability, Role } from "@/lib/types/identity";
 
 type TeamOption = { id: string; name: string; avatarUrl: string | null };
 type Assignment = { role: Role; capabilities: Capability[] };
@@ -48,10 +48,7 @@ const STEP_LABEL: Record<StepId, string> = {
   link: "Link",
 };
 
-/**
- * Register a new instance user by minting a single-use registration link
- * (instance-admin only), as a wizard.
- */
+// RegisterUserWizard mints a single-use registration link for a new instance user (instance-admin only).
 export function RegisterUserWizard({
   open,
   onOpenChange,
@@ -59,7 +56,7 @@ export function RegisterUserWizard({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  /** Pre-select the join branch with the active team ticked (default true). */
+  // Pre-select the join branch with the active team ticked (default true).
   pinActiveTeam?: boolean;
 }) {
   const router = useRouter();
@@ -85,15 +82,12 @@ export function RegisterUserWizard({
     setTeamQuery("");
   }
 
-  // Close from our own footer buttons.
   function close() {
     onOpenChange(false);
     reset();
   }
 
-  // Load the admin's own teams the first time the dialog opens, and pre-select
-  // the active team unless the caller opted out. All state writes are deferred
-  // to avoid cascading renders.
+  // The state writes are deferred to a timeout to avoid cascading renders.
   React.useEffect(() => {
     if (!open || teamsLoaded) return;
     let cancelled = false;
@@ -152,14 +146,12 @@ export function RegisterUserWizard({
 
   const selectedCount = Object.keys(assign).length;
   const teamFilter = teamQuery.trim().toLowerCase();
-  // Filtering only hides rows - a ticked team the query hides stays ticked, which
-  // is why the step's subtitle carries the running count.
+  // Filtering only hides rows - a ticked team the query hides stays ticked, hence the running count.
   const shownTeams = teamFilter
     ? teams.filter((tm) => tm.name.toLowerCase().includes(teamFilter))
     : teams;
 
-  // The fork IS the step count: the own-team branch has nothing to configure, so
-  // it never shows an empty middle step.
+  // The own-team branch has nothing to configure, so it never shows an empty middle step.
   const steps: StepId[] = [
     "access",
     ...(choice === "existing_teams" ? (["teams"] as const) : []),
@@ -171,7 +163,6 @@ export function RegisterUserWizard({
     teams: selectedCount > 0,
     link: link !== null,
   };
-  /** The step the primary button leads to, or null when it mints instead. */
   const nextStep =
     step === "access" && choice === "existing_teams" ? "teams" : null;
 
@@ -208,9 +199,7 @@ export function RegisterUserWizard({
       );
       if (res.ok && res.data) {
         setLink(res.data.link);
-        // The server stamps the TTL from the same instant it answered, so a
-        // clock started here is right to the second, and it saves a round trip
-        // just to read back the row we minted.
+        // The server stamps the TTL from the instant it answered, so a clock started here is right to the second.
         setExpiresAt(new Date(Date.now() + 24 * 3_600_000).toISOString());
         setStep("link");
         router.refresh();
@@ -243,8 +232,7 @@ export function RegisterUserWizard({
           <WizardStepper
             steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
             current={step}
-            // Once the link exists there is nothing left to edit: re-minting from
-            // a revisited step would quietly leave a second live link behind.
+            // Re-minting from a revisited step would quietly leave a second live link behind.
             reachable={(s) =>
               link
                 ? s === "link"
@@ -255,8 +243,7 @@ export function RegisterUserWizard({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-4">
-          {/* The height is the STEP's, measured: a wizard padded to its tallest
-              step spends a third of itself on air. */}
+          {/* The height is the step's: padding to the tallest step wastes a third of the dialog. */}
           <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
             {step === "access" && (
               <>
@@ -319,15 +306,12 @@ export function RegisterUserWizard({
                     placeholder="Search teams"
                     aria-label="Search teams"
                     className="h-9 pl-9"
-                    // A filter box, not a field of the form: Enter here would
-                    // otherwise mint the link mid-search.
+                    // A filter box, not a field of the form: Enter here would otherwise mint the link mid-search.
                     onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
                   />
                 </div>
 
-                {/* No scroller of its own: the dialog's body is the ONE
-                      scrolling region, so a long team list never traps the wheel
-                      in a nested box. */}
+                {/* No scroller of its own: the dialog's body is the ONE scrolling region, so a long list never traps the wheel. */}
                 <div className="space-y-2">
                   {loadingTeams &&
                     [0, 1].map((i) => (
@@ -370,8 +354,7 @@ export function RegisterUserWizard({
                                 toggleTeam(tm.id, v === true)
                               }
                             />
-                            {/* The same mark the topbar switcher shows, so a
-                                  team looks the same wherever it is named. */}
+                            {/* The same mark the topbar switcher shows. */}
                             <TeamAvatar
                               name={tm.name}
                               avatarUrl={tm.avatarUrl}
@@ -381,9 +364,7 @@ export function RegisterUserWizard({
                               {tm.name}
                             </span>
                           </label>
-                          {/**
-                           * Which of that team's two joinable default roles they land in.
-                           */}
+                          {/* Only the joinable default roles - owner is not one of them. */}
                           {a && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {(["member", "viewer"] as Role[]).map((r) => (
@@ -478,8 +459,7 @@ export function RegisterUserWizard({
                   disabled={pending || loadingTeams || !valid[step]}
                   aria-busy={pending}
                 >
-                  {/* Spinner over the label rather than a changed label - the
-                      button keeps its width and the footer doesn't jump. */}
+                  {/* Spinner over the label so the button keeps its width and the footer doesn't jump. */}
                   <span className="grid place-items-center">
                     <span
                       className={cn(

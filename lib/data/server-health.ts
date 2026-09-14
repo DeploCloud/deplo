@@ -12,11 +12,10 @@ import {
 } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  deployments as deploymentsTable,
-  servers as serversTable,
-} from "../db/schema/control-plane";
-import { connectAgent, HEALTH_HELLO_TIMEOUT_MS } from "../infra/agent-client";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
+import { connectAgent } from "../infra/agent-client/connect";
+import { HEALTH_HELLO_TIMEOUT_MS } from "../infra/agent-client/deadlines";
 import {
   classifyServerHealth,
   isRetryableProbeFailure,
@@ -25,48 +24,27 @@ import {
 import { requireInstanceAdmin } from "../membership";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { nowIso } from "../ids";
-import {
-  getServerById,
-  listAllServers,
-  markServerSeen,
-  observedTraefik,
-} from "./servers";
+import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
+import { getServerById, listAllServers } from "./servers/roster";
 import type { HelloResponse } from "../agent/gen/agent";
-import type { Server } from "../types";
+import type { Server } from "../types/server";
 
-/**
- * Live server health (Settings → Servers). The column stays a CACHE, never a gate
- * (ADR-0006).
- */
+// The status column stays a CACHE, never a gate (ADR-0006).
 
-/** Skip re-dialing a server probed within this window (the ambient page-load sweep). */
 const THROTTLE_MS = 15_000;
-/**
- * The floor even a FORCED check (the operator's button) respects.
- */
 const FORCE_FLOOR_MS = 5_000;
-/**
- * Belt-and-braces bound around the WHOLE probe. The RPC has its own 3s deadline, but
- * that clock only starts once `connectAgent` has done a DB read and issued a client
- * cert - work that happens before gRPC is involved and is therefore outside it.
- */
+// Bounds the WHOLE probe: connectAgent reads the DB and issues a cert before the RPC's own 3s clock starts.
 const PROBE_DEADLINE_MS = 3_500;
-/** Wait this long before the one confirming retry (see {@link probeServer}). */
 const RETRY_DELAY_MS = 750;
 
-/** Deployment states that prove the agent is alive right now. */
 const ACTIVE_DEPLOY_STATES = ["queued", "building"] as const;
 
-/**
- * In-flight probes, keyed by server id.
- */
 const inFlight = new Map<string, Promise<Server | null>>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Race a probe against a hard deadline. A rejection here means "we don't know". */
 class ProbeTimeout extends Error {}
 
 function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -80,20 +58,12 @@ function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
 }
 
-/**
- * A server has a live agent worth dialing iff its cert pin is set to a NON-EMPTY
- * fingerprint.
- */
 const HAS_LIVE_AGENT = and(
   isNotNull(serversTable.agentCertFingerprint),
   sql`${serversTable.agentCertFingerprint} <> ''`,
 );
 
-/**
- * CLAIM the right to probe a server, atomically, by advancing `status_probed_at` -
- * the throttle LEASE, deliberately NOT `status_checked_at`. The lease lives in its
- * own column so "we tried" and "we observed" never get conflated.
- */
+// claimProbe - the throttle LEASE: `status_probed_at` records "we tried", never "we observed".
 export async function claimProbe(id: string, force: boolean): Promise<boolean> {
   const now = nowIso();
   const window = force ? FORCE_FLOOR_MS : THROTTLE_MS;
@@ -106,8 +76,7 @@ export async function claimProbe(id: string, force: boolean): Promise<boolean> {
       and(
         eq(serversTable.id, id),
         HAS_LIVE_AGENT,
-        // No recent dial AND no recent observation - either one being fresh means a
-        // re-dial would learn nothing new.
+        // Either column being fresh means a re-dial would learn nothing new.
         stale(serversTable.statusProbedAt),
         stale(serversTable.statusCheckedAt),
       ),
@@ -116,7 +85,6 @@ export async function claimProbe(id: string, force: boolean): Promise<boolean> {
   return claimed.length > 0;
 }
 
-/** Server ids with a deployment running right now (their agent is provably alive). */
 async function serversDeployingNow(ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
   const rows = await getDb()
@@ -133,11 +101,7 @@ async function serversDeployingNow(ids: string[]): Promise<Set<string>> {
   );
 }
 
-/**
- * The ONE writer of an observed health outcome. Internal and UNGATED, like
- * `markServerSeen`: it is a heartbeat writer, not a user action, and gating it
- * would make it unusable from a future background sweeper.
- */
+// recordServerHealth - the one writer of an observed outcome; ungated, because it is a heartbeat, not a user action.
 export async function recordServerHealth(
   id: string,
   health: ServerHealth,
@@ -150,7 +114,6 @@ export async function recordServerHealth(
         status: health.status,
         statusMessage: health.message,
         statusCheckedAt: observedAt,
-        // A successful probe IS a sighting; keep the P5 heartbeat in step with it.
         ...(health.status === "online" || health.status === "warning"
           ? { lastSeenAt: observedAt }
           : {}),
@@ -158,7 +121,6 @@ export async function recordServerHealth(
       .where(
         and(
           eq(serversTable.id, id),
-          // Same fence as the claim: never write health onto a row with no live agent.
           HAS_LIVE_AGENT,
           or(
             isNull(serversTable.statusCheckedAt),
@@ -167,26 +129,18 @@ export async function recordServerHealth(
         ),
       )
       .returning({ name: serversTable.name });
-    // Every caller that learns something about a server's health lands here, so this
-    // one hook covers the prober, the metrics poll and all three supervisor writes.
     if (written.length > 0) alertServerHealth(id, written[0].name, health);
   } catch (e) {
-    // Best-effort, like markServerSeen: a failed heartbeat write must never take
-    // down the page that triggered it.
     console.error("[deplo] recordServerHealth failed:", e);
   }
 }
 
-/**
- * The four health verdicts map one-to-one onto four alerts.
- */
 function alertServerHealth(
   id: string,
   name: string,
   health: ServerHealth,
 ): void {
-  // `provisioning` is a server mid-setup, not an observed verdict - nothing to
-  // report until it has actually answered once.
+  // `provisioning` is mid-setup, not an observed verdict - nothing to report yet.
   if (health.status === "provisioning") return;
   const dedupe = { id: `server:${id}`, state: health.status };
   const alert = {
@@ -218,10 +172,6 @@ function alertServerHealth(
   dispatchServerAlert(id, { ...alert, dedupe, path: "/settings/servers" });
 }
 
-/**
- * Dial one server's agent and persist what we learn. A transport failure gets one
- * more chance after 750ms before we demote the server.
- */
 async function probeServer(
   server: Server,
   force: boolean,
@@ -268,12 +218,10 @@ async function probeServer(
     storageOnly: server.storageOnly,
   });
   if (error) {
-    // The curated message goes in the column; the raw one, which carries the pinned
-    // fingerprint, the dial address and the gRPC detail - goes here and nowhere else.
+    // The raw error carries the pinned fingerprint and the dial address: log it, never store it.
     console.error(`[deplo] health probe for ${server.name}: ${String(error)}`);
   }
 
-  // Never demote a server that is running a deployment RIGHT NOW.
   if (
     health.status === "offline" &&
     (await serversDeployingNow([server.id])).has(server.id)
@@ -285,19 +233,11 @@ async function probeServer(
   }
 
   await recordServerHealth(server.id, health, observedAt);
-  // This Hello carries `traefikRunning` too, and the prober is the ONLY thing that
-  // dials a server on a schedule, so before this, the Traefik badge could only ever
-  // be refreshed by a deploy pre-flight or the monitoring stream, and a host nobody
   if (hello)
     await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
   return getServerById(server.id);
 }
 
-/**
- * Probe a server, coalescing concurrent callers onto one dial. Returns the stored row
- * unchanged when the probe was throttled or inconclusive, never null-as-in-unknown, so
- * a caller always has something to render.
- */
 async function probeCoalesced(server: Server, force: boolean): Promise<Server> {
   const existing = inFlight.get(server.id);
   if (existing) return (await existing) ?? server;
@@ -314,16 +254,11 @@ async function probeCoalesced(server: Server, force: boolean): Promise<Server> {
   }
 }
 
-/** A server with no agent yet is never dialed - there is nothing on the other end. */
 function isProbeable(server: Server): boolean {
   return Boolean(server.agent?.certFingerprint);
 }
 
-/**
- * Re-check ONE server's health (the per-card button). The gate lives HERE, in the
- * data layer - the GraphQL `authScopes` is the introspectable contract, this is
- * the boundary.
- */
+// checkServerHealth - re-check ONE server (the per-card button); this gate is the boundary.
 export async function checkServerHealth(
   id: string,
   opts: { force?: boolean } = {},
@@ -335,9 +270,7 @@ export async function checkServerHealth(
   return probeCoalesced(server, opts.force ?? false);
 }
 
-/**
- * Re-check EVERY server (the page's on-load sweep, and the header's "Check all").
- */
+// checkAllServerHealth - re-check every server (the on-load sweep and "Check all").
 export async function checkAllServerHealth(
   opts: { force?: boolean } = {},
 ): Promise<Server[]> {

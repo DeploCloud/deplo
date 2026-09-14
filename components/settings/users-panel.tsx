@@ -47,14 +47,15 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
-import { EditUserDialog } from "@/components/settings/user-account-settings";
+import { EditUserDialog } from "@/components/settings/user-account-settings/edit-user-dialog";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
 import { RegistrationLinkRow } from "@/components/settings/registration-link-row";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
-import type { GlobalUserDTO, RegistrationLinkDTO } from "@/lib/data/members";
+import type { GlobalUserDTO } from "@/lib/data/members/instance-users";
+import type { RegistrationLinkDTO } from "@/lib/data/members/registration-links";
 
 export function UsersPanel({
   users,
@@ -73,17 +74,13 @@ export function UsersPanel({
     "all",
   );
   const [view, setView] = React.useState<ListView>("grid");
-  // A revoked link leaves the list on the click - the row is dead server-side
-  // the moment the mutation is sent, and a live Revoke on a dead link is only
-  // good for a red "Not found".
   const {
     visible: liveLinks,
     remove,
     restore,
   } = useOptimisticRemove(links, (l) => l.id);
   const pendingLinks = liveLinks.filter((l) => l.status === "pending");
-  // `?user=<id>` opens that account's editor on arrival - the deep link a
-  // member's page uses, since accounts are instance-wide and edited here.
+  // `?user=<id>` opens that account's editor on arrival: a member page links here.
   const focusUserId = useSearchParams().get("user");
 
   const q = query.trim().toLowerCase();
@@ -95,8 +92,6 @@ export function UsersPanel({
         u.username.toLowerCase().includes(q) ||
         u.name.toLowerCase().includes(q)),
   );
-  // No wrapper card: the users ARE the tiles, and a card holding tiles is two
-  // surfaces - and a second "Users" heading - for one list.
   return (
     <div className="space-y-6">
       <PageHeader
@@ -280,9 +275,7 @@ function UserRow({
 }: {
   user: GlobalUserDTO;
   isSelf: boolean;
-  /** Arrived here linked straight at this account - open its editor. */
   defaultOpen?: boolean;
-  /** Same account, same actions: a tile, or one row of the table. */
   view?: ListView;
 }) {
   const router = useRouter();
@@ -291,14 +284,10 @@ function UserRow({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
-  // The owner's row is closed to everyone, THEMSELVES INCLUDED, for these two
-  // actions: no admin may demote or suspend them, and they may not uncrown themselves
-  // either (ownership leaves only via transfer, which names a successor).
+  // Nobody may demote or suspend the owner, themselves included: ownership leaves only via transfer.
   const ownerLocked = user.isInstanceOwner;
 
-  // Quick ⋯-menu actions flip ONE global flag while preserving the rest
-  // (updateUserAdmin replaces the whole set). The last-admin and can't-touch-self
-  // guards are enforced server-side and surfaced verbatim as a toast.
+  // updateUserAdmin replaces the whole set, so every flag is resent; the guards are server-side.
   function flip(patch: { isInstanceAdmin?: boolean; suspended?: boolean }) {
     startTransition(async () => {
       const res = await gqlAction(
@@ -324,9 +313,6 @@ function UserRow({
     });
   }
 
-  // Compact, horizontal card - deliberately distinct from the team Members cards
-  // (which stack vertically with a badge row): here the avatar sits left, status
-  // badges sit inline with the handle, and a single meta line carries name · team
   const meta = [
     user.name && user.name !== user.username ? user.name : null,
     `${user.teamCount} team${user.teamCount === 1 ? "" : "s"}`,
@@ -355,8 +341,7 @@ function UserRow({
               <span className="ml-1 text-xs text-muted-foreground">(you)</span>
             )}
           </p>
-          {/* Owner supersedes Admin - the owner IS an admin, so showing both
-              would just be noise on the one row that matters most. */}
+          {/* Owner supersedes Admin: the owner is an admin. */}
           {user.isInstanceOwner ? (
             <Badge variant="secondary" className="gap-1 px-1.5 py-0">
               <Crown className="size-3" />
@@ -440,8 +425,6 @@ function UserRow({
             variant={user.suspended ? undefined : "destructive"}
             disabled={isSelf || ownerLocked || pending}
             onSelect={() => {
-              // Reactivating is safe → apply straight away. Suspending is
-              // guarded by a confirm modal (opened once the menu closes).
               if (user.suspended) {
                 flip({ suspended: false });
               } else {
@@ -457,11 +440,7 @@ function UserRow({
             {user.suspended ? "Reactivate account" : "Suspend account"}
           </DropdownMenuItem>
         </SimpleTooltip>
-        {/**
-         * Permanent deletion sits below the reversible actions, behind its own separator:
-         * suspending is the answer to "they shouldn't be able to log in", and only the
-         * operator who means "and everything they own goes too" should reach past it.
-         */}
+        {/* Permanent deletion sits below the reversible actions, past a separator. */}
         <DropdownMenuSeparator />
         <SimpleTooltip
           content={
@@ -488,8 +467,7 @@ function UserRow({
 
   return (
     <>
-      {/* Left-click to open the full editor; the ⋯ menu offers the quick
-          admin/suspend actions. Same two in a tile and in a row. */}
+      {/* Left-click opens the editor; the ⋯ menu carries the quick actions. */}
       {view === "list" ? (
         <TableRow className={cn(user.suspended && "opacity-60")}>
           <TableCell>

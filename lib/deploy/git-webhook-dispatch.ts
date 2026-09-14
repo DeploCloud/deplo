@@ -6,28 +6,19 @@ import { getDb } from "../db/client";
 import {
   apps as appsTable,
   appBuild as appBuildTable,
-} from "../db/schema/control-plane";
-import { parseWatchPaths } from "../data/app-graph-rows";
-import { startDeployment } from "./build";
+} from "../db/schema/control-plane/apps";
+import { parseWatchPaths } from "../data/app-graph-rows/app";
+import { startDeployment } from "./build/deploy-start";
 import { shouldAutoDeploy, type GitPushEvent } from "./git-webhook";
 
-/**
- * Turning ONE verified push into deployments - shared by every git provider's
- * webhook route. Runs with no session: a delivery is authenticated by its
- * signature, not by a user, so nothing here may call a capability gate.
- */
+// Turns one verified push into deployments; runs with no session, so nothing here may call a capability gate.
 export async function dispatchPushEvent(opts: {
-  /** Which apps this delivery could possibly target (a SQL fragment). */
   match: SQL;
-  /** owner/name as the provider spells it. */
   repoFullName: string;
   event: GitPushEvent;
-  /** Who to credit in the deployment - a login on `provider`, not a Deplo user. */
   creator: string;
-  /** The git host that login belongs to, so the build says whose account it was. */
   provider: string;
   commitMessage: string;
-  /** Log prefix, so a dropped delivery is traceable to its route. */
   logTag: string;
 }): Promise<number> {
   const { match, repoFullName, event, logTag } = opts;
@@ -35,7 +26,6 @@ export async function dispatchPushEvent(opts: {
 
   const db = getDb();
   const wired = await db.select().from(appsTable).where(match);
-  // First cut on the row-local facts (auto-deploy + repo match).
   const candidates = wired.filter(
     (p) => p.autoDeploy && p.repoRepo === repoFullName,
   );
@@ -65,8 +55,6 @@ export async function dispatchPushEvent(opts: {
   );
 
   if (targets.length === 0) {
-    // The silent-failure heart of these endpoints: a delivered, verified push that
-    // matches no app returns 200 with no deploy.
     console.warn(
       `[${logTag}] no auto-deploy target: repo=${repoFullName} ref=${event.refName} ` +
         `isTag=${event.isTag} deleted=${event.deleted}; candidates=` +
@@ -92,15 +80,11 @@ export async function dispatchPushEvent(opts: {
         creator: opts.creator,
         creatorProvider: opts.provider,
         commitMessage: opts.commitMessage,
-        // For a tag trigger the deploy checks out the tag itself; for a push it
-        // is the tracked branch (event.refName === repoBranch here).
+        // A tag trigger checks out the tag itself; for a push this is the tracked branch.
         branch: event.refName,
       });
       started++;
     } catch (e) {
-      // One app must not stop the delivery, but a push that silently deploys nothing is
-      // the worst version of that: the refusals reachable here are real states someone
-      // has to fix (data a migration could not copy, an app on its way out), and they
       console.warn(
         `[${opts.logTag}] ${p.slug}: not deployed - ${e instanceof Error ? e.message : String(e)}`,
       );

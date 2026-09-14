@@ -5,19 +5,21 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import {
-  activities as activitiesTable,
   apps as appsTable,
-  appPreviews as appPreviewsTable,
   appVolumes as appVolumesTable,
+} from "../db/schema/control-plane/apps";
+import {
+  appPreviews as appPreviewsTable,
   pendingTeardowns as pendingTeardownsTable,
-  servers as serversTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/deployments";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp, SERVER_1 } from "./app-graph-test-helpers";
-import { deleteApp } from "./apps";
-import { removeServer } from "./servers";
+import { deleteApp } from "./apps/delete";
+import { removeServer } from "./servers/removal";
 import {
   MAX_TEARDOWN_ATTEMPTS,
   __setTeardownDialForTest,
@@ -26,18 +28,12 @@ import {
   nextTeardownAttempt,
 } from "./teardown-queue";
 
-/**
- * The teardown queue: what happens when the host will not confirm that a stack
- * Deplo was told to destroy is gone.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
 const SERVER_2 = "srv_2";
 const T0 = new Date("2026-02-01T00:00:00.000Z");
 
-/** Past the grace window a fresh queue row gets, so the drain sees it as due. */
 const LATER = () => new Date(Date.now() + 10 * 60_000);
 
 before(async () => {
@@ -69,11 +65,9 @@ beforeEach(async () => {
   await seedServer(db);
 });
 
-/** A fake host: what it still has, and what it was asked to do. */
 function fakeAgent(opts: {
   containers?: string[];
   destroyOk?: boolean;
-  /** Names left behind AFTER a destroy (defaults to none). */
   after?: string[];
 }) {
   const calls = { destroy: 0, stop: 0, list: 0, reclaimed: [] as string[] };
@@ -225,14 +219,11 @@ test("the last failure gives up out loud and stops retrying", async () => {
     (await messages()).some((m) => /Gave up on the teardown of blink/.test(m)),
     "the trail names what was left behind",
   );
-  // Abandoned rows are invisible to the drain.
   await drainTeardowns(new Date(Date.now() + 60 * 60_000));
   assert.equal((await queued())[0].attempts, MAX_TEARDOWN_ATTEMPTS);
 });
 
 test("a host with nothing of ours left is never asked to destroy anything", async () => {
-  // The reclaimed-slug case: a new app took `blink` on the same server, so its
-  // containers carry a DIFFERENT `deplo.project` and the probe answers empty.
   await enqueueTeardowns([
     {
       serverId: SERVER_1,
@@ -267,8 +258,6 @@ test("a container that survives the teardown keeps the row and is stopped", asyn
   ]);
   const calls = fakeAgent({
     containers: ["deplo-blink-web-1"],
-    // The agent claims success while the container is still there - the exact
-    // lie the verify exists for.
     destroyOk: true,
     after: ["deplo-blink-web-1"],
   });
@@ -289,7 +278,6 @@ test("a preview keyed off the same slug is not swept up by the app's row", async
       teamId: TEAM_A,
     },
   ]);
-  // `deplo-blink__pr-3-web-1` belongs to the preview, not to `blink`.
   const calls = fakeAgent({ containers: ["deplo-blink__pr-3-web-1"] });
   await drainTeardowns(LATER());
   assert.equal(calls.destroy, 0);
@@ -297,8 +285,6 @@ test("a preview keyed off the same slug is not swept up by the app's row", async
 });
 
 test("a database container, which carries no deplo- prefix, still counts", async () => {
-  // The agent names a database container after its bare host. A survivor check
-  // that only looked for `deplo-<key>` would call a live database gone.
   await enqueueTeardowns([
     {
       serverId: SERVER_1,
@@ -431,8 +417,6 @@ test("a delete names the app's own volumes, so a never-deployed stack loses them
   const calls = fakeAgent({ containers: [] });
   await asOwner(async () => {
     await seedApp(db, { id: "prj_1", slug: "blink" });
-    // A Storage-settings volume (rendered with its own `name:`) and a host bind,
-    // which is NOT Deplo's to remove.
     await db.insert(appVolumesTable).values([
       {
         appId: "prj_1",
@@ -454,8 +438,6 @@ test("a delete names the app's own volumes, so a never-deployed stack loses them
         readOnly: false,
       },
     ]);
-    // Plus what the user's own compose declares: `cache` is Deplo's to create,
-    // `shared` points at a volume that already exists elsewhere.
     await db
       .update(appsTable)
       .set({

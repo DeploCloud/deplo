@@ -49,26 +49,19 @@ import {
   SlidingPanels,
   PANEL_BODY_MAX,
 } from "@/components/shared/sliding-panels";
-import {
-  SharedVarWizardBody,
-  type AppRef,
-  type ProjectRef,
-  type TeamRef,
-} from "@/components/env/shared-var-wizard";
-import type { EnvVarDTO } from "@/lib/types";
-import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
+import type {
+  AppRef,
+  ProjectRef,
+  TeamRef,
+} from "@/components/env/shared-var-wizard/types";
+import { SharedVarWizardBody } from "@/components/env/shared-var-wizard/wizard-body";
+import type { EnvVarDTO } from "@/lib/types/env";
+import type { AppSharedVarDTO } from "@/lib/data/shared-vars/app-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
-/**
- * A shared var as the LINK rows read it: everything but the value.
- */
 type LinkableSharedVar = Omit<AppSharedVarDTO, "value">;
 
-/**
- * Add/edit an app's environment variable. Editing shows a single form; adding
- * shows two tabs - "Standalone" (a multi-row editor that also accepts a pasted
- * `.env`) and "Shared" (link existing shared variables to this app).
- */
+// EnvVarDialog - add or edit an app's environment variables (standalone, or linked shared ones).
 export function EnvVarDialog({
   open,
   onOpenChange,
@@ -85,18 +78,13 @@ export function EnvVarDialog({
   onOpenChange: (v: boolean) => void;
   appId: string;
   editing: EnvVarDTO | null;
-  /** In-scope shared vars for this app; lazy-fetched when omitted. */
   sharedVars?: LinkableSharedVar[];
-  /** `manage_env` held TEAM-WIDE - what creating a shared variable needs. */
   canCreateShared?: boolean;
-  /** Every app of the team - the shared-variable wizard's "Specific apps" picker. */
   apps?: AppRef[];
   projects?: ProjectRef[];
   environments?: TeamEnvironment[];
   teams?: TeamRef[];
 }) {
-  // A secret has no edit form: it is write-only, and the pencil that opens this is
-  // already disabled for a secret row (EnvEditButton).
   if (editing?.type === "secret") return null;
   if (editing) {
     return (
@@ -123,10 +111,6 @@ export function EnvVarDialog({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Edit one existing standalone variable                               */
-/* ------------------------------------------------------------------ */
-
 function EditForm({
   open,
   onOpenChange,
@@ -138,9 +122,6 @@ function EditForm({
   appId: string;
   editing: EnvVarDTO;
 }) {
-  // Only a PLAIN var reaches this form (a secret is write-only and frozen), so
-  // the value prefills with the real thing. The Secret switch below still
-  // promotes one - hardening is the one type change that stays open.
   const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
@@ -157,12 +138,9 @@ function EditForm({
   }
 
   function submit() {
-    // Closes on the click; a rename that clashes reopens it on what was typed.
     onOpenChange(false);
     startTransition(async () => {
-      // A rename moves the row to its new key FIRST - it's keyed by id, so it can't clash
-      // with the value upsert below (which finds the row by (appId, key), and by then the
-      // row already lives at the new key).
+      // The rename goes first: it is keyed by id, so it cannot clash with the upsert below.
       if (renamed) {
         const r = await gqlAction<{ renameEnv: { id: string } }>(
           `mutation($id: String!, $newKey: String!) {
@@ -176,8 +154,7 @@ function EditForm({
           return;
         }
       }
-      // No `targets`: an App has no Environment of its own - it inherits exactly
-      // one from its Project, so the server defaults every variable to every runtime.
+      // No `targets`: the server defaults every variable to every runtime.
       const res = await gqlAction<{ upsertEnv: { id: string } }>(
         `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
         {
@@ -237,9 +214,7 @@ function EditForm({
             </div>
             <div className="space-y-2">
               <Label>Value</Label>
-              {/* Focus lands on the value, not the key: an edit far more often
-                  changes the value than renames, and it keeps the Dialog's initial
-                  focus off the info button next to the Key label. */}
+              {/* Focus lands on the value, off the info button beside the Key label. */}
               <Textarea
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
@@ -269,14 +244,9 @@ function EditForm({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Add: Standalone (multi-row / paste .env) + Shared tabs              */
-/* ------------------------------------------------------------------ */
-
 const ADD_TABS = ["standalone", "shared"] as const;
 type AddTab = (typeof ADD_TABS)[number];
 
-/** The two tabs plus the shared-variable creator they lead to, as one track. */
 const ADD_PANELS = [...ADD_TABS, "new-shared"] as const;
 type AddPanel = (typeof ADD_PANELS)[number];
 
@@ -286,11 +256,6 @@ const PANEL_LABEL: Record<AddPanel, string> = {
   "new-shared": "New shared variable",
 };
 
-/**
- * Standalone, Shared and the shared-variable creator, as three panels on ONE
- * horizontal track that slides between them; the modal's height eases to
- * whichever panel is showing, so the slide glides instead of jumping.
- */
 function AddDialog({
   open,
   onOpenChange,
@@ -313,8 +278,6 @@ function AddDialog({
   teams: TeamRef[];
 }) {
   const [tab, setTab] = React.useState<AddTab>("standalone");
-  // The creator is not a tab - it is where the Shared tab's button leads, and
-  // Back returns to it.
   const [creating, setCreating] = React.useState(false);
   const panel: AddPanel = creating ? "new-shared" : tab;
 
@@ -336,8 +299,7 @@ function AddDialog({
           onValueChange={(v) => setTab(v as AddTab)}
           className="flex min-h-0 flex-col"
         >
-          {/* One chrome row either way, so nothing jumps while the track moves:
-              the segmented control, or the way back from the creator. */}
+          {/* One chrome row either way, so nothing jumps while the track moves. */}
           <div className="border-b border-border px-6 pb-4">
             {creating ? (
               <Button
@@ -350,8 +312,6 @@ function AddDialog({
                 Shared variables
               </Button>
             ) : (
-              // A segmented control on a track - the same shape the app wears
-              // elsewhere, so the idle half still reads as a place you can go.
               <SegmentedTabsList>
                 <SegmentedTabsTrigger value="standalone">
                   <Plus />
@@ -406,9 +366,6 @@ function AddDialog({
   );
 }
 
-/** The row editor itself lives in `env-rows-editor.tsx` - Add preview override
- *  uses the very same one. */
-
 function StandaloneTab({
   appId,
   onDone,
@@ -422,7 +379,6 @@ function StandaloneTab({
 
   const filled = filledRows(rows);
   const invalid = invalidRows(rows);
-  // Only worth saying while the Secret switch could still take it: one row, off.
   const looksSecret =
     !secret &&
     filled.length === 1 &&
@@ -434,14 +390,9 @@ function StandaloneTab({
   }
 
   function save() {
-    // The panel closes on the click and the write settles behind it: what makes this
-    // slow is not the insert but the refresh that re-reads every variable of the app
-    // afterwards.
     onDone();
     void (async () => {
-      // No `targets` on either path: an App has no Environment of its own - it
-      // inherits exactly one from its Project, so the server defaults every
-      // variable to every runtime.
+      // No `targets` on either path: the server defaults every variable to every runtime.
       if (filled.length === 1) {
         const res = await gqlAction<{ upsertEnv: { id: string } }>(
           `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
@@ -459,8 +410,6 @@ function StandaloneTab({
         router.refresh();
         return;
       }
-      // Multiple rows → the additive importEnv path (all land as plain; flip to
-      // secret from the table afterwards).
       const blob = filled.map((r) => `${r.key.trim()}=${r.value}`).join("\n");
       type ImportResult = { added: number; skippedSecrets: number };
       const res = await gqlAction<{ importEnv: ImportResult }, ImportResult>(
@@ -471,9 +420,6 @@ function StandaloneTab({
         (d) => d.importEnv,
       );
       if (res.ok && res.data != null) {
-        // A secret cannot be overwritten, so a pasted line naming one is left
-        // alone. Say so: a variable that quietly did not import is worse than
-        // one that refused out loud.
         const { added, skippedSecrets } = res.data;
         toast.success(
           skippedSecrets > 0
@@ -519,8 +465,7 @@ function StandaloneTab({
       </div>
 
       <DialogFooter className="items-center border-t border-border px-6 py-4 sm:justify-between">
-        {/* The paste shortcut is the fastest way in and nothing else announces
-            it: the Key input explodes a whole .env into rows on paste. */}
+        {/* Nothing else announces it: the Key input explodes a pasted .env into rows. */}
         <p className="text-xs text-muted-foreground">
           or paste .env contents in the Key field
         </p>
@@ -550,8 +495,6 @@ function SharedTab({
 }: {
   appId: string;
   sharedVars?: LinkableSharedVar[];
-  /** This tab is mounted even while off-screen (for the slide); only reach for
-   *  the network once it has actually been opened. */
   active: boolean;
   canCreate: boolean;
   onCreate: () => void;
@@ -561,15 +504,8 @@ function SharedTab({
     null,
   );
   const [query, setQuery] = React.useState("");
-  // The prop wins whenever there is one, and it CHANGES: creating a shared
-  // variable from here refreshes the RSC, and this list has to follow rather
-  // than keep the copy it mounted with.
   const vars = sharedVars ?? fetched;
 
-  // Lazy-fetch when the caller didn't pass the in-scope set (aggregate view),
-  // but not before this tab is opened, so a dialog left on Standalone never
-  // queries for shared vars it won't show. Re-runs whenever the tab is opened,
-  // which is also how a variable created next door lands in the list.
   React.useEffect(() => {
     if (!active || sharedVars) return;
     let alive = true;
@@ -590,8 +526,6 @@ function SharedTab({
   }, [appId, active, sharedVars]);
 
   const q = query.trim().toLowerCase();
-  // Case-insensitive substring match on the key - the only thing a row shows and
-  // the only thing you'd search a variable by.
   const filtered = vars?.filter((v) => v.key.toLowerCase().includes(q)) ?? null;
 
   return (
@@ -629,8 +563,6 @@ function SharedTab({
                 No shared variables match “{query.trim()}”.
               </p>
             ) : (
-              // Same table grammar as the Standalone tab: a labelled header, one
-              // row per variable, no card floating loose inside a card.
               <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
                 <div className="flex items-center justify-between bg-surface px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                   <span>Shared variable</span>
@@ -645,7 +577,7 @@ function SharedTab({
         )}
       </div>
 
-      {/* Each toggle already saved itself - Done just closes, it doesn't commit. */}
+      {/* Each toggle already saved itself - Done only closes. */}
       <DialogFooter className="border-t border-border px-6 py-4">
         {canCreate && (
           <Button variant="outline" onClick={onCreate}>
@@ -659,7 +591,6 @@ function SharedTab({
   );
 }
 
-/** Why a not-yet-added variable is suggested here - its availability scope. */
 const SCOPE_HINT: Record<string, string> = {
   teamWide: "Shared with your team",
   project: "Shared with this app's project",
@@ -702,12 +633,10 @@ function SharedVarLinkRow({
     });
   }
 
-  // Every shared variable is OPT-IN (ADR-0012): added ⇒ removable, never a
-  // disabled "auto-applied" state. The scope only explains why it's suggested.
+  // Every shared variable is opt-in (ADR-0012): the scope only explains why it's suggested.
   const hint = sharedVar.scope ? SCOPE_HINT[sharedVar.scope] : null;
 
-  // The one exception to the opt-in (ADR-0027): it is already in this app, with no
-  // link, and adding it here would only be a second copy of a decision already made.
+  // The one exception to the opt-in (ADR-0027): it already reaches this app with no link.
   if (sharedVar.autoInject && !linked)
     return (
       <div className="flex items-center justify-between gap-3 px-3 py-2.5">
@@ -772,7 +701,3 @@ function SharedVarLinkRow({
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Shared bits                                                         */
-/* ------------------------------------------------------------------ */

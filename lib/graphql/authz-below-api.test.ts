@@ -6,14 +6,12 @@ import { graphql } from "graphql";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  folders as foldersTable,
-  notificationChannels as notificationChannelsTable,
-} from "../db/schema/control-plane";
+import { notificationChannels as notificationChannelsTable } from "../db/schema/control-plane/notifications";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { schema } from "./schema";
 import type { GraphQLContext } from "./context";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import {
   seedIdentity,
@@ -27,13 +25,7 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
-import { ALL_CAPABILITIES, type Capability } from "../types";
-
-/**
- * The other half of the API's authorization surface: the mutations whose field
- * gate is only `loggedIn`, because the capability they need is a PER-RESOURCE
- * question a static scope cannot ask - which folder, whose account, which backup
- */
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 
 let db: TestDb;
 let pg: PGlite;
@@ -69,8 +61,7 @@ beforeEach(async () => {
     ],
   });
   await seedServer(db);
-  // A REAL channel: `REFUSED` matches /not found/i, so an invented id would look
-  // like a refusal to the first test and fail the second.
+  // A REAL channel: `REFUSED` matches /not found/i, so an invented id would fake a refusal.
   await db.insert(notificationChannelsTable).values({
     id: CHANNEL,
     teamId: TEAM_A,
@@ -88,8 +79,6 @@ beforeEach(async () => {
     smtpUser: "",
     createdAt: new Date().toISOString(),
   });
-  // Owned by the OTHER member: a folder gate that answered "yes" because the
-  // caller happens to own the folder would prove nothing about capabilities.
   await db.insert(foldersTable).values([
     // Owned by the OTHER member: what a capability must NOT be able to open.
     {
@@ -100,8 +89,7 @@ beforeEach(async () => {
       createdAt: T0,
       updatedAt: T0,
     },
-    // Owned by the subject: where their team capabilities actually apply, so a
-    // refusal is the CAPABILITY talking and not the folder's privacy.
+    // Owned by the subject: a refusal here is the CAPABILITY talking, not the folder's privacy.
     {
       id: MY_FOLDER,
       teamId: TEAM_A,
@@ -153,18 +141,13 @@ async function callAs(
   });
 }
 
-// "not found" counts: every id below is REAL, so the only way a gate can answer
-// that is by refusing to admit the resource exists - the deliberate non-oracle.
+// "not found" counts: every id below is REAL, so hiding it IS the refusal.
 const REFUSED =
   /not authorized|don't have permission|only the folder owner|only an instance admin|not a member|only its primary owner|not found/i;
 const refused = (messages: string[]): boolean =>
   messages.some((m) => REFUSED.test(m));
 
-/**
- * One `loggedIn` mutation, the capability that must admit it, and the arguments
- * that reach a REAL row. `cap: null` means no team capability admits it - the
- * gate is ownership (a folder's owner) or the founder's crown.
- */
+// `cap: null` means no team capability admits it - the gate is ownership or the founder's crown.
 const CASES: { name: string; doc: string; cap: Capability | null }[] = [
   {
     name: "renameFolder",
@@ -197,8 +180,7 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
     cap: "move_apps",
   },
   {
-    // Someone else's folder: sharing it is the owner's call, and the only
-    // capability that overrides that is the team super-user's `manage_team`.
+    // Someone else's folder: only the super-user `manage_team` overrides its owner.
     name: "setFolderGrant",
     doc: `mutation { setFolderGrant(folderId: "${FOLDER}", userId: "${USER_M}", capabilities: ["view"]) { userId } }`,
     cap: "manage_team",
@@ -209,9 +191,7 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
     cap: "manage_team",
   },
   {
-    // A READ, and it belongs here for the same reason the writes do: a channel
-    // row carries the webhook URL, and a webhook URL is the credential for a
-    // chat room. The `view` floor must not reach it.
+    // A channel row carries the webhook URL, a chat room's credential: the `view` floor must not reach it.
     name: "notificationChannels",
     doc: `query { notificationChannels }`,
     cap: "manage_notifications",
@@ -227,8 +207,7 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
     cap: "manage_notifications",
   },
   {
-    // A cap-holder gets "Add a Discord webhook URL first", which is not a
-    // refusal - the same trick the old testNotification case relied on.
+    // A cap-holder gets "Add a Discord webhook URL first", which is not a refusal.
     name: "testNotificationChannel",
     doc: `mutation { testNotificationChannel(id: "${CHANNEL}") }`,
     cap: "manage_notifications",
@@ -241,7 +220,7 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
   {
     name: "deleteTeam",
     doc: `mutation { deleteTeam(teamId: "${TEAM_A}") }`,
-    cap: null, // the founder's crown, never a capability someone can be given
+    cap: null,
   },
 ];
 
@@ -278,14 +257,9 @@ for (const c of CASES) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* The self-service surface: `loggedIn` because it really is           */
-/* ------------------------------------------------------------------ */
-
 test("a view-only member still owns their own account and sessions", async () => {
   await setCaps([]);
-  // These are `loggedIn` on purpose - they act on the caller, not on the team.
-  // Refusing them would lock a Viewer out of their own profile and 2FA.
+  // `loggedIn` on purpose: refusing these locks a Viewer out of their own profile and 2FA.
   for (const doc of [
     `mutation { updateProfile(name: "New Name") }`,
     `mutation { revokeOtherSessions }`,
@@ -311,9 +285,7 @@ test("switching to a team you don't belong to is refused", async () => {
 
 test("the compose preview is served at the view floor with every value masked", async () => {
   await setCaps([]);
-  // The preview is deliberately readable by anyone who can see the app - which
-  // is only safe because the values are stripped on the way out. Assert the
-  // masking, not the permission: this field IS the exception.
+  // Readable at the view floor only because the values are stripped: assert the masking.
   const identity: RequestIdentity = { userId: USER_M, teamId: TEAM_A };
   const rendered = await runWithIdentity(identity, async () => {
     const ctx: GraphQLContext = {
@@ -344,14 +316,8 @@ test("the compose preview is served at the view floor with every value masked", 
     );
 });
 
-/* ------------------------------------------------------------------ */
-/* Folder grants: the second gate on an app inside a folder            */
-/* ------------------------------------------------------------------ */
-
 test("a team capability does not reach into a folder the member can't see", async () => {
-  // The folder is owned by USER_1 and shared with nobody: an app filed inside it is
-  // invisible, and stays invisible however much the TEAM role grants - EXCEPT
-  // `manage_team`, which is the documented folder super-user, so the subject holds
+  // `manage_team` is the documented folder super-user, so the subject must not hold it.
   await setCaps(ALL_CAPABILITIES.filter((c) => c !== "manage_team"));
   const messages = await callAs(
     USER_M,

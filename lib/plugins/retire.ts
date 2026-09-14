@@ -1,23 +1,15 @@
 import "server-only";
 
-/**
- * Retirement sweep for the withdrawn Plugins feature (ADR-0013). With no UI left,
- * the only way for the owner to remove that would be a shell on the host, which
- * the core mission forbids.
- */
+// Retirement sweep for the withdrawn Plugins feature (ADR-0013): with no UI left, removing these by hand would need a shell on the host.
 
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  installedPlugins as installedPluginsTable,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
+import { installedPlugins as installedPluginsTable } from "../db/schema/control-plane/integrations";
 import { pluginSlug, destroyPluginContainer } from "./runtime";
 
-/**
- * Tear down every installed plugin and empty the table.
- */
+// Tears down every installed plugin and empties the table.
 export async function retireInstalledPlugins(
   destroy: (slug: string) => Promise<void> = destroyPluginContainer,
 ): Promise<number> {
@@ -38,8 +30,7 @@ export async function retireInstalledPlugins(
     try {
       await destroy(slug);
     } catch (e) {
-      // Keep the row: it is the only record that this container exists, and a
-      // later boot (or a reachable daemon) must still get the chance to remove it.
+      // Keep the row: it is the only record this container exists, so a later boot can retry.
       console.error(`[deplo] could not retire plugin ${slug}:`, e);
       continue;
     }

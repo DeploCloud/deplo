@@ -1,26 +1,17 @@
-/**
- * The deploy-source seam: decide WHICH source a deployment builds from, and the
- * shared rootDirectory resolution every built source uses.
- */
-
 import { join } from "node:path";
 import { realpath } from "node:fs/promises";
 import { safeBuildDir } from "./path-safety";
-import type { GitRepo, UploadArchive } from "../types";
+import type { UploadArchive } from "../types/app";
+import type { GitRepo } from "../types/build";
 
-/**
- * What a deployment builds from, decided from the project. Each variant CARRIES
- * the data its execution needs, so the engine never re-derives (or
- * non-null-asserts) what the decision already proved present.
- */
+// SourcePlan - what a deployment builds from; each variant carries its execution data.
 export type SourcePlan =
   | { kind: "docker-image"; image: string }
   | { kind: "git"; repo: GitRepo }
   | { kind: "upload"; upload: UploadArchive }
   | { kind: "none" };
 
-/** The minimal project shape the source decision reads. A `App` satisfies
- * this structurally; kept narrow so the decision stays free of the store graph. */
+// SourcePlanApp - the minimal project shape the source decision reads.
 export interface SourcePlanApp {
   source: string;
   dockerImage?: string | null;
@@ -28,11 +19,7 @@ export interface SourcePlanApp {
   upload?: UploadArchive | null;
 }
 
-/**
- * Decide which source a deployment builds from. The project's `source` drives
- * the choice; a docker-image needs an image set, git needs a repo, upload needs
- * an archive.
- */
+// planDeploySource - decide which source a deployment builds from.
 export function planDeploySource(project: SourcePlanApp): SourcePlan {
   if (project.source === "docker-image" && project.dockerImage) {
     return { kind: "docker-image", image: project.dockerImage };
@@ -44,31 +31,22 @@ export function planDeploySource(project: SourcePlanApp): SourcePlan {
   return { kind: "none" };
 }
 
-/** Normalise a user-supplied rootDirectory to a clean forward-slash relative
- * path: backslashes → slashes, a leading `./` or `/` stripped. `""`/`"."`/unset
- * all mean "the tree root". Pure. */
+// normalizeRootRel - clean forward-slash relative path; "", "." and unset mean the tree root.
 export function normalizeRootRel(
   rootDirectory: string | null | undefined,
 ): string {
   return (rootDirectory || ".").replace(/\\/g, "/").replace(/^\.?\/?/, "");
 }
 
-/** Whether a normalised rootRel names an explicit subdirectory (not the root).
- * An explicit-but-missing rootDirectory is a misconfiguration the caller fails
- * loudly on; an absent one silently builds the tree root. Pure. */
+// isExplicitRoot - whether a normalised rootRel names an explicit subdirectory.
 export function isExplicitRoot(rootRel: string): boolean {
   return Boolean(rootRel && rootRel !== ".");
 }
 
-/** Thrown when an explicitly-set rootDirectory isn't found in the materialised
- * tree. Carries the source-specific message the engine surfaces to the user. */
+// RootDirectoryNotFound - thrown when an explicitly-set rootDirectory isn't in the tree.
 export class RootDirectoryNotFound extends Error {}
 
-/**
- * Resolve the directory to build from inside a materialised tree (`root`),
- * containing a user-supplied `rootDirectory` against it via {@link safeBuildDir}
- * (realpath-based, defeats symlink escape).
- */
+// resolveBuildDir - contains rootDirectory inside the tree via safeBuildDir (defeats symlink escape).
 export async function resolveBuildDir(opts: {
   root: string;
   rootDirectory: string | null | undefined;

@@ -18,12 +18,7 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { getQueuePosition } from "./deployments";
-
-/**
- * `getQueuePosition` against pglite - the 1-based slot the deployment-detail "in
- * queue" banner shows.
- */
+import { getQueuePosition } from "./deployments/build-progress";
 
 let db: TestDb;
 let pg: PGlite;
@@ -50,7 +45,6 @@ const as = <T>(
   fn: () => Promise<T>,
 ): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
-// Distinct, increasing createdAt so FIFO order is deterministic on its own.
 const at = (n: number) => `2026-01-01T00:00:0${n}.000Z`;
 
 beforeEach(async () => {
@@ -66,7 +60,7 @@ beforeEach(async () => {
       { id: OWNER_B, teamId: TEAM_B, role: "owner" },
     ],
   });
-  await seedServer(db); // SERVER_1 (default)
+  await seedServer(db);
   await seedServer(db, SERVER_2);
   await seedApp(db, { id: SVC, teamId: TEAM_A, serverId: SERVER_1 });
   await seedApp(db, {
@@ -199,8 +193,6 @@ test("position is scoped to the owning server", async () => {
 });
 
 test("falls back to the app's server when the row's server_id is null", async () => {
-  // Legacy rows predate the denormalized server_id → effective server is the
-  // app's (SERVER_1), and they must still form a single ordered queue.
   await seedDeployment(db, {
     id: "legacy_ahead",
     appId: SVC,

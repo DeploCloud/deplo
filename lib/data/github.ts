@@ -4,18 +4,18 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { readAppAccess } from "../github/app";
 import { getDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   githubApps as githubAppsTable,
   githubInstallation as githubInstallationTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/integrations";
 import {
   assembleGithubApp,
   assembleGithubInstallation,
   githubAppToRow,
   githubInstallationToRow,
 } from "./infra-rows";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { newId, nowIso } from "../ids";
 import {
   requireActiveTeamId,
@@ -24,22 +24,14 @@ import {
 } from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
-import type { GithubApp, GithubInstallation } from "../types";
+import type { GithubApp, GithubInstallation } from "../types/git";
 import type { ManifestConversion } from "../github/manifest";
 import type { AccessRequirement } from "../git/provider-access";
-
-/**
- * `github_apps` + `github_installation` are RELATIONAL as of cut-set (e)
- * (relational-store PLAN Step 6).
- */
 
 /** Client-safe view of a connected App and its installations (no secrets). */
 export interface GithubInstallationDTO {
   id: string;
   installationId: number;
-  /**
-   * Name of the connected GitHub App this installation belongs to.
-   */
   appName: string;
   accountLogin: string;
   accountType: "User" | "Organization";
@@ -97,7 +89,6 @@ export async function listGithubApps(): Promise<GithubAppDTO[]> {
     .where(eq(githubAppsTable.teamId, teamId));
   const apps = appRows.map(assembleGithubApp);
   if (apps.length === 0) return [];
-  // One query for every installation of the team's apps (no N+1).
   const installRows = await db
     .select()
     .from(githubInstallationTable)
@@ -165,12 +156,7 @@ export interface GithubAppAccessDTO {
   settingsUrl: string;
 }
 
-/**
- * What each connected GitHub App is missing, keyed by App id. Read LIVE from
- * GitHub (never stored): the operator fixes it on github.com, and a cached badge
- * would outlive the fix. `previews` adds the pull-request half, so nobody reads
- * about a feature they never turned on.
- */
+// githubAppsAccess reads LIVE from GitHub (never stored) what each App is missing.
 export async function githubAppsAccess(
   opts: { previews?: boolean } = {},
 ): Promise<Record<string, GithubAppAccessDTO>> {
@@ -192,11 +178,7 @@ export async function githubAppsAccess(
   return out;
 }
 
-/**
- * What the App behind ONE installation is missing, for an app's Deploy source
- * card. Scoped to the active team so an installation id from elsewhere reads as
- * "nothing to say" rather than leaking another team's setup.
- */
+// installationAccess reports what ONE installation's App is missing, active team only.
 export async function installationAccess(
   installationId: string,
   opts: { previews?: boolean } = {},
@@ -242,9 +224,7 @@ export async function teamUsesPreviews(): Promise<boolean> {
   return rows.length > 0;
 }
 
-/**
- * Record (or refresh) an installation of a connected App.
- */
+// upsertInstallation records (or refreshes) an installation of a connected App.
 export async function upsertInstallation(input: {
   appDbId: string;
   installationId: number;
@@ -255,9 +235,7 @@ export async function upsertInstallation(input: {
   const { membership } = await requireCapability("manage_git");
   const user = (await getCurrentUser())!;
   const db = getDb();
-  // The App this installation attaches to must belong to the caller's active
-  // team, otherwise a member of team B could refresh/repoint an installation
-  // of team A's GitHub App (cross-tenant write).
+  // The App must belong to the caller's active team, else it is a cross-tenant write.
   const app = await db
     .select({ id: githubAppsTable.id })
     .from(githubAppsTable)
@@ -284,7 +262,6 @@ export async function upsertInstallation(input: {
     .values(githubInstallationToRow(created))
     .onConflictDoUpdate({
       target: githubInstallationTable.installationId,
-      // Refresh the attaching app + account fields; never touch created_at.
       set: {
         appId: input.appDbId,
         accountLogin: input.accountLogin,
@@ -318,8 +295,7 @@ export async function removeGithubApp(id: string): Promise<void> {
     )
     .limit(1);
   if (app.length === 0) throw new Error("GitHub App not found");
-  // Deleting the app cascades its installations (github_installation.app_id FK is
-  // ON DELETE CASCADE) - one DELETE replaces the old two-collection JSONB filter.
+  // `github_installation.app_id` is ON DELETE CASCADE, so this drops them too.
   await db.delete(githubAppsTable).where(eq(githubAppsTable.id, id));
   await recordActivity(
     "integration",

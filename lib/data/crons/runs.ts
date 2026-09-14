@@ -1,0 +1,94 @@
+import "server-only";
+
+import { desc, eq } from "drizzle-orm";
+
+import { getCurrentUser } from "../../auth/current-user";
+import { getDb } from "../../db/client";
+import { cronRuns as cronRunsTable } from "../../db/schema/control-plane/crons";
+import { requireActiveTeamId } from "../../membership";
+import { cancelRun, runJobNow } from "../../crons/runner/fire";
+import {
+  loadInFlightRun,
+  loadSchedulableJob,
+} from "../../crons/runner/targets";
+import { recordActivity } from "../activity";
+import { type CronRunDTO, toRunDTO } from "./dto";
+import { gateJob } from "./gates";
+import { MAX_KEEP_RUNS } from "./job-validate";
+
+/**
+ * One job's run history, newest first.
+ *
+ * Gated on `manage_crons` and NOT on `view`, because stdout can contain anything
+ * the command printed - including whatever was in the job's environment.
+ */
+export async function listCronRuns(
+  jobId: string,
+  limit = 50,
+): Promise<CronRunDTO[]> {
+  await gateJob(jobId);
+  const rows = await getDb()
+    .select()
+    .from(cronRunsTable)
+    .where(eq(cronRunsTable.jobId, jobId))
+    .orderBy(desc(cronRunsTable.seq))
+    .limit(Math.min(Math.max(limit, 1), MAX_KEEP_RUNS));
+  return rows.map(toRunDTO);
+}
+
+/**
+ * Run a job now, outside its schedule. Honours the target's master switch: it
+ * means "no cron job runs here", and the UI hides this page when it is off - so an
+ * API caller must not be the one exception.
+ */
+export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
+  const { job, teamId, targetEnabled } = await gateJob(jobId);
+  if (!targetEnabled) {
+    throw new Error(
+      "Cron jobs are switched off here. Turn them on in Settings first.",
+    );
+  }
+  const user = await getCurrentUser();
+  const actor = user?.name ?? "Deplo";
+  const schedulable = await loadSchedulableJob(jobId);
+  if (!schedulable) throw new Error("Cron job not found");
+
+  const r = await runJobNow(schedulable, actor);
+  await recordActivity(
+    "cron",
+    `Ran cron job ${job.name}`,
+    actor,
+    job.appId,
+    teamId,
+    null,
+    job.databaseId,
+  );
+  // Re-read: startAttempt may already have settled it (a stopped container is a
+  // `skipped` run before this call returns), and the caller renders the outcome.
+  const rows = await getDb()
+    .select()
+    .from(cronRunsTable)
+    .where(eq(cronRunsTable.id, r.run.id))
+    .limit(1);
+  return toRunDTO(rows[0] ?? r.run);
+}
+
+/** Stop a run that is in flight. */
+export async function cancelCronRun(runId: string): Promise<void> {
+  const teamId = await requireActiveTeamId();
+  const r = await loadInFlightRun(runId);
+  if (!r || r.run.teamId !== teamId) throw new Error("Run not found");
+  await gateJob(r.job.id);
+  const user = await getCurrentUser();
+  const actor = user?.name ?? "Deplo";
+  await cancelRun(r, actor);
+  await recordActivity(
+    "cron",
+    `Stopped a run of cron job ${r.job.name}`,
+    actor,
+    r.job.appId,
+    teamId,
+    null,
+    r.job.databaseId,
+  );
+}

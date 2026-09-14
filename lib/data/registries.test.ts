@@ -5,17 +5,11 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { registries as registriesTable } from "../db/schema/control-plane";
+import { registries as registriesTable } from "../db/schema/control-plane/integrations";
 import { decryptSecret } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./leaf-test-helpers";
 import { addRegistry, deleteRegistry, listRegistries } from "./registries";
-
-/**
- * Data-layer tests for `registries` against pglite (PLAN Step 2). Verifies the
- * newest-first SQL sort, that the password is stored encrypted and never in the
- * DTO, and that delete is team-scoped.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -24,7 +18,6 @@ let realFetch: typeof globalThis.fetch;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // The credential check is a network call; every fixture here is a good one.
   realFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response(null, { status: 200 })) as typeof fetch;
@@ -40,7 +33,6 @@ beforeEach(async () => {
   await pg.exec(
     `truncate table registries, users, teams restart identity cascade;`,
   );
-  // Two owners: user_1 in alpha, user_2 in beta (for the cross-team delete check).
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -124,7 +116,6 @@ test("addRegistry validates required fields", async () => {
 
 test("a credential the registry refuses is never stored", async () => {
   const saved = globalThis.fetch;
-  // ghcr's shape: the probe challenges, the token realm denies.
   globalThis.fetch = (async (url: string | URL) =>
     String(url).endsWith("/v2/")
       ? new Response(null, {
@@ -154,7 +145,6 @@ test("a credential the registry refuses is never stored", async () => {
 });
 
 test("deleteRegistry removes only the active team's matching registry", async () => {
-  // user_2 (team B) adds one; user_1 (team A) must not be able to delete it.
   await runWithIdentity({ userId: "user_2", teamId: TEAM_B }, async () => {
     await addRegistry({
       name: "B-reg",

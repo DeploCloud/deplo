@@ -5,39 +5,24 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../crypto";
 import { assertSafeOutboundUrl } from "../outbound-url";
 import { getDb } from "../db/client";
-import {
-  instanceSettings,
-  pushSubscriptions,
-} from "../db/schema/control-plane";
+import { instanceSettings } from "../db/schema/control-plane/instance";
+import { pushSubscriptions } from "../db/schema/control-plane/notifications";
 import { nowIso } from "../ids";
 import type { AlertMessage } from "./channels";
 
-/**
- * Browser push (BETA). The VAPID keypair identifies THIS Deplo to every browser
- * push service, so it is instance-wide, one identity per panel, and it is minted
- * lazily the first time somebody opens the notification settings.
- */
-
 const SETTINGS_ID = "default";
 
-/**
- * How long one push service gets. Mirrors `CHANNEL_TIMEOUT_MS` by hand rather
- * than importing it: `dispatch` → `channels` → here, so reading it from the
- * dispatcher would close a require cycle.
- */
+// Mirrors `CHANNEL_TIMEOUT_MS` by hand: importing it would close a `dispatch` → `channels` cycle.
 const PUSH_TIMEOUT_MS = 5_000;
 
-/** What a browser hands back from `pushManager.subscribe()`. */
+// What a browser hands back from `pushManager.subscribe()`.
 export interface PushSubscriptionInput {
   endpoint: string;
   p256dh: string;
   auth: string;
 }
 
-/**
- * The instance's VAPID public key, minting the pair if this is the first time.
- * Public by definition - it ships to every browser that subscribes.
- */
+// The instance's VAPID public key, minting the pair if this is the first time.
 export async function ensureVapidKeys(): Promise<string> {
   const db = getDb();
   const existing = await db
@@ -50,8 +35,7 @@ export async function ensureVapidKeys(): Promise<string> {
   const webpush = await import("web-push");
   const keys = webpush.generateVAPIDKeys();
   const now = nowIso();
-  // Guarded by `IS NULL` so two boots that race settle on one keypair - the
-  // loser's read below picks up the winner's.
+  // Guarded by `IS NULL` so two boots that race settle on one keypair.
   await db
     .insert(instanceSettings)
     .values({
@@ -78,7 +62,7 @@ export async function ensureVapidKeys(): Promise<string> {
   return settled[0]?.publicKey ?? keys.publicKey;
 }
 
-/** Record a browser's subscription for this user in this team. Idempotent. */
+// Record a browser's subscription for this user in this team. Idempotent.
 export async function savePushSubscription(
   teamId: string,
   userId: string,
@@ -106,7 +90,7 @@ export async function savePushSubscription(
     });
 }
 
-/** Forget one browser. Scoped to the caller's own row, never anyone else's. */
+// Forget one browser. Scoped to the caller's own row, never anyone else's.
 export async function deletePushSubscription(
   teamId: string,
   userId: string,
@@ -123,11 +107,7 @@ export async function deletePushSubscription(
     );
 }
 
-/**
- * Push a message to a team's subscribed browsers (or one user's, when the caller
- * is testing their own device). Dead endpoints are pruned; everything else is
- * best-effort, because one browser refusing must not silence the rest.
- */
+// Push to a team's browsers, or one user's when testing; one browser refusing silences nothing.
 export async function sendWebPushTo(
   teamId: string,
   userId: string | null,
@@ -145,9 +125,7 @@ export async function sendWebPushTo(
           )
         : eq(pushSubscriptions.teamId, teamId),
     );
-  // A test goes to ONE person's devices and has to say when there are none;
-  // the team-wide fan-out stays silent, because a team with no subscriber is
-  // not a failure.
+  // A test goes to ONE person's devices and has to say when there are none; the fan-out stays silent.
   if (subs.length === 0) {
     if (userId)
       throw new Error(
@@ -172,8 +150,7 @@ export async function sendWebPushTo(
     throw new Error("Browser push is not set up on this instance");
 
   const webpush = await import("web-push");
-  // mailto: is what the push services want as a contact; the panel URL is not a valid
-  // VAPID subject.
+  // mailto: is what the push services want; a panel URL is not a valid VAPID subject.
   webpush.setVapidDetails("mailto:alerts@deplo.build", publicKey, privateKey);
 
   const payload = JSON.stringify({
@@ -184,16 +161,12 @@ export async function sendWebPushTo(
   const gone: string[] = [];
   const results = await Promise.allSettled(
     subs.map(async (s) => {
-      // Re-validate at the dial, like the other channels: the save-time guard ran
-      // on a different day, a subscription can predate it, and an endpoint host
-      // can rebind to an internal address after it was saved.
+      // Re-validated at the dial: a saved endpoint's host can rebind to an internal address.
       await assertSafeOutboundUrl(s.endpoint, "Push endpoint");
       return webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
         payload,
-        // web-push has no AbortSignal and no default deadline, so one endpoint
-        // that accepts the connection and never answers would hold the whole
-        // dispatch open. Its own socket timeout is what bounds this.
+        // web-push has no AbortSignal and no default deadline; its socket timeout is what bounds this.
         { timeout: PUSH_TIMEOUT_MS },
       );
     }),

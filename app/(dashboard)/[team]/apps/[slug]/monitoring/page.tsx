@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { getAppMetricsHistory } from "@/lib/data/container-metrics";
 import { hasAppCapability } from "@/lib/data/node-access";
-import { listServers } from "@/lib/data/servers";
+import { listServers } from "@/lib/data/servers/roster";
 import { isInstanceAdmin } from "@/lib/membership";
 import { serverLabel } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";

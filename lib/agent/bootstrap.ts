@@ -6,40 +6,32 @@ import { connect as tlsConnect } from "node:tls";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { randomToken, sha256Hex } from "../crypto";
 import { signAgentCsr, type SignedAgentCert } from "./pki";
-import type { Server } from "../types";
+import type { Server } from "../types/server";
 import { PUBLIC_URL_PLACEHOLDER } from "../public-url";
 import { isTestEnv } from "../db/pg";
 
-/**
- * The call-home bootstrap (PLAN Part B, P1-P4). Provisioning a remote server is
- * NOT an outbound SSH-in (the control plane never holds a server's root key,
- * ADR-0003 anti-pattern).
- */
+// Bootstrap is call-home, never an outbound SSH-in: the control plane never holds a server's root key (ADR-0003).
 
-/** The agent's gRPC listener port the control plane will dial after bootstrap. */
+// The agent's gRPC listener port the control plane will dial after bootstrap.
 export const DEFAULT_AGENT_PORT = 9443;
 
-/** Bootstrap tokens are short-lived (P2): far shorter than a registration link. */
-const BOOTSTRAP_TTL_MS = 60 * 60_000; // ~1 hour
+const BOOTSTRAP_TTL_MS = 60 * 60_000;
 
-/** A freshly minted bootstrap secret: the raw token (shown once) + what to store. */
+// A freshly minted bootstrap secret: the raw token (shown once) + what to store.
 export interface MintedBootstrap {
-  /** The raw one-time token - embedded in the install command, never stored. */
+  // The raw one-time token - embedded in the install command, never stored.
   rawToken: string;
-  /** sha256 of the token + its expiry - the only things persisted on the Server row. */
+  // sha256 of the token + its expiry - the only things persisted on the Server row.
   stored: { tokenHash: string; expiresAt: string; usedAt: null };
 }
 
-/** Mint a one-time bootstrap secret for a provisioning server (P2). */
+// Mint a one-time bootstrap secret for a provisioning server.
 export function mintBootstrap(): MintedBootstrap {
-  const rawToken = randomToken(32); // long + random
+  const rawToken = randomToken(32);
   return { rawToken, stored: storedBootstrapFor(rawToken) };
 }
 
-/**
- * The stored half of a bootstrap for a token the caller ALREADY holds, rather than
- * one minted here.
- */
+// The stored half of a bootstrap for a token the caller ALREADY holds, not one minted here.
 export function storedBootstrapFor(
   rawToken: string,
 ): MintedBootstrap["stored"] {
@@ -50,36 +42,19 @@ export function storedBootstrapFor(
   };
 }
 
-/**
- * Build the paste-on-the-server install command (P1). The fingerprint (when the
- * URL is HTTPS) lets the agent pin the control plane before sending the token
- * (P3).
- */
+// Build the paste-on-the-server install command; the fingerprint lets the agent pin the control plane before it sends the token.
 export function installCommand(opts: {
   baseUrl: string;
   rawToken: string;
-  /** sha256 cert fingerprint of the control plane's TLS cert, or "" for HTTP. */
+  // sha256 cert fingerprint of the control plane's TLS cert, or "" for HTTP.
   fingerprint: string;
-  /** True when curl cannot verify the panel's certificate, so the command has to
-   *  say so. The bootstrap itself is unaffected: it pins {@link fingerprint}. */
+  // True when curl cannot verify the panel's certificate; the bootstrap itself still pins the fingerprint.
   insecure?: boolean;
-  /**
-   * A server that only HOLDS BACKUPS: no Docker, no Traefik, no address pools, and
-   * a systemd unit with no `docker` group (which would otherwise refuse to start
-   * on a host that has none).
-   */
+  // Only HOLDS BACKUPS: no Docker, no Traefik, no address pools, and a systemd unit with no `docker` group (absent there, it would refuse to start).
   storageOnly?: boolean;
-  /**
-   * A server that only BUILDS: Docker and the address pools exactly as usual (it
-   * runs the whole build pipeline), but no Traefik - nothing is routed to a host
-   * that runs nothing.
-   */
+  // Only BUILDS: Docker and the address pools exactly as usual, but no Traefik.
   buildOnly?: boolean;
-  /**
-   * A server registered only to IMPORT from another platform: Docker is already
-   * there (it is that platform's host) and is never installed, no address pools
-   * are written, no Traefik, and not even the shared `deplo` network.
-   */
+  // Registered only to IMPORT from another platform: Docker is already there and never installed, no pools, no Traefik, no `deplo` network.
   importOnly?: boolean;
 }): string {
   const {
@@ -91,13 +66,9 @@ export function installCommand(opts: {
     buildOnly,
     importOnly,
   } = opts;
-  // Order: <token> <control-plane-url> [fingerprint]. The script forwards them
-  // to the agent's --bootstrap-* flags. Single-quoted so the shell treats them
-  // as literals (the token is base64url, the url/fingerprint are constrained).
+  // Argument order <token> <url> [fingerprint] is the install script's contract; single-quoted so the shell takes them literally.
   const fp = fingerprint ? ` '${fingerprint}'` : "";
-  // `sudo` does not forward the caller's environment, so the variable is set
-  // INSIDE the elevated shell - `DEPLO_STORAGE_ONLY=1 sudo bash` would silently
-  // install a normal agent.
+  // `sudo` drops the caller's environment, so the variable is set INSIDE the elevated shell - outside it, a normal agent installs silently.
   const env = importOnly
     ? "DEPLO_IMPORT_ONLY=1 "
     : storageOnly
@@ -105,18 +76,12 @@ export function installCommand(opts: {
       : buildOnly
         ? "DEPLO_BUILD_ONLY=1 "
         : "";
-  // Download THEN run, never `curl | bash`: a download that fails hands bash an
-  // empty script, which exits 0 - measured, an address that did not answer
-  // "installed" nothing and said nothing.
-  // `--output`, not `-o`: uBlock Origin's ClickFix filter drops a clipboard write
-  // matching `curl … -o … /tmp/ … &&` and the copy button still says "Copied".
+  // Download THEN run, never `curl | bash`: a failed download hands bash an empty script, which exits 0 and installs nothing silently.
+  // `--output`, not `-o`: uBlock Origin's ClickFix filter drops a clipboard write matching `curl … -o … /tmp/ … &&`.
   return `curl -${curlFlags(insecure)} '${baseUrl}/install-agent.sh' --output /tmp/deplo-agent-install.sh && sudo ${env}bash /tmp/deplo-agent-install.sh '${rawToken}' '${baseUrl}'${fp}`;
 }
 
-/**
- * Build the paste-on-the-server UNINSTALL command - the counterpart to {@link
- * installCommand}, handed to the operator when they remove a server.
- */
+// Build the paste-on-the-server UNINSTALL command, the counterpart to installCommand.
 export function uninstallCommand(opts: {
   baseUrl: string;
   insecure?: boolean;
@@ -124,21 +89,12 @@ export function uninstallCommand(opts: {
   return `curl -${curlFlags(opts.insecure)} '${opts.baseUrl}/uninstall.sh' --output /tmp/deplo-uninstall.sh && sudo bash /tmp/deplo-uninstall.sh --yes --agent-only`;
 }
 
-/**
- * `-k` only when the panel's own certificate does not verify - the generated
- * nip.io address, which no public CA issues for. Printing it always would teach
- * people to skip verification on an instance that has a real certificate.
- */
+// `-k` only when the panel's own cert does not verify (the generated nip.io host); printing it always teaches people to skip verification.
 function curlFlags(insecure?: boolean): string {
   return insecure ? "fsSLk" : "fsSL";
 }
 
-/**
- * Read the sha256 fingerprint of the cert the control plane's public URL serves.
- * Empty over plain HTTP, where the agent uses the HMAC path. Over HTTPS it THROWS
- * rather than answering empty: the agent refuses to start without a pinned
- * fingerprint, so a command minted without one is one that cannot work.
- */
+// Read the sha256 fingerprint of the cert the public URL serves: empty over HTTP (the agent's HMAC path), and over HTTPS it throws rather than answer empty.
 export async function controlPlaneCert(
   baseUrl: string,
 ): Promise<ControlPlaneCert> {
@@ -150,25 +106,17 @@ export async function controlPlaneCert(
     return none;
   }
   if (url.protocol !== "https:") return none;
-  // Nothing to dial: the instance does not know its own address yet, which is a
-  // different problem from a cert that cannot be read, and has its own answer.
+  // The instance does not know its own address yet: a different problem from a cert that cannot be read, with its own answer.
   if (baseUrl.replace(/\/+$/, "") === PUBLIC_URL_PLACEHOLDER) return none;
-  // Once more before giving up: this dials Deplo's own public address, which can
-  // sit behind a proxy that drops one connection in a while.
+  // Retried once: this dials Deplo's own public address, which can sit behind a proxy that drops a connection now and then.
   const first = await readCert(url);
   const cert = first.fingerprint ? first : await readCert(url);
-  // Nothing is dialable from a test worker, and every server a test registers
-  // would otherwise fail on an address that does not exist.
+  // Nothing is dialable from a test worker, so every server a test registers would fail on an address that does not exist.
   if (!isTestEnv()) assertPinnableFingerprint(url, cert.fingerprint);
   return cert;
 }
 
-/**
- * Refuse to mint a command that cannot work. The agent will not bootstrap against
- * an HTTPS control plane without a pinned fingerprint, so an empty one produces a
- * service in a restart loop behind a command that exited 0 and said it was
- * calling home.
- */
+// The agent will not bootstrap against HTTPS without a pinned fingerprint: an empty one leaves a restart loop behind a command that exited 0.
 export function assertPinnableFingerprint(url: URL, fingerprint: string): void {
   if (url.protocol !== "https:" || fingerprint) return;
   throw new Error(
@@ -176,13 +124,11 @@ export function assertPinnableFingerprint(url: URL, fingerprint: string): void {
   );
 }
 
-/** What one handshake with the panel's own address tells us. */
+// What one handshake with the panel's own address tells us.
 export type ControlPlaneCert = {
-  /** sha256 of the presented certificate, or "" when it could not be read. */
+  // sha256 of the presented certificate, or "" when it could not be read.
   fingerprint: string;
-  /** True only when a certificate was READ and a stock CA bundle rejected it, as
-   *  on the generated nip.io host. A handshake that failed outright leaves this
-   *  false: unknown must not print `-k` at somebody. */
+  // True only when a cert was READ and a stock CA bundle rejected it; a failed handshake stays false, since unknown must not print `-k`.
   insecure: boolean;
 };
 
@@ -194,10 +140,7 @@ function readCert(url: URL): Promise<ControlPlaneCert> {
         host: url.hostname,
         port,
         servername: url.hostname,
-        // We only want to READ the presented cert; we are not authenticating
-        // here (the agent does the pinning). Don't fail on an unknown CA
-        // (self-signed-on-IP is explicitly supported, P3) - `authorized` still
-        // reports what a stock client would have decided.
+        // Reading the cert, not authenticating (the agent pins): self-signed-on-IP is supported, and `authorized` still says what a stock client would decide.
         rejectUnauthorized: false,
         timeout: 5_000,
       },
@@ -220,7 +163,7 @@ function readCert(url: URL): Promise<ControlPlaneCert> {
   });
 }
 
-/** Why a bootstrap attempt was rejected - surfaced to the agent + the log. */
+// Why a bootstrap attempt was rejected - surfaced to the agent + the log.
 export type BootstrapRejection =
   "unknown-token" | "expired-token" | "already-used" | "bad-csr";
 
@@ -233,11 +176,7 @@ export class BootstrapError extends Error {
   }
 }
 
-/**
- * Find the provisioning server a raw bootstrap token belongs to. Validates the
- * token is known, unexpired, and unused - throwing a typed {@link BootstrapError}
- * otherwise.
- */
+// Find the provisioning server a raw bootstrap token belongs to: known, unexpired and unused, or a typed BootstrapError.
 export function findServerForToken(
   servers: Server[],
   rawToken: string,
@@ -262,10 +201,7 @@ export function findServerForToken(
   return server;
 }
 
-/**
- * Sign a calling-home agent's CSR for a server identified by its (already
- * validated) bootstrap token.
- */
+// Sign a calling-home agent's CSR for a server identified by its already-validated bootstrap token.
 export async function signBootstrapCsr(
   csrPem: string,
   dialHosts: string[],
@@ -280,16 +216,12 @@ export async function signBootstrapCsr(
   }
 }
 
-/**
- * HMAC-sign a bootstrap response body with the raw token (the HTTP trust path).
- * Keyed by the RAW token (a high-entropy secret), so a plain HMAC-SHA256 is
- * sufficient, no KDF needed.
- */
+// HMAC-sign a bootstrap response body with the raw token: a high-entropy key needs no KDF.
 export function signResponse(rawToken: string, body: string): string {
   return createHmac("sha256", rawToken).update(body).digest("hex");
 }
 
-/** Verify a response HMAC in constant time (used by tests + symmetry). */
+// Verify a response HMAC in constant time.
 export function verifyResponse(
   rawToken: string,
   body: string,

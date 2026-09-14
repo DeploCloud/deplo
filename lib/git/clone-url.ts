@@ -3,14 +3,9 @@ import "server-only";
 import { installationCloneUrl } from "../github/app";
 import { readGitCredential } from "../data/git-connections";
 import { assertSafeOutboundHost, assertSafeOutboundUrl } from "../outbound-url";
-import type { GitRepo } from "../types";
+import type { GitRepo } from "../types/build";
 
-/**
- * The outbound guard for a repository address the owning agent will clone AS
- * TYPED (no installation, no connection): http(s) and ssh/scp forms alike, so a
- * repository cannot be a way to dial the fleet's own addresses. Instance admins
- * may name a private host, as they may for a git connection.
- */
+// Outbound guard so a repository address cannot dial the fleet's own addresses, http(s) and ssh/scp alike; an instance admin may name a private host.
 export async function assertCloneTargetSafe(
   url: string,
   opts: { allowPrivate?: boolean } = {},
@@ -45,10 +40,7 @@ export async function assertCloneTargetSafe(
   throw new Error("The repository address must be an http(s) or ssh URL");
 }
 
-/**
- * The URL the deploy agent actually clones - the one place that decides how a
- * repository is authenticated.
- */
+// The URL the deploy agent actually clones - the one place that decides how a repository is authenticated.
 export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
   if (repo.installationId) {
     return installationCloneUrl(repo.url, repo.installationId);
@@ -62,9 +54,7 @@ export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
   try {
     parsed = new URL(repo.url);
   } catch {
-    // An scp-style remote (git@host:owner/repo.git) has nowhere to put basic
-    // auth. Hand it over untouched rather than mangling it: it either clones
-    // anonymously or fails with git's own message.
+    // An scp-style remote (git@host:owner/repo.git) has nowhere to put basic auth, so hand it over untouched.
     return repo.url;
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
@@ -78,18 +68,13 @@ export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
     return repo.url; // a connection with no parseable base URL earns no token
   }
   if (parsed.host.toLowerCase() !== connHost) return repo.url;
-  // The WHATWG URL serializer percent-encodes userinfo, so a token containing
-  // "@", ":" or "/" survives the round trip.
+  // The WHATWG URL serializer percent-encodes userinfo, so a token containing "@", ":" or "/" survives the round trip.
   parsed.username = cred.username;
   parsed.password = cred.token;
   return parsed.toString();
 }
 
-/**
- * The URL a pull request preview clones when the head lives in a FORK. Two things
- * this exists to get right, and both were wrong while
- * `app_previews.head_clone_url` was recorded and then never read: 1.
- */
+// The URL a pull request preview clones when the head lives in a FORK - `app_previews.head_clone_url` was once recorded and then never read.
 export function forkCloneUrl(
   baseRepoUrl: string,
   headCloneUrl: string,
@@ -123,11 +108,7 @@ export function forkCloneUrl(
   return `${head.protocol}//${head.host}${head.pathname}`;
 }
 
-/**
- * A repo URL with any credential stripped, safe to print in a deploy log or a
- * DTO. Deploy logs are readable by anyone with `view_logs`, which is a much
- * wider set than the people allowed to manage the connection.
- */
+// A repo URL with any credential stripped: deploy logs are readable at the `view_logs` floor, far wider than the people who manage the connection.
 export function redactCloneUrl(cloneUrl: string): string {
   try {
     const u = new URL(cloneUrl);

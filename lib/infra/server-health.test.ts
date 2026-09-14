@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
-import { AgentUnreachableError } from "./agent-client";
+import { AgentUnreachableError } from "./agent-client/errors";
 import {
   classifyServerHealth,
   isRetryableProbeFailure,
@@ -10,10 +10,6 @@ import {
   HEALTH_MESSAGES,
 } from "./server-health";
 import { ContractVersion, type HelloResponse } from "../agent/gen/agent";
-
-/**
- * The health classifier, tested without a socket.
- */
 
 function hello(over: Partial<HelloResponse> = {}): HelloResponse {
   return {
@@ -40,8 +36,6 @@ test("Docker unreachable is `warning`, not offline - the agent answered", () => 
 });
 
 test("Traefik being down is NOT a warning - a DB/worker host legitimately has none", () => {
-  // It has its own badge, and a status that fires on a normal configuration is a
-  // status operators learn to ignore.
   const h = classifyServerHealth(hello({ traefikRunning: false }), null);
   assert.equal(h.status, "online");
 });
@@ -76,9 +70,7 @@ test("a deadline overrun is offline, and says so specifically", () => {
 });
 
 test("a cert-pin mismatch is `error`, NEVER offline - the peer answered, it just isn't ours", () => {
-  // This is the case gRPC flattens into an opaque UNAVAILABLE. Reporting it as
-  // "offline" would send an operator to check a host that is up, and would bury what
-  // may be a MITM or a half-finished re-provision.
+  // gRPC flattens this into an opaque UNAVAILABLE; "offline" would bury a MITM or a half-done re-provision.
   const err = new AgentUnreachableError(
     "agent cert fingerprint mismatch: pinned abc123, got def456",
     GrpcStatus.UNAVAILABLE,
@@ -143,8 +135,6 @@ test("the persisted message NEVER leaks the pinned fingerprint or the dial addre
 });
 
 test("only a transport failure is worth a confirming retry", () => {
-  // A blip deserves a second look; a trust failure or an application error is a stable
-  // fact that a retry would only confirm more slowly.
   assert.equal(
     isRetryableProbeFailure(
       new AgentUnreachableError("blip", GrpcStatus.UNAVAILABLE),
@@ -159,10 +149,6 @@ test("only a transport failure is worth a confirming retry", () => {
   );
   assert.equal(isRetryableProbeFailure(new Error("app error")), false);
 });
-
-/* ------------------------------------------------------------------ */
-/* The sentence every FEATURE shows when its host did not answer       */
-/* ------------------------------------------------------------------ */
 
 test("a dead host is named as unreachable, not masked into a generic failure", () => {
   const msg = unreachableMessage(
@@ -198,7 +184,6 @@ test("a timeout, a trust failure and an expired certificate each get their own w
 });
 
 test("our own throw sites keep their copy, and other errors are left alone", () => {
-  // No gRPC code: written at the throw site, already safe and more specific.
   assert.equal(
     unreachableMessage(
       new AgentUnreachableError("server eu-1 is not provisioned"),

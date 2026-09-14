@@ -1,23 +1,27 @@
 import { builder } from "../builder";
+import type {
+  CronJobDTO,
+  CronJobsView,
+  CronRunDTO,
+} from "@/lib/data/crons/dto";
 import {
-  cancelCronRun,
   createCronJob,
   deleteCronJob,
-  listAppCronJobs,
-  listCronRuns,
-  listDatabaseCronJobs,
-  runCronJobNow,
   setCronEnabled,
   updateCronJob,
-  type CronJobDTO,
-  type CronJobsView,
-  type CronRunDTO,
-} from "@/lib/data/crons";
-import type { CronTargetKind } from "@/lib/types";
+} from "@/lib/data/crons/job-crud";
+import {
+  listAppCronJobs,
+  listDatabaseCronJobs,
+} from "@/lib/data/crons/listing";
+import {
+  cancelCronRun,
+  listCronRuns,
+  runCronJobNow,
+} from "@/lib/data/crons/runs";
+import type { CronTargetKind } from "@/lib/types/cron";
 
-/* ------------------------------------------------------------------ */
-/* Object types - cron jobs (ADR-0018)                                 */
-/* ------------------------------------------------------------------ */
+// Cron jobs are agent-tracked container execs (ADR-0018).
 
 export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
   description:
@@ -157,10 +161,6 @@ export const CronJobsViewRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const CronEnvInput = builder.inputType("CronJobEnvInput", {
   description:
     "One extra variable for a job. The value is encrypted at rest and reaches " +
@@ -214,12 +214,8 @@ const CronJobInputRef = builder.inputType("CronJobInput", {
   }),
 });
 
-/* ------------------------------------------------------------------ */
-/* Queries + mutations                                                 */
-/* ------------------------------------------------------------------ */
-
-// A pre-check only. The real boundary is `manage_crons` (plus, for a database,
-// `open_database_console`) inside lib/data/crons.ts.
+// A pre-check only; the real gate is `manage_crons` (plus `open_database_console`
+// for a database) inside lib/data/crons/gates.ts.
 const cronScope = { capability: "manage_crons" } as const;
 
 builder.queryFields((t) => ({

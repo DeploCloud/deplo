@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import type { DeploymentRow } from "./deployments-table/deployment-row";
 import {
   matchesDateWindow,
   searchHaystack,
-  type DeploymentRow,
-} from "./deployments-table";
+} from "./deployments-table/use-deployment-filters";
 
 const row: DeploymentRow = {
   id: "dep_abc123",

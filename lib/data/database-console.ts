@@ -5,16 +5,16 @@ import {
   requireActiveTeamId,
   requireCapability,
 } from "../membership";
-import { loadDatabaseForTeam } from "./databases";
-import {
-  connectAgent,
-  serverSupports,
-  AgentUnreachableError,
-  LOGS_TIMERANGE_CAPABILITY,
-  type AgentConnection,
-  type AgentConsoleInstance,
-} from "../infra/agent-client";
-import { logMaxDays } from "./instance-settings";
+import { loadDatabaseForTeam } from "./databases/rows";
+import { connectAgent } from "../infra/agent-client/connect";
+import type {
+  AgentConnection,
+  AgentConsoleInstance,
+} from "../infra/agent-client/connection";
+import { AgentUnreachableError } from "../infra/agent-client/errors";
+import { LOGS_TIMERANGE_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import { serverSupports } from "../infra/agent-client/preflight";
+import { logMaxDays } from "./instance-settings/settings-store";
 import { effectiveDatabaseImage } from "../deploy/database-compose";
 import { isDockerLevelStderr } from "../infra/docker";
 import type {
@@ -24,25 +24,12 @@ import type {
   LogsInfo,
   RuntimeContainer,
 } from "./console";
-import type { Database } from "../types";
+import type { Database } from "../types/database";
 
-/**
- * The database twin of `lib/data/console.ts` - runtime truth (and, in later steps,
- * console/logs seams) for a DATABASE container.
- */
-
-/**
- * Same burst-absorbing TTL as the app runtime probe: the detail header and the
- * storage cards can poll the same database concurrently.
- */
 const RUNTIME_TTL_MS = 3_000;
 const runtimeCache = new Map<string, { at: number; value: AppRuntime }>();
 
-/**
- * Live container truth for one database, team-scoped. Null = not found (not
- * "no containers" - that's `total: 0` with `unreachable: false`). Identical
- * shape to an app's runtime (a database is a single-container stack).
- */
+// getDatabaseRuntime - live container truth for one database; null = not found.
 export async function getDatabaseRuntime(
   id: string,
 ): Promise<AppRuntime | null> {
@@ -77,8 +64,6 @@ async function probeRuntime(db: Database): Promise<AppRuntime> {
       running: i.running,
       exposed: i.exposed,
     }));
-    // A database declares exactly one service, named after its host slug. No
-    // container for it = missing - the state `docker ps` can't show.
     const present = new Set(containers.map((c) => c.service));
     const missing = [db.host].filter((s) => !present.has(s));
 
@@ -112,11 +97,6 @@ function unknownDatabaseRuntime(): AppRuntime {
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* Console / logs seams                                                 */
-/* ------------------------------------------------------------------ */
-
-/** The database's 0-or-1 attachable containers, straight from the owning agent. */
 async function listDatabaseInstances(db: Database): Promise<ConsoleInstance[]> {
   const conn = await connectAgent(db.serverId);
   try {
@@ -131,11 +111,6 @@ async function listDatabaseInstances(db: Database): Promise<ConsoleInstance[]> {
   }
 }
 
-/**
- * The honest not-running placeholder for a page render when the real list can't be
- * obtained (unreachable agent, or zero containers - including a pre-labels
- * container the agent can't see).
- */
 function displayFallback(db: Database): ConsoleInstance {
   return {
     name: db.host,
@@ -176,7 +151,7 @@ async function listForDisplay(db: Database): Promise<{
   }
 }
 
-/** Console page info for a database - same shape as an app's ConsoleInfo. */
+// getDatabaseConsoleInfo - console page info, same shape as an app's ConsoleInfo.
 export async function getDatabaseConsoleInfo(
   id: string,
 ): Promise<ConsoleInfo | null> {
@@ -193,16 +168,14 @@ export async function getDatabaseConsoleInfo(
   };
 }
 
-/** Logs page info for a database - same shape as an app's LogsInfo. */
+// getDatabaseLogsInfo - logs page info, same shape as an app's LogsInfo.
 export async function getDatabaseLogsInfo(
   id: string,
 ): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return null;
-  // Same `view_logs` gate as an app's viewer - a database's log is where its
-  // connection errors (and their DSNs) come out. Team-level: a database has no
-  // folder to grant on.
+  // A database's log leaks connection errors and their DSNs, so it takes `view_logs`.
   if (!(await hasCapability("view_logs"))) return null;
   const [found, supportsTimeline, maxDays] = await Promise.all([
     listForDisplay(db),
@@ -219,8 +192,7 @@ export async function getDatabaseLogsInfo(
   };
 }
 
-/** The container's shell label for the console banner ("/bin/sh", "bash", or
- *  "raw exec (no shell)"). Degrades to raw when stopped/unreachable. */
+// getDatabaseShellLabel - the container's shell label for the console banner.
 export async function getDatabaseShellLabel(id: string): Promise<string> {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
@@ -239,9 +211,7 @@ export async function getDatabaseShellLabel(id: string): Promise<string> {
   }
 }
 
-/**
- * Authorise an attach and resolve the real container.
- */
+// resolveDatabaseAttachTarget - authorise an attach and resolve the container.
 export async function resolveDatabaseAttachTarget(
   id: string,
   target?: string,
@@ -264,8 +234,7 @@ export async function resolveDatabaseAttachTarget(
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  // Never trust a raw name from the client - the target must belong to this
-  // database's stack.
+  // Never trust a raw name from the client - the target must be in this stack.
   const pick = target
     ? instances.find((i) => i.name === target)
     : (instances.find((i) => i.running) ?? instances[0]);
@@ -274,11 +243,8 @@ export async function resolveDatabaseAttachTarget(
   return { ok: true, instance: pick, serverId: db.serverId };
 }
 
-/**
- * Authorise a logs stream and resolve the container. Gated on `view_logs`
- * (parity with app logs - a member who may read logs still never types into the
- * engine). Does NOT refuse a stopped container: `docker logs` still has its output.
- */
+// resolveDatabaseLogsTarget - authorise a logs stream and resolve the container.
+// Does NOT refuse a stopped container: `docker logs` still has its output.
 export async function resolveDatabaseLogsTarget(
   id: string,
   target?: string,
@@ -309,9 +275,7 @@ export async function resolveDatabaseLogsTarget(
   return { ok: true, instance: pick, serverId: db.serverId };
 }
 
-/**
- * Run one console line inside the database container.
- */
+// execInDatabase - run one console line inside the database container.
 export async function execInDatabase(
   id: string,
   rawCommand: string,

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
-import type { TeamRoleDTO } from "@/lib/data/roles";
+import type { TeamRoleDTO } from "@/lib/data/roles/role-list";
 
 const ROLE_ICON: Record<string, LucideIcon> = {
   owner: Crown,
@@ -22,11 +22,7 @@ const ROLE_ICON: Record<string, LucideIcon> = {
   viewer: Eye,
 };
 
-/**
- * Pick the role a member holds. One decision, not a capability grid - what a role
- * grants is defined once in Settings. A member predating roles holds a hand-picked
- * "Custom" set, shown as its own row; picking any role replaces it.
- */
+// RoleSelect picks the role a member holds; a hand-picked set shows as "Custom" and any role replaces it.
 export function RoleSelect({
   roles,
   value,
@@ -37,9 +33,8 @@ export function RoleSelect({
   roles: TeamRoleDTO[];
   value: string | null;
   onChange: (roleId: string) => void;
-  /** Offer the Owner role. Only an owner may hand out the owner rank. */
+  // Only an owner may hand out the owner rank.
   canAssignOwner?: boolean;
-  /** The member currently holds a hand-picked set that belongs to no role. */
   isCustom?: boolean;
 }) {
   const visible = roles.filter(

@@ -3,11 +3,10 @@
 import * as React from "react";
 import { CircleX, TriangleAlert, Info, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { LintDiagnostic, LintSeverity } from "@/lib/deploy/compose-lint";
-
-/**
- * Compact summary of the compose linter's diagnostics, shown under the editor.
- */
+import type {
+  LintDiagnostic,
+  LintSeverity,
+} from "@/lib/deploy/compose-lint/lint";
 
 const META: Record<
   LintSeverity,

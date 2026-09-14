@@ -13,23 +13,15 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { eq } from "drizzle-orm";
 
-import {
-  activities,
-  appMounts,
-  domains as domainsTable,
-  envVars as envVarsTable,
-} from "../db/schema/control-plane";
+import { activities } from "../db/schema/control-plane/activity";
+import { appMounts } from "../db/schema/control-plane/apps";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
+import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
 import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
-import { createApp, composeNameClashes } from "./apps";
+import { createApp, composeNameClashes } from "./apps/create";
 import { loadAppGraph } from "./app-graph-load";
-
-/**
- * The names a stack answers to on its network are minted here: the slug becomes
- * `deplo-<slug>` on the host (ADR-0029), and the compose service names have to be
- * free on the network the app lands on.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -64,14 +56,11 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** A plain member: no instance admin, and no grant to reach the server. */
 const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: "member_1", teamId: TEAM_A }, fn);
 
 test("an app named after the proxy keeps its name and takes another deploy key", async () => {
-  // `deplo-traefik` is the proxy's own container and its DNS name on every tenant
-  // network, so the slug is taken like any other: the deploy used to die with a
-  // container-name conflict nobody outside Docker can read.
+  // `deplo-traefik` is the proxy's own DNS name on every tenant network, so the slug is taken.
   const app = await asUser1(() =>
     createApp({
       name: "Traefik",
@@ -87,9 +76,7 @@ test("an app named after the proxy keeps its name and takes another deploy key",
 });
 
 test("two creates racing for one service name: exactly one takes it", async () => {
-  // The check and the insert are two statements, and the names live inside a
-  // compose file where no unique constraint can catch them - so they run under one
-  // lock, or both reads see `db` free and both stacks claim it on the network.
+  // The check and the insert are two statements, so they run under one lock.
   const compose = "services:\n  db:\n    image: postgres:16\n";
   const results = await Promise.allSettled([
     asUser1(() =>
@@ -122,9 +109,6 @@ test("two creates racing for one service name: exactly one takes it", async () =
 });
 
 test("`privileged: yes` asks for the host grant, exactly like `true`", () => {
-  // End to end, through the real create: the gate reads what compose reads, so the
-  // member with no host grant is refused instead of landing a privileged container
-  // on a shared machine.
   const compose = "services:\n  a:\n    image: alpine\n    privileged: yes\n";
   return assert.rejects(
     () =>
@@ -188,10 +172,6 @@ const GENERATED_STACK = `services:
 `;
 
 test("a generated stack is renamed around a taken name, and what named the service follows", async () => {
-  // Installing the same template twice in one Environment is the ordinary case,
-  // and refusing the second install lost the whole app. A compose Deplo generated
-  // is rewritten instead, the way the import already does it - and the primary
-  // route, the extra domain, the env and the config file move with the service.
   await asUser1(() =>
     createApp({
       name: "first",
@@ -257,7 +237,6 @@ test("a generated stack is renamed around a taken name, and what named the servi
   assert.equal(env.URL, "postgres://db-2:5432/x");
   assert.equal(env.POSTGRES_DB, "db", "a database NAME is not a hostname");
 
-  // The trail says it happened, or the compose reads as if the user wrote it so.
   const trail = await db
     .select({ message: activities.message })
     .from(activities)
@@ -288,8 +267,6 @@ test("a generated stack nothing contests is left byte-identical", async () => {
 });
 
 test("composeNameClashes says what createApp would refuse, and the name it would use", async () => {
-  // The wizard asks this BEFORE creating, so a taken name is a dialog with a
-  // rename on it rather than a refusal to read. Same rule, same free name.
   assert.deepEqual(
     await asUser1(() => composeNameClashes({ compose: GENERATED_STACK })),
     [],
@@ -311,7 +288,6 @@ test("composeNameClashes says what createApp would refuse, and the name it would
     { name: "db", owner: "first", renamedTo: "db-2" },
     { name: "web", owner: "first", renamedTo: "web-2" },
   ]);
-  // And `db-2` is what the rename then really produces, so the dialog told the truth.
   const second = await asUser1(() =>
     createApp({
       name: "second",
@@ -323,7 +299,6 @@ test("composeNameClashes says what createApp would refuse, and the name it would
     }),
   );
   assert.match((await loadAppGraph(second.id))!.compose!, /^  db-2:/m);
-  // A third copy skips the taken `-2` too - said, and then done.
   assert.deepEqual(
     (await asUser1(() => composeNameClashes({ compose: GENERATED_STACK }))).map(
       (c) => c.renamedTo,

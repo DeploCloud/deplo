@@ -1,5 +1,5 @@
 import type { RuntimeSnapshot } from "@/lib/apps/display-status";
-import type { AppStatus } from "@/lib/types";
+import type { AppStatus } from "@/lib/types/app";
 
 export type OverviewRuntimeView = RuntimeSnapshot & {
   maxRestartCount: number;
