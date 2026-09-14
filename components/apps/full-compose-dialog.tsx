@@ -16,10 +16,6 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/**
- * CodeMirror is ~40KB and this dialog is rarely opened, so it stays out of the
- * Deployment page's bundle. Same reasoning as `storage-file-editor.tsx`.
- */
 const TextEditor = dynamic(
   () => import("./text-editor").then((m) => m.TextEditor),
   {
@@ -30,18 +26,13 @@ const TextEditor = dynamic(
   },
 );
 
-/**
- * Shows the full Deplo-generated compose stack - the augmented YAML that `docker
- * compose` actually runs (Traefik + Deplo labels, the injected `deplo` network,
- * absolute mount paths), as opposed to the clean source the user authors in the
- */
+// FullComposeDialog - shows the full Deplo-generated compose stack that runs on the host.
 export function FullComposeDialog({ appId }: { appId: string }) {
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [yaml, setYaml] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  // Re-fetch each open: the rendered stack depends on the saved compose and the
-  // current domain set, both of which can change between opens.
+  // Re-fetch on every open: the render follows the saved compose and the current domains.
   function onOpenChange(next: boolean) {
     setOpen(next);
     if (!next) return;

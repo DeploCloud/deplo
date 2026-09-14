@@ -6,11 +6,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * RFC 9728, resource-suffixed form - the path a client derives from the resource
- * URL `<base>/api/mcp`, and the one `/api/mcp`'s `WWW-Authenticate` points at.
- * Same document as the bare path above it.
- */
+// RFC 9728 resource-suffixed form: the path a client derives from `<base>/api/mcp`, and the one `/api/mcp`'s `WWW-Authenticate` points at.
 export function GET() {
   return protectedResourceResponse();
 }

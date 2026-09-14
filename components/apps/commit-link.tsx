@@ -3,11 +3,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-/**
- * The short commit SHA. When the app deploys from a GitHub source we know the
- * repo, so it links to that exact commit on GitHub (opened in a new tab);
- * otherwise (non-GitHub source, or no commit) it renders as plain monospace text.
- */
+// CommitLink - the short commit SHA, linked to GitHub when the source is a repo.
 export function CommitLink({
   sha,
   url,
@@ -15,10 +11,8 @@ export function CommitLink({
   length = 7,
 }: {
   sha: string;
-  /** The GitHub commit URL, or null when the source isn't a GitHub repo. */
   url: string | null;
   className?: string;
-  /** How many leading SHA chars to show (matches the long-standing 7). */
   length?: number;
 }) {
   const short = (sha ?? "").slice(0, length);

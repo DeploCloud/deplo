@@ -8,11 +8,8 @@ import {
   type PasskeyDTO,
 } from "@/lib/data/passkeys";
 
-/**
- * The CURRENT account's passkeys. Registration is TWO round trips because WebAuthn
- * is: the browser needs a challenge before it can talk to the authenticator, and
- * the authenticator's answer means nothing without the challenge it replies to.
- */
+// Registration is TWO round trips because WebAuthn is: the browser needs a challenge
+// first, and the authenticator's answer means nothing without the challenge it replies to.
 
 const PasskeyKindEnum = builder.enumType("PasskeyKind", {
   description:

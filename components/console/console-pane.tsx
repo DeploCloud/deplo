@@ -47,8 +47,6 @@ import type { ConsoleInstance } from "@/lib/data/console";
 import { cn } from "@/lib/utils";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/** How each entered line is executed. "auto" is a raw exec - the first word is
- *  the binary. "sh"/"bash" wrap the line so pipes, redirects and builtins work. */
 type Shell = "auto" | "sh" | "bash";
 
 const SHELLS: { value: Shell; label: string }[] = [
@@ -60,11 +58,7 @@ const SHELLS: { value: Shell; label: string }[] = [
 const DISTROLESS_NOTE =
   "! No shell in this container. Commands run as raw exec: the first word is the binary, the rest are literal arguments - no pipes, globbing, redirects or builtins.";
 
-/**
- * `exit`, `logout` and `clear` never reach the container - the data layer
- * answers them. Wrapping one in `sh -lc` hides it from that check, which is how
- * picking a shell in the database console quietly broke `exit`.
- */
+// The data layer answers these, never the container; wrapping one in `sh -lc` hid it from that check and broke `exit`.
 const CONTROL_WORDS = new Set(["exit", "logout", "clear"]);
 
 function wrapForShell(line: string, shell: Shell): string {
@@ -79,10 +73,7 @@ const ATTACH_LABEL: Record<AttachStatus, string> = {
   error: "attach failed",
 };
 
-/**
- * The one console: an App's container and a database's are the same pane. What
- * differs is passed in, not branched on - the exec mutation, the attach endpoint,
- * the shell probe, the container count. */
+// ConsolePane - the one console: an App's container and a database's are the same pane, what differs is passed in.
 export function ConsolePane({
   id,
   title,
@@ -92,25 +83,20 @@ export function ConsolePane({
   exec,
   probeShell,
 }: {
-  /** App id or database id - whatever the exec/attach endpoints key on. */
+  // App id or database id - whatever the exec/attach endpoints key on, despite the appId field name.
   id: string;
-  /** What this console belongs to, and the way back to it. */
   title: PaneTitle;
-  /** Containers that can be reached. One for a database, one per compose
-   *  service for an App (the App's own first). */
+  // One per compose service for an App, the App's own first; one for a database.
   instances: ConsoleInstance[];
-  /** Which one opens first - the container the server picked. */
   initialName: string;
-  /** Attach endpoint override; defaults to the App route for `id`. */
+  // Attach endpoint override; defaults to the App route for `id`, so a database must pass one.
   attachBase?: string;
-  /** Exec override; defaults to the App's `execConsole` mutation. Must be
-   *  referentially stable (the caller wraps it in `useCallback`). */
+  // Must be referentially stable - it is a useCallback dep.
   exec?: (
     command: string,
     containerName: string,
   ) => Promise<ActionResult<{ output: string; detach?: boolean }>>;
-  /** Resolve a container's shell label - only ever feeds the distroless note.
-   *  Stable, for the same reason as `exec`. */
+  // Stable for the same reason as `exec` - it is a useEffect dep.
   probeShell: (containerName: string) => Promise<string | null>;
 }) {
   const [active, setActive] = React.useState(
@@ -120,12 +106,9 @@ export function ConsolePane({
   const [mode, setMode] = React.useState<"exec" | "attach">("exec");
   const [attachStatus, setAttachStatus] =
     React.useState<AttachStatus>("connecting");
-  // Handed up by whichever terminal is mounted; drives Clear/Copy/Download.
   const [controls, setControls] = React.useState<ConsoleControls | null>(null);
 
-  // The shell label of the ACTIVE container, re-probed on every switch - the note
-  // used to reflect the container the page opened on and then lie about every other
-  // one in the stack.
+  // Re-probed on every switch: the note used to keep the opening container's label and lie about the rest of the stack.
   const [probed, setProbed] = React.useState<{
     name: string;
     label: string | null;
@@ -147,21 +130,18 @@ export function ConsolePane({
     const next = instances.find((i) => i.name === name);
     if (!next || next.name === active.name) return;
     setActive(next);
-    // Attach is per-container: land on the shell rather than silently
-    // re-attaching to a different process than the one being watched.
+    // Attach is per-container: land on the shell rather than silently attach to a different process.
     setMode("exec");
     setControls(null);
   }
 
   function switchMode(next: string) {
     setMode(next as "exec" | "attach");
-    // The old terminal unmounts; its Clear/Copy handles go with it, and the new
-    // one publishes its own on mount.
+    // The old terminal unmounts and takes its handles with it; the new one publishes on mount.
     setControls(null);
   }
 
-  // Each line is a separate exec, so a `cd` never sticks - showing a live cwd
-  // would imply a session that does not exist. user@service is verifiable.
+  // Each line is a separate exec, so a `cd` never sticks - a live cwd would imply a session that does not exist.
   const prompt = `${active.user}@${active.service}$`;
 
   const runLine = React.useCallback(
@@ -192,16 +172,12 @@ export function ConsolePane({
       onValueChange={switchMode}
       className="flex min-h-0 flex-1 flex-col"
     >
-      {/* One toolbar row, wrapping on narrow viewports. Everything beside a
-          Select in it is h-9: `size="sm"` is h-8 and lands 4px short, which
-          reads as a broken row. */}
+      {/* Everything beside a Select here is h-9: `size="sm"` is h-8 and lands 4px short, which reads as a broken row. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <TerminalSquare className="size-4 shrink-0 text-muted-foreground" />
         <PaneTitleLink title={title} />
 
-        {/* Where the commands land. The workdir and the image ride the tooltip:
-            they are read once, and a permanent metadata line pushed the actions
-            onto a second row on any viewport narrower than a desktop. */}
+        {/* Workdir and image ride the tooltip: a permanent metadata line pushed the actions onto a second row below desktop width. */}
         <SimpleTooltip
           content={`${active.name} · workdir ${active.workdir} · ${active.image}`}
         >
@@ -243,8 +219,7 @@ export function ConsolePane({
           )}
         </SimpleTooltip>
 
-        {/* One status, whichever terminal is showing: the container's own state
-            in Shell, the stream's in Attach. */}
+        {/* One status for both modes: the container's state in Shell, the stream's in Attach. */}
         <ConsoleStatus
           label={
             mode === "attach"
@@ -288,8 +263,7 @@ export function ConsolePane({
           </SimpleTooltip>
         ) : null}
 
-        {/* Two modes, both labels readable at all times - this was one button
-            that swapped its own label, so it never said where you were. */}
+        {/* Both labels stay readable: one button swapping its own label never said where you were. */}
         <TabsList className="h-9 gap-0 rounded-lg border border-border bg-background/60 p-1">
           <TabsTrigger
             value="exec"
@@ -305,8 +279,7 @@ export function ConsolePane({
                 : "The container isn't running, so there's no process to attach to."
             }
           >
-            {/* A disabled trigger takes no pointer events, so the tooltip needs
-                a wrapper that still does. */}
+            {/* A disabled trigger takes no pointer events, so the tooltip needs a wrapper that still does. */}
             <span className="inline-flex">
               <TabsTrigger
                 value="attach"
@@ -353,8 +326,7 @@ export function ConsolePane({
         className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-0"
       >
         <ExecTerminal
-          // Remounted per container AND per shell: the banner and the prompt are
-          // fixed for the life of a mount.
+          // Remounted per container AND per shell: banner and prompt are fixed for the life of a mount.
           key={`${active.name}:${shell}`}
           prompt={prompt}
           banner={[
@@ -385,11 +357,7 @@ export function ConsolePane({
   );
 }
 
-/**
- * The pane when there is no container to open - stopped, or still starting. It
- * keeps the toolbar's first row, because on a full-bleed route that link is the
- * only thing on screen saying which App this is and the only way back to it.
- */
+// ConsoleEmpty - no container to open; keeps the toolbar link, the only way back on a full-bleed route.
 export function ConsoleEmpty({
   title,
   children,
@@ -410,7 +378,6 @@ export function ConsoleEmpty({
   );
 }
 
-/** The toolbar's one dot-and-word status, shared by both modes. */
 function ConsoleStatus({
   label,
   tone,
@@ -447,15 +414,11 @@ function ConsoleStatus({
   );
 }
 
-/**
- * The first-visit warning, once per person and not per App: a modal that holds
- * the terminal until it is answered, because the keystrokes past it are real.
- */
+// The ack is per person, not per App, and the modal holds the terminal until it is answered.
 function ConsoleWarningGate({ href }: { href: string }) {
   const acknowledged = useConsoleAck();
   const router = useRouter();
-  // null = undecided (server render / hydration) - stay shut rather than
-  // flashing a warning at someone who dismissed it months ago.
+  // null = undecided (server render / hydration) - stay shut rather than flash at someone who dismissed it months ago.
   if (acknowledged !== false) return null;
 
   return (

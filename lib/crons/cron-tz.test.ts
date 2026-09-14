@@ -11,7 +11,6 @@ import {
   zoneParts,
 } from "./cron-tz";
 
-/** Every UTC minute in `[from, to)`, the shape the scheduler's tick sees. */
 function minutes(fromIso: string, toIso: string): Date[] {
   const out: Date[] = [];
   for (let t = Date.parse(fromIso); t < Date.parse(toIso); t += 60_000) {
@@ -33,8 +32,7 @@ test("reads the wall clock of the zone, not of the host", () => {
 });
 
 test("midnight is hour 0, not hour 24", () => {
-  // The `hourCycle: "h23"` guard. Without it en-US formats midnight as "24" and
-  // `0 0 * * *` never fires - silently, once a day, in every zone.
+  // The `hourCycle: "h23"` guard: without it en-US formats midnight as "24" and `0 0 * * *` never fires.
   assert.equal(zoneParts(new Date("2026-03-10T00:00:00Z"), "UTC").H, 0);
   assert.equal(
     firesAt(
@@ -61,8 +59,7 @@ test("a daily schedule fires on the zone's clock", () => {
 });
 
 test("day-of-week is the zone's day", () => {
-  // 2026-07-13 is a Monday. 23:30 UTC on Sunday the 12th is already Monday
-  // 01:30 in Rome, so a Monday schedule must fire there and NOT 24h later.
+  // 23:30 UTC on Sunday 12 July is already Monday 01:30 in Rome, so a Monday schedule must fire there and NOT 24h later.
   assert.equal(
     cronMatchesInZone(
       "30 1 * * 1",
@@ -79,8 +76,7 @@ test("day-of-week is the zone's day", () => {
 });
 
 test("spring forward: an hour-pinned job inside the skipped hour does not run", () => {
-  // Europe/Rome jumps 02:00 -> 03:00 on 2026-03-29. Wall-clock 02:30 does not
-  // exist that day, so the schedule matches no instant. Documented in ADR-0018.
+  // Europe/Rome jumps 02:00 -> 03:00 on 2026-03-29, so wall-clock 02:30 matches no instant (ADR-0018).
   const fires = firesAt(
     "30 2 * * *",
     "Europe/Rome",
@@ -88,7 +84,7 @@ test("spring forward: an hour-pinned job inside the skipped hour does not run", 
     "2026-03-30T00:00:00Z",
   );
   assert.equal(fires.length, 0);
-  // The day before and the day after are unaffected.
+  // The day before and the day after are unaffected: only the deleted hour is skipped.
   assert.equal(
     firesAt(
       "30 2 * * *",
@@ -101,8 +97,7 @@ test("spring forward: an hour-pinned job inside the skipped hour does not run", 
 });
 
 test("fall back: an hour-pinned job matches twice but dedupes to one fire", () => {
-  // Europe/Rome falls back 03:00 -> 02:00 on 2026-10-25: wall-clock 02:30
-  // happens at 00:30Z and again at 01:30Z.
+  // Europe/Rome falls back 03:00 -> 02:00 on 2026-10-25: wall-clock 02:30 happens at 00:30Z and again at 01:30Z.
   const matched = firesAt(
     "30 2 * * *",
     "Europe/Rome",
@@ -119,8 +114,7 @@ test("fall back: an hour-pinned job matches twice but dedupes to one fire", () =
 });
 
 test("fall back: an interval job keeps all 24 hours of fires", () => {
-  // The same day is 25 real hours long, and "every 5 minutes" means every five
-  // minutes.
+  // The same day is 25 real hours long, and "every 5 minutes" means every five minutes.
   const inRepeat = firesAt(
     "*/5 * * * *",
     "Europe/Rome",
@@ -172,8 +166,7 @@ test("dedupe keys are stable and zone-qualified", () => {
 });
 
 test("southern hemisphere: the shift runs the other way", () => {
-  // Australia/Sydney springs forward on 2026-10-04 (02:00 -> 03:00), months
-  // after the northern zones and in the opposite season.
+  // Australia/Sydney springs forward on 2026-10-04 (02:00 -> 03:00), months after the northern zones.
   assert.equal(
     firesAt(
       "30 2 * * *",
@@ -197,8 +190,7 @@ test("nextCronRunInZone lands on the right instant", () => {
 });
 
 test("nextCronRunInZone skips a wall clock DST removes", () => {
-  // Asked on 2026-03-28, the next 02:30 Rome is NOT the 29th (it does not exist)
-  // but the 30th.
+  // Asked on 2026-03-28, the next 02:30 Rome is NOT the 29th (it does not exist) but the 30th.
   const next = nextCronRunInZone(
     "30 2 * * *",
     new Date("2026-03-28T12:00:00Z"),
@@ -241,8 +233,7 @@ test("the DST warning fires only on the hour that really disappears", () => {
     dstSkipWarning("30 2 * * *", "Europe/Rome", before),
     "Europe/Rome skips 02:00 to 03:00 on March 29, 2026, so nothing runs at this time that day.",
   );
-  // The hours AROUND the gap all exist that morning - the old 00:00-04:59 guess
-  // warned on every one of them.
+  // Regression: the old 00:00-04:59 guess warned on every hour around the gap, which all exist that morning.
   for (const h of [0, 1, 3, 4]) {
     assert.equal(
       dstSkipWarning(`30 ${h} * * *`, "Europe/Rome", before),
@@ -259,9 +250,7 @@ test("the DST warning fires only on the hour that really disappears", () => {
   assert.equal(dstSkipWarning("30 2 * * 1", "Europe/Rome", before), null);
   // Southern hemisphere: Sydney jumps 02:00 -> 03:00 on 4 October 2026.
   assert.ok(dstSkipWarning("30 2 * * *", "Australia/Sydney", before));
-  // Africa/Casablanca is UTC+1 in January AND July, so a jan-vs-jul "does this
-  // zone use DST?" check calls it fixed - it still deletes 02:00-02:59 coming
-  // back off its Ramadan offset.
+  // Africa/Casablanca is UTC+1 in January AND July, so a jan-vs-jul check calls it fixed - it still deletes 02:00-02:59 off its Ramadan offset.
   assert.ok(dstSkipWarning("30 2 * * *", "Africa/Casablanca", before));
   // A half-hour jump only deletes half an hour: Lord Howe skips 02:00-02:29.
   assert.ok(dstSkipWarning("15 2 * * *", "Australia/Lord_Howe", before));

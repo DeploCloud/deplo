@@ -17,22 +17,13 @@ import { captureFetch, type FetchCapture } from "./fetch-capture-test-helpers";
 import { __resetCooldowns } from "./cooldown";
 import { noteFailedLogin } from "./security";
 
-/**
- * The failed-sign-in alert, driven the way an attacker drives it: through a PUBLIC
- * mutation, with an address of their choosing. The rule this file exists to hold
- * is the one the alert broke: an address that matches no account tells NOBODY.
- */
-
+// Driven as an attacker drives it, through a PUBLIC mutation: an address matching no account tells NOBODY.
 let db: TestDb;
 let pg: PGlite;
 let capture: FetchCapture | null = null;
 
 const USER_2 = "user_2";
-/**
- * `rateLimit`'s buckets are process-global and outlive one test, so every case
- * here counts against an address of its own - sharing one would make the second
- * assertion depend on the first having run.
- */
+// `rateLimit`'s buckets are process-global and outlive one test, so every case gets its own address.
 const USER_3 = "user_3";
 
 before(async () => {
@@ -81,11 +72,7 @@ afterEach(() => {
   capture = null;
 });
 
-/**
- * One burst: the limit plus the attempt that refuses. Awaited one at a time -
- * six concurrent increments against one bucket is a race, and the whole chain
- * down to the webhook is awaitable, so nothing here has to sleep and guess.
- */
+// Awaited one at a time: six concurrent increments against one bucket is a race.
 async function burst(subject: string) {
   for (let i = 0; i < 6; i++) await noteFailedLogin(subject);
 }

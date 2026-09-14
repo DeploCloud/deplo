@@ -3,20 +3,14 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 
-/**
- * A whole page a member on a LIMITED role cannot have, rendered as a page rather
- * than thrown.
- */
+// OutsideYourAccess renders a page a member on a limited role cannot have, rather than throwing.
 export function OutsideYourAccess({
   title,
   description,
   what,
 }: {
-  /** The page's own title, so the header is unchanged from the normal render. */
   title: string;
-  /** The page's own subtitle. */
   description: string;
-  /** What the member is missing, as a sentence subject: "The member roster". */
   what: string;
 }) {
   return (

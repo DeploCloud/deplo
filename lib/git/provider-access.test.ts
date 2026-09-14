@@ -12,11 +12,6 @@ import {
   tokenScopesLine,
 } from "./provider-access";
 
-/**
- * The diff between what a git host allows and what Deplo needs. Its whole job is
- * to be right about ABSENCE, so most of these are about not accusing.
- */
-
 test("a GitHub level satisfies every level below it", () => {
   const granted = githubGranted(
     { contents: "write", metadata: "read", pull_requests: "write" },
@@ -29,7 +24,6 @@ test("a GitHub level satisfies every level below it", () => {
 });
 
 test("what GitHub is missing is named, split by feature", () => {
-  // The App Deplo asks for, minus the pull request half.
   const granted = githubGranted({ contents: "read", metadata: "read" }, [
     "push",
   ]);
@@ -43,7 +37,6 @@ test("what GitHub is missing is named, split by feature", () => {
   // The label is the provider's own, not ours: it has to match the screen.
   assert.equal(withPreviews[0]!.label, "Pull requests: Read and write");
 
-  // An App stripped to nothing reports the core half too.
   assert.deepEqual(
     missingAccess("github", githubGranted({}, [])).map((r) => r.key),
     ["metadata:read", "contents:read", "event:push"],
@@ -51,8 +44,7 @@ test("what GitHub is missing is named, split by feature", () => {
 });
 
 test("a provider that reports nothing is never accused", () => {
-  // Bitbucket and Gitea do not expose their token's scopes. Null in, empty out -
-  // the UI shows a checklist there, never a missing-permission warning.
+  // Bitbucket and Gitea do not expose their token's scopes: null in, empty out, so the UI shows a checklist and never a warning.
   assert.equal(grantedFromScopes("gitea", ""), null);
   assert.equal(grantedFromScopes("bitbucket", "   "), null);
   assert.deepEqual(missingAccess("gitea", null), []);
@@ -77,8 +69,7 @@ test("GitLab's api scope is the superset it claims to be", () => {
 });
 
 test("the manifest asks for exactly what the check requires", () => {
-  // The drift this exists to stop: an App created without something Deplo then
-  // warns about, or a warning about something the App was never asked to have.
+  // The drift this stops: an App created without something Deplo then warns about, or a warning about something it never asked for.
   const { permissions, events } = githubManifestAccess();
   const granted = githubGranted(permissions, events);
   assert.deepEqual(missingAccess("github", granted, { previews: true }), []);
@@ -97,7 +88,6 @@ test("the manifest asks for exactly what the check requires", () => {
 test("the connect dialog's scopes line is the requirement list", () => {
   assert.equal(tokenScopesLine("gitlab"), "read_repository, api");
   assert.equal(tokenScopesLine("git"), "", "a plain git server asks nothing");
-  // Only the core half: a connect dialog is not the place to explain previews.
   assert.deepEqual(
     requiredAccess("bitbucket").map((r) => r.feature),
     ["core", "core"],

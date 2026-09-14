@@ -24,10 +24,7 @@ import {
   yamlExtensions,
 } from "@/components/apps/editor-theme";
 
-/**
- * A CodeMirror editor on the dashboard's theme - an app's config files, a
- * database's, and read-only YAML previews. `language` null keeps it plain text.
- */
+// TextEditor - a CodeMirror editor on the dashboard's theme; null language is plain text.
 export function TextEditor({
   value,
   onChange,
@@ -88,12 +85,9 @@ export function TextEditor({
       view.destroy();
       viewRef.current = null;
     };
-    // Rebuild only when read-only or the language flips; value sync is below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly, language]);
 
-  // Push controlled value changes in from outside (e.g. opening a new file)
-  // without clobbering the user's cursor while they type the same value back.
   React.useEffect(() => {
     const view = viewRef.current;
     if (!view) return;

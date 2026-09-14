@@ -1,17 +1,13 @@
 import { cn } from "@/lib/utils";
 import { docsUrl, type DocsTopic } from "@/lib/docs";
 
-/**
- * The way out of the interface and into the manual. Plain `<a>`, no hooks, so it
- * renders inside a server component and inside a tooltip alike.
- */
+// DocsLink is a plain <a> with no hooks, so it renders inside a server component and inside a tooltip alike.
 export function DocsLink({
   topic,
   label = "Learn more",
   className,
 }: {
   topic: DocsTopic;
-  /** Overrides "Learn more" where a named section reads better. */
   label?: string;
   className?: string;
 }) {

@@ -13,10 +13,7 @@ const GIT_FEEDBACK: Record<string, { ok: boolean; msg: string }> = {
   },
 };
 
-/**
- * One-shot feedback from the GitHub connect redirects (`?git=connected|error`),
- * then the flag is scrubbed from the URL so a reload doesn't repeat it.
- */
+// GitConnectToast shows one-shot feedback from the GitHub connect redirects, then scrubs the flag.
 export function GitConnectToast(): null {
   const router = useRouter();
 

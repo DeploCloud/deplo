@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 
 import { regenerateNipDomain } from "./nip-suggestion";
 
-/**
- * The one thing Generate must never do is move the hostname to a different server.
- */
-
 const HEX = "9487cf1e.nip.io"; // 148.135.207.30
 
 test("only the words change, and they do change", () => {

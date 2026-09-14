@@ -10,7 +10,6 @@ import { docsUrl } from "@/lib/docs";
 import { DISCORD_URL, GITHUB_URL } from "@/lib/links";
 import { cn } from "@/lib/utils";
 
-/** The mark holds the screen for this long before it dissolves into step one. */
 const INTRO_HOLD_MS = 1500;
 const INTRO_OUT_MS = 550;
 
@@ -32,19 +31,14 @@ function alreadyPlayed(key: string | undefined): boolean {
   }
 }
 
-/**
- * The opening logo. `once` is a sessionStorage key that suppresses a replay;
- * without one the intro plays on every load.
- */
+// useLogoIntro - the opening logo; `once` is a sessionStorage key that suppresses a replay.
 export function useLogoIntro(once?: string) {
-  // "boot" renders nothing: deciding on the client is the only way to know
-  // whether the intro is owed, and either guess would flash the other screen.
+  // "boot" renders nothing: only the client knows if the intro is owed, and a guess flashes the other screen.
   const [phase, setPhase] = React.useState<IntroPhase>("boot");
 
   React.useEffect(() => {
     const play = !alreadyPlayed(once) && !prefersReducedMotion();
-    // Every phase is scheduled rather than set inline, the first one included:
-    // the first paint has to stay blank until the client knows what is owed.
+    // Even the first phase is scheduled: the first paint has to stay blank until the client decides.
     const at = (ms: number, next: IntroPhase) =>
       setTimeout(() => setPhase(next), ms);
     const timers = play
@@ -67,7 +61,7 @@ export function useLogoIntro(once?: string) {
   return { phase, markSeen };
 }
 
-/** The mark and its aurora, drifting over whatever the page is about to show. */
+// LogoIntro - the mark and its aurora, drifting over whatever the page is about to show.
 export function LogoIntro({ phase }: { phase: IntroPhase }) {
   if (phase === "boot" || phase === "steps") return null;
   const leaving = phase === "intro-out";
@@ -101,11 +95,7 @@ const LINKS = [
   { href: DISCORD_URL, Icon: DiscordIcon, label: "Discord" },
 ];
 
-/**
- * The furniture every auth screen carries: theme, then the three links. The links
- * are pinned to the PAGE, not the viewport - a screen taller than the window
- * scrolls past them rather than dragging them over its own content.
- */
+// AuthChrome - theme + links; the links are pinned to the PAGE, not the viewport, so a tall screen scrolls past them.
 export function AuthChrome({ hidden = false }: { hidden?: boolean }) {
   if (hidden) return null;
   return (

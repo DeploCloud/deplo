@@ -1,9 +1,4 @@
-/**
- * Pure username helpers (no `server-only`) so they're usable in the data layer,
- * the migration, and client-side validation alike. A username is the instance-
- * wide public handle: lowercase, `[a-z0-9_-]`, 3-16 chars, unique.
- */
-
+// No server-only import here: client-side validation (account panel, auth wizard) uses these too.
 export const USERNAME_MIN = 3;
 export const USERNAME_MAX = 16;
 const VALID = /^[a-z0-9_-]+$/;
@@ -28,11 +23,7 @@ export function validateUsername(username: string): string | null {
   return null;
 }
 
-/**
- * Derive a candidate username from a name or email and make it unique against
- * `taken` (a set of already-used usernames) by suffixing -2, -3, … Used both at
- * migration time (backfill) and as a default suggestion.
- */
+// uniqueUsername derives a candidate from the seed, suffixing -2, -3 until it is free.
 export function uniqueUsername(seed: string, taken: Set<string>): string {
   let base = normalizeUsername(seed).slice(0, USERNAME_MAX);
   if (base.length < USERNAME_MIN) base = `user-${base}`.slice(0, USERNAME_MAX);

@@ -1,18 +1,8 @@
-/**
- * The account-password policy, in one place, shared VERBATIM by the browser (the
- * live strength meter) and the server (the real gate). What the meter renders is
- * the same list, so the two can never disagree.
- */
-
 export const PASSWORD_MIN_LENGTH = 8;
-/** Matches the zod cap in lib/graphql/types/auth.ts; scrypt does not need more. */
+// PASSWORD_MAX_LENGTH - matches the zod cap in lib/graphql/types/auth.ts; scrypt does not need more.
 export const PASSWORD_MAX_LENGTH = 200;
 
-/**
- * "Special character" is anything that is not a letter or a digit, rather than
- * a hand-picked punctuation set: a password ending in `~` or a space is not
- * weaker for it, and a list the user has to guess at is a bad field.
- */
+// "Special character" is anything that is not a letter or a digit, not a hand-picked punctuation set.
 export const PASSWORD_RULES = [
   {
     regex: new RegExp(`.{${PASSWORD_MIN_LENGTH},}`),
@@ -26,7 +16,7 @@ export const PASSWORD_RULES = [
 
 export type PasswordRuleStatus = { text: string; met: boolean };
 
-/** Every rule with its verdict, in display order. */
+// passwordRuleStatus - every rule with its verdict, in display order.
 export function passwordRuleStatus(password: string): PasswordRuleStatus[] {
   return PASSWORD_RULES.map((rule) => ({
     text: rule.text,
@@ -34,7 +24,6 @@ export function passwordRuleStatus(password: string): PasswordRuleStatus[] {
   }));
 }
 
-/** True when every rule is met. */
 export function passwordMeetsPolicy(password: string): boolean {
   return (
     password.length <= PASSWORD_MAX_LENGTH &&
@@ -42,10 +31,7 @@ export function passwordMeetsPolicy(password: string): boolean {
   );
 }
 
-/**
- * One message naming everything still missing, or null when the password
- * passes. Phrased as an instruction because it is surfaced verbatim in a toast.
- */
+// passwordPolicyError - one message naming everything still missing; phrased as an instruction, it is surfaced verbatim in a toast.
 export function passwordPolicyError(password: string): string | null {
   if (password.length > PASSWORD_MAX_LENGTH)
     return `Choose a password of at most ${PASSWORD_MAX_LENGTH} characters`;
@@ -56,21 +42,13 @@ export function passwordPolicyError(password: string): string | null {
   return `Choose a password with at least: ${missing.join(", ")}`;
 }
 
-/**
- * The single gate in front of every path that writes a credential: account
- * creation (both flavours), a self-service change, and an admin reset. Throws
- * the message the UI shows verbatim.
- */
+// assertPasswordPolicy - the single gate in front of every path that writes a credential.
 export function assertPasswordPolicy(password: string): void {
   const error = passwordPolicyError(password);
   if (error) throw new PasswordError(error);
 }
 
-/**
- * A refusal that is ABOUT the password, so a multi-step form can put the message
- * back on the field that caused it instead of on the step the reader happens to
- * be looking at.
- */
+// PasswordError - a refusal that is ABOUT the password, so a form can put the message back on that field.
 export class PasswordError extends Error {
   readonly field = "password" as const;
   constructor(message: string) {
@@ -79,20 +57,14 @@ export class PasswordError extends Error {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Generation                                                          */
-/* ------------------------------------------------------------------ */
-
-// Unambiguous characters only (no l/I/O/0/1): a generated password gets read
-// aloud, pasted into a chat and typed by hand into a browser prompt. The
-// symbols are RFC 3986 unreserved/sub-delims, so no context has to escape them.
+// Unambiguous characters only (no l/I/O/0/1); the symbols are RFC 3986 unreserved/sub-delims, so nothing has to escape them.
 const GEN_LOWER = "abcdefghijkmnopqrstuvwxyz";
 const GEN_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const GEN_DIGIT = "23456789";
 const GEN_SYMBOL = "!*+-._~";
 const GEN_ALL = GEN_LOWER + GEN_UPPER + GEN_DIGIT + GEN_SYMBOL;
 
-/** Uniform index below `n`, rejecting the byte range's biased tail. */
+// Uniform index below `n`, rejecting the byte range's biased tail.
 function randomBelow(n: number): number {
   const limit = 256 - (256 % n);
   const b = new Uint8Array(1);
@@ -103,11 +75,7 @@ function randomBelow(n: number): number {
 
 const pick = (set: string): string => set[randomBelow(set.length)];
 
-/**
- * A suggestion for every "Generate" affordance. It lives here because it has to
- * satisfy PASSWORD_RULES by construction - one of each class, then filled and
- * shuffled - or the button hands the user something the gate rejects.
- */
+// generatePassword - satisfies PASSWORD_RULES by construction, or the button hands the user something the gate rejects.
 export function generatePassword(length = 20): string {
   const out = [
     pick(GEN_LOWER),

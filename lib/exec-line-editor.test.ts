@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 import { Terminal } from "@xterm/headless";
 import { LineEditor } from "./exec-line-editor";
 
-// Every test drives the REAL escape sequences through a headless xterm and
-// asserts what a user would actually see: screen rows + caret cell. The prompt
-// is SGR-coloured like the live console so zero-width sequences are exercised.
-
-const PROMPT = "p$"; // visible width 3 with the trailing space
+const PROMPT = "p$";
 
 function makeEditor({ cols = 40, rows = 10 } = {}) {
   const term = new Terminal({
@@ -35,12 +31,10 @@ function makeEditor({ cols = 40, rows = 10 } = {}) {
 const flush = (term: Terminal) =>
   new Promise<void>((resolve) => term.write("", resolve));
 
-/** Screen row `y` (absolute buffer row), right-trimmed. */
 function row(term: Terminal, y: number): string {
   return term.buffer.active.getLine(y)?.translateToString(true) ?? "";
 }
 
-/** Caret cell in absolute buffer coordinates. */
 function caret(term: Terminal) {
   const b = term.buffer.active;
   return { x: b.cursorX, y: b.baseY + b.cursorY };
@@ -66,7 +60,6 @@ test("typing echoes after the prompt and Enter submits the line", async () => {
   await flush(term);
   assert.equal(row(term, 0), "p$ ls -la");
   assert.deepEqual(submitted, ["ls -la"]);
-  // Output lands on the row below the submitted line.
   assert.deepEqual(caret(term), { x: 0, y: 1 });
 });
 
@@ -115,13 +108,13 @@ test("Home/End (and Ctrl-A/Ctrl-E) jump to the line edges", async () => {
 test("Backspace deletes left of the caret, Delete under it", async () => {
   const { term, ed, submitted } = makeEditor();
   ed.data("abcd");
-  ed.data(LEFT); // caret between c and d
-  ed.data(BS); // kill c
+  ed.data(LEFT);
+  ed.data(BS);
   await flush(term);
   assert.equal(row(term, 0), "p$ abd");
   assert.deepEqual(caret(term), { x: 3 + 2, y: 0 });
   ed.data(HOME);
-  ed.data(DEL); // kill a
+  ed.data(DEL);
   await flush(term);
   assert.equal(row(term, 0), "p$ bd");
   assert.deepEqual(caret(term), { x: 3, y: 0 });
@@ -132,14 +125,14 @@ test("Backspace deletes left of the caret, Delete under it", async () => {
 test("Ctrl-U/Ctrl-K kill to the line edges, Ctrl-W kills the word left", async () => {
   const { term, ed } = makeEditor();
   ed.data("one two three");
-  type(ed, [LEFT, LEFT, LEFT, LEFT, LEFT]); // caret after "two "
+  type(ed, [LEFT, LEFT, LEFT, LEFT, LEFT]);
   ed.data("\x15"); // Ctrl-U
   await flush(term);
   assert.equal(row(term, 0), "p$ three");
   assert.deepEqual(caret(term), { x: 3, y: 0 });
 
   ed.data(END);
-  ed.data("\x17"); // Ctrl-W → kills "three"
+  ed.data("\x17"); // Ctrl-W
   await flush(term);
   // The prompt's trailing space is a REAL cell - translateToString keeps it.
   assert.equal(row(term, 0), "p$ ");
@@ -172,29 +165,29 @@ test("↑/↓ browse history and restore the in-progress draft", async () => {
   const { term, ed, submitted } = makeEditor();
   ed.data("first");
   ed.data("\r");
-  ed.freshPrompt(); // the component re-prompts after each round-trip
+  ed.freshPrompt();
   ed.data("second");
   ed.data("\r");
   ed.freshPrompt();
   assert.deepEqual(submitted, ["first", "second"]);
 
-  ed.data("dra"); // in-progress draft
+  ed.data("dra");
   ed.data(UP);
   await flush(term);
   assert.equal(row(term, 2), "p$ second");
   ed.data(UP);
   await flush(term);
   assert.equal(row(term, 2), "p$ first");
-  ed.data(UP); // clamped at the oldest
+  ed.data(UP);
   await flush(term);
   assert.equal(row(term, 2), "p$ first");
   ed.data(DOWN);
   await flush(term);
   assert.equal(row(term, 2), "p$ second");
-  ed.data(DOWN); // past the newest → the draft comes back
+  ed.data(DOWN);
   await flush(term);
   assert.equal(row(term, 2), "p$ dra");
-  ed.data(DOWN); // and ↓ at the draft is a no-op that keeps ↑ working
+  ed.data(DOWN);
   ed.data(UP);
   await flush(term);
   assert.equal(row(term, 2), "p$ second");
@@ -206,8 +199,8 @@ test("history entry can be edited mid-line before resubmit", async () => {
   ed.data("\r");
   ed.freshPrompt();
   ed.data(UP);
-  type(ed, [LEFT, LEFT, LEFT, LEFT, LEFT]); // caret before "hosts"
-  ed.data(BS); // kill the second "/"
+  type(ed, [LEFT, LEFT, LEFT, LEFT, LEFT]);
+  ed.data(BS);
   await flush(term);
   assert.equal(row(term, 1), "p$ cat /etchosts");
   ed.data("\r");
@@ -216,7 +209,7 @@ test("history entry can be edited mid-line before resubmit", async () => {
 
 test("a line wrapping across rows stays editable (Home, mid-line insert)", async () => {
   const { term, ed, submitted } = makeEditor({ cols: 20 });
-  const text = "abcdefghij0123456789xyz"; // 3 + 23 visible → 2 rows
+  const text = "abcdefghij0123456789xyz";
   ed.data(text);
   await flush(term);
   assert.equal(row(term, 0), "p$ abcdefghij0123456");
@@ -226,7 +219,7 @@ test("a line wrapping across rows stays editable (Home, mid-line insert)", async
   ed.data(HOME);
   await flush(term);
   assert.deepEqual(caret(term), { x: 3, y: 0 });
-  ed.data("Z"); // insert at the head - everything shifts one cell
+  ed.data("Z");
   await flush(term);
   assert.equal(row(term, 0), "p$ Zabcdefghij012345");
   assert.equal(row(term, 1), "6789xyz");
@@ -238,28 +231,28 @@ test("a line wrapping across rows stays editable (Home, mid-line insert)", async
 
 test("← walks back across the wrap boundary", async () => {
   const { term, ed } = makeEditor({ cols: 20 });
-  ed.data("abcdefghij0123456"); // fills row 0 exactly (3 + 17 = 20)
+  ed.data("abcdefghij0123456");
   ed.data("XY");
   await flush(term);
   assert.equal(row(term, 1), "XY");
-  type(ed, [LEFT, LEFT]); // caret at col 0 of row 1
+  type(ed, [LEFT, LEFT]);
   await flush(term);
   assert.deepEqual(caret(term), { x: 0, y: 1 });
-  ed.data(LEFT); // …and once more jumps to the end of row 0
+  ed.data(LEFT);
   await flush(term);
   assert.deepEqual(caret(term), { x: 19, y: 0 });
 });
 
 test("input ending exactly at the row boundary keeps a determinate caret", async () => {
   const { term, ed, submitted } = makeEditor({ cols: 20 });
-  ed.data("abcdefghij0123456"); // 3 + 17 = 20 → exact boundary
+  ed.data("abcdefghij0123456");
   await flush(term);
   assert.deepEqual(caret(term), { x: 0, y: 1 });
-  ed.data("Z"); // typing continues on the wrapped row
+  ed.data("Z");
   await flush(term);
   assert.equal(row(term, 1), "Z");
   assert.deepEqual(caret(term), { x: 1, y: 1 });
-  type(ed, [BS, BS]); // delete back across the boundary
+  type(ed, [BS, BS]);
   await flush(term);
   assert.equal(row(term, 0), "p$ abcdefghij012345");
   assert.deepEqual(caret(term), { x: 19, y: 0 });
@@ -269,10 +262,10 @@ test("input ending exactly at the row boundary keeps a determinate caret", async
 
 test("editing a wrapped line at the bottom of the screen survives the scroll", async () => {
   const { term, ed, submitted } = makeEditor({ cols: 10, rows: 4 });
-  term.write("a\r\nb\r\nc\r\n"); // park the prompt on the last screen row
+  term.write("a\r\nb\r\nc\r\n");
   await flush(term);
   ed.freshPrompt();
-  ed.data("0123456789"); // 3 + 10 → wraps, scrolling the screen by one
+  ed.data("0123456789");
   await flush(term);
   assert.equal(row(term, 3), "p$ 0123456");
   assert.equal(row(term, 4), "789");
@@ -307,8 +300,7 @@ test("Ctrl-L clears the screen but keeps the line and the caret column", async (
   const { term, ed } = makeEditor();
   ed.data("abc");
   ed.data(LEFT);
-  // term.reset() is synchronous while writes queue - settle first, as the
-  // browser always has by the time a separate Ctrl-L keystroke arrives.
+  // term.reset() is synchronous while writes queue - settle first, as the browser has.
   await flush(term);
   ed.data("\x0c");
   await flush(term);
@@ -349,11 +341,11 @@ test("resetSession forgets history and the line", async () => {
   ed.data("secret");
   ed.data("\r");
   ed.freshPrompt();
-  await flush(term); // settle the queue before the out-of-band reset
+  await flush(term);
   ed.resetSession();
   term.reset();
   ed.freshPrompt();
-  ed.data(UP); // nothing to recall
+  ed.data(UP);
   await flush(term);
   assert.equal(row(term, 0), "p$ ");
   assert.deepEqual(caret(term), { x: 3, y: 0 });

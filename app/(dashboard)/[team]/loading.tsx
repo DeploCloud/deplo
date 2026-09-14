@@ -2,9 +2,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-// The grid below mirrors AppsGrid's own breakpoints (1 col, 2 from `sm`, 3 from
-// `3xl`), so the placeholder count has to follow them too: a fixed count leaves a
-// half-empty last row on the wider layouts.
+// Mirrors AppsGrid's breakpoints: a fixed count leaves a half-empty last row on wider layouts.
 const ROW_FILL = [
   "",
   "",

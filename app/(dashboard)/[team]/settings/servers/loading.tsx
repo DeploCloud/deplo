@@ -9,10 +9,7 @@ export default function Loading() {
       aria-busy
       aria-label="Loading servers"
     >
-      {/**
-       * PageHeader - "Servers" + description + Check-status / Check-for-updates /
-       * Add-server actions.
-       */}
+      {/* PageHeader: title, description and actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <Skeleton className="h-7 w-24" />

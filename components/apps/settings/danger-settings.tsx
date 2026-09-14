@@ -16,10 +16,7 @@ import { TransferTeamDialog } from "@/components/apps/settings/transfer-team-dia
 import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 
-/**
- * Danger zone: the two actions that take this app away from the team -
- * transferring it to another team the viewer belongs to, and deleting it outright.
- */
+// DangerSettings - transfer this app to another team, or delete it outright.
 export function DangerSettings({
   appId,
   name,
@@ -28,8 +25,7 @@ export function DangerSettings({
   name: string;
 }) {
   const router = useRouter();
-  // Two different permissions: someone may be allowed to hand the app over
-  // without being allowed to destroy it, so each button asks for its own.
+  // Handing the app over and destroying it are separate capabilities.
   const canMove = useAppCan("move_apps");
   const canDelete = useAppCan("delete_apps");
   return (

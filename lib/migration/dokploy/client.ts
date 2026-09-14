@@ -1,7 +1,3 @@
-/**
- * Read-only client for a Dokploy instance's HTTP API.
- */
-
 import type { SourceCredential } from "../source";
 import {
   REQUEST_TIMEOUT_MS,
@@ -21,7 +17,7 @@ import type {
   SourceServer,
 } from "../model";
 
-/** Which of Dokploy's per-engine tables a database row came from. */
+// DOKPLOY_DB_KINDS - which of Dokploy's per-engine tables a database row came from.
 export const DOKPLOY_DB_KINDS = [
   "postgres",
   "mysql",
@@ -32,27 +28,20 @@ export const DOKPLOY_DB_KINDS = [
 ] as const;
 export type DokployDbKind = (typeof DOKPLOY_DB_KINDS)[number];
 
-/* ------------------------------------------------------------------ */
-/* Transport                                                           */
-/* ------------------------------------------------------------------ */
-
 const DOKPLOY_PANEL: PanelIdentity = { name: "Dokploy", portHint: ":3000" };
 
-/** Keys a panel has accepted at least once in this process, by panel. */
+// Keys a panel has accepted at least once in this process.
 const accepted = new Set<string>();
 const acceptedKey = (c: SourceCredential) => `${c.baseUrl}|${c.apiKey}`;
 
-/** Tests reuse one key across a wrong-key case and a working one; this forgets it. */
+// __resetAcceptedKeysForTest - tests reuse one key across a wrong-key case and a working one.
 export function __resetAcceptedKeysForTest(): void {
   accepted.clear();
 }
 
-/**
- * A key minted outside Dokploy's own dialog is born at 10 requests a DAY, and a
- * migration reads the panel hundreds of times. Measured on v0.30.5: the key that
- * runs out answers 401 Unauthorized, the same status as a wrong key - so a 401 on
- * a key that was accepted moments ago is the limit (or a revocation), never a typo.
- */
+// A key minted outside Dokploy's own dialog is born at 10 requests a DAY. Measured on
+// v0.30.5: a key at its limit answers 401 like a wrong key, so a 401 on a key accepted
+// moments ago is the limit or a revocation, never a typo.
 async function requestFailed(
   res: Response,
   procedure: string,
@@ -72,9 +61,6 @@ async function requestFailed(
   );
 }
 
-/**
- * One GET against Dokploy, with a readable failure.
- */
 async function get<T>(
   c: SourceCredential,
   procedure: string,
@@ -106,11 +92,8 @@ async function get<T>(
   return (await res.json()) as T;
 }
 
-/**
- * One POST against Dokploy. The ONLY writes this client ever makes are the
- * `*.stop` calls of a data cutover - deliberately, so "the source instance is
- * only read" stays true of everything else and it keeps working as the rollback.
- */
+// The only writes this client ever makes are the `*.stop`/`*.start` calls of a
+// cutover, so "the source instance is only read" stays true of everything else.
 async function post<T>(
   c: SourceCredential,
   procedure: string,
@@ -138,13 +121,9 @@ async function post<T>(
   return (await res.json().catch(() => null)) as T;
 }
 
-/* ------------------------------------------------------------------ */
-/* Reads                                                               */
-/* ------------------------------------------------------------------ */
-
 const SERVICE_KEYS = ["applications", "compose", ...DOKPLOY_DB_KINDS] as const;
 
-/** True when a project row carries services directly (pre-environments Dokploy). */
+// A pre-environments Dokploy carries the services directly on the project row.
 function hasLooseServices(p: SourceProject): boolean {
   return SERVICE_KEYS.some((k) => {
     const v = p[k as keyof SourceProject];
@@ -152,9 +131,7 @@ function hasLooseServices(p: SourceProject): boolean {
   });
 }
 
-/**
- * Every project of the key's organization, with environments and their services.
- */
+// listProjects - every project of the key's organization, with environments and services.
 export async function listProjects(
   c: SourceCredential,
 ): Promise<SourceProject[]> {
@@ -182,9 +159,7 @@ export async function listProjects(
   });
 }
 
-/**
- * One environment's own row, for the variable blob `project.all` never carries.
- */
+// getEnvironment - the variable blob `project.all` never carries.
 export async function getEnvironment(
   c: SourceCredential,
   environmentId: string,
@@ -194,13 +169,12 @@ export async function getEnvironment(
       environmentId,
     });
   } catch {
-    // An older Dokploy has no environments at all (the tree is synthesised), and
-    // a member key can be refused here. Neither is worth failing an import over.
+    // An older Dokploy has no environments, and a member key can be refused here.
     return null;
   }
 }
 
-/** One application WITH its domains, mounts, ports and basic-auth users. */
+// getApplication - one application WITH its domains, mounts, ports and basic-auth users.
 export function getApplication(
   c: SourceCredential,
   applicationId: string,
@@ -208,7 +182,7 @@ export function getApplication(
   return get<SourceApplication>(c, "application.one", { applicationId });
 }
 
-/** One compose stack WITH its domains and mounts. */
+// getCompose - one compose stack WITH its domains and mounts.
 export function getCompose(
   c: SourceCredential,
   composeId: string,
@@ -216,7 +190,7 @@ export function getCompose(
   return get<SourceCompose>(c, "compose.one", { composeId });
 }
 
-/** One database WITH its mounts. `kind` picks the table and the id parameter. */
+// getDatabase - one database WITH its mounts; `kind` picks the table and the id parameter.
 export function getDatabase(
   c: SourceCredential,
   kind: DokployDbKind,
@@ -225,9 +199,7 @@ export function getDatabase(
   return get<SourceDatabase>(c, `${kind}.one`, { [`${kind}Id`]: id });
 }
 
-/**
- * The detail call for any kind of service, picked by kind.
- */
+// getService - the detail call for any kind of service, picked by kind.
 export function getService(
   c: SourceCredential,
   kind: string,
@@ -238,7 +210,7 @@ export function getService(
   return getDatabase(c, kind as DokployDbKind, id);
 }
 
-/** The display name of a service, from its detail row, however it is shaped. */
+// serviceDisplayName - from the detail row, however it is shaped.
 export function serviceDisplayName(
   detail: { name?: string | null } | null | undefined,
   fallback: string,
@@ -247,19 +219,12 @@ export function serviceDisplayName(
   return name || fallback;
 }
 
-/**
- * A compose body only counts when it declares services.
- */
 function composeOrNull(body: string): string | null {
   const yaml = body.trim();
   return yaml && /^\s*services\s*:/m.test(yaml) ? yaml : null;
 }
 
-/**
- * The compose file Dokploy would actually deploy, for a stack whose YAML lives in
- * a git repo rather than in the database. Deplo holds compose YAML inline, so a
- * repo-backed stack has nothing to import without this.
- */
+// Deplo holds compose YAML inline, so a repo-backed stack has nothing to import without this.
 export async function getConvertedCompose(
   c: SourceCredential,
   composeId: string,
@@ -281,12 +246,8 @@ export async function getConvertedCompose(
   }
 }
 
-/**
- * The application's own Traefik file, the panel's escape hatch for a middleware
- * nobody can express in its forms. Best-effort: an older Dokploy has no such
- * procedure, and a file that will not come is a report line short, not a failed
- * import.
- */
+// readTraefikConfig - best-effort: an older Dokploy has no such procedure, and a
+// file that will not come is a report line short, not a failed import.
 export async function readTraefikConfig(
   c: SourceCredential,
   applicationId: string,
@@ -301,8 +262,7 @@ export async function readTraefikConfig(
   }
 }
 
-/** One S3 destination of the organization, credentials included - `destination.all`
- *  hands them over in the clear (measured on v0.30.5), unlike a registry's. */
+// `destination.all` hands the credentials over in the clear (measured on v0.30.5), unlike a registry's.
 export interface DokployDestination {
   destinationId?: string | null;
   name?: string | null;
@@ -313,7 +273,7 @@ export interface DokployDestination {
   secretAccessKey?: string | null;
 }
 
-/** One `volumeBackups.list` row (Dokploy 0.30+): a named volume to an S3 destination. */
+// DokployVolumeBackup - one `volumeBackups.list` row (Dokploy 0.30+).
 export interface DokployVolumeBackup {
   volumeBackupId?: string | null;
   name?: string | null;
@@ -326,10 +286,7 @@ export interface DokployVolumeBackup {
   serviceName?: string | null;
 }
 
-/**
- * The volume backups scheduled for one application or stack. Best-effort the
- * same way a destination is: an older panel has no such route.
- */
+// Best-effort: an older panel has no such route.
 export async function listVolumeBackups(
   c: SourceCredential,
   id: string,
@@ -350,8 +307,7 @@ export async function listVolumeBackups(
   }
 }
 
-/** The S3 stores the organization backs up to. Best-effort: a key that may not
- *  read them, or a Dokploy without the procedure, is a report line short. */
+// Best-effort: a key that may not read them, or a Dokploy without the procedure, is a report line short.
 export async function listDestinations(
   c: SourceCredential,
 ): Promise<DokployDestination[]> {
@@ -363,8 +319,7 @@ export async function listDestinations(
   }
 }
 
-/** The fleet the source instance deploys to. `serverId: null` on a service means
- *  Dokploy's own host, which has no row here. */
+// `serverId: null` on a service means Dokploy's own host, which has no row here.
 export async function listServers(
   c: SourceCredential,
 ): Promise<SourceServer[]> {
@@ -372,7 +327,7 @@ export async function listServers(
   return Array.isArray(rows) ? rows : [];
 }
 
-/** Everyone in the key's organization, for the registration-link step. */
+// listMembers - everyone in the key's organization, for the registration-link step.
 export async function listMembers(
   c: SourceCredential,
 ): Promise<SourceMember[]> {
@@ -380,19 +335,15 @@ export async function listMembers(
   return Array.isArray(rows) ? rows : [];
 }
 
-/** A better-auth organization row, of which only these three are read. */
+// A better-auth organization row, of which only these three are read.
 interface DokployOrganization {
   id?: string | null;
   name?: string | null;
-  /** Its picture: a data URI from Dokploy's own uploader, or a typed address. */
+  // A data URI from Dokploy's own uploader, or a typed address.
   logo?: string | null;
 }
 
-/**
- * The organization this key reads, so the wizard can say what it is about to pull
- * and tell two keys of the same organization apart. Best-effort: an older
- * instance has no such procedure, and not knowing must not stop an import.
- */
+// Best-effort: an older instance has no such procedure, and not knowing must not stop an import.
 export async function activeOrganization(c: SourceCredential): Promise<{
   id: string | null;
   name: string | null;
@@ -405,11 +356,8 @@ export async function activeOrganization(c: SourceCredential): Promise<{
   }
 }
 
-/**
- * Every organization the key's OWNER belongs to - the same list Dokploy shows
- * when a key is minted, and a key names exactly one of them. Null when the panel
- * would not say, which an older one will not.
- */
+// Every organization the key's OWNER belongs to - a key names exactly one of them;
+// null when the panel will not say, which an older one will not.
 export async function listOrganizations(
   c: SourceCredential,
 ): Promise<{ id: string; name: string }[] | null> {
@@ -424,25 +372,18 @@ export async function listOrganizations(
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* The data cutover                                                    */
-/* ------------------------------------------------------------------ */
-
-/** One running container of a service, as Dokploy's `docker ps` wrapper parses it. */
+// DokployContainer - one running container, as Dokploy's `docker ps` wrapper parses it.
 export interface DokployContainer {
   containerId: string;
   name: string;
   state: string;
 }
 
-/**
- * How a Dokploy service's containers are found.
- */
+// DokployRuntime - how a Dokploy service's containers are found.
 export type DokployRuntime = "swarm" | "standalone";
 
-/** The containers of one service, by its `appName` - on the machine it runs on.
- *  Without `serverId` Dokploy looks on its own host, so a service on a remote
- *  server read as stopped and a git app there as "cannot tell what its data is". */
+// Without `serverId` Dokploy looks on its OWN host: a service on a remote server
+// used to read as stopped, and a git app there as "cannot tell what its data is".
 export async function listAppContainers(
   c: SourceCredential,
   appName: string,
@@ -457,15 +398,13 @@ export async function listAppContainers(
   return Array.isArray(rows) ? rows : [];
 }
 
-/** A network the PANEL manages, which is how a stack or an app joins one without
- *  the compose file ever naming it (`compose.serviceNetworks`, `app.networkIds`). */
+// A network the PANEL manages: how a stack or app joins one without the compose file naming it.
 export interface DokployNetwork {
   networkId: string;
   name: string;
 }
 
-/** The panel's own networks, by id. Empty on a Dokploy too old to have them:
- *  the endpoint is missing, not the import. */
+// Empty on a Dokploy too old to have them: the endpoint is missing, not the import.
 export async function listNetworks(
   c: SourceCredential,
 ): Promise<DokployNetwork[]> {
@@ -475,7 +414,7 @@ export async function listNetworks(
   return Array.isArray(rows) ? rows : [];
 }
 
-/** What `docker inspect` says, reduced to the two things a data move reads. */
+// DokployInspect - what `docker inspect` says, reduced to what a data move reads.
 export interface DokployInspect {
   Name?: string;
   State?: { Running?: boolean; Status?: string };
@@ -487,10 +426,7 @@ export interface DokployInspect {
   }[];
 }
 
-/**
- * `docker inspect <id>` on the source host, through Dokploy's own API
- * (`docker.getConfig` is literally that command).
- */
+// `docker.getConfig` is literally `docker inspect <id>` on the source host.
 export function inspectContainer(
   c: SourceCredential,
   containerId: string,
@@ -502,7 +438,6 @@ export function inspectContainer(
   });
 }
 
-/** Which procedure stops one kind of service, and what it calls its id. */
 const STOP_PROCEDURE: Record<string, string> = {
   application: "application.stop",
   compose: "compose.stop",
@@ -513,10 +448,7 @@ const STOP_PROCEDURE: Record<string, string> = {
   redis: "redis.stop",
 };
 
-/**
- * Stop a service on the SOURCE instance, and leave it stopped. The UI says so
- * before the button is pressed.
- */
+// stopService - stops on the SOURCE instance and leaves it stopped; the UI says so first.
 export async function stopService(
   c: SourceCredential,
   kind: string,
@@ -527,10 +459,7 @@ export async function stopService(
   await post(c, procedure, { [`${kind}Id`]: id });
 }
 
-/**
- * Undo that stop - the only reason Deplo ever starts something on a platform it
- * is migrating away from is an operator backing out of a takeover.
- */
+// The only reason Deplo starts something on a platform it is migrating away from: a takeover backed out.
 export async function startService(
   c: SourceCredential,
   kind: string,
@@ -543,7 +472,7 @@ export async function startService(
   });
 }
 
-/** The cron jobs attached to one service. Best-effort, same reasoning as above. */
+// listSchedules - the cron jobs attached to one service; best-effort, as above.
 export async function listSchedules(
   c: SourceCredential,
   scheduleType: string,

@@ -1,27 +1,16 @@
-/**
- * Browser side of the restore-from-file route: stream the artifact up, read the
- * agent's log lines back down, resolve on the verdict.
- */
-
 import {
   isServerDisconnected,
   reportServerUnreachable,
   ServerUnreachableError,
 } from "@/lib/server-connection";
 
-/** What the caller is told while the restore runs. */
+// RestoreUploadEvent - what the caller is told while the restore runs.
 export interface RestoreUploadEvent {
-  /** 0-100 while the artifact is going up. */
   percent?: number;
-  /** One line the agent logged, as it logged it. */
   line?: string;
 }
 
-/**
- * Stream `file` at a target and follow the restore to its end. `recoveryKey` is
- * sent only when the file is encrypted - the caller decides, having read the
- * file's first bytes.
- */
+// uploadRestore - stream `file` at a target and follow the restore to its end.
 export function uploadRestore(
   target: { kind: "app" | "database"; id: string },
   file: File,
@@ -29,8 +18,6 @@ export function uploadRestore(
   onEvent: (event: RestoreUploadEvent) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Offline: refuse before streaming an artifact at a server that isn't there,
-    // and say the same thing every other paused interaction says.
     if (isServerDisconnected()) {
       reject(new ServerUnreachableError());
       return;
@@ -51,8 +38,6 @@ export function uploadRestore(
         onEvent({ percent: Math.round((e.loaded / e.total) * 100) });
     };
 
-    // The response is NDJSON that arrives while the restore runs, so it is read
-    // incrementally: everything up to the last newline seen is already complete.
     let consumed = 0;
     let verdict: { ok: boolean; error?: string } | null = null;
     const drain = () => {
@@ -73,8 +58,7 @@ export function uploadRestore(
             verdict = { ok: message.ok, error: message.error };
           else if (message.text) onEvent({ line: message.text });
         } catch {
-          // A half-written line cannot happen (we cut on newlines), so this is a
-          // proxy's error page rather than our stream. onload sorts it out.
+          // Not our stream (a proxy's error page); onload sorts it out.
         }
       }
     };
@@ -87,8 +71,6 @@ export function uploadRestore(
           resolve();
           return;
         }
-        // A 200 whose stream ended without a verdict is a connection cut between
-        // here and the control plane; the restore may well still be running.
         reject(
           new Error(
             verdict?.error ||
@@ -98,7 +80,6 @@ export function uploadRestore(
         );
         return;
       }
-      // A refusal never streams: it is one JSON object with the message.
       try {
         const message = (JSON.parse(xhr.responseText) as { error?: string })
           ?.error;
@@ -117,7 +98,6 @@ export function uploadRestore(
       reject(new Error("Restore failed"));
     };
 
-    // A transport-level failure is the server being gone, not a bad artifact.
     xhr.onerror = () => {
       reportServerUnreachable();
       reject(new ServerUnreachableError());

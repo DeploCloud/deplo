@@ -4,10 +4,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * One option as a compact card - icon and title on one line, a caption under it,
- * selection carried by the border and a tint.
- */
+// KindCard - one option as a compact card, selection carried by the border and a tint.
 export function KindCard({
   selected,
   onSelect,
@@ -25,7 +22,7 @@ export function KindCard({
   caption: string;
   badge?: React.ReactNode;
   disabled?: boolean;
-  /** Shown instead of the caption while disabled - say WHY, not that it is off. */
+  // Say WHY it is off, not that it is off.
   disabledNote?: string;
 }) {
   return (

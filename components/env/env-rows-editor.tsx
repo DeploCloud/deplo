@@ -10,28 +10,22 @@ import { KEY_RE, parseEnv } from "@/components/env/env-parse";
 
 export type EnvRow = { key: string; value: string };
 
-/** The three columns every row of the key/value editor lines up on - two when
- *  there is no row to remove. */
 const GRID =
   "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_2rem] items-center gap-2";
 const GRID_SINGLE =
   "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-2";
 
-/** The rows that carry a name - the ones a save would actually write. */
+// filledRows - the rows that carry a name, the ones a save would actually write.
 export function filledRows(rows: EnvRow[]): EnvRow[] {
   return rows.filter((r) => r.key.trim() !== "");
 }
 
-/** The named rows whose name isn't a legal variable name. */
+// invalidRows - the named rows whose name isn't a legal variable name.
 export function invalidRows(rows: EnvRow[]): EnvRow[] {
   return filledRows(rows).filter((r) => !KEY_RE.test(r.key.trim()));
 }
 
-/**
- * The multi-row key/value editor: the one place a batch of variables is typed in,
- * shared by "Add variables" and "Add preview overrides" so adding five of either
- * is the same gesture.
- */
+// EnvRowsEditor - the multi-row key/value editor shared by every batch-of-variables form.
 export function EnvRowsEditor({
   rows,
   onChange,
@@ -43,11 +37,8 @@ export function EnvRowsEditor({
   rows: EnvRow[];
   onChange: (rows: EnvRow[]) => void;
   keyPlaceholder?: string;
-  /** Editing one existing variable: no "Add another", no remove column. */
   singleRow?: boolean;
-  /** A stored variable can't be renamed from here. */
   keyDisabled?: boolean;
-  /** A stored secret's value is frozen server-side. */
   valueReadOnly?: boolean;
 }) {
   const invalid = invalidRows(rows);
@@ -59,9 +50,6 @@ export function EnvRowsEditor({
     if (rows.length > 1) onChange(rows.filter((_, idx) => idx !== i));
   }
 
-  // Pasting `.env` content into a key field explodes into editable rows. A key can
-  // never contain "=", so ANY paste that parses into at least one KEY=VALUE pair is a
-  // .env paste - including the single most common case, one `KEY=value` line.
   function onPaste(i: number, e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
     const parsed = parseEnv(text);
@@ -80,9 +68,7 @@ export function EnvRowsEditor({
   return (
     <>
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-        {/* Same px-2 as the rows, and the labels carry the cells' own px-1.5:
-            the two grids then land on the very same tracks, so KEY sits over
-            the keys and VALUE over the values, to the pixel. */}
+        {/* Header and rows share one grid, so KEY sits over the keys. */}
         <div
           className={cn(
             singleRow ? GRID_SINGLE : GRID,
@@ -129,9 +115,7 @@ export function EnvRowsEditor({
                   valueReadOnly && "text-muted-foreground",
                 )}
               />
-              {/* Kept in the layout, hidden while it would do nothing: the last
-                  row can't be removed, and a column that comes and goes would
-                  shift every input under the cursor. */}
+              {/* Hidden, not unmounted: a column that comes and goes shifts every input. */}
               {!singleRow && (
                 <Button
                   variant="ghost"

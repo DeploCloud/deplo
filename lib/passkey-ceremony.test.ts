@@ -13,11 +13,6 @@ import { seedIdentity, TEAM_A, USER_1 } from "./data/identity-test-helpers";
 import { FLAG, makeAuthenticator } from "./webauthn-test-helpers";
 import { userHasPasskey } from "./passkey-policy";
 
-/**
- * The ceremony, end to end, against a software authenticator that produces real
- * signatures over the server's real challenges.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -48,14 +43,12 @@ beforeEach(async () => {
   });
 });
 
-/** Cookies from a response, flattened into a request `Cookie` header. */
 const jar = (res: Response) =>
   res.headers
     .getSetCookie()
     .map((c) => c.split(";")[0])
     .join("; ");
 
-/** Sign in with the password and keep the session cookie. */
 async function signIn(): Promise<string> {
   const res = await requireAuth().api.signInEmail({
     body: { email: EMAIL_1, password: PASSWORD },
@@ -76,7 +69,6 @@ async function registrationOptions(cookie: string) {
     challenge: string;
     rp: { id: string };
   };
-  // Both cookies travel on: the session says who, the challenge says which.
   return { options, cookie: `${cookie}; ${jar(res)}` };
 }
 
@@ -94,7 +86,6 @@ async function authenticationOptions(cookie?: string) {
   return { options, cookie: jar(res) };
 }
 
-/** Register a fresh credential and return the authenticator holding it. */
 async function enrol(name = "Test device") {
   const sessionCookie = await signIn();
   const auth = makeAuthenticator();
@@ -110,10 +101,6 @@ async function enrol(name = "Test device") {
   });
   return { auth, sessionCookie, row: row as { id: string; userId: string } };
 }
-
-/* ------------------------------------------------------------------ */
-/* 1. Registration                                                     */
-/* ------------------------------------------------------------------ */
 
 test("a real credential registers, and lands on the right account", async () => {
   const { auth, row } = await enrol("Laptop");
@@ -150,11 +137,6 @@ test("the options name THIS panel, and nothing else", async () => {
   );
 });
 
-/**
- * The guard Deplo adds on top of the plugin, which hardcodes
- * `requireUserVerification: false`. Without it a key that never asked for a PIN
- * would satisfy a team's two-factor mandate as a single factor.
- */
 test("a ceremony with no user verification is refused at registration", async () => {
   const sessionCookie = await signIn();
   const auth = makeAuthenticator();
@@ -163,7 +145,6 @@ test("a ceremony with no user verification is refused at registration", async ()
     challenge: options.challenge,
     origin: ORIGIN,
     rpId: RP_ID,
-    // Present, but not verified: touched, not identified.
     flags: FLAG.up | FLAG.at,
   });
   await assert.rejects(
@@ -249,8 +230,6 @@ test("a challenge is single-use", async () => {
     },
     headers: new Headers({ cookie }),
   });
-  // Same cookie, same challenge, a different credential: the row backing it was
-  // consumed, so there is nothing left to answer.
   await assert.rejects(
     () =>
       requireAuth().api.verifyPasskeyRegistration({
@@ -287,10 +266,6 @@ test("a registration challenge cannot be spent on a sign-in", async () => {
     "the two ceremonies are typed apart on purpose",
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* 2. Signing in                                                       */
-/* ------------------------------------------------------------------ */
 
 test("a registered credential signs in, with no password anywhere", async () => {
   const { auth } = await enrol();
@@ -353,8 +328,6 @@ test("the replay counter is written back after every assertion", async () => {
 });
 
 test("an authenticator whose counter went backwards is refused", async () => {
-  // What a CLONED authenticator looks like from the server's side: a valid signature
-  // over a fresh challenge, from a credential whose counter has already been seen.
   const { auth } = await enrol();
   const useOnce = async () => {
     const { options, cookie } = await authenticationOptions();
@@ -370,7 +343,7 @@ test("an authenticator whose counter went backwards is refused", async () => {
     });
   };
   await useOnce();
-  auth.counter = 0; // the clone, still at the count it was copied at
+  auth.counter = 0;
   await assert.rejects(useOnce());
 });
 
@@ -474,10 +447,6 @@ test("a tampered signature is refused", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* 3. Registering a second one                                         */
-/* ------------------------------------------------------------------ */
-
 test("the same authenticator is not offered a second registration", async () => {
   const { auth, sessionCookie } = await enrol();
   const { options } = await registrationOptions(sessionCookie);
@@ -502,13 +471,7 @@ test("a second device registers alongside the first", async () => {
   assert.deepEqual(rows.map((r) => r.name).sort(), ["First", "Second"]);
 });
 
-/* ------------------------------------------------------------------ */
-/* 4. What the plugin alone does NOT do                                */
-/* ------------------------------------------------------------------ */
-
 test("a row the plugin writes on its own is not usable until Deplo stamps it", async () => {
-  // `enrol()` drives the endpoints directly, which is everything the plugin knows how
-  // to do - and it does not know about rpIDs.
   await enrol();
   const [row] = await db
     .select({ rpId: passkeyTable.rpId })

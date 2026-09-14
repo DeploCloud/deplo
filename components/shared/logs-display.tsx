@@ -29,18 +29,13 @@ function read(): LogsDisplay {
   }
 }
 
-/** The two `:root` tokens every pane reads. Defined in app/globals.css. */
 function apply({ size, leading }: LogsDisplay) {
   const root = document.documentElement.style;
   root.setProperty("--log-fs", `${size}px`);
   root.setProperty("--log-lh", String(leading));
 }
 
-/**
- * Applies the stored size app-wide. Mounted once in the shell so a pane with no
- * menu of its own - the build log, a destination test - matches the one that set
- * it.
- */
+// LogsDisplayVars applies the stored size app-wide, mounted once in the shell.
 export function LogsDisplayVars() {
   React.useEffect(() => {
     apply(read());
@@ -65,8 +60,6 @@ export function LogsDisplayMenu({ className }: { className?: string }) {
     display.size === DEFAULTS.size && display.leading === DEFAULTS.leading;
 
   return (
-    // Read on open, not on mount: the trigger shows no value, and another tab's
-    // change is picked up the next time this one is opened.
     <Popover onOpenChange={(open) => open && setDisplay(read())}>
       <SimpleTooltip content="Display">
         <PopoverTrigger asChild>

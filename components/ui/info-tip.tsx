@@ -14,11 +14,7 @@ import type { DocsTopic } from "@/lib/docs";
 
 type Side = "top" | "right" | "bottom" | "left";
 
-/**
- * The "info" icon next to a label that carries the explanation the name cannot.
- * A `type="button"`, so it never submits the form, and interactive content, so a
- * click inside a `<label>` does not forward to the labelled control.
- */
+// InfoTip is the icon beside a label: a `type="button"` so it never submits, and interactive content so a click inside a `<label>` does not forward to the control.
 export function InfoTip({
   content,
   docs,
@@ -28,13 +24,11 @@ export function InfoTip({
   label = "More information",
 }: {
   content: React.ReactNode;
-  /** The manual section that explains this properly. Radix keeps the tooltip
-   *  open while the pointer travels into it, so the link is clickable. */
+  // Radix keeps the tooltip open while the pointer travels into it, so this link is clickable.
   docs?: DocsTopic;
   docsLabel?: string;
   side?: Side;
   className?: string;
-  /** Accessible name for the trigger, announced by screen readers. */
   label?: string;
 }) {
   return (
@@ -43,9 +37,7 @@ export function InfoTip({
         <button
           type="button"
           aria-label={label}
-          // Hint-only: `DialogContent` skips it when a dialog picks what to focus
-          // on open, because landing on an info icon gives the user a focus ring
-          // on something they can't act on (and used to pop the tooltip open).
+          // Hint-only: `DialogContent` skips it when picking what to focus, since landing on an info icon gives a focus ring on something the user can't act on.
           data-hint-trigger=""
           className={cn(
             "inline-flex size-3.5 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground/70 transition-colors outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
@@ -69,10 +61,7 @@ export function InfoTip({
   );
 }
 
-/**
- * A field label with an optional trailing info icon. Drop-in for `<Label>`: pass
- * `info` and it renders an {@link InfoTip}, omit it and this is just a Label.
- */
+// FieldLabel is a drop-in `<Label>` with an optional trailing InfoTip: pass `info` and it renders one, omit it and this is just a Label.
 export function FieldLabel({
   children,
   info,
@@ -90,8 +79,7 @@ export function FieldLabel({
   infoLabel?: string;
 }) {
   return (
-    // `w-fit` so the label, and the info trigger it carries, hug their content
-    // instead of stretching the full column width.
+    // `w-fit` so the label and its info trigger hug their content instead of stretching the full column width.
     <Label
       className={cn("flex w-fit items-center gap-1.5", className)}
       {...props}

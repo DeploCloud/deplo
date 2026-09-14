@@ -4,23 +4,13 @@ import { sql } from "drizzle-orm";
 
 import { getDb } from "./db/client";
 
-/**
- * Fixed-window rate limiter for the sensitive paths: login, the two-factor
- * challenge, the register link, the notification test button. Postgres-backed, so
- * it survives a restart - and it FAILS OPEN when the database is unreachable.
- */
-
 export interface RateLimitResult {
   ok: boolean;
   remaining: number;
   retryAfterSec: number;
 }
 
-/**
- * Count one attempt against `key` and say whether it is allowed.
- * Increments-or-resets in a single UPSERT so two concurrent attempts can never
- * both read the same count and both write `count + 1`.
- */
+// rateLimit counts one attempt against `key`: one UPSERT, so two concurrent attempts cannot both write count + 1.
 export async function rateLimit(
   key: string,
   opts: { limit: number; windowMs: number },
@@ -45,9 +35,7 @@ export async function rateLimit(
         greatest(0, ceil(extract(epoch from ("reset_at" - now()))))::int as retry_after
     `);
 
-    // drizzle's `execute` returns the DRIVER's shape, and the two drivers this runs on
-    // do not agree on it: node-postgres hands back `{ rows: [...] }`, pglite the array
-    // itself.
+    // drizzle's `execute` returns the DRIVER's shape: node-postgres `{ rows }`, pglite the array.
     const rows = (
       Array.isArray(result)
         ? result
@@ -64,21 +52,18 @@ export async function rateLimit(
     if (count > opts.limit) return { ok: false, remaining: 0, retryAfterSec };
     return { ok: true, remaining: opts.limit - count, retryAfterSec: 0 };
   } catch {
-    // See the docblock: a limiter that locks everyone out when the database
-    // hiccups is worse than one that briefly stops counting.
+    // Fails open: a limiter that locks everyone out on a database blip is worse than one that stops counting.
     return { ok: true, remaining: opts.limit - 1, retryAfterSec: 0 };
   }
 }
 
-/**
- * Drop windows that have already closed.
- */
+// sweepRateLimits drops windows that have already closed.
 export async function sweepRateLimits(): Promise<void> {
   try {
     await getDb().execute(
       sql`delete from rate_limits where "reset_at" <= now()`,
     );
   } catch {
-    // Housekeeping. A failure here costs disk, never correctness.
+    // Housekeeping: a failure here costs disk, never correctness.
   }
 }

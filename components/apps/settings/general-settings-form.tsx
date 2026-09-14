@@ -25,11 +25,7 @@ import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { formatBytes } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * General settings: an app's name and logo - its identity, so they share one
- * card. A picked photo goes through the crop dialog and saves on confirm; the
- * name saves with its button (and arms the leave guard while dirty).
- */
+// GeneralSettingsForm edits an app's name and logo.
 export function GeneralSettingsForm({
   appId,
   name: initialName,
@@ -40,18 +36,11 @@ export function GeneralSettingsForm({
   appId: string;
   name: string;
   logo: string | null;
-  /** The plate a template's logo wears. Any logo the user sets replaces it with
-   *  nothing, here and on the server. */
   logoTone?: "dark" | "light" | null;
-  /** Whether the app has scannable source files (a GitHub repo or an
-   * uploaded archive) - gates the "Detect from source" button. */
   detectable?: boolean;
 }) {
   const router = useRouter();
   const [name, setName] = React.useState(initialName);
-  // Logo is stored inline as a base64 image data-URI (or a template's local
-  // /templates path). `null` ⇒ no logo (generic icon). The picker reads a file
-  // and converts it to a data-URI before saving, so nothing is fetched remotely.
   const [logo, setLogo] = React.useState<string | null>(initialLogo);
   const [tone, setTone] = React.useState(initialTone ?? null);
   const [picked, setPicked] = React.useState<File | null>(null);
@@ -62,8 +51,6 @@ export function GeneralSettingsForm({
   const nameDirty = name !== savedName;
 
   function saveName() {
-    // Saved on the click: the field already shows the new name, so holding the
-    // button in a spinner only delays the moment the form stops looking dirty.
     const previous = savedName;
     const next = name;
     setSavedName(next);
@@ -81,8 +68,6 @@ export function GeneralSettingsForm({
     });
   }
 
-  // Persist a logo value (a data-URI, or null to clear it). Optimistic, with
-  // the previous logo put back if the server refuses.
   function saveLogo(next: string | null) {
     const previous = logo;
     setLogo(next);
@@ -101,8 +86,6 @@ export function GeneralSettingsForm({
     });
   }
 
-  // Validate a picked image (type + size) and either open the crop dialog or,
-  // for the formats a canvas cannot handle, store the file exactly as uploaded.
   async function pickLogo(file: File) {
     if (
       !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
@@ -131,9 +114,6 @@ export function GeneralSettingsForm({
     reader.readAsDataURL(file);
   }
 
-  // Ask the server to find this app's own favicon and set it as the logo: in a GitHub
-  // repo, the uploaded archive, or, for a compose stack, its files dir on its
-  // server plus the icon the running app serves.
   function detectFromSource() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -226,7 +206,7 @@ export function GeneralSettingsForm({
             />
           </div>
 
-          {/* Name - saved with the button below; the logo saves on pick. */}
+          {/* Name */}
           <div className="max-w-md space-y-2 border-t border-border pt-6">
             <Label>App name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -241,7 +221,7 @@ export function GeneralSettingsForm({
         </CardFooter>
       </Card>
 
-      {/* Warn before leaving with an unsaved name (the logo saves on pick). */}
+      {/* The logo saves on pick, so only the name can be unsaved. */}
       <UnsavedChangesGuard when={nameDirty} />
     </>
   );

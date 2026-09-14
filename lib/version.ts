@@ -1,22 +1,12 @@
 import { version as packageVersion } from "../package.json";
 
-/**
- * Current Deplo (control plane / website) version and upstream repository. This
- * module is client-reachable (the fleet list compares agent versions in it), so
- * nothing server-only may be imported here.
- */
+// DEPLO_VERSION - the control plane version; this module is client-reachable, so nothing server-only may be imported here.
 export const DEPLO_VERSION: string = packageVersion;
 export const DEPLO_REPO = "DeploCloud/deplo";
 
-/**
- * The agent version we expect every server to be running. This constant is the
- * OFFLINE FALLBACK used only when GitHub can't be reached, and it is what "Update
- * agent" would install then. It lives HERE, not beside the release reader, so the
- * fleet list can compare two versions without pulling a server-only module.
- */
+// FALLBACK_AGENT_VERSION - the agent version to install when GitHub cannot be reached.
 export const FALLBACK_AGENT_VERSION = "0.1.0";
 
-/** Parse a `[v]MAJOR.MINOR.PATCH[...]` string into a numeric triple, or null. */
 function parseSemver(v: string): [number, number, number] | null {
   const m = v
     .trim()
@@ -26,7 +16,7 @@ function parseSemver(v: string): [number, number, number] | null {
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
-/** True when `latest` is a strictly higher semver than `current`. */
+// isNewer is true when latest is a strictly higher semver than current.
 export function isNewer(latest: string, current: string): boolean {
   const a = parseSemver(latest);
   const b = parseSemver(current);
@@ -38,11 +28,7 @@ export function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
-/**
- * Whether to offer "Update agent" for a host at all. A host AHEAD of the latest
- * release is not outdated - a moved or deleted tag walks `latest` backwards, and
- * calling that an update advertises a downgrade. Unknown or unparseable: offer it.
- */
+// agentUpdateAvailable - whether to offer "Update agent"; a host ahead of latest is not outdated, since a moved tag walks latest backwards.
 export function agentUpdateAvailable(
   reported: string | null,
   expected: string,
@@ -52,9 +38,7 @@ export function agentUpdateAvailable(
   return isNewer(expected, reported);
 }
 
-/**
- * The agent version a server is effectively running, for display.
- */
+// reportedAgentVersion is the agent version a server is effectively running, for display.
 export function reportedAgentVersion(server: {
   agent?: { version: string };
 }): string | null {

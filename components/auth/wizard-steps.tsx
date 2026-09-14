@@ -30,7 +30,6 @@ import {
 } from "@/lib/username";
 import { cn } from "@/lib/utils";
 
-/** Longest name the greeting will show before it truncates. */
 const NAME_MAX = 16;
 
 export type AccountDraft = {
@@ -57,14 +56,12 @@ const EMPTY_ACCOUNT: AccountDraft = {
 
 export const EMPTY_TEAM: TeamDraft = { name: "", image: null };
 
-/** A fresh account, wearing a face nobody had to pick. It does not follow the
- *  name as it is typed - only the initials pack does, and only once chosen. */
+// newAccountDraft - a random face; it does not follow the name as it is typed, only the initials pack does.
 export function newAccountDraft(): AccountDraft {
   return { ...EMPTY_ACCOUNT, image: randomFaceValue() };
 }
 
-/** The team's mark follows the NAME, not the keystroke: it settles once typing
- *  stops, so the letters do not flicker through a word being written. */
+// Settles once typing stops, so the letters do not flicker through a word being written.
 function useSettledSeed(name: string, ms = 600): string {
   const seed = name.trim() ? avatarSeedFromName(name) : "";
   const [settled, setSettled] = React.useState(seed);
@@ -75,7 +72,7 @@ function useSettledSeed(name: string, ms = 600): string {
   return settled;
 }
 
-/** The handle the account gets: derived from the name until it is edited. */
+// draftHandle - the handle the account gets: derived from the name until it is edited.
 export function draftHandle(d: AccountDraft): string {
   return d.handleEdited ? d.handle : normalizeUsername(d.name);
 }
@@ -90,15 +87,11 @@ export function accountReady(d: AccountDraft): boolean {
   );
 }
 
-/**
- * The greeting's tail: "." until there is a name, then ", Ada". The width is
- * eased, so typing glides the line open instead of jumping it per keystroke.
- */
+// The measured span is what makes the width animate: CSS cannot ease to `width: auto`.
 function GreetingTail({ name }: { name: string }) {
   const box = React.useRef<HTMLSpanElement>(null);
   const measured = React.useRef<HTMLSpanElement>(null);
-  // The first name, hard-capped: the tail cannot wrap, so an unbounded name
-  // would push the title past the column and off a phone.
+  // Hard-capped: the tail cannot wrap, so an unbounded name pushes the title off a phone.
   const first = name.trim().split(/\s+/)[0] ?? "";
   const shown =
     first.length > NAME_MAX ? `${first.slice(0, NAME_MAX)}...` : first;
@@ -121,7 +114,7 @@ function GreetingTail({ name }: { name: string }) {
   );
 }
 
-/** Label and spinner share one grid cell, so the button never changes width. */
+// Label and spinner share one grid cell, so the button never changes width.
 function SubmitFace({
   pending,
   icon: Icon,
@@ -166,7 +159,7 @@ function StepTitle({
   );
 }
 
-/** Who you are: picture, name, handle, email, password. */
+// AccountStep - who you are: picture, name, handle, email, password.
 export function AccountStep({
   draft,
   onChange,
@@ -180,12 +173,11 @@ export function AccountStep({
   draft: AccountDraft;
   onChange: (next: AccountDraft) => void;
   description: React.ReactNode;
-  /** The one-line reassurance under the fields. */
   note: React.ReactNode;
   submitLabel: string;
   pending?: boolean;
   onSubmit: () => void;
-  /** Between the heading and the fields - the teams a link assigns. */
+  // Rendered between the heading and the fields - the teams an invite link assigns.
   children?: React.ReactNode;
 }) {
   const handle = draftHandle(draft);
@@ -236,8 +228,7 @@ export function AccountStep({
         title={
           <>
             Welcome to{" "}
-            {/* One unit, or a narrow screen wraps the comma onto a line of
-                its own. */}
+            {/* One unit, or a narrow screen wraps the comma onto a line of its own. */}
             <span className="whitespace-nowrap">
               Deplo
               <GreetingTail name={draft.name} />
@@ -343,7 +334,7 @@ export function AccountStep({
   );
 }
 
-/** Where the work lives: picture and a name. */
+// TeamStep - where the work lives: picture and a name.
 export function TeamStep({
   draft,
   onChange,
@@ -432,7 +423,7 @@ export function TeamStep({
   );
 }
 
-/** Where you are in a two-step wizard. */
+// StepDots - where you are in a two-step wizard.
 export function StepDots({
   steps,
   current,

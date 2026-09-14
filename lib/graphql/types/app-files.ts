@@ -5,10 +5,6 @@ import {
   type StorageFile,
 } from "@/lib/data/app-files";
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
 const StorageFileRef = builder
   .objectRef<StorageFile>("AppStorageFile")
   .implement({
@@ -23,10 +19,6 @@ const StorageFileRef = builder
       text: t.exposeString("text"),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   appStorageFile: t.field({
@@ -43,10 +35,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { appId, path }) => readAppStorageFile(appId, path),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   writeAppFile: t.field({

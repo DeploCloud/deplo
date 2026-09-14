@@ -44,8 +44,9 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  const { connectAgent, agentPreflight } =
-    await import("../lib/infra/agent-client");
+  const { connectAgent } = await import("../lib/infra/agent-client/connect");
+  const { agentPreflight } =
+    await import("../lib/infra/agent-client/preflight");
   const { SourceKind, BuildKind } = await import("../lib/agent/gen/agent");
 
   console.log("== preflight ==");

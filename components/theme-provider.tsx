@@ -17,13 +17,12 @@ const ThemeContext = React.createContext<ThemeContextValue | undefined>(
 
 const STORAGE_KEY = "theme";
 const MQ = "(prefers-color-scheme: dark)";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 function systemResolved(): Resolved {
   return window.matchMedia(MQ).matches ? "dark" : "light";
 }
 
-/** Apply the resolved theme to <html> (class + color-scheme). Client only. */
 function applyClass(resolved: Resolved) {
   const el = document.documentElement;
   el.classList.remove("light", "dark");
@@ -31,12 +30,7 @@ function applyClass(resolved: Resolved) {
   el.style.colorScheme = resolved;
 }
 
-/**
- * Persist the RESOLVED theme in a cookie so the SERVER can set the <html> class on
- * the next load - the zero-flash mechanism that replaces an inline bootstrap
- * script (React 19.2 refuses to execute inline scripts rendered through React,
- * server or client, and warns).
- */
+// The server paints <html> from this cookie on the next load - the zero-flash mechanism.
 function writeCookie(resolved: Resolved) {
   try {
     document.cookie = `${STORAGE_KEY}=${resolved}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`;
@@ -45,17 +39,13 @@ function writeCookie(resolved: Resolved) {
   }
 }
 
-/**
- * Minimal theme provider - replaces `next-themes`, which rendered its no-flash
- * <script> from a client component (React 19.2 warns that such inline scripts
- * never run on the client).
- */
+// ThemeProvider - replaces `next-themes`: React 19.2 never runs an inline <script> rendered through React.
 export function ThemeProvider({
   children,
   defaultTheme = "dark",
 }: {
   children: React.ReactNode;
-  /** SSR-resolved theme (from the cookie) - the deterministic initial value. */
+  // SSR-resolved from the cookie - the deterministic initial value.
   defaultTheme?: Theme;
 }) {
   const [theme, setThemeState] = React.useState<Theme>(defaultTheme);
@@ -63,9 +53,7 @@ export function ThemeProvider({
     defaultTheme === "light" ? "light" : "dark",
   );
 
-  // Reconcile to the persisted preference after mount. The server already
-  // painted the cookie's value, so for the common case this is a no-op; it only
-  // changes the DOM when the preference is "system" or the cookie was stale.
+  // Reconcile to the persisted preference after mount; the server already painted the cookie's value.
   React.useEffect(() => {
     let pref: string | null = null;
     try {
@@ -86,7 +74,6 @@ export function ThemeProvider({
     writeCookie(resolved);
   }, [defaultTheme]);
 
-  // While following the system, track OS changes and re-apply.
   React.useEffect(() => {
     if (theme !== "system") return;
     const mq = window.matchMedia(MQ);
@@ -123,7 +110,7 @@ export function ThemeProvider({
   );
 }
 
-/** Read the current theme + setter. Permissive fallback so it never crashes. */
+// useTheme - the current theme + setter; falls back permissively so it never crashes outside a provider.
 export function useTheme(): ThemeContextValue {
   return (
     React.useContext(ThemeContext) ?? {

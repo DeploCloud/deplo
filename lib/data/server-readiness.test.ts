@@ -10,7 +10,7 @@ import { __setTestDb, __resetTestDb, getDb } from "../db/client";
 import {
   serverTeams as serverTeamsTable,
   servers as serversTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/servers";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
@@ -18,17 +18,12 @@ import { checkServerReadiness } from "./server-readiness";
 import {
   READINESS_DETAILS,
   READINESS_MESSAGES,
-} from "../infra/server-readiness";
+} from "../infra/server-readiness/messages";
 import { __resetReleaseCacheForTests } from "../agent/release";
-
-/**
- * The readiness orchestrator's DB behaviour, hermetically: no gRPC, no sockets.
- */
 
 let db: TestDb;
 let pg: PGlite;
 
-/** A provisioned agent. The fingerprint is UNIQUE-indexed, so each server needs its own. */
 const agent = (fp: string) => ({
   port: 9443,
   certFingerprint: fp,
@@ -36,11 +31,6 @@ const agent = (fp: string) => ({
   version: "1.1.0",
 });
 
-/**
- * `resolveExpectedAgentVersion` reaches for the latest GitHub release. Stub it out so the
- * suite is offline-safe and deterministic: an unreachable GitHub degrades to the built-in
- * fallback, which is exactly the documented behaviour.
- */
 let restoreFetch: () => void;
 
 before(async () => {
@@ -81,8 +71,6 @@ const rawRow = async (id: string) =>
   (await getDb().select().from(serversTable).where(eq(serversTable.id, id)))[0];
 
 test("checkServerReadiness is instance-admin only, and rejects BEFORE any dial", async () => {
-  // Seeded PROVISIONED on purpose: if the gate leaked, the orchestrator would try to dial a
-  // host that does not exist and this test would hang rather than fail quietly.
   await seedServerRow(db, {
     id: "srv_1",
     status: "online",
@@ -126,8 +114,6 @@ test("an unprovisioned server returns a `provisioning` report without dialing", 
     !Number.isNaN(Date.parse(report.checkedAt)),
     "checkedAt is a real instant",
   );
-  // Only the rows whose inputs we actually have: the bootstrap fact + the control-plane facts.
-  // No wall of grey "skipped" agent/docker/routing rows for a host nobody has installed yet.
   assert.deepEqual(
     report.checks.map((c) => c.id),
     ["agent.bootstrap", "config.teamAccess", "config.deployConcurrency"],
@@ -139,9 +125,6 @@ test("an unprovisioned server returns a `provisioning` report without dialing", 
 });
 
 test("a trust-revoked server (empty-string fingerprint) is fenced exactly like an unprovisioned one", async () => {
-  // removeServer revokes trust by writing "" (not NULL). Dialing such a row would make
-  // resolveTarget throw from a pure DB read - reported as "the agent did not answer", which
-  // is a lie: we never asked.
   await seedServerRow(db, {
     id: "srv_revoked",
     status: "online",
@@ -158,9 +141,6 @@ test("a trust-revoked server (empty-string fingerprint) is fenced exactly like a
 });
 
 test("a readiness check WRITES NOTHING - status, its timestamps and the heartbeat are untouched", async () => {
-  // The load-bearing invariant. Readiness is a DIAGNOSTIC the operator opens *because*
-  // something looks wrong; it must not be able to perturb what the page is telling them.
-  // `servers.status` stays the health prober's alone.
   await seedServerRow(db, { id: "srv_new", status: "provisioning" });
   await seedServerRow(db, {
     id: "srv_revoked",
@@ -191,8 +171,6 @@ test("a readiness check WRITES NOTHING - status, its timestamps and the heartbea
 });
 
 test("grantedTeamCount comes from the real server_teams rows", async () => {
-  // A restricted server with zero grants can never receive a deployment, so it FAILS, and a
-  // fail outranks `provisioning`, even on a server whose agent has not called home yet.
   await seedServerRow(db, {
     id: "srv_locked",
     status: "provisioning",

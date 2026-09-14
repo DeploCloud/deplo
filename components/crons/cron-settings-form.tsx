@@ -9,11 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * The master switch for one target's cron jobs. Deliberately ONE control: the
- * per-job settings belong to a job. Renders the ROW, not the card, and turning it
- * OFF keeps every job, so it doubles as the pause button. */
-
 const SET_ENABLED = /* GraphQL */ `
   mutation ($targetKind: String!, $targetId: ID!, $enabled: Boolean!) {
     setCronEnabled(
@@ -33,7 +28,6 @@ export function CronSettingsForm({
   targetKind: "app" | "database";
   targetId: string;
   enabled: boolean;
-  /** How many jobs stop firing when this goes off. */
   jobCount: number;
 }) {
   const router = useRouter();
@@ -41,7 +35,7 @@ export function CronSettingsForm({
   const [enabled, setEnabled] = React.useState(initial);
 
   function apply(v: boolean) {
-    setEnabled(v); // optimistic
+    setEnabled(v);
     startTransition(async () => {
       const res = await gqlAction(SET_ENABLED, {
         targetKind,
@@ -52,7 +46,7 @@ export function CronSettingsForm({
         toast.success(v ? "Cron jobs are on" : "Cron jobs are off");
         router.refresh();
       } else {
-        setEnabled(!v); // rollback
+        setEnabled(!v);
         toast.error(res.error);
       }
     });
@@ -67,15 +61,12 @@ export function CronSettingsForm({
           <p className="flex items-center gap-2 text-sm font-medium">
             <Timer className="size-4 text-muted-foreground" />
             Cron jobs
-            {/* Said once, where the decision is made. `info` and not `warning`:
-                this is a maturity note, not something wrong. */}
+            {/* Beta is a maturity note, not something wrong: info, not warning. */}
             <Badge variant="info" className="text-[10px] font-normal">
               Beta
             </Badge>
           </p>
-          {/* One line, and it names the two things somebody has to already
-              know: what runs, and with what privileges. An advanced feature
-              earns a warning, not a paragraph. */}
+          {/* Names what runs, and with what privileges. */}
           <p className="text-sm text-muted-foreground">
             Run a command inside {noun}&apos;s container on a schedule, as the
             container&apos;s own user and with no sandbox.
@@ -88,9 +79,7 @@ export function CronSettingsForm({
           aria-label="Cron jobs"
         />
       </div>
-      {/* Only when it says something the switch does not: turning it off is
-          reversible and destroys nothing, so this is information rather than a
-          confirmation dialog. */}
+      {/* Turning it off is reversible, so this informs instead of confirming. */}
       {!enabled && jobCount > 0 && (
         <p className="mt-3 text-sm text-muted-foreground">
           {jobCount === 1

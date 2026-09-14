@@ -26,9 +26,7 @@ const TabsList = React.forwardRef<
 ));
 TabsList.displayName = TabsPrimitive.List.displayName;
 
-// Icon + label spacing, straight off `buttonVariants`: a trigger is a button with
-// an icon in it, and every one of ours has an icon. Without this each call site
-// re-invented the gap, or forgot it, and the glyph sat glued to the word.
+// Icon + label spacing off `buttonVariants`: without it each call site re-invented the gap or forgot it, and the glyph sat glued to the word.
 const TRIGGER_ICON = "gap-2 [&_svg]:size-4 [&_svg]:shrink-0";
 
 const triggerClass =
@@ -51,10 +49,7 @@ const TabsTrigger = React.forwardRef<
 ));
 TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
-/**
- * Segmented tab list on a track: the pill SLIDES behind the active trigger
- * instead of blinking from one half to the other.
- */
+// SegmentedTabsList is a tab list on a track, where the pill SLIDES behind the active trigger instead of blinking from one half to the other.
 function SegmentedTabsList({
   className,
   children,
@@ -86,7 +81,7 @@ function SegmentedTabsList({
 }
 SegmentedTabsList.displayName = "SegmentedTabsList";
 
-/** A trigger for that track - it paints no background of its own, the pill is it. */
+// SegmentedTabsTrigger paints no background of its own - the sliding pill is it.
 const SegmentedTabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
@@ -114,10 +109,7 @@ const TabsContent = React.forwardRef<
 ));
 TabsContent.displayName = TabsPrimitive.Content.displayName;
 
-/**
- * Underline tab list for page sub-nav. The underline is a single element that
- * SLIDES between triggers, following whichever has `data-state="active"`.
- */
+// UnderlineTabsList is the page sub-nav strip: one underline element slides between triggers, following whichever has `data-state="active"`.
 function UnderlineTabsList({
   className,
   children,
@@ -137,9 +129,7 @@ function UnderlineTabsList({
     <TabsPrimitive.List
       ref={listRef}
       className={cn(
-        // Scrolls sideways instead of widening the page: a tab strip is the one row that
-        // must keep every label on one line, and on a phone three of them already outgrow
-        // the viewport.
+        // Scrolls sideways instead of widening the page: every label stays on one line, and on a phone three of them already outgrow the viewport.
         "relative scrollbar-none flex h-12 items-center gap-1 overflow-x-auto border-b border-border bg-transparent p-0",
         className,
       )}
@@ -152,8 +142,7 @@ function UnderlineTabsList({
 }
 UnderlineTabsList.displayName = "UnderlineTabsList";
 
-/** A trigger's look on its own, for an entry that NAVIGATES instead of switching
- *  a panel: a link that sits in the strip is a link, not a `role="tab"`. */
+// The look on its own, for an entry that NAVIGATES instead of switching a panel: a link in the strip is a link, not a `role="tab"`.
 const underlineTabClass =
   "inline-flex h-12 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none data-[state=active]:text-foreground";
 

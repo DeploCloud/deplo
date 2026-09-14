@@ -3,12 +3,6 @@ import assert from "node:assert/strict";
 
 import { describeUserAgent } from "./user-agent";
 
-/**
- * Real User-Agent strings, because the whole difficulty of this parser is that
- * they impersonate each other: Edge says Chrome and Safari, Chrome says Safari,
- * Opera and Samsung Internet both say Chrome, Android says Linux.
- */
-
 const UA = {
   chromeMac:
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -45,9 +39,7 @@ const UA = {
 };
 
 test("headless Chrome is named, not filed under Safari", () => {
-  // `\bChrome\/` does not match "HeadlessChrome/", no word boundary after
-  // "Headless", so without its own entry this fell through to the Safari rule
-  // and a scripted client appeared as a browser nobody had opened.
+  // `\bChrome\/` does not match "HeadlessChrome/": no word boundary after "Headless".
   assert.equal(
     describeUserAgent(UA.headless).label,
     "Headless Chrome on Linux",
@@ -77,8 +69,6 @@ test("real Safari is still recognised once the impostors are excluded", () => {
 });
 
 test("the iOS re-skins are named after the browser the user chose", () => {
-  // CriOS/FxiOS are WebKit underneath, but the person picked Chrome or Firefox
-  // and that is the row they will recognise.
   assert.equal(describeUserAgent(UA.chromeIos).label, "Chrome on iPhone");
   assert.equal(describeUserAgent(UA.firefoxIos).label, "Firefox on iPhone");
 });

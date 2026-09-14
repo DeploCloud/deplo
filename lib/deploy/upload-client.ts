@@ -1,7 +1,3 @@
-/**
- * Client-side helpers for streaming a code archive to an app's upload route.
- */
-
 import { formatBytes } from "@/lib/utils";
 import { MAX_UPLOAD_BYTES, ACCEPT_RE } from "@/lib/deploy/upload-shared";
 import {
@@ -10,11 +6,7 @@ import {
   ServerUnreachableError,
 } from "@/lib/server-connection";
 
-/**
- * Reject an archive the server would refuse anyway - an unsupported extension or
- * one past the size cap. Returns a user-facing message, or null when the file is
- * acceptable. Mirrors the server-side guards so the failure surfaces instantly.
- */
+// Reject an archive the server would refuse anyway - a bad extension or one past the size cap.
 export function validateArchive(file: File): string | null {
   if (!ACCEPT_RE.test(file.name)) {
     return "Unsupported archive - use .tar.gz, .tgz, .tar or .zip";
@@ -25,19 +17,13 @@ export function validateArchive(file: File): string | null {
   return null;
 }
 
-/**
- * Stream `file` to an app's upload route as a raw body (filename in a header),
- * reporting progress via `onProgress` (0-100). Uses XHR rather than `fetch`
- * because only XHR reports upload progress.
- */
+// Stream file to an app's upload route as a raw body; XHR, not fetch, because only XHR reports progress.
 export function uploadArchive(
   appId: string,
   file: File,
   onProgress?: (percent: number) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Offline: refuse before streaming megabytes at a server that isn't there,
-    // and say the same thing every other paused interaction says.
     if (isServerDisconnected()) {
       reject(new ServerUnreachableError());
       return;
@@ -64,11 +50,7 @@ export function uploadArchive(
             reject(new Error(msg));
             return;
           }
-        } catch {
-          /* not JSON - handled below */
-        }
-        // The route always answers JSON, so a body we can't parse (a proxy's
-        // HTML error page) or a gateway status means we never reached it.
+        } catch {}
         if (xhr.status >= 500 || xhr.status === 0) {
           reportServerUnreachable();
           reject(new ServerUnreachableError());
@@ -77,7 +59,6 @@ export function uploadArchive(
         reject(new Error("Upload failed"));
       }
     };
-    // A transport-level failure is the server being gone, not a bad archive.
     xhr.onerror = () => {
       reportServerUnreachable();
       reject(new ServerUnreachableError());

@@ -2,11 +2,7 @@
 
 import * as React from "react";
 
-/**
- * Guards a modal Dialog/Sheet against being dismissed by the *same* pointer
- * gesture that dismisses a Radix popper layer nested inside it (a Select,
- * DropdownMenu, Popover, …).
- */
+// useNestedLayerDismissGuard guards a modal Dialog/Sheet against the same pointer gesture that dismisses a Radix popper nested inside it.
 export function useNestedLayerDismissGuard() {
   const openAtPointerDownRef = React.useRef<Element[]>([]);
 

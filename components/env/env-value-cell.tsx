@@ -3,11 +3,7 @@
 import * as React from "react";
 import { RevealChip } from "@/components/shared/reveal-chip";
 
-/**
- * The value cell for one env-var row - a click-to-reveal chip (`RevealChip`,
- * shared with the database connection string so both read identically). - secret
- * var → write-only: the server sends the MASK, never the value.
- */
+// EnvValueCell - one env-var row's value as a click-to-reveal chip; a secret is masked.
 export function EnvValueCell({
   value,
   masked,

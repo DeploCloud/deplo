@@ -17,11 +17,6 @@ import {
   type ServerCertificate,
 } from "./server-certificates";
 
-/**
- * Data-layer tests for custom certificates. - the certificate and the key are
- * checked AS A PAIR, and before the host is dialed.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -98,8 +93,7 @@ beforeEach(async () => {
       },
     ],
   });
-  // RFC 5737 TEST-NET-1, and deliberately unprovisioned: the dial is refused
-  // before a connection is attempted, so nothing here hangs on a real network.
+  // RFC 5737 TEST-NET-1 and unprovisioned, so nothing here dials a real network.
   await seedServerRow(db, {
     id: SERVER,
     name: "remote-1",
@@ -180,8 +174,7 @@ test("an expired certificate is refused before it reaches the host", async () =>
 });
 
 test("a valid pair passes validation and only then dials the host", async () => {
-  // The dial is what fails here (no pinned agent certificate), which is the
-  // proof: the pair was accepted, so the next thing to go wrong is the network.
+  // The dial is what fails here, which is the proof the pair was accepted.
   await assert.rejects(
     () =>
       asAdmin(() =>
@@ -212,8 +205,6 @@ S2ZdI89Cj6/zmHbKLaaKZoTcQDil4upGVqr+wmhbqUq5KVluMuxsRAJw
 `;
 
 test("a certificate dated in the future is refused, like an expired one", () => {
-  // Traefik would serve it and every browser would reject it, with nothing on
-  // this side saying why.
   return assert.rejects(
     () =>
       asAdmin(() =>
@@ -227,9 +218,7 @@ test("a certificate dated in the future is refused, like an expired one", () => 
 });
 
 test("a chain pasted upside down says so, instead of blaming the key", () => {
-  // Traefik serves the FIRST certificate in the file. With the intermediate on
-  // top, the key genuinely does not match it - and "wrong key" would send someone
-  // hunting through key files for the key they already pasted.
+  // Traefik serves the FIRST certificate in the file, so the key really does not match it.
   return assert.rejects(
     () =>
       asAdmin(() =>
@@ -242,11 +231,8 @@ test("a chain pasted upside down says so, instead of blaming the key", () => {
   );
 });
 
-/**
- * Which installed certificate a new one replaces. Exact-domain equality was not
- * enough: renewing a certificate after adding a hostname to it left BOTH on the
- * host, and Traefik answers a request for a shared name with either of them.
- */
+// Exact-domain equality was not enough: renewing a certificate after adding a hostname left
+// BOTH on the host, and Traefik answers a request for a shared name with either of them.
 test("supersedes: a certificate replaces one whose every domain it covers", () => {
   const installed = (domains: string[]): ServerCertificate => ({
     id: "x",
@@ -259,21 +245,15 @@ test("supersedes: a certificate replaces one whose every domain it covers", () =
     expiresInDays: 30,
   });
 
-  // The same domains: a renewal.
   assert.equal(supersedes(new Set(["a.com"]), installed(["a.com"])), true);
-  // A name added to an existing certificate: the old one is strictly redundant.
   assert.equal(
     supersedes(new Set(["a.com", "b.com"]), installed(["a.com"])),
     true,
   );
-  // A partial overlap keeps BOTH: evicting the old one would take away b.com,
-  // which the new certificate does not cover.
   assert.equal(
     supersedes(new Set(["a.com"]), installed(["a.com", "b.com"])),
     false,
   );
-  // Unrelated certificates never touch each other.
   assert.equal(supersedes(new Set(["a.com"]), installed(["z.com"])), false);
-  // A certificate naming nothing is never claimed to be covered.
   assert.equal(supersedes(new Set(["a.com"]), installed([])), false);
 });

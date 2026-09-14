@@ -6,11 +6,7 @@ import {
   type VersionItem,
 } from "@/components/apps/version-combobox";
 
-/**
- * Node.js version input with an autocomplete dropdown synced to the real Node
- * release train (served by `/api/node-versions`, cached server-side from
- * nodejs.org/dist).
- */
+// NodeVersionInputProps - the list comes from `/api/node-versions`, cached server-side from nodejs.org/dist.
 export interface NodeVersionInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -19,7 +15,7 @@ export interface NodeVersionInputProps {
   className?: string;
 }
 
-/** Fetch + normalise the Node major list; tolerant of the plain-string shape. */
+// The endpoint can answer a plain version string as well as a {value,label} pair.
 async function loadNodeVersions(): Promise<VersionItem[]> {
   const r = await fetch("/api/node-versions");
   const j = await r.json();

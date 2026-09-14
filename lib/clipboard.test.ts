@@ -16,9 +16,6 @@ type El = {
   select(): void;
 };
 
-/** A page whose dialog traps focus the way Radix does: whatever is focused
- *  outside the dialog is pulled straight back in. `hostile` traps its own
- *  children too, so nothing can hold the selection. */
 function fakeDom({ hostile = false } = {}) {
   const copied: string[] = [];
   const el = (tag: string): El => {

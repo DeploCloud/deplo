@@ -10,11 +10,7 @@ import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
-/**
- * The connection string of one database, presented exactly like an env-var value
- * on the Variables page: the same `RevealChip`, covered by default, opened one
- * click at a time.
- */
+// DatabaseConnectionString shows one database's connection string in a `RevealChip`, covered by default.
 export function DatabaseConnectionString({
   id,
   masked,
@@ -22,9 +18,8 @@ export function DatabaseConnectionString({
   className,
 }: {
   id: string;
-  /** `connectionStringMasked` - what the chip shows while covered. */
   masked: string;
-  /** The viewer holds `manage_infra`; false drops the affordances entirely. */
+  // The viewer holds `manage_infra`; false drops the affordances entirely.
   canReveal?: boolean;
   className?: string;
 }) {
@@ -42,8 +37,7 @@ export function DatabaseConnectionString({
     );
     setPending(false);
     if (!res.ok) {
-      // Surface the server's own message - "You don't have permission…" and
-      // "Database not found" both mean something specific to the user.
+      // Surface the server's own message verbatim: permission and not-found mean different things.
       toast.error(res.error);
       return null;
     }
@@ -90,7 +84,6 @@ export function DatabaseConnectionString({
   );
 }
 
-/** Copy the connection string, fetching it first if it hasn't been revealed. */
 function CopyConnection({
   resolve,
 }: {

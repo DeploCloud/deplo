@@ -32,14 +32,11 @@ type BackupRunLite = {
   sizeBytes: number;
   startedAt: string;
   error: string | null;
-  /** Whether Deplo recorded a checksum for this artifact and can prove on
-   *  restore that the file has not been replaced since. */
+  // Deplo recorded a checksum, so a restore can prove the file has not been replaced.
   verified: boolean;
 };
 
-/**
- * Lists a backup target's recent runs and restores a chosen one in place.
- */
+// RestoreRunsDialog lists a backup target's recent runs and restores a chosen one in place.
 export function RestoreRunsDialog({
   open,
   onOpenChange,
@@ -57,8 +54,7 @@ export function RestoreRunsDialog({
   const [runs, setRuns] = React.useState<BackupRunLite[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Lazy-load on open; reload each time it opens so the list stays current after a
-  // fresh "Run now".
+  // Reload on each open so the list stays current after a fresh "Run now".
   React.useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -80,8 +76,7 @@ export function RestoreRunsDialog({
     return () => controller.abort();
   }, [open, targetKind, targetId]);
 
-  // Reset to the loading state on close, so re-opening shows the spinner and
-  // re-fetches rather than flashing the previous target's runs.
+  // Reset on close, so re-opening re-fetches rather than flashing the previous target's runs.
   const handleOpenChange = (v: boolean) => {
     if (!v) {
       setRuns(null);
@@ -172,10 +167,7 @@ function RestoreRunRow({
           <StatusDot status={run.status} />
           {run.status}
         </span>
-        {/**
-         * Only for the old runs: everything taken since carries a checksum, so saying
-         * "verified" on the normal case would be noise.
-         */}
+        {/* Only for old runs: everything taken since carries a checksum, so the normal case says nothing. */}
         {!run.verified && (
           <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
             <span className="mt-1 block text-[10px] text-muted-foreground">

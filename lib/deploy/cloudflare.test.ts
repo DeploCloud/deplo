@@ -10,18 +10,16 @@ import {
   CLOUDFLARE_IPV4_RANGES,
 } from "./cloudflare";
 
-// --- isCloudflareIp: IPv4 membership in the published proxy ranges ---
-
 test("isCloudflareIp: true for addresses inside published IPv4 ranges", () => {
   for (const ip of [
-    "104.16.5.5", // 104.16.0.0/13
-    "104.24.9.9", // 104.24.0.0/14 (just past the /13 above)
-    "172.64.1.1", // 172.64.0.0/13
-    "173.245.48.10", // 173.245.48.0/20 (first range)
-    "162.158.0.1", // 162.158.0.0/15
-    "198.41.128.1", // 198.41.128.0/17
-    "131.0.72.1", // 131.0.72.0/22 (last range)
-    "103.21.244.10", // 103.21.244.0/22
+    "104.16.5.5",
+    "104.24.9.9",
+    "172.64.1.1",
+    "173.245.48.10",
+    "162.158.0.1",
+    "198.41.128.1",
+    "131.0.72.1",
+    "103.21.244.10",
   ]) {
     assert.equal(isCloudflareIp(ip), true, `${ip} should be a Cloudflare IP`);
   }
@@ -29,13 +27,13 @@ test("isCloudflareIp: true for addresses inside published IPv4 ranges", () => {
 
 test("isCloudflareIp: false for non-Cloudflare IPv4 (incl. the CF DNS resolver)", () => {
   for (const ip of [
-    "8.8.8.8", // Google DNS
-    "1.1.1.1", // Cloudflare's public DNS, NOT a proxy range, must be false
-    "5.6.7.8", // an ordinary origin server
-    "104.15.255.255", // one below 104.16.0.0/13
-    "104.28.0.1", // above the 104.24.0.0/14 block, below 104.24? (not covered)
-    "192.168.1.1", // private
-    "203.0.113.7", // TEST-NET-3
+    "8.8.8.8",
+    "1.1.1.1",
+    "5.6.7.8",
+    "104.15.255.255",
+    "104.28.0.1",
+    "192.168.1.1",
+    "203.0.113.7",
   ]) {
     assert.equal(
       isCloudflareIp(ip),
@@ -46,11 +44,9 @@ test("isCloudflareIp: false for non-Cloudflare IPv4 (incl. the CF DNS resolver)"
 });
 
 test("isCloudflareIp: /13 and /14 boundaries are exact", () => {
-  // 104.16.0.0/13 spans 104.16.0.0 - 104.23.255.255
   assert.equal(isCloudflareIp("104.16.0.0"), true);
   assert.equal(isCloudflareIp("104.23.255.255"), true);
   assert.equal(isCloudflareIp("104.15.255.255"), false);
-  // 104.24.0.0/14 spans 104.24.0.0 - 104.27.255.255 (the /13 does NOT cover it)
   assert.equal(isCloudflareIp("104.24.0.0"), true);
   assert.equal(isCloudflareIp("104.27.255.255"), true);
   assert.equal(isCloudflareIp("104.28.0.0"), false);
@@ -68,25 +64,19 @@ test("isCloudflareIp: malformed input is never a Cloudflare IP", () => {
   }
 });
 
-// --- isCloudflareIp: IPv6 membership ---
-
 test("isCloudflareIp: true for addresses inside published IPv6 ranges", () => {
   for (const ip of [
-    "2606:4700::1", // 2606:4700::/32
-    "2400:cb00:1234::1", // 2400:cb00::/32
-    "2a06:98c0:0:0:0:0:0:1", // 2a06:98c0::/29
-    "2803:f800::abcd", // 2803:f800::/32
+    "2606:4700::1",
+    "2400:cb00:1234::1",
+    "2a06:98c0:0:0:0:0:0:1",
+    "2803:f800::abcd",
   ]) {
     assert.equal(isCloudflareIp(ip), true, `${ip} should be a Cloudflare IPv6`);
   }
 });
 
 test("isCloudflareIp: false for non-Cloudflare IPv6", () => {
-  for (const ip of [
-    "2001:4860:4860::8888", // Google IPv6 DNS
-    "::1", // loopback
-    "2607:f8b0::1", // Google
-  ]) {
+  for (const ip of ["2001:4860:4860::8888", "::1", "2607:f8b0::1"]) {
     assert.equal(
       isCloudflareIp(ip),
       false,
@@ -94,8 +84,6 @@ test("isCloudflareIp: false for non-Cloudflare IPv6", () => {
     );
   }
 });
-
-// --- classifyDomainDns: the three-way DNS verdict ---
 
 test("classifyDomainDns: a direct A record to the server is valid", () => {
   assert.equal(classifyDomainDns(["5.6.7.8"], "5.6.7.8"), "valid");
@@ -121,8 +109,6 @@ test("classifyDomainDns: an unrelated IP or no record is misconfigured", () => {
   assert.equal(classifyDomainDns([], "5.6.7.8"), "misconfigured");
 });
 
-// --- certProviderForDns: proxied ⇒ Cloudflare issues the certificate ---
-
 test("certProviderForDns: a proxied, cert-less domain moves onto cloudflare", () => {
   assert.equal(certProviderForDns("cloudflare", "none"), "cloudflare");
 });
@@ -143,24 +129,17 @@ test("certProviderForDns: every other status leaves a cert-less domain alone", (
 });
 
 test("certProviderForDns: an explicit provider is never overruled", () => {
-  // letsencrypt is a deliberate "give the ORIGIN its own certificate", which
-  // stays legitimate behind a proxy - the rule only ever fills in a blank.
   assert.equal(certProviderForDns("cloudflare", "letsencrypt"), "letsencrypt");
-  // Already there ⇒ idempotent (the domains page re-checks on an interval).
   assert.equal(certProviderForDns("cloudflare", "cloudflare"), "cloudflare");
-  // A pre-field row (absent provider, routed as letsencrypt) is left absent.
   assert.equal(certProviderForDns("cloudflare", undefined), undefined);
 });
 
 test("certProviderForDns: un-proxying a domain does NOT strip its certificate", () => {
-  // One-way by design: `cloudflare` is also the expert choice for a grey-clouded
-  // domain (DNS-01 via Cloudflare's API), so a status flip must never silently
-  // drop a working origin back to plain HTTP.
+  // One-way by design: `cloudflare` is also the expert choice for a grey-clouded domain
+  // (DNS-01 via Cloudflare's API), so a status flip must not drop the origin to plain HTTP.
   assert.equal(certProviderForDns("valid", "cloudflare"), "cloudflare");
   assert.equal(certProviderForDns("misconfigured", "cloudflare"), "cloudflare");
 });
-
-// --- range list sanity ---
 
 test("CLOUDFLARE_IPV4_RANGES mirrors the published ips-v4 list (15 CIDRs)", () => {
   assert.equal(CLOUDFLARE_IPV4_RANGES.length, 15);
@@ -168,10 +147,6 @@ test("CLOUDFLARE_IPV4_RANGES mirrors the published ips-v4 list (15 CIDRs)", () =
     assert.match(cidr, /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/, `${cidr} is a CIDR`);
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Routability: detected proxy, declared proxy                          */
-/* ------------------------------------------------------------------ */
 
 test("isRoutableDomain: valid and Cloudflare-proxied hosts route", () => {
   assert.equal(isRoutableDomain({ status: "valid" }), true);
@@ -184,7 +159,6 @@ test("isRoutableDomain: a declared proxy routes what DNS calls misconfigured", (
     isRoutableDomain({ status: "misconfigured", proxied: true }),
     true,
   );
-  // A host that does not resolve at all has nothing in front of it either.
   assert.equal(isRoutableDomain({ status: "pending" }), false);
   assert.equal(isRoutableDomain({ status: "pending", proxied: true }), true);
 });

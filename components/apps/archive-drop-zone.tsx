@@ -8,25 +8,18 @@ import { toast } from "sonner";
 import { validateArchive } from "@/lib/deploy/upload-client";
 import { setPendingArchive } from "@/lib/deploy/pending-archive";
 
-/**
- * Drop an archive anywhere on the page and it becomes an app. On the Overview it
- * hands the file to the wizard across a client-side navigation; inside the
- * wizard it fills the Upload step in place.
- *
- * https://deplo.build/docs/guides/deploy/upload-code
- */
+// ArchiveDropZone - drop an archive anywhere on the page and it becomes an app.
+// https://deplo.build/docs/guides/deploy/upload-code
 export function ArchiveDropZone({
   href,
   onFile,
 }: {
-  /** Where to open the wizard. Ignored when `onFile` handles the drop here. */
   href?: string;
   onFile?: (file: File) => void;
 }) {
   const router = useRouter();
   const [over, setOver] = React.useState(false);
-  // dragenter/dragleave fire for every element the pointer crosses, so the
-  // overlay is closed by a counter, never by the first leave.
+  // dragenter/dragleave fire per crossed element, so the overlay closes on a counter.
   const depth = React.useRef(0);
 
   React.useEffect(() => {

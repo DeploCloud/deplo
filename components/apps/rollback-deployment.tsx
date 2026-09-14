@@ -9,11 +9,7 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { CapabilityTip } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * Rollback - putting an app back on a build it already ran. Two triggers use it
- * (the deployments row menu and a deployment's own page) and they must not drift
- * into telling two stories.
- */
+// RollbackDialog - the shared confirm for putting an app back on a build it ran.
 export function RollbackDialog({
   open,
   onOpenChange,
@@ -24,18 +20,13 @@ export function RollbackDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The deployment being returned TO. */
   id: string;
-  /** Owning app slug - used to follow the new build to its live logs. */
   appSlug: string;
   commitSha?: string;
   commitMessage?: string;
 }) {
   const router = useRouter();
 
-  // Returns the ActionResult so ConfirmAction owns the toast + close. On success
-  // we follow the new build the way Redeploy does: it is a real deployment with
-  // real logs, just a very short one.
   async function rollback() {
     const res = await gqlAction<
       { rollbackDeployment: { id: string | null } | null },
@@ -54,9 +45,6 @@ export function RollbackDialog({
   }
 
   return (
-    // No typed confirmation on purpose: this goes back to a build that already
-    // ran on this server, and it is itself undone by rolling forward again.
-    // Ceremony everywhere is ceremony nowhere.
     <ConfirmAction
       open={open}
       onOpenChange={onOpenChange}
@@ -83,7 +71,7 @@ export function RollbackDialog({
   );
 }
 
-/** The standalone Rollback button - a deployment's own page, beside Redeploy. */
+// RollbackButton - the standalone Rollback button, beside Redeploy.
 export function RollbackButton({
   id,
   appSlug,
@@ -96,14 +84,12 @@ export function RollbackButton({
   appSlug: string;
   commitSha?: string;
   commitMessage?: string;
-  /** Whether the viewer holds `rollback_apps`. Cosmetic - the data layer decides. */
   can: boolean;
   size?: "sm" | "default";
 }) {
   const [open, setOpen] = React.useState(false);
 
-  // Without the permission the button is plainly disabled and says why on hover,
-  // rather than failing on click - the server would refuse it anyway.
+  // Cosmetic only - the data layer is the real gate; disabled says why on hover.
   if (!can) {
     return (
       <CapabilityTip cap="rollback_apps">

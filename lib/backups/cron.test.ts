@@ -3,12 +3,6 @@ import assert from "node:assert/strict";
 
 import { parseCron, cronMatches, nextCronRun } from "./cron";
 
-/**
- * The cron matcher is the scheduler's "is this due now?" Bad expressions must
- * degrade to "never matches", never throw, so one malformed schedule can't crash
- * the tick.
- */
-
 const at = (iso: string) => new Date(iso);
 
 test("every-minute `* * * * *` matches any minute", () => {
@@ -42,7 +36,6 @@ test("comma list `0,30` matches both, ranges `1-5` are inclusive", () => {
   assert.ok(cronMatches("0,30 * * * *", at("2026-06-23T10:00:00Z")));
   assert.ok(cronMatches("0,30 * * * *", at("2026-06-23T10:30:00Z")));
   assert.ok(!cronMatches("0,30 * * * *", at("2026-06-23T10:15:00Z")));
-  // hour 1-5 inclusive
   assert.ok(cronMatches("0 1-5 * * *", at("2026-06-23T01:00:00Z")));
   assert.ok(cronMatches("0 1-5 * * *", at("2026-06-23T05:00:00Z")));
   assert.ok(!cronMatches("0 1-5 * * *", at("2026-06-23T06:00:00Z")));
@@ -61,13 +54,12 @@ test("range+step `0-30/10` selects 0,10,20,30", () => {
 });
 
 test("month field is 1-based", () => {
-  // June is month 6.
   assert.ok(cronMatches("0 0 1 6 *", at("2026-06-01T00:00:00Z")));
   assert.ok(!cronMatches("0 0 1 6 *", at("2026-07-01T00:00:00Z")));
 });
 
 test("day-of-week: 0 and 7 both mean Sunday", () => {
-  const sunday = at("2026-06-21T12:00:00Z"); // 2026-06-21 is a Sunday
+  const sunday = at("2026-06-21T12:00:00Z");
   assert.equal(sunday.getUTCDay(), 0);
   assert.ok(cronMatches("0 12 * * 0", sunday));
   assert.ok(cronMatches("0 12 * * 7", sunday));
@@ -76,37 +68,36 @@ test("day-of-week: 0 and 7 both mean Sunday", () => {
 });
 
 test("Vixie union rule: both DOM and DOW restricted → either fires", () => {
-  // `0 0 13 * 5` = midnight on the 13th OR any Friday.
-  const the13th = at("2026-06-13T00:00:00Z"); // a Saturday, not Friday
+  const the13th = at("2026-06-13T00:00:00Z");
   assert.equal(the13th.getUTCDay(), 6);
-  const aFriday = at("2026-06-19T00:00:00Z"); // the 19th, a Friday
+  const aFriday = at("2026-06-19T00:00:00Z");
   assert.equal(aFriday.getUTCDay(), 5);
-  assert.ok(cronMatches("0 0 13 * 5", the13th)); // matches via DOM
-  assert.ok(cronMatches("0 0 13 * 5", aFriday)); // matches via DOW
-  const neither = at("2026-06-20T00:00:00Z"); // 20th, Saturday
+  assert.ok(cronMatches("0 0 13 * 5", the13th));
+  assert.ok(cronMatches("0 0 13 * 5", aFriday));
+  const neither = at("2026-06-20T00:00:00Z");
   assert.ok(!cronMatches("0 0 13 * 5", neither));
 });
 
 test("DOW-only `* * * 0` with DOM=* constrains by weekday only", () => {
   const friday = at("2026-06-19T09:30:00Z");
   assert.ok(cronMatches("30 9 * * 5", friday));
-  assert.ok(!cronMatches("30 9 * * 5", at("2026-06-20T09:30:00Z"))); // Saturday
+  assert.ok(!cronMatches("30 9 * * 5", at("2026-06-20T09:30:00Z")));
 });
 
 test("malformed expressions never match and never throw", () => {
   for (const bad of [
     "",
-    "* * * *", // 4 fields
-    "* * * * * *", // 6 fields
-    "60 * * * *", // minute out of range
-    "* 24 * * *", // hour out of range
-    "* * 0 * *", // DOM below 1
-    "* * 32 * *", // DOM above 31
-    "* * * 13 *", // month above 12
-    "*/0 * * * *", // zero step
-    "5-1 * * * *", // inverted range
-    "abc * * * *", // non-numeric
-    "*/ * * * *", // empty step
+    "* * * *",
+    "* * * * * *",
+    "60 * * * *",
+    "* 24 * * *",
+    "* * 0 * *",
+    "* * 32 * *",
+    "* * * 13 *",
+    "*/0 * * * *",
+    "5-1 * * * *",
+    "abc * * * *",
+    "*/ * * * *",
   ]) {
     assert.equal(
       parseCron(bad),
@@ -121,14 +112,9 @@ test("whitespace is tolerated between fields", () => {
   assert.ok(cronMatches("  0   3   *   *   *  ", at("2026-06-23T03:00:00Z")));
 });
 
-/* ------------------------------------------------------------------ */
-/* nextCronRun - the UI's "prove what I just picked actually means"     */
-/* ------------------------------------------------------------------ */
-
 const iso = (d: Date | null) => (d === null ? null : d.toISOString());
 
 test("nextCronRun is strictly after `from`, never `from` itself", () => {
-  // 03:00 is a match, so the next one is tomorrow's.
   assert.equal(
     iso(nextCronRun("0 3 * * *", at("2026-06-23T03:00:00Z"))),
     "2026-06-24T03:00:00.000Z",
@@ -151,7 +137,6 @@ test("nextCronRun walks steps, weekdays and months", () => {
     iso(nextCronRun("*/15 * * * *", at("2026-06-23T10:07:00Z"))),
     "2026-06-23T10:15:00.000Z",
   );
-  // 2026-06-23 is a Tuesday; the next Friday 09:30 is the 26th.
   assert.equal(
     iso(nextCronRun("30 9 * * 5", at("2026-06-23T10:00:00Z"))),
     "2026-06-26T09:30:00.000Z",
@@ -160,7 +145,6 @@ test("nextCronRun walks steps, weekdays and months", () => {
     iso(nextCronRun("0 0 1 * *", at("2026-06-23T10:00:00Z"))),
     "2026-07-01T00:00:00.000Z",
   );
-  // A yearly schedule must not need a per-minute walk to resolve.
   assert.equal(
     iso(nextCronRun("0 0 1 1 *", at("2026-06-23T10:00:00Z"))),
     "2027-01-01T00:00:00.000Z",
@@ -168,7 +152,6 @@ test("nextCronRun walks steps, weekdays and months", () => {
 });
 
 test("nextCronRun honours the Vixie day union", () => {
-  // "the 13th OR any Friday" - 2026-06-23 is a Tuesday, so Friday the 26th wins.
   assert.equal(
     iso(nextCronRun("0 0 13 * 5", at("2026-06-23T10:00:00Z"))),
     "2026-06-26T00:00:00.000Z",
@@ -177,13 +160,12 @@ test("nextCronRun honours the Vixie day union", () => {
 
 test("nextCronRun is null when the expression can never fire", () => {
   assert.equal(nextCronRun("nonsense", at("2026-06-23T10:00:00Z")), null);
-  // The 30th of February parses fine and simply never comes around.
   assert.equal(nextCronRun("0 0 30 2 *", at("2026-06-23T10:00:00Z")), null);
 });
 
 test("weekday and month names are read, in any case", () => {
-  assert.ok(cronMatches("0 9 * * MON-FRI", at("2026-09-07T09:00:00Z"))); // Mon
-  assert.ok(!cronMatches("0 9 * * MON-FRI", at("2026-09-06T09:00:00Z"))); // Sun
+  assert.ok(cronMatches("0 9 * * MON-FRI", at("2026-09-07T09:00:00Z")));
+  assert.ok(!cronMatches("0 9 * * MON-FRI", at("2026-09-06T09:00:00Z")));
   assert.ok(cronMatches("0 9 * * mon,wed", at("2026-09-09T09:00:00Z")));
   assert.ok(cronMatches("0 0 1 JAN *", at("2026-01-01T00:00:00Z")));
   assert.ok(cronMatches("0 0 1 jan-mar *", at("2026-02-01T00:00:00Z")));
@@ -196,7 +178,7 @@ test("the Vixie macros expand; @reboot is not a schedule", () => {
   assert.ok(cronMatches("@daily", at("2026-09-06T00:00:00Z")));
   assert.ok(!cronMatches("@daily", at("2026-09-06T00:01:00Z")));
   assert.ok(cronMatches("@hourly", at("2026-09-06T13:00:00Z")));
-  assert.ok(cronMatches("@weekly", at("2026-09-06T00:00:00Z"))); // a Sunday
+  assert.ok(cronMatches("@weekly", at("2026-09-06T00:00:00Z")));
   assert.ok(cronMatches("@MONTHLY", at("2026-10-01T00:00:00Z")));
   assert.ok(cronMatches("@yearly", at("2027-01-01T00:00:00Z")));
   assert.equal(

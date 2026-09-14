@@ -8,11 +8,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { initialsFallbackUrl } from "@/lib/apps/avatar-shared";
 import { cn } from "@/lib/utils";
 
-/**
- * The one way a person or a team is drawn before their name.
- */
-
-/** The sizes actually in use across the product, in Tailwind steps. */
 const SIZE = {
   xs: "size-4 text-[8px]",
   sm: "size-5 text-[9px]",
@@ -26,13 +21,7 @@ const SIZE = {
 
 export type AvatarSize = keyof typeof SIZE;
 
-/**
- * Two letters for the monogram, from the first thing that reads like a name.
- * Empty while there is no name at all - a picker previews its own seed instead.
- *
- * Takes the local part of an email, because the one place that passes one is the
- * migration picker, where a person being imported may have nothing else yet.
- */
+// avatarInitials - two letters for the monogram, from the first thing that reads like a name.
 export function avatarInitials(
   ...parts: (string | null | undefined)[]
 ): string {
@@ -60,22 +49,16 @@ function Mark({
       <AvatarImage
         src={src}
         alt=""
-        // Without this, every avatar tells gravatar.com which page of this panel
-        // it was rendered on.
+        // Without this, every avatar tells gravatar.com which page it was rendered on.
         referrerPolicy="no-referrer"
       />
-      {/* A picture that is still arriving, or one that will not: a plain disc,
-        never the letters - every avatar in the product is drawn by the same
-        renderer now. */}
+      {/* A picture still arriving, or one that will not: a plain disc, never the letters. */}
       <AvatarFallback className="bg-muted" />
     </Avatar>
   );
 }
 
-/**
- * A person. `alt=""` on purpose: this always sits immediately before their name,
- * so it is decorative and a screen reader must not read the name twice.
- */
+// UserAvatar - a person; `alt=""` on purpose, it sits before their name and must not be read twice.
 export function UserAvatar({
   name,
   username,
@@ -98,7 +81,6 @@ export function UserAvatar({
   );
 }
 
-/** A team. */
 export function TeamAvatar({
   name,
   avatarUrl,
@@ -119,8 +101,7 @@ export function TeamAvatar({
   );
 }
 
-/** A team with no name yet: there are no letters to draw, so it wears the
- *  generic mark until there are. Sized by the caller. */
+// TeamPlaceholder - a team with no name yet has no letters to draw, so it wears the generic mark.
 export function TeamPlaceholder({ className }: { className?: string }) {
   return (
     <span

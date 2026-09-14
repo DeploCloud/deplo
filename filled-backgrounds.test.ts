@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-/**
- * A filled surface is filled: the dotted ground sits under every page, so a
- * background with an alpha lets it show through. See "Fills are opaque" in
- * AGENTS.md.
- */
+// See "Fills are opaque" in AGENTS.md.
 const OVERLAY = new Set(["black", "background", "popover"]);
 const ALPHA_BG = /\bbg-([a-z-]+)\/(\[?[0-9.]+%?\]?)/g;
 

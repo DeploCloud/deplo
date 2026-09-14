@@ -5,14 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { ServerRole } from "./server-role-options";
 
-/** What a server is used for. `import` is not a choice - it is what a host
- *  borrowed for a migration is. */
+// ServerUse: `import` is not a choice - it is what a host borrowed for a migration is.
 export type ServerUse = ServerRole | "import";
 
-/**
- * The one place a use is named and coloured, read by the card badge and by the
- * list's filter - so the chip and the dropdown can never say two things.
- */
+// SERVER_USES is the one place a use is named and coloured, read by the card badge and the list filter.
 export const SERVER_USES: Record<
   ServerUse,
   { label: string; icon: ElementType; className: string; title: string }
@@ -48,7 +44,7 @@ export const SERVER_USES: Record<
 
 export const SERVER_USE_IDS = Object.keys(SERVER_USES) as ServerUse[];
 
-/** A borrowed host is only ever that, whatever else its row says. */
+// serverUse: a borrowed host is only ever that, whatever else its row says.
 export function serverUse(server: {
   buildOnly: boolean;
   storageOnly: boolean;

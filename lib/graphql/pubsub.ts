@@ -7,10 +7,6 @@ import { Client } from "pg";
 
 import { databaseUrl, getPool, isPostgresEnabled, isTestEnv } from "../db/pg";
 
-/**
- * In-process publish/subscribe used to push live updates to GraphQL subscribers
- * over SSE.
- */
 type Channels = {
   appChanged: [id: string, payload: string];
   appActivity: [topic: string, payload: string];
@@ -26,14 +22,10 @@ const g = globalThis as unknown as { [PUBSUB_KEY]?: ServicePubSub };
 export const pubSub: ServicePubSub = (g[PUBSUB_KEY] ??=
   createPubSub<Channels>());
 
-/**
- * The one key the `appActivity` channel uses. A team-wide feed - "is anything
- * deploying right now" - has no per-resource key to filter on, so it rides a
- * single channel with a constant key, the same shape as {@link CLEANUP_RUNS_TOPIC}.
- */
+// APP_ACTIVITY_TOPIC is the constant key of the team-wide `appActivity` channel.
 export const APP_ACTIVITY_TOPIC = "instance";
 
-/** Notify every subscriber that this app's state changed. */
+// publishAppChanged notifies every subscriber that this app's state changed.
 export function publishAppChanged(appId: string): void {
   emit("appChanged", appId, appId);
   // ponytail: one instance-wide channel, so every open sidebar re-counts on any
@@ -42,51 +34,32 @@ export function publishAppChanged(appId: string): void {
   emit("appActivity", APP_ACTIVITY_TOPIC, appId);
 }
 
-/**
- * The one key the `migrationActivity` channel uses, for the same reason as
- * {@link APP_ACTIVITY_TOPIC}: "is a migration running in my team" is a
- * team-wide question, and each subscriber answers it for its own team.
- */
+// MIGRATION_ACTIVITY_TOPIC is the constant key of the `migrationActivity` channel.
 export const MIGRATION_ACTIVITY_TOPIC = "instance";
 
-/** Notify every subscriber that a migration started, moved on, or ended. */
+// publishMigrationChanged notifies every subscriber that a migration moved on.
 export function publishMigrationChanged(): void {
   emit("migrationActivity", MIGRATION_ACTIVITY_TOPIC, MIGRATION_ACTIVITY_TOPIC);
 }
 
-/** Notify every subscriber that this database's state changed - same contract
- *  as {@link publishAppChanged}: the payload is just the id, "re-read it". */
+// publishDatabaseChanged notifies every subscriber that this database's state changed.
 export function publishDatabaseChanged(databaseId: string): void {
   emit("databaseChanged", databaseId, databaseId);
 }
 
-/**
- * The one key the `cleanupRunsChanged` channel uses.
- */
+// CLEANUP_RUNS_TOPIC is the constant key of the `cleanupRunsChanged` channel.
 export const CLEANUP_RUNS_TOPIC = "instance";
 
-/** Notify every subscriber that the Docker cleanup history changed - a sweep
- *  started, finished, or was pruned. Payload-free in spirit (the key is a
- *  constant): "re-read the runs". */
+// publishCleanupRunsChanged notifies every subscriber that the cleanup history changed.
 export function publishCleanupRunsChanged(): void {
   emit("cleanupRunsChanged", CLEANUP_RUNS_TOPIC, CLEANUP_RUNS_TOPIC);
 }
 
-/* ------------------------------------------------------------------ */
-/* Cross-process bridge (Postgres LISTEN/NOTIFY)                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * The emitter above is per PROCESS, and for a long time that was the whole story:
- * one `next start`, one emitter, every publish reaching every SSE stream on the
- * instance.
- */
 const NOTIFY_CHANNEL = "deplo_pubsub";
 
-/** This process, so the notification we sent is not replayed back into it. */
+// PUBSUB_INSTANCE is this process, so a notification we sent is not replayed into it.
 export const PUBSUB_INSTANCE = `${process.pid}-${randomUUID()}`;
 
-/** The channels a peer may publish into, as a runtime set (types are erased). */
 const CHANNELS: readonly (keyof Channels)[] = [
   "appChanged",
   "appActivity",
@@ -96,19 +69,13 @@ const CHANNELS: readonly (keyof Channels)[] = [
 ];
 
 interface RemoteMessage {
-  /** The sending instance. */
   i: string;
   c: keyof Channels;
   k: string;
   p: string;
 }
 
-/**
- * Read a peer's notification, or `null` for anything not to be republished: our
- * own echo, a channel this version does not know, or a payload that is not one of
- * ours at all (the channel name is a plain string - somebody else's `NOTIFY` can
- * land on it).
- */
+// decodeRemote reads a peer's notification, or null for our own echo or a foreign NOTIFY.
 export function decodeRemote(raw: string): RemoteMessage | null {
   let m: unknown;
   try {
@@ -125,12 +92,10 @@ export function decodeRemote(raw: string): RemoteMessage | null {
   return { i, c: c as keyof Channels, k, p };
 }
 
-/** Publish locally AND to every other control plane on this database. */
 function emit(channel: keyof Channels, key: string, payload: string): void {
   pubSub.publish(channel, key, payload);
   if (!bridgeEnabled()) return;
-  // Fire-and-forget: a live view is a decoration, and a database hiccup must
-  // never fail the mutation that was only announcing itself.
+  // Fire-and-forget: a database hiccup must never fail the mutation announcing itself.
   void getPool()
     .query("select pg_notify($1, $2)", [
       NOTIFY_CHANNEL,
@@ -147,8 +112,7 @@ function bridgeEnabled(): boolean {
   return isPostgresEnabled() && !isTestEnv();
 }
 
-/** Same globalThis rationale as the emitter itself: two module registries in
- *  `next dev` would otherwise open two listeners and deliver everything twice. */
+// Two module registries in `next dev` would otherwise listen twice and deliver twice.
 interface BridgeState {
   client: Client | null;
   retry: ReturnType<typeof setTimeout> | null;
@@ -157,9 +121,7 @@ const BRIDGE_KEY = Symbol.for("deplo.graphql.pubsub.bridge");
 const gb = globalThis as unknown as { [BRIDGE_KEY]?: BridgeState };
 const bridge: BridgeState = (gb[BRIDGE_KEY] ??= { client: null, retry: null });
 
-/**
- * Start listening for the other control planes.
- */
+// startPubSubBridge starts listening for the other control planes.
 export function startPubSubBridge(): void {
   if (!bridgeEnabled() || bridge.client || bridge.retry) return;
   const client = new Client({
@@ -192,8 +154,7 @@ export function startPubSubBridge(): void {
 }
 
 function reconnect(client: Client): void {
-  // Whoever gets here first owns the reconnect: `error` is routinely followed
-  // by `end` for the same socket.
+  // Whoever gets here first owns the reconnect: `error` is routinely followed by `end`.
   if (bridge.client !== client) return;
   bridge.client = null;
   void client.end().catch(() => {});
@@ -204,7 +165,7 @@ function reconnect(client: Client): void {
   bridge.retry.unref?.();
 }
 
-/** Hand the connection back on a clean shutdown. */
+// stopPubSubBridge hands the connection back on a clean shutdown.
 export async function stopPubSubBridge(): Promise<void> {
   if (bridge.retry) clearTimeout(bridge.retry);
   bridge.retry = null;

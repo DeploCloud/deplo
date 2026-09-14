@@ -32,24 +32,17 @@ import { nextCronRunInZone } from "@/lib/crons/cron-tz";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** Order the groups appear in, taken from the options list itself. */
 const GROUPS = [...new Set(SCHEDULE_OPTIONS.map((o) => o.group))];
 
 const DEFAULT_INFO =
   "How often this runs. Pick a frequency - the details it needs appear next to it. " +
   "Writing a cron expression by hand is the last option in the list.";
 
-/* The "have we hydrated yet?" store: nothing to subscribe to, the snapshot just
-   differs between the two renderers. */
 const NEVER_CHANGES = () => () => {};
 const onClient = () => true;
 const onServer = () => false;
 
-/**
- * Pick a schedule without writing cron. Writing cron by hand survives as the last
- * item in the list, under "Advanced" - reachable for the expert, never the first
- * thing a newcomer sees.
- */
+// SchedulePicker - pick a schedule without writing cron; the raw expression is the last item, under Advanced.
 export function SchedulePicker({
   value,
   onChange,
@@ -65,36 +58,19 @@ export function SchedulePicker({
 }: {
   value: string;
   onChange: (cron: string) => void;
-  /**
-   * One more field to lay out on the SAME axis as the time of day - retention,
-   * in every current call site. The picker owns that row's grid, so a caller
-   * can't line its own field up with the time from outside.
-   */
   trailing?: React.ReactNode;
   disabled?: boolean;
-  /** Prefix for the generated control ids, so labels bind in a page with two pickers. */
   id?: string;
-  /** The frequency field's own label - the picker renders it, to stay aligned with `trailing`. */
   label?: React.ReactNode;
   info?: React.ReactNode;
   docs?: DocsTopic;
-  /**
-   * The zone the expression is read in.
-   */
   timezone?: string;
-  /**
-   * The line under the fields reading the schedule back in words plus its next
-   * run. The invalid-expression message is NOT part of it: that one always shows,
-   * or a typo would be accepted in silence.
-   */
   summary?: boolean;
-  /** Presets to leave out, for a caller whose server refuses them. */
   omitModes?: readonly ScheduleMode[];
 }) {
   const [parts, setParts] = React.useState<ScheduleParts>(
     () => partsFromCron(value) ?? DEFAULT_PARTS,
   );
-  // An expression the controls can't express opens straight in the escape hatch.
   const [custom, setCustom] = React.useState(
     () => partsFromCron(value) === null,
   );
@@ -107,9 +83,7 @@ export function SchedulePicker({
   const valid = isValidSchedule(value);
   const description = describeCron(value, { timeZone: timezone });
 
-  // The next run is resolved after hydration only: it is formatted in the READER's
-  // timezone off the READER's clock, neither of which the server has, so rendering it
-  // during SSR would paint the host's answer and then disagree.
+  // After hydration only: the reader's timezone and clock are not the server's.
   const hydrated = React.useSyncExternalStore(
     NEVER_CHANGES,
     onClient,
@@ -126,8 +100,6 @@ export function SchedulePicker({
 
   function pickMode(next: string) {
     if (next === "custom") {
-      // Keep the current expression as the starting point - switching to
-      // Advanced hands the user the cron their preset produced, to tweak.
       setCustom(true);
       return;
     }
@@ -146,9 +118,6 @@ export function SchedulePicker({
 
   const needsTime = mode === "daily" || mode === "weekly" || mode === "monthly";
 
-  // The one follow-up the chosen frequency needs BESIDES a time, if any. It
-  // shares the first row with the frequency itself so the second row is always
-  // the "when / how long" pair.
   const dayField =
     mode === "weekly" ? (
       <div className="space-y-2">
@@ -203,8 +172,6 @@ export function SchedulePicker({
     ) : null;
 
   return (
-    // One rhythm, matching the dialogs this sits in: gap-4 between field rows,
-    // space-y-2 between a label, its control and the note that explains it.
     <div className="grid gap-4">
       {/* Row 1 - how often, plus the day that frequency has to pin down. */}
       <div className={dayField ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
@@ -236,8 +203,7 @@ export function SchedulePicker({
               </SelectGroup>
             </SelectContent>
           </Select>
-          {/* The raw expression belongs to the frequency field - it IS the
-              frequency, spelled out, so it sits in that cell, not on its own row. */}
+          {/* The raw expression IS the frequency, so it sits in that cell, not on its own row. */}
           {custom && (
             <Input
               aria-label="Cron expression"
@@ -254,10 +220,7 @@ export function SchedulePicker({
         {dayField}
       </div>
 
-      {/**
-       * Row 2 - the time of day, on the same axis as whatever the caller pairs with it
-       * (retention, in every current call site).
-       */}
+      {/* Row 2 - the time of day, on the same axis as whatever the caller pairs with it. */}
       <div className="space-y-2">
         {(needsTime || trailing) && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -309,15 +272,12 @@ export function SchedulePicker({
   );
 }
 
-/**
- * A stored schedule, read back as words - the display twin of the picker.
- */
+// ScheduleLabel - a stored schedule read back as words, the display twin of the picker.
 export function ScheduleLabel({
   cron,
   timezone = "UTC",
 }: {
   cron: string;
-  /** The zone the expression is read in - see {@link SchedulePicker}. */
   timezone?: string;
 }) {
   const compact = describeCron(cron, { compact: true, timeZone: timezone });
@@ -329,7 +289,6 @@ export function ScheduleLabel({
   );
 }
 
-/** The next run, in the reader's own timezone - e.g. "Sat 2 Aug, 05:00". */
 function formatLocal(at: Date): string {
   return new Intl.DateTimeFormat(undefined, {
     weekday: "short",

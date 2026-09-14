@@ -3,17 +3,12 @@ import assert from "node:assert/strict";
 
 import { checkRegistryCredential } from "./client";
 
-/**
- * The credential check: a token registry's realm decides, a Basic-only one
- * decides on the probe, and an unreachable host decides nothing.
- */
-
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-/** A public IP literal skips DNS, so the SSRF guard needs no network. */
+// A public IP literal skips DNS, so the SSRF guard needs no network.
 const HOST = "1.1.1.1";
 const CHALLENGE = 'Bearer realm="https://1.1.1.1/token",service="reg"';
 

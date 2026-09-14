@@ -14,7 +14,6 @@ import {
 import { passwordRuleStatus } from "@/lib/password-policy";
 import { cn } from "@/lib/utils";
 
-/** The eye that unmasks a password box. */
 function RevealToggle({
   visible,
   onToggle,
@@ -45,18 +44,14 @@ function RevealToggle({
   );
 }
 
-/**
- * A password box with the reveal toggle and nothing else: the current-password
- * and confirm fields, which have no strength of their own to meter.
- */
+// RevealInput is a password box with the reveal toggle and nothing else - the current-password and confirm fields, which have no strength to meter.
 export function RevealInput({
   className,
   visible: controlled,
   onVisibleChange,
   ...props
 }: Omit<React.ComponentProps<typeof Input>, "type"> & {
-  /** Controlled reveal, for a caller that also unmasks - a Generate button
-   *  hands over a password that has to be readable before the dialog closes. */
+  // Controlled reveal, for a caller that also unmasks: Generate hands over a password that has to be readable before the dialog closes.
   visible?: boolean;
   onVisibleChange?: (visible: boolean) => void;
 }) {
@@ -82,10 +77,7 @@ export function RevealInput({
   );
 }
 
-/**
- * The field for choosing a password: reveal toggle, strength bar, live checklist.
- * Cosmetic - the gate that counts is `assertPasswordPolicy` server-side.
- */
+// PasswordField is the choose-a-password field, and its meter is cosmetic: the gate that counts is `assertPasswordPolicy` server-side.
 export function PasswordField({
   id,
   value,
@@ -104,9 +96,8 @@ export function PasswordField({
   id?: string;
   value: string;
   onChange: (value: string) => void;
-  /** `null` drops the label entirely - for a field its own heading names. */
+  // `null` drops the label entirely - for a field its own heading already names.
   label?: React.ReactNode;
-  /** Longer explanation, shown as the label's info tooltip (never as helper text). */
   info?: React.ReactNode;
   docs?: DocsTopic;
   name?: string;
@@ -119,8 +110,6 @@ export function PasswordField({
 }) {
   const generatedId = React.useId();
   const fieldId = id ?? generatedId;
-  // `label={null}`: the section heading already names the field, so a label
-  // under it would say "Password" twice.
   const labelled = label !== null;
   const [visible, setVisible] = React.useState(false);
   const [hintOpen, setHintOpen] = React.useState(false);
@@ -128,8 +117,7 @@ export function PasswordField({
   const rules = passwordRuleStatus(value);
   const score = rules.filter((rule) => rule.met).length;
   const complete = score === rules.length;
-  // The meter rides a popover rather than the form: growing a checklist under a
-  // field pushes every control below it down on the first keystroke.
+  // The meter rides a popover: a checklist growing under the field pushes every control below it down on the first keystroke.
   const open = hintOpen && value !== "";
 
   return (
@@ -141,8 +129,7 @@ export function PasswordField({
       )}
       <Popover open={open} onOpenChange={setHintOpen}>
         <PopoverAnchor asChild>
-          {/* Focus is watched on the wrapper, not the input: clicking the reveal
-              toggle is still being in the field, and must not close the meter. */}
+          {/* Focus is watched on the wrapper, not the input: clicking the reveal toggle is still being in the field and must not close the meter. */}
           <div
             className="relative"
             onFocus={() => setHintOpen(true)}
@@ -181,8 +168,7 @@ export function PasswordField({
           side="bottom"
           align="start"
           sideOffset={8}
-          // Neither edge may move focus: the caret has to stay where the person
-          // is typing, and closing must not drag it back out of the next field.
+          // Neither edge may move focus: the caret stays where the person is typing, and closing must not drag it out of the next field.
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
           className="w-[var(--radix-popover-trigger-width)] min-w-64 space-y-2 p-3"
@@ -256,7 +242,6 @@ export function PasswordField({
   );
 }
 
-/** Three bands, matching the three labels: a colour that disagrees is noise. */
 function strengthColor(score: number): string {
   if (score <= 2) return "bg-destructive";
   if (score <= 4) return "bg-warning";

@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 
 import { shouldFire, __resetCooldowns } from "./cooldown";
 
-/**
- * The dedupe state machine, with `now` injected so nothing sleeps.
- */
-
 beforeEach(() => __resetCooldowns());
 
 test("the first observation always fires", () => {
@@ -54,7 +50,6 @@ test("an update nag uses the version as its state, so a new release re-fires", (
     shouldFire("deplo_update_available", "deplo-update", "1.2.0", 86_400_000),
     false,
   );
-  // A newer release changes the state and gets through at once.
   assert.equal(
     shouldFire("deplo_update_available", "deplo-update", "1.3.0", 86_400_001),
     true,

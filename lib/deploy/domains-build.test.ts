@@ -10,12 +10,6 @@ import {
   nipEmbeddedIp,
 } from "./domains";
 
-/**
- * The generated default-domain shape is
- * `<label>-<adjective>-<animal>-<hexip>.nip.io`: an app/slug prefix, two
- * human-readable random words, then the server IP in hex as the trailing label
- */
-
 const IP = "1.2.3.4";
 const HEX = "01020304";
 
@@ -27,8 +21,6 @@ test("nipDomain builds <label>-<words>-<hexip>.nip.io", () => {
 });
 
 test("nipDomain sanitises the label and words to DNS-safe segments", () => {
-  // Uppercase, spaces, and stray punctuation collapse to hyphens; leading/
-  // trailing hyphens are trimmed per segment.
   assert.equal(
     nipDomain("My App!", "Bold Lynx", IP),
     `my-app-bold-lynx-${HEX}.nip.io`,
@@ -36,8 +28,6 @@ test("nipDomain sanitises the label and words to DNS-safe segments", () => {
 });
 
 test("nipDomain keeps the first label inside the 63-character DNS limit", () => {
-  // `<app slug>-<compose service>` is what an extra domain is labelled with, and
-  // two ordinary names reach the limit together - the host would not resolve.
   const host = nipDomain(
     "analytics-production-stack-rybbit_clickhouse_worker",
     "charming-otter",
@@ -45,7 +35,6 @@ test("nipDomain keeps the first label inside the 63-character DNS limit", () => 
   );
   const label = host.split(".")[0];
   assert.ok(label.length <= 63, `label is ${label.length} characters`);
-  // The words and the IP are what make it unique, so they survive whole.
   assert.ok(host.endsWith(`-charming-otter-${HEX}.nip.io`));
   assert.ok(!label.includes("--"));
 });
@@ -77,7 +66,6 @@ test("randomWords yields a hyphenated adjective-animal pair (lowercase, two part
 
 test("productionDomain bakes fresh random words for the slug", () => {
   const host = productionDomain("blog", IP);
-  // Shape: blog-<word>-<word>-<hex>.nip.io
   assert.ok(
     new RegExp(`^blog-[a-z]+-[a-z]+-${HEX}\\.nip\\.io$`).test(host),
     `unexpected production domain shape: ${host}`,
@@ -86,8 +74,6 @@ test("productionDomain bakes fresh random words for the slug", () => {
 });
 
 test("a preview host is DETERMINISTIC per (app, pull request)", () => {
-  // The URL gets commented on the pull request, so a host regenerated on each
-  // rebuild would strand a link somebody is testing.
   const first = previewHost({
     appId: "prj_1",
     slug: "blog",
@@ -117,9 +103,7 @@ test("different apps and different pull requests get different preview hosts", (
 });
 
 test("a nip.io preview host asks for NO certificate", () => {
-  // nip.io is one registered domain whose Let's Encrypt issuance budget is
-  // shared with the entire internet: asking for a cert there gets none, and
-  // Traefik serves its self-signed default instead (the browser interstitial).
+  // nip.io shares one Let's Encrypt issuance budget with the whole internet, so a cert there never issues.
   assert.equal(
     previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP })
       .certProvider,
@@ -137,7 +121,6 @@ test("a custom base domain gives each preview its own HTTP-01 certificate", () =
   });
   assert.equal(r.host, "blog-pr-42.preview.example.com");
   assert.equal(r.certProvider, "letsencrypt");
-  // The slug is part of the host, so two apps sharing one base never collide.
   const other = previewHost({
     appId: "prj_2",
     slug: "shop",

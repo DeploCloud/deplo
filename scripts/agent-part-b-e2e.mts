@@ -35,7 +35,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const { signAgentCsr } = await import("../lib/agent/pki");
-  const { connectAgent } = await import("../lib/infra/agent-client");
+  const { connectAgent } = await import("../lib/infra/agent-client/connect");
   const { SourceKind, BuildKind, ContractVersion } =
     await import("../lib/agent/gen/agent");
 
@@ -118,7 +118,7 @@ async function main() {
   // store + its `mutate()` are gone - Step 6 cutover).
   const { getDb } = await import("../lib/db/client");
   const { servers: serversTable } =
-    await import("../lib/db/schema/control-plane");
+    await import("../lib/db/schema/control-plane/servers");
   const { serverToRow } = await import("../lib/data/infra-rows");
   const { eq } = await import("drizzle-orm");
   const { caCertPem } = await import("../lib/agent/pki");

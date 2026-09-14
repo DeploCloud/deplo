@@ -11,7 +11,7 @@ import { listCatalog } from "@/templates/catalog";
 
 export const metadata = { title: "Templates" };
 
-/** `?q=` / `?category=` arrive as strings or repeated params. */
+// `?q=` / `?category=` arrive as a string or, when repeated, an array.
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
@@ -27,9 +27,7 @@ export default async function TemplatesPage(
     hasCapability("create_apps"),
   ]);
 
-  // The catalogue lives on a remote service. An instance with no egress (or a
-  // service having a bad day) gets a page that says so, not an error boundary
-  // over the whole dashboard section.
+  // Remote service: no egress, or a bad day, renders this page instead of the section's error boundary.
   const templates = await listCatalog().catch(() => null);
   if (!templates)
     return (
@@ -46,9 +44,7 @@ export default async function TemplatesPage(
   return (
     <TemplateStore
       templates={templates.map(toStoreTemplate)}
-      // Not awaited: reading the accents fetches and decodes every logo in the catalogue,
-      // which costs a cold process seconds. A catalogue having a bad day costs colour,
-      // never the page.
+      // Not awaited: decoding every logo costs a cold process seconds, so a slow catalogue costs colour, not the page.
       accents={templateAccents(templates).catch(() => ({}))}
       canDeploy={canDeploy}
       placement={placement}

@@ -7,12 +7,8 @@ import {
   friendlyWords,
 } from "./friendly-words";
 
-/**
- * The words end up in the URL a first deploy hands you. A general-purpose
- * dictionary produced `obnoxious-kite` and `fat-hookworm`, which is why this
- * list is curated and why nothing unflattering may creep back in.
- */
-
+// These land in the URL a first deploy hands you: the list is hand-curated
+// because a general dictionary produced `obnoxious-kite` and `fat-hookworm`.
 test("every word is a plain lowercase label", () => {
   for (const w of [...FRIENDLY_ADJECTIVES, ...FRIENDLY_ANIMALS])
     assert.match(w, /^[a-z]{3,12}$/, w);

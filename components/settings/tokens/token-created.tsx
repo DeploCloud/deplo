@@ -6,9 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { CommandLine } from "@/components/shared/code-block";
 
-/**
- * The one time a token's secret is ever shown.
- */
+// TokenCreated - the one time a token's secret is ever shown.
 export function TokenCreated({
   raw,
   name,
@@ -19,7 +17,6 @@ export function TokenCreated({
   raw: string;
   name: string;
   granted: number;
-  /** One short line describing what it reaches. */
   scope: string;
   publicUrl: string;
 }) {

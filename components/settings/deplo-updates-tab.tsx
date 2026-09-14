@@ -30,7 +30,7 @@ import { RemoteMarkdown } from "@/components/shared/remote-markdown";
 import { UpdateGraphic } from "@/components/settings/update-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 
-/** How much of the fleet is on the agent release the control plane expects. */
+// FleetSummary - how much of the fleet is on the agent release the control plane expects.
 export interface FleetSummary {
   total: number;
   outdated: number;
@@ -89,10 +89,7 @@ function day(iso: string | null): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
-/**
- * Settings, Deplo -> Updates: what this instance runs, what the fleet runs, and
- * what changed in between.
- */
+// DeploUpdatesTab - what this instance runs, what the fleet runs, what changed.
 export function DeploUpdatesTab({
   active,
   version,
@@ -106,14 +103,11 @@ export function DeploUpdatesTab({
   const [releases, setReleases] = React.useState<Release[] | null>(null);
   const [listError, setListError] = React.useState<string | null>(null);
   const [checking, setChecking] = React.useState(false);
-  // An update the host has started: the panel goes down in the middle of it, so
-  // "did it land" is answered by the version that comes back, not by a reply.
   const [updating, setUpdating] = React.useState<{
     version: string;
     logPath: string;
   } | null>(null);
   const [stalled, setStalled] = React.useState(false);
-  // Why the button could not do it, which is the only time the command appears.
   const [manual, setManual] = React.useState<string | null>(null);
   const loaded = React.useRef(false);
 
@@ -129,8 +123,7 @@ export function DeploUpdatesTab({
     setListError(res.data?.deploChangelog?.error ?? null);
   }, []);
 
-  // The tab stays mounted across flips, so this is the FIRST activation only:
-  // nobody who never opens Updates costs the instance a GitHub call.
+  // First activation only: nobody who never opens Updates costs a GitHub call.
   React.useEffect(() => {
     if (!active || loaded.current) return;
     loaded.current = true;
@@ -151,15 +144,13 @@ export function DeploUpdatesTab({
         setInfo((i) => (i ? { ...i, error: res.error } : i));
         return;
       }
-      // The mutation expired the changelog's cache tag too, so re-read both.
       await load();
     } finally {
       setChecking(false);
     }
   }
 
-  // The panel restarts into the new image mid-update, so the only honest signal is
-  // the version this instance reports once it answers again.
+  // The panel restarts mid-update, so the signal is the version it reports on return.
   React.useEffect(() => {
     if (!updating) return;
     const startedAt = Date.now();
@@ -185,8 +176,7 @@ export function DeploUpdatesTab({
         window.location.reload();
         return;
       }
-      // The installer restores the previous image when the new one will not come
-      // up, so a panel that is back on the old version is a FAILED update.
+      // The installer restores the previous image on failure, so the old version means failed.
       if (Date.now() - startedAt > UPDATE_TIMEOUT_MS) {
         setStalled(true);
         return;
@@ -202,7 +192,6 @@ export function DeploUpdatesTab({
 
   async function startUpdate() {
     setManual(null);
-    // A retry after one that did not take starts from a clean slate.
     setStalled(false);
     const res = await gqlAction<
       { updateDeplo: { version: string; logPath: string } },
@@ -219,18 +208,14 @@ export function DeploUpdatesTab({
       undefined,
       (d) => d.updateDeplo,
     );
-    // The one thing that puts the command on screen: the host could not do it.
     if (!res.ok) setManual(res.error);
     else if (res.data) setUpdating(res.data);
     return res;
   }
 
   return (
-    // Two columns only from `xl`: the picture takes what the window grew by, and
-    // never squeezes the reading column. Same measure as the MCP wizard.
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
-      {/* First in the DOM on a phone, where a picture on top reads as a heading;
-          last and pinned on a wide screen, where it belongs on the right. */}
+      {/* First in the DOM on a phone, last and pinned on a wide screen. */}
       <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
         <UpdateGraphic className="w-48 xl:w-[72%]" />
       </div>
@@ -261,8 +246,7 @@ export function DeploUpdatesTab({
                   {manual && <ManualUpdate reason={manual} />}
                 </>
               )}
-              {/* An update that did not take leaves the buttons: the next thing
-                  the operator wants is to try it again. */}
+              {/* An update that did not take leaves the buttons, to try again. */}
               {(!updating || stalled) && (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
@@ -337,10 +321,6 @@ export function DeploUpdatesTab({
   );
 }
 
-/**
- * How long to wait for the panel to come back on the new version. The installer
- * pulls an image and dumps the database first, so a slow link is not a failure.
- */
 const UPDATE_TIMEOUT_MS = 10 * 60_000;
 
 function Updating({
@@ -377,7 +357,6 @@ function Updating({
   );
 }
 
-/** The fallback, and the only place the command appears: this host could not. */
 function ManualUpdate({ reason }: { reason: string }) {
   return (
     <div className="space-y-1.5">

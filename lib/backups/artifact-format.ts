@@ -1,18 +1,10 @@
-/**
- * How a backup artifact announces itself in its first bytes.
- */
-
-/**
- * age's header line: plaintext, always first, and the same in every version of
- * the format we write. An artifact whose first bytes are this is encrypted and
- * cannot be read without the destination's recovery key.
- */
+// AGE_MAGIC - age's header line; an artifact starting with it is encrypted.
 export const AGE_MAGIC = "age-encryption.org/v1\n";
 
-/** How many bytes a caller must read before {@link looksEncrypted} can answer. */
+// ARTIFACT_MAGIC_BYTES - how many bytes a caller must read before looksEncrypted answers.
 export const ARTIFACT_MAGIC_BYTES = AGE_MAGIC.length;
 
-/** Whether these first bytes are the start of an age-encrypted artifact. */
+// looksEncrypted - whether these first bytes start an age-encrypted artifact.
 export function looksEncrypted(head: Uint8Array): boolean {
   if (head.length < AGE_MAGIC.length) return false;
   for (let i = 0; i < AGE_MAGIC.length; i++) {
@@ -21,11 +13,7 @@ export function looksEncrypted(head: Uint8Array): boolean {
   return true;
 }
 
-/**
- * Whether these first bytes are gzip - which every unencrypted artifact is: an
- * app is a `.tar.gz`, a database a `.dump.gz` / `.sql.gz` / `.rdb.gz` /
- * `.archive.gz`, and Deplo's own Download hands over the decrypted gzip.
- */
+// looksGzip - whether these first bytes are gzip, which every unencrypted artifact is.
 export function looksGzip(head: Uint8Array): boolean {
   return head.length >= 2 && head[0] === 0x1f && head[1] === 0x8b;
 }

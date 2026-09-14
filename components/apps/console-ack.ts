@@ -2,8 +2,6 @@
 
 import * as React from "react";
 
-/** Persisted once the user confirms the console warning; unlocks the console
- *  sidebar chip and skips the warning on every later visit, across tabs. */
 const ACK_KEY = "deplo:console-warning-ack";
 
 const listeners = new Set<() => void>();
@@ -12,13 +10,12 @@ function readAck(): boolean {
   try {
     return window.localStorage.getItem(ACK_KEY) === "1";
   } catch {
-    return false; // storage blocked (private mode) → warn again
+    return false;
   }
 }
 
 function subscribe(onChange: () => void): () => void {
   listeners.add(onChange);
-  // Reflect an acknowledgement made in ANOTHER tab too.
   const onStorage = (e: StorageEvent) => {
     if (e.key === ACK_KEY) onChange();
   };
@@ -29,20 +26,15 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-/**
- * Whether the user has confirmed the console warning.
- */
+// useConsoleAck - whether the user has confirmed the console warning.
 export function useConsoleAck(): boolean | null {
   return React.useSyncExternalStore(subscribe, readAck, () => null);
 }
 
-/** Persist the acknowledgement and notify every subscriber (the warning gate and
- *  the sidebar), so the console unlocks the instant "I understand" is clicked. */
+// acknowledgeConsole - persist the acknowledgement and notify every subscriber.
 export function acknowledgeConsole(): void {
   try {
     window.localStorage.setItem(ACK_KEY, "1");
-  } catch {
-    /* storage blocked → proceed this once, just can't remember it */
-  }
+  } catch {}
   listeners.forEach((cb) => cb());
 }

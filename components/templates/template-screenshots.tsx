@@ -1,7 +1,4 @@
-/**
- * A template's screenshots. Every catalogue `images[]` is empty today, so the
- * caller only mounts this when there is something to show; it exists so the day
- * they are published nothing else has to change. Native scroll and snap. */
+// TemplateScreenshots renders a template's screenshots; the catalogue publishes none today, so the caller mounts it only when images[] is non-empty.
 export function TemplateScreenshots({
   images,
   name,

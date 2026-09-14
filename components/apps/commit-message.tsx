@@ -11,11 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 
-/**
- * A commit message as it comes off GitHub - subject line plus an arbitrarily long
- * body. Shows the first three lines and, only when there is genuinely more to see,
- * a "Read more" that opens the untruncated text in a dialog.
- */
+// CommitMessage - three lines of a commit message, with "Read more" when longer.
 export function CommitMessage({
   message,
   sha,
@@ -30,8 +26,7 @@ export function CommitMessage({
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // 1px of slack: sub-pixel line heights make scrollHeight round up on some
-    // zoom levels even when nothing is actually hidden.
+    // 1px of slack: sub-pixel line heights round scrollHeight up with nothing hidden.
     const measure = () => setClamped(el.scrollHeight - el.clientHeight > 1);
     measure();
     const observer = new ResizeObserver(measure);

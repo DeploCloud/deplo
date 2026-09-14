@@ -2,11 +2,7 @@ import { GitAccount } from "@/components/shared/git-account";
 import { UserAvatar, type AvatarSize } from "@/components/shared/user-avatar";
 import { cn } from "@/lib/utils";
 
-/**
- * Who ran a deployment: a member here, drawn with their own face, or the account
- * that pushed, drawn as {@link GitAccount} - never a monogram for somebody this
- * instance has no user for.
- */
+// DeploymentCreator - who ran a deployment: a member's face, or the git account that pushed.
 export function DeploymentCreator({
   creator,
   creatorUser,
@@ -22,9 +18,7 @@ export function DeploymentCreator({
     avatarColor: string;
     avatarUrl: string | null;
   } | null;
-  /** Set ⇒ `creator` is a login on this git host, not a Deplo account. */
   creatorProvider?: string | null;
-  /** That account's profile, when it can be linked. */
   creatorUrl?: string | null;
   size?: AvatarSize;
   className?: string;

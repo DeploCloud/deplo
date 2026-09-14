@@ -6,9 +6,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * RFC 8414 with the issuer's path inserted.
- */
+// RFC 8414 with the issuer's path inserted.
 export function GET(request: Request) {
   return authServerMetadataResponse(request);
 }

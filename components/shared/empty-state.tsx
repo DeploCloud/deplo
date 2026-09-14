@@ -14,18 +14,10 @@ export function EmptyState({
   className,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
-  /** Extra classes on the icon itself (e.g. `animate-spin` for a loading state). */
   iconClassName?: string;
-  /**
-   * An illustration shown INSTEAD of the icon medallion, centred above the
-   * title. For the few empty states worth explaining with a picture rather than
-   * a glyph; everything else keeps the icon, so the set stays consistent.
-   */
   graphic?: React.ReactNode;
   title: string;
   description?: string;
-  /** The manual section for the feature this empty list belongs to. Skip it on
-   *  a "no results" state: an empty filter is not a gap in knowledge. */
   docs?: DocsTopic;
   docsLabel?: string;
   action?: React.ReactNode;

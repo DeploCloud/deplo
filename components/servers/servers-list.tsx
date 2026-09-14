@@ -27,18 +27,15 @@ import {
 
 export type ServerListItem = {
   id: string;
-  /** Name, host and IP, lowercased - everything the search box matches on. */
+  // Name, host and IP, lowercased - everything the search box matches on.
   search: string;
   use: ServerUse;
-  /** The card, rendered on the server so the cards stay RSC. */
+  // Card and row are rendered on the server, so the cards stay RSC.
   card: React.ReactNode;
-  /** The same server as a table row, rendered on the server for the same reason. */
   row: React.ReactNode;
 };
 
-/**
- * The fleet, searchable and filtered by what each server is for.
- */
+// ServersList shows the fleet, searchable and filtered by what each server is for.
 export function ServersList({ items }: { items: ServerListItem[] }) {
   const [query, setQuery] = React.useState("");
   const [use, setUse] = React.useState<ServerUse | "all">("all");
@@ -94,7 +91,6 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
   );
 }
 
-/** One group of servers, as cards or as a table. */
 function ServerGroup({
   items,
   view,

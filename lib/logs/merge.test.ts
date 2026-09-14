@@ -2,11 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mergeLogBurst } from "./merge";
 
-/**
- * Following a crash-looping container means reattaching after every restart, and
- * every reattach replays `docker logs --tail`. These cover the merge that keeps
- * the viewer from stuttering the same stack trace once per loop.
- */
+// Regression: a crash-looping container reattaches and replays `docker logs --tail`, stuttering the same trace once per loop.
 
 test("first attach: the burst is the whole output", () => {
   assert.equal(mergeLogBurst("", "boot\nready\n"), "boot\nready\n");
@@ -31,8 +27,7 @@ test("the next crash iteration appends, it does not duplicate the first", () => 
 });
 
 test("output we no longer have in the tail window is treated as all-new", () => {
-  // Our anchor scrolled out of docker's --tail window: nothing to align on, so
-  // every byte of the burst is output the viewer has not shown.
+  // Our anchor scrolled out of docker's --tail window, so nothing aligns.
   const shown = "very old line\n";
   const burst = "newer\nnewest\n";
   assert.equal(mergeLogBurst(shown, burst), "very old line\nnewer\nnewest\n");
@@ -54,8 +49,7 @@ test("an empty burst leaves the output untouched", () => {
 test("merging is idempotent as a burst arrives split across chunks", () => {
   const shown = "boot\nmigrating\n";
   const whole = "boot\nmigrating\nFATAL\n";
-  // The route delivers the tail in arbitrary chunks; re-merging from the same
-  // baseline on each chunk must converge on the same text as one burst would.
+  // The route delivers the tail in arbitrary chunks, re-merged from the same baseline each time.
   let acc = "";
   let out = shown;
   for (const chunk of ["boot\nmig", "rating\nFA", "TAL\n"]) {

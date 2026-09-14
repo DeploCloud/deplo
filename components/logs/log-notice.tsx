@@ -9,17 +9,11 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-/**
- * Context the log pane must not be read without - a crash loop whose banner is
- * missing reads as an app printing a stack trace on a timer. A toolbar chip, not
- * a strip: in a crash loop a strip never goes away.
- */
+// LogNotice - context the log pane must not be read without; a toolbar chip, because a strip never goes away in a crash loop.
 export interface LogNotice {
   tone: "error" | "warn" | "muted";
   icon: typeof CircleAlert;
-  /** Spinner, pulse - whatever the banner used to animate. Optional. */
   iconClass?: string;
-  /** The chip's own words. Short: it sits in a toolbar. */
   short: string;
   title: string;
   body: string;

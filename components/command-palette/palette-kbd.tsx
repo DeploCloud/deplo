@@ -7,23 +7,15 @@ import { describeUserAgent } from "@/lib/user-agent";
 import { cn } from "@/lib/utils";
 import { openPalette } from "./palette-open";
 
-/**
- * The shortcut chip. Renders "Ctrl K" on the server and swaps to the Command
- * symbol after mount, so there is no hydration mismatch and no wrong label.
- */
-/** Nothing ever changes, so there is nothing to subscribe to. */
 const noSubscription = () => () => {};
 
-/** Parsed once: the machine does not change under the tab. */
 let isMac: boolean | undefined;
 const readIsMac = () =>
   (isMac ??= describeUserAgent(navigator.userAgent).os === "macOS");
 const notMac = () => false;
 
 export function PaletteKbd({ className }: { className?: string }) {
-  // Not an effect: the server has no user agent, and this is exactly the "one
-  // value on the server, another in the browser" case useSyncExternalStore
-  // exists for - so there is no mismatch and no second render to schedule.
+  // The server has no user agent: useSyncExternalStore renders both values without a hydration mismatch.
   const mac = React.useSyncExternalStore(noSubscription, readIsMac, notMac);
 
   return (
@@ -38,11 +30,7 @@ export function PaletteKbd({ className }: { className?: string }) {
   );
 }
 
-/**
- * The sidebar's search box. It looks exactly like the Input it replaced - same
- * h-9, so the sidebar's rhythm is untouched - but it opens the palette instead
- * of accepting text. "Search" is real text, so it needs no aria-label.
- */
+// SearchTrigger - the sidebar search box (h-9 like the Input it replaced); its visible "Search" text is the accessible name.
 export function SearchTrigger() {
   return (
     <button

@@ -4,20 +4,13 @@ import * as React from "react";
 import { usePathname, useSearchParams } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
-// The sidebar icon already spins at 150ms; the bar is the second stage, for a
-// navigation the server is taking long enough over that a 16px spinner in the
-// corner no longer carries it.
 const APPEAR_AFTER_MS = 500;
 const FADE_OUT_MS = 250;
 const GIVE_UP_MS = 30_000;
 
 type Phase = "idle" | "running" | "done";
 
-/**
- * Does following `href` from `here` load a new page in this tab? False for
- * another origin and for a link back to the page we are already on, which
- * includes a bare `#anchor` - neither ever finishes, so neither may start a bar.
- */
+// leavesThisPage - does following `href` from `here` load a new page in this tab?
 export function leavesThisPage(href: string, here: string): boolean {
   let to: URL, from: URL;
   try {
@@ -30,11 +23,6 @@ export function leavesThisPage(href: string, here: string): boolean {
   return to.pathname + to.search !== from.pathname + from.search;
 }
 
-/**
- * A left click that this tab is going to handle as an in-app navigation. Note
- * what is NOT checked: `defaultPrevented`, because `next/link` prevents the
- * default on every in-app click, which is the case we are here for.
- */
 function navigates(e: MouseEvent): boolean {
   if (e.button !== 0) return false;
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
@@ -46,11 +34,7 @@ function navigates(e: MouseEvent): boolean {
   return leavesThisPage(anchor.href, location.href);
 }
 
-/**
- * The bar across the top of the window while a page loads. Most routes never
- * reach it: it waits out `APPEAR_AFTER_MS` first, so only a slow one is ever
- * announced.
- */
+// NavProgress - the bar across the top of the window while a page loads.
 export function NavProgress() {
   const pathname = usePathname();
   const query = useSearchParams().toString();
@@ -66,8 +50,6 @@ export function NavProgress() {
     timers.current = [];
   }, []);
 
-  // The page landed (or never will). A bar already on screen completes and
-  // fades; one still inside its delay is dropped without ever being drawn.
   const inFlight = React.useRef(false);
   const finish = React.useCallback(() => {
     if (!inFlight.current) return;

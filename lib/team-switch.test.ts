@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { teamSwitchDestination } from "./team-switch";
 import { flatPath, withTeam } from "./team-path";
 
-/** Section pages exist in every team - switching keeps the viewer on them. */
 test("stays on team-agnostic section pages", () => {
   for (const path of [
     "/",
@@ -34,8 +33,6 @@ test("drops the query string - filters and selections name the old team's rows",
   assert.equal(teamSwitchDestination("/?project=prc_1&env=environ_1"), "/");
   assert.equal(teamSwitchDestination("/templates?folder=fld_1"), "/templates");
   assert.equal(teamSwitchDestination("/new?template=t&repo=o%2Fr"), "/new");
-  // The Logs page leans on this: switching team lands on a bare /logs, whose
-  // remembered target belongs to the team just left and is refused there.
   assert.equal(teamSwitchDestination("/logs?app=my-app"), "/logs");
 });
 
@@ -70,16 +67,11 @@ test("normalizes odd paths", () => {
   assert.equal(teamSwitchDestination("/logs#tail"), "/logs");
 });
 
-/** A section must not be mistaken for a resource by prefix alone. */
 test("does not confuse a section with a resource route", () => {
   assert.equal(teamSwitchDestination("/storage"), "/storage");
   assert.equal(teamSwitchDestination("/settings/servers"), "/settings/servers");
 });
 
-/**
- * What the switcher actually does: read the open path flat, keep the section it
- * still makes sense to be on, and put the NEW team back on the front.
- */
 test("switching team keeps the section and changes the team", () => {
   const dest = (path: string, slug: string) =>
     withTeam(teamSwitchDestination(flatPath(path)), slug);
@@ -90,7 +82,6 @@ test("switching team keeps the section and changes the team", () => {
   );
   assert.equal(dest("/acme/activity", "idra"), "/idra/activity");
   assert.equal(dest("/acme", "idra"), "/idra");
-  // A page naming ONE team's resource has to be left behind.
   assert.equal(dest("/acme/apps/b5-wiki", "idra"), "/idra");
   assert.equal(dest("/acme/apps/b5-wiki/logs", "idra"), "/idra");
   assert.equal(dest("/acme/storage/databases/db_1", "idra"), "/idra/storage");

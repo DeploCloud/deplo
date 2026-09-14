@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/** The "no templates match" illustration: a lens sweeping a row of templates, each one going out as it passes, until the row is empty and the sweep starts again. */
+// NoResultsGraphic is the "no templates match" illustration: a lens sweeping a row of templates.
 export function NoResultsGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -40,13 +40,9 @@ export function NoResultsGraphic({ className }: { className?: string }) {
         ))}
       </g>
 
-      {/* The lens. It fades in at the left edge and out at the right one rather
-          than snapping back, so the loop has no seam. */}
+      {/* Fades in and out at the row edges so the loop has no seam. */}
       <g className="deplo-find-lens">
-        {/**
-         * No fill at all: you have to be able to see the row THROUGH the glass, or this is
-         * a disc that eats templates rather than a lens that looks at them.
-         */}
+        {/* No fill: the row has to stay visible through the glass. */}
         <circle
           cx="60"
           cy="60"
@@ -63,7 +59,7 @@ export function NoResultsGraphic({ className }: { className?: string }) {
           strokeWidth="4"
           strokeLinecap="round"
         />
-        {/* The glint: what tells you it is glass and not a ring. */}
+        {/* The glint that reads as glass rather than a ring. */}
         <path
           d="M50 52a12 12 0 0 1 8-6"
           className="stroke-background"

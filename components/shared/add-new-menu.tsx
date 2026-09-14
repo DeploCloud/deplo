@@ -26,10 +26,7 @@ import { CreateFolderDialog } from "@/components/apps/create-folder-dialog";
 import { CreateProjectDialog } from "@/components/apps/create-project-dialog";
 import { newAppHref, type OverviewPlacement } from "@/lib/overview-links";
 
-/**
- * Overview "Add new" menu: a single entry point to create an app, a database, a
- * folder, a project, a team member, or (for instance admins) a global user.
- */
+// AddNewMenu - the Overview "Add new" menu: one entry point to create an app, database, folder or project.
 export function AddNewMenu({
   canCreateApp,
   canCreateDatabase,
@@ -38,32 +35,16 @@ export function AddNewMenu({
   parentFolder = null,
   placement = null,
 }: {
-  /** Whether the viewer may create apps (`create_apps`) - gates both the
-   *  from-scratch wizard and the template catalogue, which only lead there. */
   canCreateApp: boolean;
-  /** Whether the viewer may create databases (`create_databases`). */
   canCreateDatabase: boolean;
-  /** Whether the viewer may create folders (`create_folders`). */
   canCreateFolder: boolean;
-  /** Whether the viewer may create projects (`create_projects`) - a separate
-   *  permission from folders, so the two entries appear separately. */
   canCreateProject: boolean;
-  /**
-   * The folder currently open on the Overview, if any. Null at the top level, or
-   * inside a project - folders never live in a project, so one made there stays at
-   * the top level.
-   */
   parentFolder?: { id: string; name: string } | null;
-  /** The drill-in the menu was opened in (open folder, or project + selected
-   *  environment). Carried into the app-creation flows so an app created from
-   *  inside a folder is created IN it, not at the team top level. */
   placement?: OverviewPlacement | null;
 }) {
   const [folderOpen, setFolderOpen] = React.useState(false);
   const [projectOpen, setProjectOpen] = React.useState(false);
 
-  // Nothing this menu offers is available: show the button disabled with the
-  // reason rather than a menu that opens onto nothing.
   if (
     !canCreateApp &&
     !canCreateDatabase &&
@@ -73,8 +54,7 @@ export function AddNewMenu({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Disabled buttons swallow pointer events, so wrap in a focusable
-              span to keep the tooltip reachable. */}
+          {/* Disabled buttons swallow pointer events; the focusable span keeps the tooltip reachable. */}
           <span tabIndex={0}>
             <Button size="sm" disabled>
               <Plus className="size-4" />
@@ -100,8 +80,7 @@ export function AddNewMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          {/* Flat, not a submenu: the fork it used to ask about is the wizard's
-              own first step, which offers the five sources AND the catalogue. */}
+          {/* Flat, not a submenu: the wizard's own first step offers the sources and the catalogue. */}
           {canCreateApp && (
             <DropdownMenuItem asChild>
               <Link href={newAppHref(placement)} className="cursor-pointer">
@@ -112,8 +91,7 @@ export function AddNewMenu({
           )}
           {canCreateDatabase && (
             <DropdownMenuItem asChild>
-              {/* Opens the create-database modal straight away on the Storage
-                  page (the databases tab) via the ?new=database param. */}
+              {/* ?new=database opens the create-database modal on the Storage page. */}
               <Link href="/storage?new=database" className="cursor-pointer">
                 <Database className="size-4" />
                 Database

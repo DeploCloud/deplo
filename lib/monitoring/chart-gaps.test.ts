@@ -4,11 +4,6 @@ import assert from "node:assert/strict";
 import { GAP_MS, gapSpans, isInGap, visibleGapSpans } from "./chart-gaps";
 import { RECONNECT_BACKOFF_CAP_MS } from "./supervisor";
 
-/**
- * Gap detection for the monitoring charts (chart-gaps.ts): which stretches of
- * the time axis have no measurements, so the chart can band them "No data".
- */
-
 const GAP = 10_000; // a round threshold for the raw-span cases below
 
 test("no gaps in a regular 1s cadence", () => {
@@ -50,13 +45,8 @@ test("isInGap is strict-interior: endpoints (real samples) are not in the gap", 
   assert.equal(isInGap(1000, spans), false); // before the gap
 });
 
-/* ------------------------------------------------------------------ */
-/* The threshold                                                       */
-/* ------------------------------------------------------------------ */
-
 test("GAP_MS is derived from the stream cadence + the supervisor's backoff cap, and cannot drift from it", () => {
-  // Under the telemetry stream there is exactly ONE producer per host - the agent's
-  // own ticker, which removes the poll era's multi-writer arithmetic entirely.
+  // Exactly ONE producer per host under the stream (the agent's own ticker), so no multi-writer arithmetic.
   const CADENCE_MS = 5_000; // STREAM_INTERVAL_MS, the cadence we ask the agent for
   const worstHealthySpacing = CADENCE_MS + RECONNECT_BACKOFF_CAP_MS;
   assert.ok(
@@ -68,10 +58,6 @@ test("GAP_MS is derived from the stream cadence + the supervisor's backoff cap, 
   assert.deepEqual(gapSpans([0, worstHealthySpacing], GAP_MS), []);
 });
 
-/* ------------------------------------------------------------------ */
-/* visibleGapSpans - what the chart actually bands                     */
-/* ------------------------------------------------------------------ */
-
 test("a hole fully inside the window is banded with its own endpoints", () => {
   // 5s cadence, then a 90s hole (the host was pinned by its own deploy).
   const ts = [100_000, 105_000, 195_000, 200_000];
@@ -81,8 +67,7 @@ test("a hole fully inside the window is banded with its own endpoints", () => {
 });
 
 test("a hole straddling the window start is dropped, not half-banded", () => {
-  // The window opens mid-hole. We cannot tell a real outage from a buffer that
-  // simply doesn't reach back that far, so the honest render is empty plot.
+  // The window opens mid-hole: a real outage is indistinguishable from a buffer that doesn't reach back.
   const ts = [100_000, 190_000];
   assert.deepEqual(visibleGapSpans(ts, GAP, 150_000, 200_000), []);
 });
@@ -96,8 +81,7 @@ test("a hole running past the window end IS clamped to the visible part", () => 
 });
 
 test("an off-window straggler does NOT band the plot - history just doesn't reach", () => {
-  // The regression that made "No data" look random: the chart draws one sample from
-  // before the window so the line can enter from the left edge.
+  // The regression that made "No data" look random: the chart draws one sample from before the window.
   const t1 = 1_000_000;
   const ts = [
     t1 - 840_000,
@@ -110,9 +94,7 @@ test("an off-window straggler does NOT band the plot - history just doesn't reac
       `a ${windowMs / 60_000}m window must not band the lookbehind straggler`,
     );
   }
-  // ...but once the window is wide enough to actually CONTAIN the straggler, the
-  // 13-minute hole after it is a real observed hole and must still be banded.
-  // Honesty is preserved; only the off-window claim is dropped.
+  // ...but a window wide enough to CONTAIN the straggler must still band the real hole after it.
   assert.deepEqual(visibleGapSpans(ts, GAP, t1 - 900_000, t1), [
     [t1 - 840_000, t1 - 40_000],
   ]);

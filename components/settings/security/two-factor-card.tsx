@@ -28,18 +28,12 @@ const REGENERATE = /* GraphQL */ `
   }
 `;
 
-/**
- * Two-factor status and the three things you can do with it: turn it on (the
- * wizard), mint a fresh set of recovery codes, and turn it off.
- */
+// TwoFactorCard - two-factor status, plus turning it on, off, and minting fresh recovery codes.
 export function TwoFactorCard({
   enabled,
-  /** Named when a team or role policy makes 2FA mandatory: disabling is refused. */
+  // Named when a team or role policy makes 2FA mandatory: disabling is refused.
   requiredBy,
-  /**
-   * Where this account's passkey stands RIGHT NOW, which is not the same question
-   * as whether it owns one: - `none`: no usable passkey.
-   */
+  // Where the passkey stands right now, which is not whether the account owns one.
   passkeyStanding = "none",
   wizardOpen,
   onWizardOpenChange,
@@ -47,7 +41,7 @@ export function TwoFactorCard({
   enabled: boolean;
   requiredBy?: string | null;
   passkeyStanding?: "none" | "idle" | "carrying";
-  /** Owned by the page, so the Account protection card can open it too. */
+  // Owned by the page, so the Account protection card can open it too.
   wizardOpen: boolean;
   onWizardOpenChange: (open: boolean) => void;
 }) {
@@ -77,9 +71,6 @@ export function TwoFactorCard({
     return res;
   }
 
-  /**
-   * The password + code pair both dialogs collect.
-   */
   const stepUpFields = (
     <div className="space-y-2">
       <RevealInput

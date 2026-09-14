@@ -1,10 +1,6 @@
 import { redirect } from "next/navigation";
 
-/**
- * Members moved under Settings → Team, next to the Roles page that defines what
- * a member can do - the two are one decision, not two sections. This stub only
- * keeps old bookmarks and links working.
- */
+// MembersIndex is a legacy redirect stub: Members lives under Settings → Team.
 export default async function MembersIndex(
   props: PageProps<"/[team]/members">,
 ) {

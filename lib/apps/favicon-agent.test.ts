@@ -12,19 +12,12 @@ import {
 import { buildTar, tarStream } from "../infra/tar-test-helpers";
 import { pickBestFavicon } from "./favicon-shared";
 
-/**
- * Compose-stack favicon detection talks to the owning agent through two narrow
- * seams, so a fake agent pins both halves without a server: - the WALK drives
- * ListFiles one directory at a time - what it descends into, what it prunes, what
- */
-
 interface FakeEntry {
   name: string;
   kind: "dir" | "file";
   size?: number;
 }
 
-/** A fake files dir: map of directory path ("" is the root) → its children. */
 function fakeLister(tree: Record<string, FakeEntry[]>, calls: string[] = []) {
   return {
     calls,
@@ -60,7 +53,6 @@ test("walk: collects favicons from the root and from nested dirs", async () => {
     "favicon.ico",
     "site/public/favicon.svg",
   ]);
-  // The shared ranker then picks the scalable one over the root .ico.
   assert.equal(pickBestFavicon(found)?.path, "site/public/favicon.svg");
 });
 
@@ -113,7 +105,6 @@ test("walk: is breadth-first, so a shallow icon is found before a deep tree is e
     ],
     public: [{ name: "favicon.png", kind: "file", size: 50 }],
   };
-  // A long chain below `deep/` that would swallow the budget depth-first.
   let path = "deep";
   tree.deep = [{ name: "a", kind: "dir" }];
   for (let i = 0; i < 10; i++) {
@@ -128,7 +119,6 @@ test("walk: is breadth-first, so a shallow icon is found before a deep tree is e
     found.map((f) => f.path),
     ["public/favicon.png"],
   );
-  // `public` is listed on the second level, long before the deep chain's tail.
   assert.equal(lister.calls.indexOf("public") <= 2, true);
 });
 
@@ -142,7 +132,6 @@ test("walk: stops descending past the depth cap", async () => {
   tree[path] = [{ name: "favicon.ico", kind: "file", size: 10 }];
   const lister = fakeLister(tree);
   assert.deepEqual(await collectAgentFaviconCandidates(lister, "web"), []);
-  // 6 levels below the root is as far as it goes (root + 6 listings).
   assert.equal(lister.calls.length, 7);
 });
 
@@ -167,7 +156,6 @@ test("walk: a directory that fails to list is skipped, not fatal", async () => {
       { name: "broken", kind: "dir" },
       { name: "public", kind: "dir" },
     ],
-    // `broken` is deliberately absent from the tree → listFiles throws.
     public: [{ name: "favicon.ico", kind: "file", size: 10 }],
   });
   const found = await collectAgentFaviconCandidates(lister, "web");
@@ -183,16 +171,9 @@ test("walk: an empty files dir yields nothing (and one RPC)", async () => {
   assert.deepEqual(lister.calls, [""]);
 });
 
-/* ------------------------------------------------------------------ */
-/* Reading the chosen icon's bytes: text RPC for an SVG when it is      */
-/* byte-exact, the ExportFiles tar for everything else.                 */
-/* ------------------------------------------------------------------ */
-
-/** A fake agent that records which read path was used. */
 function fakeReader(opts: {
   files: Record<string, Buffer>;
   capabilities?: string[];
-  /** Force ReadFile to withhold a body (the agent's binary/too-large answer). */
   withholdText?: boolean;
 }) {
   const used: string[] = [];
@@ -202,8 +183,7 @@ function fakeReader(opts: {
       used.push(`readFile:${path}`);
       const bytes = opts.files[path];
       if (!bytes) throw new Error("not found");
-      // The agent hands back a UTF-8 STRING plus the file's real byte size -
-      // the two disagree exactly when the bytes are not valid UTF-8.
+      // The agent hands back a UTF-8 string plus the real byte size; they disagree when the bytes are not UTF-8.
       return {
         text: opts.withholdText ? null : bytes.toString("utf8"),
         size: bytes.length,
@@ -239,8 +219,7 @@ test("read: an SVG comes back over the text RPC, no tar", async () => {
 });
 
 test("read: an SVG that is not valid UTF-8 falls through to the tar, byte-exact", async () => {
-  // latin1 `è` - a UTF-8 round trip would silently rewrite it, so the length
-  // check must reject the text and take the tar path instead.
+  // latin1 `è`: a UTF-8 round trip would rewrite it, so the length check must reject the text.
   const svg = Buffer.concat([
     Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><!-- caff'),
     Buffer.from([0xe8]),
@@ -278,7 +257,6 @@ test("read: a binary icon comes out of the tar", async () => {
     files: { "favicon.png": png, "other.txt": Buffer.from("x") },
   });
   assert.deepEqual(await readFilesDirBytes(conn, "web", "favicon.png"), png);
-  // No pointless text read for a format that can never come back as text.
   assert.deepEqual(conn.used, ["hello", "exportFiles"]);
 });
 
@@ -299,17 +277,11 @@ test("read: a file missing from the archive yields null", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The icon a RUNNING app serves - the case a files walk can never see: */
-/* a compose stack of prebuilt images keeps its favicon in the image.   */
-/* ------------------------------------------------------------------ */
-
 const PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2,
 ]);
 const ICO_BYTES = Buffer.from([0x00, 0x00, 0x01, 0x00, 1, 0, 16, 16]);
 
-/** One canned HTTP response. */
 interface FakeResponse {
   status?: number;
   contentType?: string;
@@ -318,8 +290,6 @@ interface FakeResponse {
   location?: string;
 }
 
-/** A fake agent that answers ProbeHttp from a path → response map and records
- * every request, so what the detector ASKS FOR is as testable as what it picks. */
 function fakeProber(
   responses: Record<string, FakeResponse>,
   opts: { capabilities?: string[] } = {},
@@ -373,8 +343,7 @@ test("served: takes the icon the page declares, over the /favicon.ico fallback",
   assert.equal(found?.mime, "image/png");
   assert.deepEqual(found?.bytes, PNG_BYTES);
   assert.deepEqual(conn.asked, ["/", "/assets/icon-192.png"]);
-  // The app is asked on its OWN hostname - what an app with host authorization
-  // (ALLOWED_HOSTS, a configured site URL) requires before it answers at all.
+  // The app is asked on its own hostname, which host authorization requires before it answers at all.
   assert.deepEqual(new Set(conn.hosts), new Set(["app.example.com"]));
 });
 
@@ -422,8 +391,6 @@ test("served: a redirect off this app is not followed", async () => {
     "/": { status: 302, location: "https://accounts.google.com/signin" },
     "/favicon.ico": { contentType: "image/x-icon", body: ICO_BYTES },
   });
-  // The home page is abandoned, but the app's own well-known path is still ours
-  // to ask for.
   assert.equal(
     (await detectServedFaviconVia(conn, TARGET))?.path,
     "/favicon.ico",
@@ -435,7 +402,6 @@ test("served: an SPA answering /favicon.ico with index.html is NOT an icon", asy
   const html = Buffer.from("<!DOCTYPE html><html><body>app</body></html>");
   const conn = fakeProber({
     "/": { contentType: "text/html", body: Buffer.from("<head></head>") },
-    // A 200, and even an image content type - only the bytes give it away.
     "/favicon.ico": { contentType: "image/x-icon", body: html },
   });
   assert.equal(await detectServedFaviconVia(conn, TARGET), null);
@@ -451,13 +417,11 @@ test("served: moves on to the next candidate when one is missing or oversized", 
           `<link rel="icon" sizes="16x16" type="image/png" href="/ok.png"></head>`,
       ),
     },
-    // Truncated => the agent cut it at the logo cap, so we hold a fragment.
     "/huge.svg": {
       contentType: "image/svg+xml",
       body: Buffer.from("<svg"),
       truncated: true,
     },
-    // `/gone.png` is absent from the map => the probe throws (404/refused).
     "/ok.png": { contentType: "image/png", body: PNG_BYTES },
   });
   assert.equal((await detectServedFaviconVia(conn, TARGET))?.path, "/ok.png");
@@ -507,10 +471,6 @@ test("served: a path-routed app is read under the prefix it actually serves on",
   assert.equal(found?.path, "/api/icon.png");
 });
 
-/* ------------------------------------------------------------------ */
-/* Which container/port/host to ask - the same one Traefik was given.   */
-/* ------------------------------------------------------------------ */
-
 const COMPOSE = `services:
   web:
     image: nginx
@@ -555,8 +515,6 @@ test("target: the primary domain decides the service, port and Host header", asy
 });
 
 test("target: an app with no domain yet is still reachable, via the compose default", async () => {
-  // Not published is not the same as not running, and this is exactly the case
-  // a fetch from the outside could never cover.
   const target = servedIconTarget(APP, [], "");
   assert.equal(target?.service, "web");
   assert.equal(target?.port, 80);
@@ -615,8 +573,6 @@ test("target: null when there is no service to talk to at all", async () => {
 test("served: an icon URL that redirects within the app is followed", async () => {
   const conn = fakeProber({
     "/": { contentType: "text/html", body: Buffer.from("<head></head>") },
-    // A hashed-asset rewrite in front of the well-known path - ordinary, and
-    // giving up on it would cost the icon.
     "/favicon.ico": { status: 301, location: "/assets/favicon.a1b2.ico" },
     "/assets/favicon.a1b2.ico": {
       contentType: "image/x-icon",
@@ -640,6 +596,5 @@ test("served: a redirect loop cannot turn the search into a crawl", async () => 
     "/b": { status: 302, location: "/a" },
   });
   assert.equal(await detectServedFaviconVia(conn, TARGET), null);
-  // The home page, then a bounded number of icon fetches, never unbounded.
   assert.ok(conn.asked.length <= 8, `asked ${conn.asked.length} times`);
 });

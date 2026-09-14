@@ -30,29 +30,15 @@ import type {
   BuildConfig,
   BuildMethod,
   BuildMethodSettings,
-} from "@/lib/types";
+} from "@/lib/types/build";
 
-/**
- * Build & output - one row per decision. A row only appears where the builder
- * actually reads that field, so nothing here can silently do nothing.
- */
-
-/**
- * What each builder runs when the field is left empty, for the placeholder. Only
- * the generated Dockerfile's own defaults are literal - nixpacks and railpack
- * decide inside the agent, and printing a guess there would read as a promise.
- */
 function defaultsFor(method: string) {
-  // Ours, so these are literal: the generated Dockerfile forces devDependencies
-  // in, runs no build of its own, and falls back to node.
   if (method === "dockerfile")
     return {
       install: "npm ci --include=dev",
       build: "no build step",
       start: "node server.js",
     };
-  // What nixpacks emits for a Node app, measured against 1.41.0: it reads
-  // package.json's scripts, and railpack reads the same ones.
   return { install: "npm ci", build: "npm run build", start: "npm run start" };
 }
 export function BuildOutputCard({
@@ -67,10 +53,7 @@ export function BuildOutputCard({
 }: {
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
-  /** The framework in force - the user's correction if any, else what the last
-   * deploy detected. */
   framework: string | null;
-  /** What DETECTION read, so the card can say whose answer is showing. */
   detectedFramework: string | null;
   onFrameworkChange: (id: string | null) => void;
   dirty: boolean;
@@ -81,24 +64,16 @@ export function BuildOutputCard({
     onBuildChange(updater(build));
   }
 
-  // Which overrides the deploy path actually consumes, per builder - a field is shown
-  // only where the agent-side builder reads it, so nothing here can silently do
-  // nothing: - nixpacks / railpack: build + start commands, Node version - static:
-  // build command + Node version (the builder stage); nginx serves the output, so
-  // there is no process to start - dockerfile: none - the repo's Dockerfile owns
-  // install/build/run
   const method = build.buildMethod;
   const showBuildCommand =
     method === "nixpacks" || method === "railpack" || method === "static";
   const showStartCommand = method === "nixpacks" || method === "railpack";
   const showNodeVersion =
     method === "nixpacks" || method === "railpack" || method === "static";
-  // Install and output are read by the same builders that read the build command;
-  // a Dockerfile owns all four itself.
   const showInstallCommand = showBuildCommand;
   const showOutputDirectory = method === "static";
 
-  /** Empty is "work it out" (null), never the empty string that skips a step. */
+  // Empty is "work it out" (null), never the empty string that skips a step.
   function setCommand(
     key: "installCommand" | "buildCommand" | "startCommand" | "outputDirectory",
     value: string,
@@ -106,7 +81,6 @@ export function BuildOutputCard({
     setBuild((b) => ({ ...b, [key]: value === "" ? null : value }));
   }
 
-  // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const portText = portDraft ?? String(build.port);
 
@@ -117,12 +91,7 @@ export function BuildOutputCard({
       setBuild((b) => ({ ...b, port: n }));
   }
 
-  /**
-   * Correcting the framework carries the container port with it - that is the
-   * whole reason the setting is worth having (`vite preview` binds 4173 and
-   * ignores PORT, so an app mis-read as Next.js deploys green and answers
-   * nothing).
-   */
+  // The port follows the framework: `vite preview` binds 4173 and ignores PORT.
   function pickFramework(next: string | null) {
     const previousPort = frameworkById(framework)?.defaultPort ?? 3000;
     const nextPort = frameworkById(next ?? detectedFramework)?.defaultPort;
@@ -158,21 +127,13 @@ export function BuildOutputCard({
               methodSettings: { ...b.methodSettings, ...patch },
             }))
           }
-          // The framework is one of the BUILDER's settings - only the
-          // auto-detecting ones read the source, so it renders inside their
-          // options panel rather than as a row of its own.
           framework={framework}
           detectedFramework={detectedFramework}
           onFrameworkChange={pickFramework}
         />
 
-        {/* Each command is shown as a decision - Deplo works it out, or you take
-            it over. No detected value is printed: nixpacks and railpack settle
-            these inside the agent, and a guess here would read as a promise. */}
-        {/* Two to a row from `sm`: each is one short field, and stacked they made
-            a card of mostly empty space. Plain fields, with what Deplo would run
-            in the placeholder - empty is "work it out", so a cleared field never
-            skips a step. The skip (an empty string) is reachable through the API. */}
+        {/* Each command is a decision: Deplo works it out, or you take it over. */}
+        {/* Two to a row from sm: each is one short field. */}
         <div className="grid gap-3 sm:grid-cols-2">
           {showInstallCommand && (
             <SettingRow

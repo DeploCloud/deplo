@@ -51,9 +51,7 @@ type LogsInfoResponse = {
   } | null;
 };
 
-/**
- * Logs page body: an App's RUNTIME logs, and nothing else.
- */
+// LiveLogs is the Logs page body: an App runtime logs, and nothing else.
 export function LiveLogs({
   appId,
   title,
@@ -66,50 +64,27 @@ export function LiveLogs({
   toolbar,
 }: {
   appId: string;
-  /**
-   * The App's name and the way back to its Overview. Omitted on the general Logs
-   * page, where the target picker in `toolbar` shows the name itself and drawing
-   * this too would say it twice.
-   */
   title?: PaneTitle;
   initialInstances: ConsoleInstance[];
   initialStreamable: boolean;
-  /** The owning agent could not be reached, so `initialStreamable` is false for
-   *  a reason that has nothing to do with whether a container exists. */
   initialUnreachable: boolean;
-  /** The owning host's agent honours a log time window (`logs.timerange`). */
   initialSupportsTimeline: boolean;
-  /** The instance ceiling on that window, in days. */
   initialLogMaxDays: number;
-  /** This app's deployment list (`/apps/<slug>/deployments`), where the empty
-   *  state sends somebody whose app has no container yet, to read the build. */
   deploymentsHref: string;
-  /** Extra toolbar controls. The general Logs page passes its target picker;
-   *  the App's own Logs tab passes nothing. */
   toolbar?: React.ReactNode;
 }) {
   const live = useLiveApp();
   const [instances, setInstances] =
     React.useState<ConsoleInstance[]>(initialInstances);
   const [streamable, setStreamable] = React.useState(initialStreamable);
-  // Why `streamable` is false, which the empty state has to say out loud: an
-  // unreachable agent is transient and NOT the same as no container.
   const [unreachable, setUnreachable] = React.useState(initialUnreachable);
-  // Both follow the same refetch as `streamable`: moving the app to another
-  // server, or updating that server's agent, changes whether the window is
-  // honoured, and the control must not keep offering one the host ignores.
   const [supportsTimeline, setSupportsTimeline] = React.useState(
     initialSupportsTimeline,
   );
   const [logMaxDays, setLogMaxDays] = React.useState(initialLogMaxDays);
 
-  // What the containers are really doing - drives the banner above the stream
-  // and tells a crash loop apart from a container that has simply stopped.
   const runtime = useAppRuntime(appId);
 
-  // Re-read the instance list whenever the control plane changes the app's power
-  // state (deploy / start / stop): a redeploy replaces the containers, so the names
-  // we stream from must be re-resolved.
   const liveStatus = live?.status;
   React.useEffect(() => {
     let cancelled = false;
@@ -130,10 +105,7 @@ export function LiveLogs({
     };
   }, [appId, liveStatus]);
 
-  // Nothing on the host to stream from.
   if (!streamable || instances.length === 0) {
-    // The build to offer is the LIVE one, so a redeploy started while this is on
-    // screen points at the run that is actually happening.
     const depId = live?.latestDeploymentId ?? null;
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -142,9 +114,7 @@ export function LiveLogs({
           <PaneTitleLink title={title} />
           {toolbar}
         </div>
-        {/* Centred in what is left of the full-bleed frame rather than pinned to
-            its top edge, which in a viewport-tall pane reads as a page that
-            failed to load the rest of itself. */}
+        {/* Centred in what is left of the full-bleed frame. */}
         <div className="flex min-h-0 flex-1 items-center justify-center p-6">
           <EmptyState
             graphic={<LogsGraphic />}
@@ -184,9 +154,7 @@ export function LiveLogs({
   );
 }
 
-/**
- * What the log pane's notice chip says when the container is NOT healthy.
- */
+// runtimeNotice is what the log pane notice chip says when the container is not healthy.
 export function runtimeNotice(
   runtime: AppRuntimeView | null,
 ): LogNotice | null {

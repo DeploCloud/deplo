@@ -8,12 +8,6 @@ import {
   type RawPullRequestPayload,
 } from "./pr-webhook";
 
-/**
- * The preview decision is the part worth testing: which pull request deliveries
- * build, which tear down, and which are deliberately ignored. Mirrors
- * git-webhook.test.ts in shape, since it mirrors git-webhook.ts in design.
- */
-
 const BASE = "acme/blog";
 
 function payload(
@@ -44,7 +38,6 @@ function payload(
   };
 }
 
-/** The defaults an app gets before anybody opens the settings page. */
 const CFG: PreviewTriggerConfig = {
   branch: "main",
   previewsEnabled: true,
@@ -53,7 +46,6 @@ const CFG: PreviewTriggerConfig = {
   requiredLabels: [],
 };
 
-/** CFG with one thing changed - the shape most of these tests want. */
 const cfg = (
   over: Partial<PreviewTriggerConfig> = {},
 ): PreviewTriggerConfig => ({
@@ -85,9 +77,7 @@ test("a payload with no pull request is refused rather than guessed at", () => {
 });
 
 test("a head in another repository is a fork, whatever GitHub's fork flag says", () => {
-  // A pull request from an unrelated repo in the same org reports `fork: false`
-  // and is every bit as untrusted. The only question is whether the head lives
-  // somewhere the operator controls.
+  // An unrelated repo in the same org reports `fork: false` and is every bit as untrusted.
   const ev = parsePullRequestEvent(
     payload({
       head: { ref: "patch", sha: "d3", repo: { full_name: "mallory/blog" } },
@@ -122,9 +112,6 @@ test("opened, reopened, synchronize and ready_for_review all build", () => {
 });
 
 test("closed tears down BEFORE any gate is consulted", () => {
-  // A preview created while previews were on must still be destroyed after they
-  // are switched off, or after the app is repointed at another branch,
-  // otherwise the switch silently strands containers on the host.
   const ev = parsePullRequestEvent(payload({}, "closed"))!;
   assert.deepEqual(previewIntent(CFG, ev), { kind: "destroy" });
   assert.deepEqual(previewIntent(cfg({ previewsEnabled: false }), ev), {
@@ -150,8 +137,6 @@ test("previews off means nothing builds", () => {
 });
 
 test("a pull request must TARGET the branch the app tracks", () => {
-  // This is what makes one repository backing three apps behave: an app
-  // deployed from `main` must not build pull requests aimed at `release/v2`.
   const ev = parsePullRequestEvent(payload({ base: { ref: "release/v2" } }))!;
   assert.deepEqual(previewIntent(CFG, ev), {
     kind: "ignore",
@@ -175,8 +160,6 @@ test("drafts wait for ready_for_review", () => {
 });
 
 test("converting back to a draft does NOT tear the preview down", () => {
-  // Pulling a URL out from under someone because the author ticked a box is a
-  // surprise with no upside - one container is cheaper than that.
   const ev = parsePullRequestEvent(
     payload({ draft: true }, "converted_to_draft"),
   )!;
@@ -204,17 +187,12 @@ test("the chatty actions are ignored, not acted on", () => {
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* The settings that gate a build                                      */
-/* ------------------------------------------------------------------ */
-
 test("the label filter: a pull request must carry one of the app's labels", () => {
   const c = cfg({ requiredLabels: ["preview", "deploy-me"] });
 
   const none = parsePullRequestEvent(payload({ labels: [{ name: "bug" }] }))!;
   assert.deepEqual(previewIntent(c, none), { kind: "ignore", reason: "label" });
 
-  // One is enough - the labels are alternatives, not a checklist.
   const one = parsePullRequestEvent(
     payload({ labels: [{ name: "bug" }, { name: "deploy-me" }] }),
   )!;
@@ -226,7 +204,6 @@ test("the label filter: a pull request must carry one of the app's labels", () =
   )!;
   assert.deepEqual(previewIntent(c, shouty), { kind: "deploy" });
 
-  // No filter ⇒ every pull request qualifies, labels or not.
   const unlabelled = parsePullRequestEvent(payload({ labels: [] }))!;
   assert.deepEqual(previewIntent(CFG, unlabelled), { kind: "deploy" });
 });
@@ -234,20 +211,14 @@ test("the label filter: a pull request must carry one of the app's labels", () =
 test("applying the label is what builds; removing the last one tears down", () => {
   const c = cfg({ requiredLabels: ["preview"] });
 
-  // Without this, a label applied AFTER the pull request opened would never
-  // build: `labeled` used to fall through to the chatty-action ignore.
   const applied = parsePullRequestEvent(
     payload({ labels: [{ name: "preview" }] }, "labeled"),
   )!;
   assert.deepEqual(previewIntent(c, applied), { kind: "deploy" });
 
-  // Removing the label is the explicit "that's enough, free the slot" gesture -
-  // the only teardown besides `closed`.
   const removed = parsePullRequestEvent(payload({ labels: [] }, "unlabeled"))!;
   assert.deepEqual(previewIntent(c, removed), { kind: "destroy" });
 
-  // Removing ONE of several leaves the preview alone AND does not rebuild it:
-  // the pull request still qualifies, so nothing that matters changed.
   const stillQualifies = parsePullRequestEvent(
     payload({ labels: [{ name: "preview" }] }, "unlabeled"),
   )!;
@@ -256,8 +227,6 @@ test("applying the label is what builds; removing the last one tears down", () =
     reason: "action",
   });
 
-  // With NO filter a label is chatter, not a trigger - an app that doesn't
-  // filter must not burn a build every time somebody triages a pull request.
   const chatter = parsePullRequestEvent(
     payload({ labels: [{ name: "bug" }] }, "labeled"),
   )!;
@@ -281,11 +250,8 @@ test("build drafts is opt-in, and only changes the draft answer", () => {
 test("auto-deploy off records a new commit without building it", () => {
   const c = cfg({ autoDeploy: false });
   const push = parsePullRequestEvent(payload({}, "synchronize"))!;
-  // Never `ignore`: the list has to know the head moved, and a fork's approval
-  // has to be re-asked for the commit nobody reviewed.
+  // Never `ignore`: a fork's approval has to be re-asked for the commit nobody reviewed.
   assert.deepEqual(previewIntent(c, push), { kind: "sync" });
-  // The FIRST build still happens: "manual only" is about refreshing, not about
-  // never getting a preview at all.
   for (const action of ["opened", "reopened", "ready_for_review"]) {
     const ev = parsePullRequestEvent(payload({}, action))!;
     assert.deepEqual(previewIntent(c, ev), { kind: "deploy" }, action);
@@ -295,8 +261,6 @@ test("auto-deploy off records a new commit without building it", () => {
 test("a title edit refreshes the facts and builds nothing", () => {
   const ev = parsePullRequestEvent(payload({ title: "Renamed" }, "edited"))!;
   assert.deepEqual(previewIntent(CFG, ev), { kind: "sync" });
-  // The label gate still applies: an unlabelled pull request has no preview to
-  // refresh, and must not get one through an edit.
   assert.deepEqual(previewIntent(cfg({ requiredLabels: ["preview"] }), ev), {
     kind: "ignore",
     reason: "label",
@@ -308,7 +272,6 @@ test("retargeting the pull request off the tracked branch tears its preview down
     payload({ base: { ref: "develop" } }, "edited"),
   )!;
   assert.deepEqual(previewIntent(CFG, ev), { kind: "destroy" });
-  // A push to a pull request that never targeted the branch is still nothing.
   const push = parsePullRequestEvent(
     payload({ base: { ref: "develop" } }, "synchronize"),
   )!;
@@ -319,8 +282,6 @@ test("retargeting the pull request off the tracked branch tears its preview down
 });
 
 test("closed still tears down whatever the new gates say", () => {
-  // Same reasoning as the original: a preview that exists must be destroyable,
-  // or turning a gate on strands containers nobody can see.
   const ev = parsePullRequestEvent(payload({ labels: [] }, "closed"))!;
   const c = cfg({ requiredLabels: ["preview"], autoDeploy: false });
   assert.deepEqual(previewIntent(c, ev), { kind: "destroy" });

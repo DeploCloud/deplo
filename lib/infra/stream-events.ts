@@ -1,17 +1,8 @@
 import type { ClientReadableStream } from "@grpc/grpc-js";
 
-/**
- * The two stream bridges the agent client is built on, kept OUT of
- * `agent-client.ts` on purpose.
- */
-
-/** How the agent's own error shape is normalised. Injected so this module keeps
- *  no dependency on the client's error hierarchy. */
 type Normalise = (err: unknown) => Error;
 
-/**
- * Bridge a grpc server-stream into a backpressured async generator.
- */
+// streamEvents - bridge a grpc server-stream into a backpressured async generator.
 export async function* streamEvents<E>(
   stream: ClientReadableStream<E>,
   opts: { maxQueued?: number; pauseAbove?: number; normalise?: Normalise } = {},
@@ -52,9 +43,6 @@ export async function* streamEvents<E>(
     while (true) {
       if (queue.length) {
         const ev = queue.shift()!;
-        // Resume at HALF the bound, not at it: resuming the instant one slot
-        // frees would toggle pause/resume on every single chunk, and the
-        // syscall churn costs more than the buffer it saves.
         if (paused && !done && queue.length <= pauseAbove / 2) {
           paused = false;
           stream.resume();
@@ -71,10 +59,7 @@ export async function* streamEvents<E>(
   }
 }
 
-/**
- * Pump a header frame then a stream of byte frames into a client-streaming (or
- * bidi) call, honouring write backpressure.
- */
+// pumpClientStream - pump a header frame then byte frames into a client-streaming call, honouring backpressure.
 export function pumpClientStream<T>(
   call: {
     write(v: T): boolean;
@@ -113,7 +98,7 @@ export function pumpClientStream<T>(
     try {
       await writeFrame(headerFrame);
       for await (const buf of chunks) {
-        if (settled) return; // a transport error already ended us
+        if (settled) return;
         await writeFrame(dataFrame(buf));
       }
       call.end();

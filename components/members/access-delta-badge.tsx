@@ -3,18 +3,13 @@ import { ShieldMinus, ShieldPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-/**
- * "This person is not their role". Two states and no third: amber for less (what
- * an admin auditing access needs to see), blue for more. Nothing renders for
- * everyone who follows their role, so the chip means "look here".
- */
+// AccessDeltaBadge marks a member whose access differs from their role: amber for less, blue for more.
 export function AccessDeltaBadge({
   delta,
   roleName,
   className,
 }: {
   delta: "less" | "more" | null;
-  /** Named in the tooltip, so "than what" is answered without opening anything. */
   roleName: string | null;
   className?: string;
 }) {

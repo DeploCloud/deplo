@@ -15,11 +15,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { RobotMark } from "./robot-graphic";
 import { cn } from "@/lib/utils";
 
-/**
- * Beside the illustration: how many agents can act in this team, and - for
- * whoever manages the team - its one MCP switch. What an agent may DO is its
- * token's Capabilities and its owner's permissions, never a switch here.
- */
+// McpSwitchMenu - the team's one MCP switch; what an agent may DO is its token's Capabilities, never this switch.
 export function McpSwitchMenu({
   count,
   enabled: initialEnabled,

@@ -19,15 +19,12 @@ export interface ServerAccess {
   teamIds: string[];
 }
 
-/** "Specific teams" with nothing ticked would lock every team out. */
+// accessIsComplete: "Specific teams" with nothing ticked would lock every team out.
 export function accessIsComplete(a: ServerAccess) {
   return a.allTeams || a.teamIds.length > 0;
 }
 
-/**
- * Controlled editor for a server's "all teams / specific teams" choice. Pure UI:
- * the parent owns the value and persists it (addServer / setServerTeams).
- */
+// ServerTeamAccess edits the all-teams / specific-teams choice; the parent owns the value and persists it.
 export function ServerTeamAccess({
   value,
   teams,
@@ -108,9 +105,7 @@ export function ServerTeamAccess({
   );
 }
 
-/**
- * One card in a card-shaped radio group.
- */
+// AccessOption is one card in a card-shaped radio group.
 export function AccessOption({
   icon: Icon,
   title,
@@ -127,16 +122,9 @@ export function AccessOption({
   selected: boolean;
   disabled?: boolean;
   onSelect: () => void;
-  /** A short chip beside the title, e.g. "Beta". */
   badge?: React.ReactNode;
-  /**
-   * Give the option a colour of its own: the icon wears the token, the card
-   * wears the same hue as a wash. Omitted, the option stays neutral - which is
-   * right where the choice is one thing or its opposite.
-   */
   accent?: { hue: number; iconClassName: string };
 }) {
-  // The wash the template store, the MCP wizard and the deploy sources share.
   const veil = accent
     ? veilProps({ hue: accent.hue }, selected ? "on" : "hover")
     : {};

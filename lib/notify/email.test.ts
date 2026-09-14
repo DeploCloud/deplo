@@ -4,11 +4,6 @@ import assert from "node:assert/strict";
 import { captureFetch, type FetchCapture } from "./fetch-capture-test-helpers";
 import { sendEmail, smtpSecure } from "./email";
 
-/**
- * The Resend branch, which is one outbound POST and therefore worth pinning: the
- * URL, the bearer header and the body shape are a contract with a third party.
- */
-
 let capture: FetchCapture | null = null;
 afterEach(() => {
   capture?.restore();

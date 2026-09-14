@@ -1,8 +1,4 @@
-/**
- * A variable the document does not declare is DROPPED by the server, silently:
- * the call looks like it worked and half of what it asked for never happened.
- * A document and its call site that disagree is always a bug here, so it says so.
- */
+// assertVariablesDeclared - the server silently DROPS an undeclared variable, so a mismatch is always a bug.
 export function assertVariablesDeclared(
   query: string,
   variables?: Record<string, unknown>,

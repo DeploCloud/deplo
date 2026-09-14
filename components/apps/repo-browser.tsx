@@ -30,7 +30,7 @@ import { RepoSearchGraphic } from "@/components/apps/repo-search-graphic";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
-/** One repository as every provider's listing returns it. */
+// RepoSummary is one repository as every provider listing returns it.
 export interface RepoSummary {
   fullName: string;
   name: string;
@@ -45,16 +45,12 @@ export interface RepoSelection {
   branch: string;
 }
 
-/** Which credential lists the repositories: a GitHub App installation, or a git
- *  connection to any other host. Only the query name differs. */
+// RepoSourceKind names which credential lists the repositories.
 export type RepoSourceKind = "github" | "connection";
 
-/** The list's two facets: what a repository IS, and what order they come in. */
 type RepoVisibility = "all" | "public" | "private";
 type RepoSort = "recent" | "name";
 
-/** Public or private, always BEFORE the name: it is read with the name, not
- *  after it. Labelled, so the row's accessible name carries it too. */
 function RepoVisibilityMark({ private: isPrivate }: { private: boolean }) {
   const Icon = isPrivate ? Lock : Globe;
   return (
@@ -66,8 +62,6 @@ function RepoVisibilityMark({ private: isPrivate }: { private: boolean }) {
   );
 }
 
-// Varied bar widths so the loading placeholder reads like a real repo list
-// instead of an even grid of identical lines.
 const REPO_SKELETON_WIDTHS = [
   "w-1/2",
   "w-2/3",
@@ -77,9 +71,7 @@ const REPO_SKELETON_WIDTHS = [
   "w-1/2",
 ];
 
-/**
- * Pick a repository and a branch from a credential that can list them.
- */
+// RepoBrowser picks a repository and a branch from a credential that can list them.
 export function RepoBrowser({
   kind,
   sourceId,
@@ -92,13 +84,10 @@ export function RepoBrowser({
   repoLinkLabel = "Open repository",
 }: {
   kind: RepoSourceKind;
-  /** The installation or connection id. Changing it reloads the list. */
   sourceId: string;
-  /** Pre-select the repo/branch already attached to the app (settings flow). */
   initial?: { fullName: string; branch: string };
   onChange: (value: RepoSelection | null) => void;
   emptyMessage?: string;
-  /** Rendered under the empty message, e.g. a link to grant repository access. */
   emptyAction?: React.ReactNode;
   avatarUrl?: string;
   avatarFallback?: string;
@@ -113,23 +102,13 @@ export function RepoBrowser({
   const [selected, setSelected] = React.useState<RepoSummary | null>(null);
   const [branches, setBranches] = React.useState<string[]>([]);
   const [branch, setBranch] = React.useState("");
-  // Once a repo is chosen the list collapses to a compact "selected repo"
-  // summary; "Change" flips this back on to reveal the search + list again.
   const [browsing, setBrowsing] = React.useState(false);
-  // Apply the initial selection only against the first repo list we load for
-  // the source it belongs to; afterwards the user is in control.
   const seededRef = React.useRef(false);
-  // The repo the app is SAVED against, when this credential cannot reach it.
   const [unreachable, setUnreachable] = React.useState<string | null>(null);
-  // Mirror the latest `initial` in a ref so the one-time seed in loadRepos can read
-  // it WITHOUT making loadRepos reactive to it. The repo list must reload only when
-  // the source changes.
   const initialRef = React.useRef(initial);
   React.useEffect(() => {
     initialRef.current = initial;
   });
-  // Same reason: the loaders must not change identity when `kind` does (it
-  // never does for a mounted browser, but the linter cannot know that).
   const kindRef = React.useRef(kind);
   React.useEffect(() => {
     kindRef.current = kind;
@@ -203,8 +182,6 @@ export function RepoBrowser({
       setLoadingRepos(false);
       if (res.ok && res.data) {
         setRepos(res.data);
-        // Seed the existing app repo once it is in the fetched list. Read the
-        // latest `initial` from the ref so this callback stays identity-stable.
         const seed = initialRef.current;
         if (!seededRef.current && seed) {
           const match = res.data.find((r) => r.fullName === seed.fullName);
@@ -215,8 +192,6 @@ export function RepoBrowser({
             setBranches([seed.branch || match.defaultBranch]);
             void hydrateBranches(id, match, seed.branch);
           }
-          // No match: this credential cannot reach the repository the app is
-          // saved against. Say which one, rather than showing an empty field.
           setUnreachable(match ? null : seed.fullName);
         }
       } else {
@@ -224,20 +199,14 @@ export function RepoBrowser({
         if (!res.ok) toast.error(res.error);
       }
     },
-    // Identity-stable: the seed reads `initialRef.current`, so a changed `initial`
-    // (e.g. the just-saved branch fed back by router.refresh) must NOT recreate this
-    // callback and re-fire the load effect.
     [hydrateBranches],
   );
 
   React.useEffect(() => {
-    // Fetch repos for the active source (sync with an external system) whenever
-    // it changes - the load helper manages its own state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRepos(sourceId);
   }, [sourceId, loadRepos]);
 
-  // Bubble the full selection up only once a repo + branch are settled.
   React.useEffect(() => {
     if (selected && branch) onChange({ fullName: selected.fullName, branch });
     else onChange(null);
@@ -263,17 +232,13 @@ export function RepoBrowser({
       .sort((a, b) =>
         sort === "name"
           ? a.fullName.localeCompare(b.fullName)
-          : // A provider that reports no date sinks to the bottom rather than
-            // claiming to be the freshest.
-            a.updatedAt < b.updatedAt
+          : a.updatedAt < b.updatedAt
             ? 1
             : -1,
       );
   }, [repos, query, visibility, sort]);
 
   if (selected && !browsing) {
-    // Chosen repo - a compact confirmation, so the common "already picked" case isn't a
-    // wall of repos.
     return (
       <div className="rounded-lg border border-border bg-surface">
         <div className="flex items-center gap-3 p-3">
@@ -335,11 +300,7 @@ export function RepoBrowser({
               id={branchFieldId}
               className="h-8 w-auto max-w-full min-w-44 bg-background"
             >
-              {/**
-               * `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1` to its
-               * direct-child spans, whose `display:-webkit-box` outranks a plain `flex` class
-               * (the `>span` selector is more specific) and would stack the icon above the value.
-               */}
+              {/* flex! is load-bearing: the trigger [&>span]:line-clamp-1 outranks a plain flex. */}
               <span className="flex! min-w-0 items-center gap-2">
                 <GitBranch className="size-4 shrink-0 text-muted-foreground" />
                 <SelectValue />
@@ -430,11 +391,7 @@ export function RepoBrowser({
             className="w-full shrink-0 sm:w-[11rem]"
             aria-label="Sort repositories"
           >
-            {/**
-             * `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1` to its
-             * direct-child spans, whose `display:-webkit-box` outranks a plain `flex` class
-             * (the `>span` selector is more specific) and would stack the icon above the value.
-             */}
+            {/* flex! is load-bearing: the trigger [&>span]:line-clamp-1 outranks a plain flex. */}
             <span className="flex! min-w-0 items-center gap-2">
               <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
               <SelectValue />
@@ -464,8 +421,7 @@ export function RepoBrowser({
           ))
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 p-4 text-center">
-            {/* Only for a search that found nothing: with no repositories at
-                all nothing was searched, and the message carries an action. */}
+            {/* Only for a search that found nothing. */}
             {repos.length > 0 && <RepoSearchGraphic className="size-20" />}
             <p className="text-sm text-muted-foreground">
               {repos.length === 0

@@ -12,11 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-/**
- * Warns before leaving a page that has unsaved edits. Mount it with `when` set to
- * the page's aggregate dirty flag; it guards two navigation vectors while dirty
- * and does nothing otherwise: 1.
- */
+// UnsavedChangesGuard - warns before leaving a page that has unsaved edits.
 export function UnsavedChangesGuard({
   when,
   title = "Discard unsaved changes?",
@@ -31,7 +27,6 @@ export function UnsavedChangesGuard({
   cancelLabel?: string;
 }) {
   const router = useRouter();
-  // The href a blocked click was heading to; non-null ⇒ show the confirm dialog.
   const [pendingHref, setPendingHref] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -48,8 +43,6 @@ export function UnsavedChangesGuard({
   React.useEffect(() => {
     if (!when) return;
     const onClick = (e: MouseEvent) => {
-      // Let modified clicks (new tab/window), non-primary buttons and already-
-      // handled events through untouched.
       if (
         e.defaultPrevented ||
         e.button !== 0 ||
@@ -62,11 +55,9 @@ export function UnsavedChangesGuard({
       }
       const anchor = (e.target as HTMLElement | null)?.closest("a");
       if (!anchor) return;
-      // Opens in a new tab → not leaving this page.
       if (anchor.target && anchor.target !== "_self") return;
       const href = anchor.getAttribute("href");
       if (!href) return;
-      // Only guard internal, same-document navigations.
       if (
         /^[a-z]+:/i.test(href) ||
         href.startsWith("//") ||
@@ -75,8 +66,7 @@ export function UnsavedChangesGuard({
         return;
       }
       if (href === window.location.pathname + window.location.search) return;
-      // Capture phase + stopPropagation runs before Next's delegated Link
-      // handler, so the navigation never starts until the user confirms.
+      // Capture phase + stopPropagation runs before Next's delegated Link handler.
       e.preventDefault();
       e.stopPropagation();
       setPendingHref(href);

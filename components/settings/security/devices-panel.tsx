@@ -25,16 +25,10 @@ import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { UserSessionDTO } from "@/lib/data/sessions";
 
-/**
- * Every device signed in to this account, with a way to end any of them. The one
- * you are holding comes first and on its own: it is the row a person checks the
- * others against.
- */
+// DevicesPanel - every device signed in to this account, with a way to end any of them.
 export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
   const router = useRouter();
-  // A signed-out device leaves the table on the click. The session row is gone
-  // server-side by the time the mutation answers, so leaving it on screen with
-  // a live "Sign out" under the cursor only invites a second, doomed click.
+  // Removed on click: the row is gone server-side by the time the mutation answers, and a live "Sign out" invites a doomed second click.
   const {
     visible: rows,
     remove,
@@ -65,8 +59,6 @@ export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
   async function revokeOthers(): Promise<
     { ok: true } | { ok: false; error: string }
   > {
-    // Every other device goes at once; a refusal puts all of them back, and the
-    // refresh below is what settles which ones actually ended.
     const ids = others.map((s) => s.id);
     ids.forEach(remove);
     const res = await gqlAction<{ revokeOtherSessions: number }, number>(
@@ -200,10 +192,7 @@ export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
   );
 }
 
-/**
- * The session making this request. It carries no Sign out: ending it is what the
- * account menu's Sign out does.
- */
+// No Sign out here: ending this session is what the account menu's Sign out does.
 function ThisDevice({ session }: { session: UserSessionDTO }) {
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center">

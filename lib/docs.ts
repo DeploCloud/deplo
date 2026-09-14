@@ -1,15 +1,7 @@
-/**
- * Every link the interface makes into the user manual, in one place: a docs
- * rename is one edit here instead of a grep across two hundred components.
- * Verify with `scripts/check-docs-links.mts` after the manual moves.
- */
+// Verify with scripts/check-docs-links.mts after the manual moves.
 export const DOCS_BASE = "https://deplo.build/docs";
 
-/**
- * Topic -> page path, with the heading anchor whenever one lands the reader on
- * the paragraph that answers the question. Troubleshooting pages are accordions
- * with no anchors, so those entries stay page-level on purpose.
- */
+// Troubleshooting pages are accordions with no anchors, so those entries stay page-level on purpose.
 export const DOCS = {
   "docs.home": "",
 
@@ -205,8 +197,6 @@ export const DOCS = {
   "migration.takeover": "migrations",
   "migration.dokploy": "migrations/move-from-dokploy",
   "migration.coolify": "migrations/move-from-coolify",
-  // One guide per panel, section by section: a Coolify migration that sent people
-  // to the Dokploy page described a wizard they were not looking at.
   "migration.run": "migrations/move-from-dokploy#run-the-migration",
   "migration.source": "migrations/move-from-dokploy#on-every-source-machine",
   "migration.people": "migrations/move-from-dokploy#run-the-migration",

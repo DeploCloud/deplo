@@ -15,10 +15,7 @@ import {
   normalizeSourceBaseUrl,
 } from "../transport";
 
-/**
- * The transport half of the Coolify adapter. Every refusal here is a real body
- * from Coolify's own middlewares, which is why they are matched by their words.
- */
+// Every refusal here is a real body from Coolify's own middlewares, which is why they are matched by their words.
 
 const cred = {
   kind: "coolify" as const,
@@ -87,7 +84,6 @@ test("an API somebody turned off says so, and says where to turn it on", async (
   await assert.rejects(listProjects(cred), (e: Error) => {
     assert.match(e.message, /API is turned off/);
     assert.match(e.message, /Settings/);
-    // Coolify's own words are kept, never replaced.
     assert.match(e.message, /Coolify said: API is disabled\./);
     return true;
   });
@@ -193,8 +189,7 @@ test("a transport failure arrives readable, naming Coolify", async (t) => {
 });
 
 test("a blip is retried, and a wrong address is not", async (t) => {
-  // A migration reads the panel hundreds of times. One reset used to end the data
-  // phase with every service after it left on empty storage.
+  // A migration reads the panel hundreds of times: one reset used to end the data phase with every service after it left on empty storage.
   reset(t);
   let calls = 0;
   __setMigrationFetchForTest(async () => {

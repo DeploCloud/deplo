@@ -3,12 +3,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-/**
- * Until the ports move, the old panel answers the dashboard's own https address
- * with a 404. An opaque `no-cors` probe resolves on that 404 exactly as it does
- * on Deplo, which is how the wizard sent the operator to a dead page - away from
- * the Try again button, which lives on the page it left.
- */
+// Regression: until the ports move the old panel answers that https address with a
+// 404, and an opaque `no-cors` probe resolved on it, sending the operator to a dead
+// page away from the Try again button.
 
 const read = (p: string) => readFile(join(process.cwd(), p), "utf8");
 

@@ -1,10 +1,7 @@
 import Link from "@/components/ui/link";
 import { Pencil } from "lucide-react";
 
-/**
- * A detail header's logo, doubling as the way into General settings: hovering
- * (or focusing) it reveals a pencil over the mark.
- */
+// LogoEditLink - a detail header's logo that doubles as the way into General settings.
 export function LogoEditLink({
   href,
   label,

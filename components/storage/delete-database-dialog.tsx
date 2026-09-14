@@ -4,10 +4,7 @@ import * as React from "react";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * The ONE delete-database confirmation - used by the Storage card menu and by the
- * database's Danger Zone, which only differ in where they go afterwards.
- */
+// DeleteDatabaseDialog - the one delete-database confirmation, used by Storage and the Danger Zone.
 export function DeleteDatabaseDialog({
   open,
   onOpenChange,

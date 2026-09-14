@@ -4,10 +4,7 @@ import assert from "node:assert/strict";
 import type { AttachHandle } from "../infra/docker";
 import { open, destroy, __allSessionIdsForTest } from "./session";
 
-/**
- * The live-session ceilings evict only the caller's OWN streams: a cap reached by
- * other people's consoles is a refusal, never a way to close theirs.
- */
+// Regression: the live-session ceilings must evict only the caller's OWN streams, never close other people's consoles.
 
 const handle = (): AttachHandle => ({
   onData: () => () => {},

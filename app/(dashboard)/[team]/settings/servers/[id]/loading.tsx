@@ -1,10 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 
-/**
- * Without this, the route fell back to the LIST's loading.tsx and a click on
- * "Manage" flashed a grid of server cards - a skeleton of the page you just left.
- */
+// Loading: without it the route falls back to the LIST's loading.tsx and flashes a grid of server cards.
 export default function Loading() {
   return (
     <div
@@ -16,7 +13,7 @@ export default function Loading() {
       <div className="space-y-3">
         {/* Back to Servers */}
         <Skeleton className="-ml-2 h-8 w-28 rounded-md" />
-        {/* Name + host badge + health chip, with Check status pinned right */}
+        {/* Name, host badge, health chip, Check status */}
         <div className="flex items-center gap-2">
           <Skeleton className="h-8 w-56 shrink" />
           <Skeleton className="h-5 w-24 shrink-0 rounded-md" />
@@ -27,14 +24,14 @@ export default function Loading() {
         <Skeleton className="mt-1 h-4 w-32" />
       </div>
 
-      {/* Tab strip - six triggers on a 48px underlined row */}
+      {/* Tab strip */}
       <div className="flex h-12 items-center gap-1 border-b border-border">
         {["w-20", "w-16", "w-24", "w-26", "w-18", "w-22"].map((w, tab) => (
           <Skeleton key={tab} className={`mx-3 h-4 ${w}`} />
         ))}
       </div>
 
-      {/* Overview: four hardware-spec tiles, then the Agent card */}
+      {/* Overview: spec tiles, then the Agent card */}
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {Array.from({ length: 4 }).map((_, spec) => (

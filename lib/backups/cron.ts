@@ -1,19 +1,11 @@
-/**
- * A tiny standard 5-field cron evaluator - `minute hour day-of-month month
- * day-of-week`. An unparseable expression is treated as "never matches" rather
- * than throwing, so one malformed schedule can't crash the scheduler tick.
- */
-
-/** Each field's inclusive [min, max] bound. */
 const BOUNDS: ReadonlyArray<readonly [number, number]> = [
-  [0, 59], // minute
-  [0, 23], // hour
-  [1, 31], // day of month
-  [1, 12], // month
-  [0, 7], // day of week (0 and 7 both = Sunday)
+  [0, 59],
+  [0, 23],
+  [1, 31],
+  [1, 12],
+  [0, 7],
 ];
 
-/** The Vixie shorthands. `@reboot` is deliberately absent: nothing here reboots. */
 const MACROS: Record<string, string> = {
   "@yearly": "0 0 1 1 *",
   "@annually": "0 0 1 1 *",
@@ -40,12 +32,11 @@ const MONTH_NAMES = [
 ];
 const DAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-/** A `@macro` expanded to its five fields; anything else unchanged. */
+// expandCronMacro - a `@macro` expanded to its five fields; anything else unchanged.
 export function expandCronMacro(expr: string): string {
   return MACROS[expr.trim().toLowerCase()] ?? expr;
 }
 
-/** `JAN`/`mon` -> its number in the month or weekday field, else the token as-is. */
 function nameToNumber(
   token: string,
   names: readonly string[],
@@ -55,11 +46,6 @@ function nameToNumber(
   return i === -1 ? token : String(i + base);
 }
 
-/**
- * Parse one cron field into the explicit set of integers it allows within
- * `[min, max]`. Returns null when the field is malformed (the caller treats a
- * null field as an unparseable expression). `*` yields the full range.
- */
 function parseField(
   field: string,
   min: number,
@@ -70,7 +56,6 @@ function parseField(
   const num = (t: string) => (names ? nameToNumber(t, names, min) : t);
   for (const part of field.split(",")) {
     if (part.length === 0) return null;
-    // Split an optional `/step` suffix off the range/wildcard base.
     const [rangePart, stepPart, ...rest] = part.split("/");
     if (rest.length > 0) return null;
     let step = 1;
@@ -94,8 +79,7 @@ function parseField(
       const n = Number(num(rangePart));
       if (!Number.isInteger(n)) return null;
       lo = n;
-      // `5/15` is "from 5 to the end, every 15" in every cron people paste
-      // from; a bare number keeps meaning itself.
+      // `5/15` is "from 5 to the end, every 15"; a bare number keeps meaning itself.
       hi = stepPart !== undefined ? max : n;
     }
     if (lo < min || hi > max || lo > hi) return null;
@@ -104,23 +88,17 @@ function parseField(
   return out.size > 0 ? out : null;
 }
 
-/** A parsed cron expression: one allowed-value set per field. */
 interface ParsedCron {
   minute: Set<number>;
   hour: Set<number>;
   dom: Set<number>;
   month: Set<number>;
   dow: Set<number>;
-  /** True when day-of-month was given as `*` (drives the DOM/DOW union rule). */
   domAny: boolean;
-  /** True when day-of-week was given as `*`. */
   dowAny: boolean;
 }
 
-/**
- * Parse a 5-field cron string (or a `@daily`-style macro). Names are accepted in
- * the month and weekday fields. Null when malformed - the scheduler treats null as "never".
- */
+// parseCron - parse a 5-field cron string or a `@daily`-style macro; null when malformed.
 export function parseCron(expr: string): ParsedCron | null {
   const fields = expandCronMacro(expr).trim().split(/\s+/);
   if (fields.length !== 5) return null;
@@ -134,7 +112,6 @@ export function parseCron(expr: string): ParsedCron | null {
   );
   if (sets.some((s) => s === null)) return null;
   const [minute, hour, dom, month, dow] = sets as Set<number>[];
-  // Normalise day-of-week 7 → 0 so a `Date.getUTCDay()` (0..6) lookup is direct.
   if (dow.delete(7)) dow.add(0);
   return {
     minute,
@@ -147,27 +124,17 @@ export function parseCron(expr: string): ParsedCron | null {
   };
 }
 
-/**
- * Does the DAY of `at` satisfy the parsed expression? Split out of
- * {@link cronMatches} because {@link nextCronRun} needs the same Vixie
- * day-of-month / day-of-week union rule while skipping whole days at a time.
- */
 function dayMatches(c: ParsedCron, at: Date): boolean {
   const domMatch = c.dom.has(at.getUTCDate());
   const dowMatch = c.dow.has(at.getUTCDay());
-  // Vixie rule: if both day fields are restricted, the day matches when EITHER
-  // does (union). If one is `*`, only the other constrains.
+  // Vixie rule: with both day fields restricted, the day matches when EITHER does.
   if (c.domAny && c.dowAny) return true;
   if (c.domAny) return dowMatch;
   if (c.dowAny) return domMatch;
   return domMatch || dowMatch;
 }
 
-/**
- * Does `expr` fire at the given instant? Evaluated to MINUTE precision in UTC
- * (the scheduler ticks once a minute and the store stamps ISO/UTC), so seconds
- * are ignored. An unparseable expression never matches.
- */
+// cronMatches - does `expr` fire at that instant? Minute precision, in UTC.
 export function cronMatches(expr: string, at: Date): boolean {
   const c = parseCron(expr);
   if (!c) return false;
@@ -177,11 +144,7 @@ export function cronMatches(expr: string, at: Date): boolean {
   return dayMatches(c, at);
 }
 
-/**
- * The first instant strictly AFTER `from` at which `expr` fires, or null when it
- * is unparseable or fires nowhere inside `limitDays` (e.g. `0 0 30 2 *` - the 30th
- * of February).
- */
+// nextCronRun - the first instant strictly after `from` at which `expr` fires, or null.
 export function nextCronRun(
   expr: string,
   from: Date,
@@ -189,8 +152,6 @@ export function nextCronRun(
 ): Date | null {
   const c = parseCron(expr);
   if (!c) return null;
-  // Start at the next whole minute: "next" is strictly after `from`, and a cron
-  // fires at second 0.
   const cursor = new Date(
     Date.UTC(
       from.getUTCFullYear(),
@@ -204,7 +165,6 @@ export function nextCronRun(
 
   while (cursor.getTime() <= deadline) {
     if (!c.month.has(cursor.getUTCMonth() + 1)) {
-      // Jump to 00:00 on the 1st of the next month.
       cursor.setUTCMonth(cursor.getUTCMonth() + 1, 1);
       cursor.setUTCHours(0, 0, 0, 0);
       continue;
@@ -215,7 +175,6 @@ export function nextCronRun(
       continue;
     }
     if (!c.hour.has(cursor.getUTCHours())) {
-      // Rolls the date over on its own when the hour is 23.
       cursor.setUTCHours(cursor.getUTCHours() + 1, 0, 0, 0);
       continue;
     }

@@ -4,10 +4,6 @@ import * as React from "react";
 import { gql } from "@/lib/graphql-client";
 import type { RuntimeSnapshot } from "@/lib/apps/display-status";
 
-/**
- * Poll what an app's containers are ACTUALLY doing on the host.
- */
-
 const APP_RUNTIME_QUERY = /* GraphQL */ `
   query AppRuntime($appId: String!) {
     appRuntime(appId: $appId) {
@@ -36,7 +32,6 @@ export interface RuntimeContainerView {
   state: string;
   health: string;
   restartCount: number;
-  /** Epoch seconds, 0 when unknown - the app views do not render it yet. */
   startedAtUnix?: number;
   running: boolean;
   exposed: boolean;
@@ -62,16 +57,13 @@ export function useAppRuntime(
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const tick = async () => {
-      // Skip the round trip while the tab is in the background - a forgotten tab
-      // watching a crash loop must not poll an agent for hours, but keep the
-      // timer alive so it resumes on its own when the tab comes back.
+      // Skip the round trip while the tab is hidden; the timer stays alive so it resumes.
       if (document.visibilityState === "visible") {
         try {
           const data = await gql<Response>(APP_RUNTIME_QUERY, { appId });
           if (!cancelled) setRuntime(data.appRuntime);
         } catch {
-          // A failed poll is not evidence about the container - keep the last
-          // answer rather than flipping the badge on a blip.
+          // A failed poll is not evidence about the container - keep the last answer.
         }
       }
       if (!cancelled) timer = setTimeout(tick, POLL_MS);
@@ -84,7 +76,6 @@ export function useAppRuntime(
     };
   }, [appId, enabled]);
 
-  // Disabled means "we are not claiming the app is up, so there is nothing to
-  // check" - report no probe rather than a stale one from before it stopped.
+  // Disabled reports no probe rather than a stale one from before the app stopped.
   return enabled ? runtime : null;
 }

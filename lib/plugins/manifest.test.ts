@@ -9,10 +9,6 @@ import {
   type PluginEnvVar,
 } from "./manifest";
 
-/* ------------------------------------------------------------------ */
-/* Catalog / manifest validation                                       */
-/* ------------------------------------------------------------------ */
-
 test("catalog: a valid listing parses and defaults tags/description", () => {
   const parsed = PluginCatalogSchema.safeParse([
     {
@@ -24,8 +20,8 @@ test("catalog: a valid listing parses and defaults tags/description", () => {
     },
   ]);
   assert.ok(parsed.success);
-  assert.equal(parsed.data[0].description, ""); // defaulted
-  assert.deepEqual(parsed.data[0].tags, []); // defaulted
+  assert.equal(parsed.data[0].description, "");
+  assert.deepEqual(parsed.data[0].tags, []);
 });
 
 test("catalog: a non-slug plugin id is rejected", () => {
@@ -84,10 +80,6 @@ test("manifest: a bad env key (not a shell identifier) is rejected", () => {
   assert.equal(parsed.success, false);
 });
 
-/* ------------------------------------------------------------------ */
-/* Placeholder resolution                                              */
-/* ------------------------------------------------------------------ */
-
 const CTX = { deploGraphqlUrl: "https://deplo.example.com/api/graphql" };
 
 test("resolvePluginEnv: substitutes ${deplo_graphql_url}", () => {
@@ -118,9 +110,9 @@ test("resolvePluginEnv: ${secret:N} yields a fresh token of the right rough leng
   const env: PluginEnvVar[] = [{ key: "A", value: "${secret:16}" }];
   const a = resolvePluginEnv(env, CTX).A;
   const b = resolvePluginEnv(env, CTX).A;
-  assert.notEqual(a, b); // fresh each call
+  assert.notEqual(a, b);
   assert.ok(a.length >= 16); // base64url of 16 bytes is ~22 chars
-  assert.ok(/^[A-Za-z0-9_-]+$/.test(a)); // url-safe
+  assert.ok(/^[A-Za-z0-9_-]+$/.test(a));
 });
 
 test("resolvePluginEnv: an unknown placeholder throws PlaceholderError", () => {

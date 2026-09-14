@@ -7,18 +7,10 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { deploMarkDataUri } from "../components/logo";
 
-/**
- * The enrolment QR carries the Deplo mark in the middle, which means modules are
- * CARVED OUT of a code a phone camera still has to read off a screen.
- */
-
-// The real thing: what `enableTwoFactor` hands back, at full length. A shorter
-// stand-in would encode to a smaller version with fewer modules and quietly
-// flatter the numbers below.
+// Full length on purpose: a shorter stand-in encodes to fewer modules and flatters the numbers.
 const TOTP_URI =
   "otpauth://totp/deplo:someone%40acme.com?secret=ONWWMRJXGVBE2SDPIN2TEZKDKVVEW2TMJU4WSMTHN5GW4LKSJRDQ&issuer=deplo&digits=6&period=30";
 
-/** The wizard's settings, kept in one place so the test and the UI cannot drift. */
 const SIZE = 180;
 const LOGO_PX = 44;
 
@@ -57,13 +49,10 @@ test("the excavated centre stays well inside level H's error budget", () => {
   const modules = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)![1]);
   assert.ok(modules > 20, `expected a real QR version, got ${modules} modules`);
 
-  // The badge is square and centred, so its side in modules is what it covers.
   const logoModules = Math.ceil((LOGO_PX / SIZE) * modules);
   const covered = (logoModules * logoModules) / (modules * modules);
 
-  // Level H recovers 30%. Half of that is the working ceiling: the finder and
-  // timing patterns are not recoverable data, and a camera on a screen loses
-  // modules of its own to glare and moiré.
+  // Level H recovers 30%; half of that is the working ceiling, since finder patterns and glare cost the rest.
   assert.ok(
     covered < 0.15,
     `the mark covers ${(covered * 100).toFixed(1)}% of the code; keep it under 15%`,
@@ -71,9 +60,6 @@ test("the excavated centre stays well inside level H's error budget", () => {
 });
 
 test("a lower error-correction level would not survive the same hole", () => {
-  // The guard rail for the next person who thinks `level` is cosmetic. Level L
-  // recovers 7%; the badge alone is already a meaningful slice of that, before any
-  // real-world loss.
   const svg = render("L");
   const modules = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)![1]);
   const logoModules = Math.ceil((LOGO_PX / SIZE) * modules);
@@ -89,8 +75,7 @@ test("the mark data URI is a well-formed, self-contained SVG", () => {
   const svg = decodeURIComponent(uri.replace("data:image/svg+xml,", ""));
   assert.match(svg, /^<svg[^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
   assert.match(svg, /<\/svg>$/);
-  // Fixed colours, never `currentColor`: an <image> has no inherited text colour
-  // to resolve against, so a theme-aware fill would render as nothing.
+  // An <image> has no inherited text colour, so currentColor would render as nothing.
   assert.doesNotMatch(svg, /currentColor/);
   assert.match(svg, /fill="#0a0a0a"/, "the glyph is drawn dark");
   assert.match(svg, /fill="#ffffff"/, "on its own light badge");

@@ -3,34 +3,30 @@ import { twMerge } from "tailwind-merge";
 import { formatDistanceToNowStrict } from "date-fns";
 import prettyBytes from "pretty-bytes";
 
-/** Merge Tailwind classes with conflict resolution. */
+// cn - merge Tailwind classes with conflict resolution.
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/**
- * Human-readable byte count, in BINARY units (KiB/MiB/GiB) - the ones `df`,
- * `free`, `htop` and `docker` print. Decimal units made the monitoring page
- * claim 141 GB of a disk `df` called 132G.
- */
+// formatBytes - human-readable byte count in BINARY units (KiB/MiB/GiB), the ones `df`, `free` and `docker` print.
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes)) return "";
   return prettyBytes(Math.max(0, bytes), { binary: true });
 }
 
-/** Relative "time ago" formatting (powered by `date-fns`). */
+// timeAgo - relative "time ago" formatting.
 export function timeAgo(input: Date | string | number): string {
   const date = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(date.getTime())) return "";
   return formatDistanceToNowStrict(date, { addSuffix: true });
 }
 
-/** How long ago, with no "ago": `8h`, `1d`, `3mo` - for an uptime, not an event. */
+// sinceShort - how long ago with no "ago": `8h`, `1d`, `3mo`.
 export function sinceShort(input: Date | string | number): string {
   return timeAgoShort(input).replace(/\sago$/, "");
 }
 
-/** `timeAgo` with one-letter units: `8h ago`, `1d ago`, `3mo ago`. */
+// timeAgoShort - `timeAgo` with one-letter units: `8h ago`, `1d ago`, `3mo ago`.
 export function timeAgoShort(input: Date | string | number): string {
   return timeAgo(input).replace(
     /(\d+)\s(second|minute|hour|day|week|month|year)s?/,
@@ -48,11 +44,7 @@ const SHORT_UNITS: Record<string, string> = {
   year: "y",
 };
 
-/**
- * An absolute timestamp to sit beside a relative one: `22 Aug, 03:00`. Local to
- * the reader, so a call site that also renders on the server needs
- * `suppressHydrationWarning`.
- */
+// formatDateTime - `22 Aug, 03:00`, local to the reader, so a call site that also renders on the server needs `suppressHydrationWarning`.
 export function formatDateTime(input: Date | string | number): string {
   const d = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(d.getTime())) return "";
@@ -64,11 +56,7 @@ export function formatDateTime(input: Date | string | number): string {
   });
 }
 
-/**
- * A log/build clock as a stable `HH:MM:SS[.mmm]`. UTC on purpose: a locale-aware
- * format renders in the server's timezone during SSR and the browser's during
- * hydration, so the two never match.
- */
+// formatClockTime - a stable `HH:MM:SS[.mmm]`; UTC on purpose, a locale-aware format never matches between SSR and hydration.
 export function formatClockTime(ts: string, withMillis = false): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
@@ -77,9 +65,7 @@ export function formatClockTime(ts: string, withMillis = false): string {
   return withMillis ? `${hms}.${pad(d.getUTCMilliseconds(), 3)}` : hms;
 }
 
-/**
- * How long a build took (or has been running), as `340ms` / `12s` / `2m 5s`.
- */
+// formatBuildDuration - how long a build took, as `340ms` / `12s` / `2m 5s`.
 export function formatBuildDuration(ms: number | null): string {
   if (ms == null) return "";
   const total = Math.max(0, Math.floor(ms));
@@ -89,31 +75,23 @@ export function formatBuildDuration(ms: number | null): string {
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-/** Title-case a slug or kebab string. */
+// titleCase - title-case a slug or kebab string.
 export function titleCase(input: string): string {
   return input.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/**
- * Truncate `str` to at most `max` characters, appending an ellipsis when cut.
- * Used to cap the project-name portion of page titles so the trailing
- * "- Section - Deplo" suffix stays visible instead of a long name crowding it out.
- */
+// truncate - cut `str` to at most `max` characters, appending an ellipsis.
 export function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
   return str.slice(0, max).trimEnd() + "…";
 }
 
-/** Display name for a server - the operator-chosen name. */
+// serverLabel - display name for a server, the operator-chosen name.
 export function serverLabel(server: { name: string }): string {
   return server.name;
 }
 
-/**
- * Where each provider puts a commit under the repository's own URL. Kept here
- * rather than read off the provider adapters because this module is imported by
- * client components and the adapters pull in `node:crypto`.
- */
+// Not read off the provider adapters: this module is client-imported and they pull in `node:crypto`.
 const COMMIT_PATH: Record<string, string> = {
   github: "/commit/",
   gitea: "/commit/",
@@ -121,11 +99,7 @@ const COMMIT_PATH: Record<string, string> = {
   bitbucket: "/commits/",
 };
 
-/**
- * The URL for a specific commit of an app's source, or `null` when there is
- * nothing linkable (no sha, or a host whose commit path we don't know - a plain
- * git server has no web UI to guess at).
- */
+// repoCommitUrl - the URL for a commit of an app's source, or null when there is nothing linkable.
 export function repoCommitUrl(
   repo:
     | { provider?: string | null; repo?: string | null; url?: string | null }
@@ -146,11 +120,7 @@ export function repoCommitUrl(
   return `${base}${path}${commit}`;
 }
 
-/**
- * The GitHub URL of a pull request a deployment was built from, or null for a
- * production build (no pull request) or a non-GitHub source. Derived, never
- * stored - same shape and rationale as {@link repoCommitUrl}.
- */
+// githubPullRequestUrl - the URL of the pull request a deployment was built from, or null. Derived, never stored.
 export function githubPullRequestUrl(
   repo:
     | { provider?: string | null; repo?: string | null; url?: string | null }
@@ -163,10 +133,7 @@ export function githubPullRequestUrl(
   return slug ? `https://github.com/${slug}/pull/${prNumber}` : null;
 }
 
-/**
- * Where each provider publishes a profile. Self-hosted hosts (GitLab, Gitea) have
- * no fixed origin, so theirs is taken from the repository's own URL.
- */
+// Self-hosted hosts (GitLab, Gitea) have no fixed origin, so theirs comes from the repository's own URL.
 const PROFILE_ORIGIN: Record<string, string | null> = {
   github: "https://github.com",
   bitbucket: "https://bitbucket.org",
@@ -174,11 +141,7 @@ const PROFILE_ORIGIN: Record<string, string | null> = {
   gitea: null,
 };
 
-/**
- * The git-host profile of whoever pushed, or null when there is nothing to link
- * (an unknown host, or a display name that is not a login). Derived, never stored -
- * same shape and rationale as {@link repoCommitUrl}.
- */
+// gitProfileUrl - the git-host profile of whoever pushed, or null when there is nothing to link.
 export function gitProfileUrl(
   provider: string | null | undefined,
   login: string | null | undefined,
@@ -187,8 +150,7 @@ export function gitProfileUrl(
   const name = login?.trim().replace(/^@/, "");
   if (!provider || !name || !/^[\w.-]+$/.test(name)) return null;
   if (!(provider in PROFILE_ORIGIN)) return null;
-  // Every provider's parser falls back to its OWN name when the delivery carries
-  // no pusher: that is "we don't know who", not an account to link to.
+  // Every provider's parser falls back to its OWN name when the delivery carries no pusher.
   if (name.toLowerCase() === provider) return null;
   let origin = PROFILE_ORIGIN[provider];
   if (!origin) {
@@ -202,11 +164,6 @@ export function gitProfileUrl(
   return origin ? `${origin}/${name}` : null;
 }
 
-/**
- * The `owner/name` slug of a project's GitHub repo, or null when it isn't on
- * GitHub. Strips a trailing `.git`/slash so the commit URL never doubles up
- * (`owner/name.git` / `owner/name/` → `owner/name`).
- */
 function githubRepoSlug(repo: {
   provider?: string | null;
   repo?: string | null;
@@ -224,10 +181,7 @@ function githubRepoSlug(repo: {
   return m ? clean(m[1]) : null;
 }
 
-/**
- * Whether a project deploys its own docker-compose stack rather than a single
- * built/pulled image.
- */
+// usesComposeStack - whether an App deploys its own compose stack rather than a single built or pulled image.
 export function usesComposeStack(project: {
   source: string;
   compose: string | null;
@@ -244,10 +198,7 @@ export function usesComposeStack(project: {
   );
 }
 
-/**
- * Whether an App's deploys MINT AN IMAGE Deplo owns - the one condition a Rollback
- * rests on, and the mirror of the branch `runDeployment` takes.
- */
+// appBuildsItsOwnImage - whether an App's deploys MINT AN IMAGE Deplo owns, the one condition a Rollback rests on.
 export function appBuildsItsOwnImage(project: {
   source: string;
   compose: string | null;
@@ -262,11 +213,7 @@ export function appBuildsItsOwnImage(project: {
   );
 }
 
-/**
- * What KIND of thing an App is, in one short human phrase - the contextual
- * subtitle its management header falls back to when the App has no domain linked
- * (and therefore no URL to show in that slot).
- */
+// appTypeLabel - what KIND of thing an App is, in one short human phrase.
 export function appTypeLabel(app: {
   source: string;
   compose: string | null;
@@ -276,11 +223,7 @@ export function appTypeLabel(app: {
   return usesComposeStack(app) ? "Compose app" : "Application";
 }
 
-/**
- * Which GitHub App the repo picker opens on. For a NEW app (`initial` undefined -
- * no repo chosen yet) the first connected App is a fine starting point: nothing is
- * asserted, and the user is about to choose one anyway.
- */
+// pickerInstallationId - which GitHub App the repo picker opens on.
 export function pickerInstallationId(
   initial: { installationId?: string | null } | undefined,
   installations: { id: string }[],
@@ -291,9 +234,7 @@ export function pickerInstallationId(
     : "";
 }
 
-/**
- * Whether an App claims a git credential it does not have.
- */
+// repoCredentialMissing - whether an App claims a git credential it does not have.
 export function repoCredentialMissing(app: {
   source: string;
   repo: { installationId?: string | null; connectionId?: string | null } | null;
@@ -306,27 +247,17 @@ export function repoCredentialMissing(app: {
   );
 }
 
-/**
- * The host-global docker volume name for a single-container project's named
- * volume. Derived from the slug at render time (never stored) so a rename can't
- * orphan data and `name` stays a label.
- */
+// hostVolumeName - the host-global volume name for a single-container App, derived from the slug so a rename cannot orphan data.
 export function hostVolumeName(slug: string, name: string): string {
   return `deplo-${slug}-${name}`;
 }
 
-/**
- * Validate a user-typed colour without throwing - accepts `#rgb`/`#rrggbb` (with
- * or without the leading `#`, any case).
- */
+// isHexColor - validate a user-typed colour without throwing: `#rgb` or `#rrggbb`, the `#` optional.
 export function isHexColor(input: string): boolean {
   return /^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(input.trim());
 }
 
-/**
- * Normalise a colour to a canonical lowercase `#rrggbb`, expanding the `#rgb`
- * shorthand and tolerating a missing `#`.
- */
+// normalizeHexColor - normalise a colour to a canonical lowercase `#rrggbb`.
 export function normalizeHexColor(input: string): string {
   const raw = input.trim().replace(/^#/, "").toLowerCase();
   if (!/^(?:[0-9a-f]{3}|[0-9a-f]{6})$/.test(raw)) {
@@ -342,13 +273,8 @@ export function normalizeHexColor(input: string): string {
   return `#${full}`;
 }
 
-/**
- * Pick the readable foreground (`#000000` or `#ffffff`) for text/icons placed on a
- * solid `hex` background - automatic contrast.
- */
+// readableTextColor - the readable foreground (`#000000` or `#ffffff`) for text on a solid `hex` background.
 export function readableTextColor(hex: string): "#000000" | "#ffffff" {
-  // Parse defensively (no throwing): tolerate a missing `#`, any case, and the
-  // `#rgb` shorthand; anything unparseable falls back to dark text.
   const raw = hex.trim().replace(/^#/, "").toLowerCase();
   const full = /^[0-9a-f]{3}$/.test(raw)
     ? raw
@@ -367,7 +293,7 @@ export function readableTextColor(hex: string): "#000000" | "#ffffff" {
   return lum > 0.179 ? "#000000" : "#ffffff";
 }
 
-/** Run `fn` over `items` with at most `limit` in flight at once. */
+// mapLimit - run `fn` over `items` with at most `limit` in flight at once.
 export async function mapLimit<T>(
   items: T[],
   limit: number,
@@ -384,7 +310,7 @@ export async function mapLimit<T>(
   );
 }
 
-/** Deterministic short id for client-only keys (not for security). */
+// shortId - short id for client-only keys, not for security.
 export function shortId(length = 8): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   let out = "";
@@ -393,10 +319,7 @@ export function shortId(length = 8): string {
   return out;
 }
 
-/**
- * A path this app may send the browser back to after a detour off-site (the GitHub
- * App manifest flow) or off-page (Settings → Git).
- */
+// safeReturnPath - a path this app may send the browser back to after a detour off-site or off-page.
 export function safeReturnPath(raw: string | null | undefined): string | null {
   const p = raw?.trim();
   if (!p || !p.startsWith("/")) return null;

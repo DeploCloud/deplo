@@ -11,11 +11,6 @@ import {
   MAX_ICON_FETCHES,
 } from "./favicon-http";
 
-/**
- * The icon a RUNNING app declares about itself - the compose-stack arm, where the
- * favicon is inside a prebuilt image and is only ever served.
- */
-
 const PNG = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2,
 ]);
@@ -49,10 +44,7 @@ test("parseIconLinks: takes icon and apple-touch-icon links, ignores everything 
     links.map((l) => l.href),
     ["/favicon-32.png", "/favicon.ico", "/apple.png"],
   );
-  // A mask-icon is a monochrome silhouette - a black blob anywhere but Safari's
-  // pinned tab, so it is never the app's real icon.
   assert.ok(!links.some((l) => l.href === "/mask.svg"));
-  // Nothing after </head> is scanned.
   assert.ok(!links.some((l) => l.href === "/body-late.png"));
 });
 
@@ -75,17 +67,13 @@ test("rankIconLinks: format first, then declared size", () => {
     </head>`);
   assert.deepEqual(
     rankIconLinks(links).map((l) => l.href),
-    // SVG scales, so it wins outright; between the two PNGs the bigger one is
-    // the better app icon; the 16px multi-res ICO ranks last.
     ["/icon.svg", "/apple.png", "/small.png", "/favicon.ico"],
   );
 });
 
 test("iconCandidates: always ends with the /favicon.ico fallback, deduped and capped", () => {
   assert.deepEqual(paths("<head></head>"), ["/favicon.ico"]);
-  // An API that serves no HTML at all still gets the well-known path tried.
   assert.deepEqual(paths(""), ["/favicon.ico"]);
-  // A page that already declares /favicon.ico doesn't get it twice.
   assert.deepEqual(
     paths(`<head><link rel="icon" href="/favicon.ico"></head>`),
     ["/favicon.ico"],
@@ -109,7 +97,6 @@ test("resolveIconHref: relative hrefs resolve against the path the app is served
     kind: "path",
     path: "/favicon.ico",
   });
-  // An app routed on /api that does NOT strip the prefix sees it in every URL.
   assert.deepEqual(
     resolveIconHref("./icon.png", { basePath: "/api", host: "" }),
     {
@@ -125,8 +112,7 @@ test("resolveIconHref: an absolute URL is kept only when it points back at this 
     kind: "path",
     path: "/i.png",
   });
-  // A CDN is a different origin: the agent reaches this app's container and
-  // nothing else, which is exactly what keeps it from being a general fetch.
+  // Keeping a foreign origin would turn the agent into a general-purpose fetcher.
   assert.equal(resolveIconHref("https://cdn.example.net/i.png", opts), null);
   assert.equal(resolveIconHref("//cdn.example.net/i.png", opts), null);
   assert.equal(resolveIconHref("javascript:alert(1)", opts), null);
@@ -137,7 +123,6 @@ test("resolveIconHref: refuses a path the agent would reject as smuggling", () =
   const opts = { basePath: "", host: "" };
   assert.equal(resolveIconHref("/a\r\nX-Injected: 1", opts), null);
   assert.equal(resolveIconHref("/a\nb", opts), null);
-  // A space is legal in an href and is encoded rather than dropped.
   assert.deepEqual(resolveIconHref("/my icon.png", opts), {
     kind: "path",
     path: "/my%20icon.png",
@@ -155,13 +140,11 @@ test("resolveIconHref: an inlined data: icon needs no request at all", () => {
     base64?.kind === "inline" && Array.from(base64.bytes),
     Array.from(PNG),
   );
-  // The percent-encoded form real sites use for inline SVGs.
   const svg = resolveIconHref("data:image/svg+xml,%3Csvg%3E%3C/svg%3E", {
     basePath: "",
     host: "",
   });
   assert.equal(svg?.kind === "inline" && svg.mime, "image/svg+xml");
-  // Not an image type we can store.
   assert.equal(
     resolveIconHref("data:text/html,<b>x</b>", { basePath: "", host: "" }),
     null,
@@ -181,19 +164,15 @@ test("sniffImageMime: recognises the formats a favicon actually comes in", () =>
 });
 
 test("imageMimeFor: the BYTES decide, not the header", () => {
-  // An SPA answering /favicon.ico with index.html - a 200, even a plausible
-  // content type. Storing that would render a broken image on every page.
   assert.equal(imageMimeFor(HTML, "image/x-icon", "/favicon.ico"), null);
   assert.equal(
     imageMimeFor(HTML, "text/html; charset=utf-8", "/favicon.ico"),
     null,
   );
-  // A real image with a useless content type is still recognised.
   assert.equal(
     imageMimeFor(PNG, "application/octet-stream", "/icon"),
     "image/png",
   );
-  // Content type disagreeing with the bytes: the bytes win.
   assert.equal(imageMimeFor(PNG, "image/gif", "/icon.gif"), "image/png");
 });
 
@@ -203,6 +182,5 @@ test("imageMimeFor: SVG has no magic number, so it is read", () => {
     "image/svg+xml",
   );
   assert.equal(imageMimeFor(SVG, "", "/icon.svg"), "image/svg+xml");
-  // Declared SVG that is really an HTML error page.
   assert.equal(imageMimeFor(HTML, "image/svg+xml", "/icon.svg"), null);
 });

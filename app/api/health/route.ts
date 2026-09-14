@@ -1,25 +1,16 @@
-/**
- * Liveness probe for the browser's connection watchdog (ServerConnectionGuard).
- * Deliberately dependency-free (no auth, no DB), because it answers exactly one
- * question: "is the web server that hosts the panel reachable?"
- */
 import { connection } from "next/server";
 
+// GET is the watchdog liveness probe: no auth and no DB on purpose, it answers only "is the panel reachable".
 export async function GET() {
-  // A 200 must prove the server answered THIS request: connection() pins the
-  // handler to request time even if Cache Components/prerendering is enabled
-  // later (a constant-JSON GET is otherwise eligible for static optimization).
+  // connection() pins this to request time; a constant-JSON GET is otherwise eligible for static optimization.
   await connection();
   return Response.json(
     { ok: true },
     {
       headers: {
-        // no-store keeps intermediaries (e.g. Cloudflare in front of the panel)
-        // from serving a cached 200 while the origin is actually down.
+        // Without no-store an intermediary can serve a cached 200 while the origin is down.
         "cache-control": "no-store",
-        // Readable cross-origin so the takeover screen, served through the old
-        // panel's proxy, can tell Deplo from that panel's 404 on the same
-        // address. It answers one bit and reads nothing.
+        // Read cross-origin by the takeover screen through the old panel's proxy; it answers one bit and reads nothing.
         "access-control-allow-origin": "*",
       },
     },

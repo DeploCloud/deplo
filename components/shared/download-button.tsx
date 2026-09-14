@@ -5,11 +5,7 @@ import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/**
- * Save a block of text to a file via a throwaway object URL. Mirrors
- * {@link CopyButton}: icon-only by default, or a labeled outline button when
- * `label` is set, so the log toolbars can sit a download button beside copy.
- */
+// DownloadButton saves a block of text to a file via a throwaway object URL.
 export function DownloadButton({
   value,
   filename,
@@ -17,8 +13,7 @@ export function DownloadButton({
   size = "icon-sm",
   label,
 }: {
-  /** The text itself, or a thunk read at click time - a terminal's buffer
-   *  changes on every keystroke, so a snapshot prop would always be stale. */
+  // A thunk is read at click time: a terminal's buffer changes on every keystroke.
   value: string | (() => string);
   filename: string;
   className?: string;

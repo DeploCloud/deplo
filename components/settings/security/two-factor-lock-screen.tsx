@@ -17,10 +17,7 @@ import { TwoFactorWizard } from "./two-factor-wizard";
 import { gqlAction } from "@/lib/graphql-client";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/**
- * What a member sees instead of the dashboard when a team's (or their role's) 2FA
- * policy is unmet.
- */
+// TwoFactorLockScreen - what a member sees instead of the dashboard when a 2FA policy is unmet.
 export function TwoFactorLockScreen({
   reason,
   otherTeams,
@@ -33,7 +30,7 @@ export function TwoFactorLockScreen({
     slug: string;
     avatarUrl: string | null;
   }[];
-  /** This account holds a passkey that works here, but did not sign in with it. */
+  // This account holds a passkey that works here, but did not sign in with it.
   hasPasskey?: boolean;
 }) {
   const [wizard, setWizard] = React.useState(false);
@@ -55,11 +52,7 @@ export function TwoFactorLockScreen({
           <Button className="w-full" onClick={() => setWizard(true)}>
             Turn on two-factor authentication
           </Button>
-          {/**
-           * The other way out of this screen (ADR-0024). Adding a passkey here unblocks the
-           * CURRENT session, because registering one is a user-verified ceremony on this
-           * device - so it is a way out and not just a suggestion.
-           */}
+          {/* ADR-0024: registering a passkey is a user-verified ceremony, so it unblocks this session. */}
           <p className="text-center text-sm text-muted-foreground">
             {hasPasskey ? (
               <>Or sign out and sign back in with your passkey.</>

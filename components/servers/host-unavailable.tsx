@@ -2,10 +2,7 @@ import { ServerOff } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 
-/**
- * What a card on a server's page shows when its host did not answer: which card
- * is missing, and why. The reason comes from the server verbatim.
- */
+// HostUnavailable is what a server card shows when the host did not answer; the reason is the server's, verbatim.
 export function HostUnavailable({
   what,
   reason,

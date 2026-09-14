@@ -1,23 +1,12 @@
-/**
- * Gap detection for the monitoring time-series charts. Offline snapshots are never
- * recorded (server + container history refuse them), so a gap shows up here purely
- * as a widened spacing between real samples.
- */
+// Offline snapshots are never recorded (the history buffers refuse them), so a gap is only ever a widened spacing.
 
-/** A half-open-in-spirit interval [startTs, endTs] with no measurements between. */
+// A half-open-in-spirit interval [startTs, endTs] with no measurements between.
 export type GapSpan = [startTs: number, endTs: number];
 
-/**
- * The spacing above which a hole is a FAILURE rather than ordinary cadence jitter -
- * the single threshold the charts, the line segmenter and the bands all share.
- */
+// GAP_MS: the spacing above which a hole is a FAILURE, not cadence jitter - shared by charts, segmenter and bands.
 export const GAP_MS = 22_500;
 
-/**
- * The spans between consecutive `timestamps` whose delta STRICTLY exceeds
- * `maxGapMs`. `timestamps` must be ascending (the chart's sample buffer already
- * is).
- */
+// gapSpans: spans whose delta STRICTLY exceeds `maxGapMs`; `timestamps` must be ascending.
 export function gapSpans(timestamps: number[], maxGapMs: number): GapSpan[] {
   const spans: GapSpan[] = [];
   for (let i = 1; i < timestamps.length; i++) {
@@ -28,11 +17,7 @@ export function gapSpans(timestamps: number[], maxGapMs: number): GapSpan[] {
   return spans;
 }
 
-/**
- * The gap spans a chart should actually BAND, given the window it is showing. Two
- * corrections over raw {@link gapSpans}, both of which stop the chart from
- * claiming a failure it cannot know about: - **Clamped to the window.
- */
+// visibleGapSpans: the spans a chart should actually BAND, clamped to the window it is showing.
 export function visibleGapSpans(
   timestamps: number[],
   maxGapMs: number,
@@ -50,8 +35,7 @@ export function visibleGapSpans(
   return spans;
 }
 
-/** True when `ts` falls strictly inside one of the gap spans (the chart uses
- *  this to answer a hover with "No data" instead of the nearest real sample). */
+// True when `ts` falls strictly inside a gap span - the chart answers a hover with "No data".
 export function isInGap(ts: number, spans: GapSpan[]): boolean {
   return spans.some(([a, b]) => ts > a && ts < b);
 }

@@ -9,12 +9,6 @@ import {
   __resetReleaseCacheForTests,
 } from "./release";
 
-/**
- * resolveLatestAgentRelease is the single source for "which agent release a new
- * server installs": it reads the latest GitHub release, parses the checksums.txt
- * asset, and returns a per-arch { url, sha256 } map.
- */
-
 interface FetchStub {
   release: unknown;
   releaseStatus?: number;
@@ -174,11 +168,7 @@ test("null when an asset has no matching checksum line", async () => {
   }
 });
 
-/**
- * A stub whose served "latest" can change between calls and that counts how many
- * times the release endpoint was hit, so a test can assert the memo coalesces
- * within the TTL and that refreshAgentRelease() forces a fresh hit that surfaces a
- */
+// A stub whose served "latest" can change between calls, counting hits on the release endpoint.
 function countingStub(version: () => string) {
   const orig = globalThis.fetch;
   let releaseHits = 0;
@@ -233,9 +223,7 @@ test("memo coalesces repeated resolves within the TTL (one GitHub hit)", async (
 });
 
 test("refreshAgentRelease busts the memo and surfaces a newly-published version", async () => {
-  // This is the "Check for updates" regression: without busting the shared memo,
-  // a release cut after the first resolve would stay hidden until the TTL lapsed,
-  // so the operator's click could not flip an outdated badge.
+  // The "Check for updates" regression: without busting the shared memo, a release cut after the first resolve stayed hidden until the TTL lapsed.
   let latest = "1.0.0";
   const s = countingStub(() => latest);
   __resetReleaseCacheForTests();
@@ -243,15 +231,13 @@ test("refreshAgentRelease busts the memo and surfaces a newly-published version"
     const before = await resolveLatestAgentRelease();
     assert.equal(before!.version, "1.0.0");
 
-    // A new agent release is published while this process is running.
     latest = "1.5.0";
 
-    // Stale read still served from the memo (proves the memo was real)...
+    // A stale read still comes from the memo, which proves the memo was real.
     assert.equal((await resolveLatestAgentRelease())!.version, "1.0.0");
     assert.equal(s.hits(), 1);
 
-    // ...until the operator forces a refresh, which re-hits GitHub and returns
-    // the fresh version AND re-populates the memo for the render that follows.
+    // A forced refresh re-hits GitHub and re-populates the memo for the render that follows.
     const refreshed = await refreshAgentRelease();
     assert.equal(refreshed!.version, "1.5.0");
     assert.equal(s.hits(), 2);
@@ -262,8 +248,7 @@ test("refreshAgentRelease busts the memo and surfaces a newly-published version"
   }
 });
 
-// One rate-limited call used to serve `curl … | bash` a 503 for five minutes,
-// which prints "curl: (22)" and exits 0 - the machine then never comes online.
+// One rate-limited call used to serve `curl … | bash` a 503 for five minutes, which exits 0 and leaves the machine never coming online.
 test("a resolved release keeps being served through a GitHub blip", async () => {
   const good = stub({
     release: {
@@ -291,14 +276,8 @@ test("a resolved release keeps being served through a GitHub blip", async () => 
   );
 });
 
-/**
- * The one that made `curl … | bash` answer 503 in the middle of an install with a
- * fresh process behind it, so there was no last-good to serve: 60 unauthenticated
- * calls an hour is an instance-wide budget, and a takeover spends several.
- *
- * The assets are plain downloads, not the API, so the version Deplo ships pinned
- * resolves with the budget at zero.
- */
+// Regression: the 60 unauthenticated calls an hour are an instance-wide budget, and a fresh process had no last-good to serve.
+// The pinned assets are plain downloads, not the API, so they resolve with that budget at zero.
 test("the pinned release resolves without the API when the budget is spent", async () => {
   const orig = globalThis.fetch;
   const seen: string[] = [];

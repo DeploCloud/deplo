@@ -15,18 +15,14 @@ import { uploadRestore } from "@/lib/backups/restore-upload-client";
 import { formatBytes } from "@/lib/utils";
 import type { ActionResult } from "@/lib/result";
 
-/**
- * Restore an app or a database from an artifact the operator has on their own
- * machine.
- */
+// RestoreFromFile - restore an app or a database from an artifact on the operator's own machine.
 export function RestoreFromFile({
   target,
   open,
   onOpenChange,
 }: {
   target: { kind: "app" | "database"; id: string; name: string };
-  /** Opened from the page's Back up menu, which carries the `restore_backups`
-   *  gate; this dialog renders no trigger of its own. */
+  // Opened from the page's Back up menu, which carries the `restore_backups` gate.
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -48,8 +44,7 @@ export function RestoreFromFile({
       setEncrypted(false);
       return;
     }
-    // age announces itself in the clear at the very start of the file, so this
-    // costs 22 bytes and spares the operator a field they may not need.
+    // age announces itself in the clear at the very start of the file, so this costs 22 bytes.
     const head = new Uint8Array(
       await picked.slice(0, ARTIFACT_MAGIC_BYTES).arrayBuffer(),
     );
@@ -75,8 +70,6 @@ export function RestoreFromFile({
         encrypted ? recoveryKey : "",
         (event) => {
           if (event.percent !== undefined) setPercent(event.percent);
-          // Only the tail: this is a progress readout, not a log viewer, and the
-          // agent's own log is where the whole run lives.
           if (event.line)
             setLines((current) => [...current, event.line!].slice(-8));
         },

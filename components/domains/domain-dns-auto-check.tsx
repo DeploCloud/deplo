@@ -7,32 +7,24 @@ import { RefreshCw } from "lucide-react";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 
-/** How often unsettled domains are re-checked. One DNS resolve per domain, and
- * the server skips the routing re-apply when nothing changed. */
+// One DNS resolve per domain; the server skips the routing re-apply when nothing changed.
 const CHECK_INTERVAL_MS = 30_000;
 
-/** The slice of a domain row the checker needs: identity for the mutation,
- * name for the toast, status to detect a flip. */
+// The slice of a domain row the checker needs: id for the mutation, name for the toast, status to detect a flip.
 export interface UnsettledDomain {
   id: string;
   name: string;
   status: string;
 }
 
-/**
- * The "waiting for DNS" callout, and the polling behind it: re-runs the check on
- * mount and every {@link CHECK_INTERVAL_MS}, skipping hidden tabs. Gated on
- * `manage_domains` - without it the callout drops its "automatic" claim.
- */
+// The "waiting for DNS" callout and its polling, gated on `manage_domains` - without it the callout drops its "automatic" claim.
 export function DomainDnsAutoCheck({
   domains,
   serverIp,
 }: {
-  /** Domains a further check could still move. A `cloudflare` host is excluded:
-   * re-resolving it only ever returns anycast IPs, so polling never learns. */
+  // A `cloudflare` host is excluded: re-resolving it only ever returns anycast IPs, so polling never learns.
   domains: UnsettledDomain[];
-  /** The public IPv4 these domains' A records must point at (this app's
-   * server), shown in the callout. Absent when no usable IP is recorded. */
+  // The public IPv4 these domains' A records must point at; absent when no usable IP is recorded.
   serverIp?: string;
 }) {
   const router = useRouter();
@@ -40,9 +32,7 @@ export function DomainDnsAutoCheck({
   const [checking, setChecking] = React.useState(false);
   const [disabled, setDisabled] = React.useState(!canVerify);
 
-  // The poll loop reads the CURRENT props through a ref so the single mounted
-  // interval survives router.refresh() prop updates without re-arming. Synced
-  // in an effect (not during render - react-hooks/refs).
+  // Current props through a ref so the one mounted interval survives router.refresh() without re-arming; synced in an effect (react-hooks/refs).
   const domainsRef = React.useRef(domains);
   React.useEffect(() => {
     domainsRef.current = domains;
@@ -55,8 +45,6 @@ export function DomainDnsAutoCheck({
     let failedRounds = 0;
 
     async function checkAll() {
-      // Never overlap two rounds, and only check while the tab is actually
-      // being looked at - a background tab just waits for the next tick.
       if (cancelled || running || document.hidden) return;
       running = true;
       setChecking(true);
@@ -95,8 +83,7 @@ export function DomainDnsAutoCheck({
       running = false;
       setChecking(false);
       if (cancelled) return;
-      // Every call failing (twice in a row, so one transient blip doesn't
-      // count) means the user can't verify domains at all - stop polling.
+      // Every call failing twice in a row (one blip doesn't count) means the user can't verify at all - stop polling.
       if (failures > 0 && failures === domainsRef.current.length) {
         if (++failedRounds >= 2) {
           setDisabled(true);
@@ -105,8 +92,7 @@ export function DomainDnsAutoCheck({
       } else {
         failedRounds = 0;
       }
-      // Refresh the RSC tree so flipped rows re-render green (and this
-      // component unmounts once nothing is left to watch).
+      // Refresh the RSC tree: flipped rows re-render and this component unmounts once nothing is left to watch.
       if (changed) router.refresh();
     }
 

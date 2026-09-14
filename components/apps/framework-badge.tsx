@@ -4,13 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { frameworkById } from "@/lib/apps/framework-catalog";
 import { cn } from "@/lib/utils";
 
-/**
- * How a recognised framework is shown - the whole visible surface of framework
- * recognition, so the wizard, the build settings and the app overview say the same
- * thing in the same shape.
- */
-
-/** Inline icon + name, sized to sit in a sentence of body text. */
+// FrameworkBadge - inline icon + name, sized to sit in a sentence of body text.
 export function FrameworkBadge({
   id,
   className,
@@ -28,9 +22,7 @@ export function FrameworkBadge({
   );
 }
 
-/**
- * The bordered "we recognised your stack" row.
- */
+// FrameworkRow - the bordered "we recognised your stack" row.
 export function FrameworkRow({
   id,
   caption,
@@ -64,8 +56,7 @@ export function FrameworkRow({
   );
 }
 
-/** The same row while the repository is still being read - a skeleton, so the
- * layout doesn't jump when the answer lands. */
+// FrameworkRowSkeleton - the same row while the repository is still being read.
 export function FrameworkRowSkeleton({ className }: { className?: string }) {
   return (
     <div

@@ -2,11 +2,7 @@
 
 import dynamic from "next/dynamic";
 
-/**
- * The terminal, code-split and client-only. `@xterm/xterm` touches the DOM at
- * construction and ships ~55-80KB gzipped, so it must not enter SSR or the shared
- * bundle - it loads only when a console pane actually mounts.
- */
+// XtermView - `@xterm/xterm` touches the DOM at construction, so it must never enter SSR.
 export const XtermView = dynamic(
   () => import("./xterm-view").then((m) => m.XtermView),
   {
@@ -15,6 +11,5 @@ export const XtermView = dynamic(
   },
 );
 
-// Type-only re-export (erased at build), so importing the API type never pulls
-// the emulator into the importing module's bundle.
+// Type-only so importing the API type never pulls the emulator into the importer's bundle.
 export type { XtermApi } from "./xterm-view";

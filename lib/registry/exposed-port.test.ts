@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 
 import { singleExposedPort } from "./client";
 
-/**
- * A Docker-image app has no repository to read, so the image's own EXPOSE is the
- * only honest default. One port is an answer; none or several is not, and the
- * app keeps the default the Port field can correct.
- */
+// A Docker-image app has no repository to read: the image's own EXPOSE is the only honest default.
 
 test("one tcp port is the answer", () => {
   assert.equal(singleExposedPort({ "80/tcp": {} }), 80);

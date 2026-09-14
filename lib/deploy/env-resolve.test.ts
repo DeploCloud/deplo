@@ -42,8 +42,6 @@ const fold = (es: { key: string; valueEnc: string }[]) => {
   return o;
 };
 
-/* --- app-own var selection by target + appId --- */
-
 test("production picks only production-tagged app vars", () => {
   const vars = [
     envVar("PROD_ONLY", ["production"]),
@@ -61,8 +59,6 @@ test("vars from a different app are ignored", () => {
   assert.deepEqual(resolveEnvEntries("production", APP, vars, []), []);
 });
 
-/* --- shared (opted-in) var selection by target --- */
-
 test("a linked shared var reaches a runtime only when it targets it", () => {
   const s = [shared("SHARED", ["production"])];
   assert.deepEqual(keys(resolveEnvEntries("production", APP, [], s)), [
@@ -71,8 +67,7 @@ test("a linked shared var reaches a runtime only when it targets it", () => {
   assert.deepEqual(resolveEnvEntries("preview", APP, [], s), []);
 });
 
-/* --- precedence (the correctness spine, ADR-0012) --- */
-
+// Precedence is ADR-0012.
 test("full precedence order: instance < app-own < linked shared", () => {
   const key = "DATABASE_URL";
   const out = resolveEnvEntries(
@@ -82,13 +77,11 @@ test("full precedence order: instance < app-own < linked shared", () => {
     [shared(key, [...ALL], "link")],
     [autoInjected(key, [...ALL], "instance")],
   );
-  // Emission is lowest-precedence first; the caller folds into an object so the
-  // LAST wins.
   assert.deepEqual(
     out.map((e) => e.valueEnc),
     ["enc(instance)", `enc(${key})`, "enc(link)"],
   );
-  assert.equal(fold(out)[key], "enc(link)"); // the explicit opt-in wins
+  assert.equal(fold(out)[key], "enc(link)");
 });
 
 test("parity: a per-app link (old shared group) overrides the app's own var", () => {
@@ -99,10 +92,8 @@ test("parity: a per-app link (old shared group) overrides the app's own var", ()
     [envVar(key, ["production"])],
     [shared(key, ["production"], "link")],
   );
-  assert.equal(fold(out)[key], "enc(link)"); // link wins over app-own
+  assert.equal(fold(out)[key], "enc(link)");
 });
-
-/* --- globals + within-layer ordering --- */
 
 test("instance globals apply to every app and sit lowest", () => {
   const key = "X";
@@ -117,11 +108,11 @@ test("instance globals apply to every app and sit lowest", () => {
     out.map((e) => e.valueEnc),
     ["enc(instance)", `enc(${key})`],
   );
-  assert.equal(fold(out)[key], `enc(${key})`); // the app's own var beats instance
+  assert.equal(fold(out)[key], `enc(${key})`);
 });
 
 test("within the shared layer, the later entry wins on a key collision", () => {
-  // The loader supplies shared vars sorted created_at ASC → later wins on fold.
+  // The loader hands shared vars over sorted created_at ASC, so the later one wins on fold.
   const out = resolveEnvEntries(
     "production",
     APP,
@@ -139,14 +130,8 @@ test("omitting the auto-injected layer defaults to app-own + shared", () => {
   assert.deepEqual(keys(resolveEnvEntries("production", APP, vars, [])), ["X"]);
 });
 
-/* ------------------------------------------------------------------ */
-/* Preview overrides (ADR-0014)                                        */
-/* ------------------------------------------------------------------ */
-
+// Preview overrides: ADR-0014.
 test("a preview override beats the app's own var AND a linked shared var", () => {
-  // The whole reason overrides exist: pointing a pull request's preview at a
-  // scratch database. A team-wide shared value outranking it would make that
-  // impossible.
   const out = resolveEnvEntries(
     "preview",
     APP,
@@ -156,7 +141,6 @@ test("a preview override beats the app's own var AND a linked shared var", () =>
     [{ key: "DATABASE_URL", valueEnc: "enc(scratch)", type: "plain" as const }],
   );
   assert.equal(fold(out)["DATABASE_URL"], "enc(scratch)");
-  // Lowest precedence first, override last.
   assert.deepEqual(
     out.map((e) => e.valueEnc),
     ["enc(instance)", "enc(DATABASE_URL)", "enc(team-default)", "enc(scratch)"],

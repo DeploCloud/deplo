@@ -18,25 +18,16 @@ export function AppSearch({
 }: {
   initialQuery: string;
   initialView: AppView;
-  /** The open folder id, preserved across view toggles (dropped when searching). */
   initialFolder?: string;
-  /** The open project id, same contract as `initialFolder`. */
   initialProject?: string;
-  /** The selected environment inside the open project, preserved with it. */
   initialEnv?: string;
-  /**
-   * The project drill-in's environment dropdown (ADR-0009), rendered inline in
-   * this toolbar - at the end, just before the grid/list toggle. Omitted for the
-   * top-level and folder views, which have no environment to pick.
-   */
+  // The project drill-in's environment dropdown (ADR-0009), rendered inline here.
   environmentSwitcher?: React.ReactNode;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initialQuery);
   const [view, setView] = React.useState<AppView>(initialView);
 
-  // Build the dashboard URL from query + view (+ open folder/project), omitting
-  // defaults (empty query, grid view) so the address bar stays clean.
   const buildHref = React.useCallback(
     (nextQ: string, nextView: AppView) => {
       const params = new URLSearchParams();
@@ -53,8 +44,7 @@ export function AppSearch({
     [initialFolder, initialProject, initialEnv],
   );
 
-  // Debounce text input -> URL. `view` is read via ref so a stale closure here
-  // never clobbers a view chosen mid-debounce.
+  // `view` via ref: a stale closure must not clobber a view chosen mid-debounce.
   const viewRef = React.useRef(view);
   React.useEffect(() => {
     viewRef.current = view;

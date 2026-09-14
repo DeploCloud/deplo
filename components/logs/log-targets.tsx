@@ -28,8 +28,6 @@ import {
 import { titleClass } from "@/components/shared/page-header";
 import { cn } from "@/lib/utils";
 
-/** The mark for a target: an App's own logo, or a database's engine brand when
- *  it has none of its own. */
 function TargetMark({ target, size }: { target: LogTarget; size: number }) {
   return target.kind === "database" ? (
     <DatabaseLogo
@@ -42,8 +40,7 @@ function TargetMark({ target, size }: { target: LogTarget; size: number }) {
   );
 }
 
-/** How much one level of the tree steps in, in px. Inline, because Tailwind has
- *  no dynamic `pl-`. */
+// Applied inline, because Tailwind has no dynamic `pl-`.
 const INDENT = 14;
 
 const HEADING_ICON = {
@@ -85,10 +82,7 @@ function TreeRowContent({ row }: { row: LogTreeRow }) {
   );
 }
 
-/**
- * Which logs to look at, as the tree they live in. One control drawn twice - in
- * the chooser and in the toolbar - because picking a target is one decision.
- * Headings are drawn but never landed on, and typing filters on `haystack`. */
+// LogTreePicker - the target tree, drawn twice: in the chooser and in the toolbar.
 export function LogTreePicker({
   rows,
   value,
@@ -97,7 +91,6 @@ export function LogTreePicker({
   className,
 }: {
   rows: LogTreeRow[];
-  /** The key of the target on screen, or "" while nothing is picked. */
   value: string;
   onChange: (key: string) => void;
   autoFocus?: boolean;
@@ -129,10 +122,7 @@ export function LogTreePicker({
   );
 }
 
-/**
- * The way back to the thing itself, as an icon on the active row. It used to be
- * an "Open <name>" row at the end, which read as one more app to pick. Opens a
- * new tab, so the logs you are watching stay where they are. */
+// A new tab, so the stream being watched stays put; it replaced an "Open <name>" row that read as one more app to pick.
 function OpenTargetLink({ row }: { row: LogTreeRow }) {
   const label = `Open ${row.name} in a new tab`;
   return (
@@ -141,11 +131,9 @@ function OpenTargetLink({ row }: { row: LogTreeRow }) {
       target="_blank"
       rel="noreferrer"
       aria-label={label}
-      // The native tooltip, not `SimpleTooltip`: the menu is `z-[60]` and the
-      // tooltip is `z-50`, so a real one renders BEHIND the list it belongs to.
+      // Native tooltip, not `SimpleTooltip`: the menu is `z-[60]` and the tooltip `z-50`, so it renders behind the list.
       title={label}
-      // The row underneath picks on mousedown; without this the click would
-      // land on a menu that has already closed and swapped the page.
+      // The row underneath picks on mousedown; without this the click lands on a menu that already closed.
       onMouseDown={(e) => e.stopPropagation()}
       className="flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
     >
@@ -154,15 +142,12 @@ function OpenTargetLink({ row }: { row: LogTreeRow }) {
   );
 }
 
-/**
- * Step one of the Logs page: which thing's logs are we here for.
- */
+// LogChooser - step one of the Logs page: which thing's logs are we here for.
 export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
   const router = useRouter();
   const hasTargets = rows.some((r) => r.target);
 
-  // The route is full-bleed, so the frame has no padding: this screen owns both its
-  // padding and its own centring.
+  // The route is full-bleed, so the frame has no padding: this screen owns its padding and centring.
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-6 pb-24">
       {hasTargets ? (
@@ -196,30 +181,24 @@ export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
   );
 }
 
-/**
- * The toolbar's first cell on the general Logs page: the target picker, which IS
- * the title.
- */
+// LogTargetPicker - the toolbar's first cell on the general Logs page, which IS the title.
 export function LogTargetPicker({
   rows,
   value,
 }: {
   rows: LogTreeRow[];
-  /** The key of the target on screen. Confirmed by the server, which is why
-   *  this and not the URL is what gets remembered. */
+  // Confirmed by the server, which is why this and not the URL is what gets remembered.
   value: string;
 }) {
   const router = useRouter();
 
-  // Remember the target so the sidebar's Logs entry reopens it. Written here, after
-  // the server resolved it, so a stale or forbidden one is never stored; read back in
-  // the page, which validates it against this same list.
+  // Written after the server resolved it, so a stale or forbidden target is never stored.
   React.useEffect(() => {
     if (!value) return;
     try {
       document.cookie = `${LOG_TARGET_COOKIE}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
     } catch {
-      /* storage blocked → nothing to remember, and nothing to break */
+      // storage blocked: nothing to remember, and nothing to break
     }
   }, [value]);
 

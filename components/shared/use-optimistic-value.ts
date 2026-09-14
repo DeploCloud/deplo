@@ -10,20 +10,14 @@ import {
   type ValueOverride,
 } from "@/lib/optimistic-value";
 
-/**
- * Optimistic edit: the new name, the flipped switch, the picked colour are on
- * screen on the CLICK, and the mutation settles behind them.
- */
+// useOptimisticValue - the edit is on screen on the click, and the mutation settles behind it.
 export function useOptimisticValue<T>(serverValue: T): [
   T,
   (
     next: T,
     mutate: () => Promise<ActionResult<unknown>>,
     opts?: {
-      /** Toasted when the server confirms, never on the click, so a toast
-       *  never claims something the server went on to refuse. */
       success?: string;
-      /** Called with the server's message after it has been toasted. */
       onError?: (error: string) => void;
     },
   ) => void,
@@ -32,7 +26,6 @@ export function useOptimisticValue<T>(serverValue: T): [
   const [override, setOverride] = React.useState<ValueOverride<T>>(null);
   const [, startTransition] = React.useTransition();
 
-  // Retire the override once the server has moved off the value it was taken against.
   const settled = settleOverride(override, serverValue);
   if (settled !== override) setOverride(settled);
 
@@ -51,9 +44,7 @@ export function useOptimisticValue<T>(serverValue: T): [
       } else if (opts?.success) {
         toast.success(opts.success);
       }
-      // Refresh either way: several of these mutations write the row first and
-      // fail later, on the part that talks to the server agent - an error can
-      // still leave a change the user has to see.
+      // Refresh either way: these mutations write the row first and can fail later, at the server agent.
       router.refresh();
     });
   }

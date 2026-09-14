@@ -8,11 +8,7 @@ import { Input } from "@/components/ui/input";
 import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
 import { cn } from "@/lib/utils";
 
-/**
- * Pick one thing out of a list by typing - the shell, with no opinion about what
- * the things are. Free text is never a value: the field resolves to one of `items`
- * or to nothing.
- */
+// Combobox - pick one thing from a list by typing; free text is never a value.
 export function Combobox<T>({
   items,
   value,
@@ -35,42 +31,23 @@ export function Combobox<T>({
   footer,
 }: {
   items: T[];
-  /** The selected key, or "" for none. */
   value: string;
   onChange: (key: string) => void;
   getKey: (item: T) => string;
-  /** Whether `item` survives the typed query (already lower-cased, trimmed). */
   matches: (item: T, query: string) => boolean;
   renderOption: (item: T) => React.ReactNode;
-  /**
-   * An affordance at the RIGHT EDGE of a row - a link out to the thing, say.
-   */
   renderTrailing?: (item: T) => React.ReactNode;
-  /**
-   * Which items can actually be chosen.
-   */
   selectable?: (item: T) => boolean;
-  /**
-   * A mark for the SELECTED item, drawn inside the field to the left of the text -
-   * an app's own icon, say.
-   */
   renderLeading?: (item: T) => React.ReactNode;
-  /** What the closed field shows for the selection. */
   displayValue: (item: T) => string;
   id?: string;
-  /** The field IS the page (`/logs`): it starts focused with the list unfurled,
-   *  and Escape leaves it that way - there is nothing behind it to go back to. */
   autoFocus?: boolean;
   placeholder: string;
   searchPlaceholder: string;
-  /** Shown when nothing matches; a function gets the query's emptiness. */
   emptyLabel: (hasItems: boolean) => string;
-  /** Spinner instead of the chevron - work the caller kicked off in `onOpen`. */
   busy?: boolean;
   disabled?: boolean;
-  /** Fired when the menu opens, e.g. to probe or refresh the list. */
   onOpen?: () => void;
-  /** Rendered under the field, outside the menu (a warning about the choice). */
   footer?: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -95,9 +72,6 @@ export function Combobox<T>({
     setQuery("");
   }
 
-  /**
-   * Where the menu goes, and into which element.
-   */
   const [host, setHost] = React.useState<HTMLElement | null>(null);
   const [rect, setRect] = React.useState<{
     left: number;
@@ -107,9 +81,6 @@ export function Combobox<T>({
   } | null>(null);
 
   React.useLayoutEffect(() => {
-    // Left as it was while closed rather than cleared: the menu only renders
-    // when `open`, and this effect re-measures before the next paint, so a stale
-    // rect is never on screen.
     if (!open) return;
     const target =
       fieldRef.current?.closest<HTMLElement>(
@@ -120,27 +91,20 @@ export function Combobox<T>({
       const el = fieldRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      // Offsets are relative to the portal host unless that host IS the body,
-      // where the viewport's own coordinates are already what `fixed` wants.
       const o =
         target === document.body ? null : target.getBoundingClientRect();
-      // The menu's own cap (max-h-72) plus its gap, so the decision to flip is
-      // made against the room it will actually ask for.
       const wanted = 288 + 8;
       const below = window.innerHeight - r.bottom;
       const flipped = below < wanted && r.top > below;
       setRect({
         left: r.left - (o?.left ?? 0),
-        // Flipped, the menu is pulled up by its own height with a transform -
-        // cheaper and more honest than measuring it to compute a `bottom`.
         top: (flipped ? r.top - 4 : r.bottom + 4) - (o?.top ?? 0),
         width: r.width,
         flipped,
       });
     };
     place();
-    // Capture, so a scroll INSIDE any ancestor moves the menu with its field and
-    // not only a scroll of the page.
+    // Capture: scroll does not bubble, so a scroll inside any ancestor must be heard too.
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
     return () => {
@@ -149,14 +113,11 @@ export function Combobox<T>({
     };
   }, [open]);
 
-  // Escape closes the MENU, and only the menu. Without this, the first Escape meant
-  // to shut a dropdown closed the whole wizard and threw away every answer in it.
+  // Escape closes the MENU only - without this it closed the whole wizard and lost every answer.
   React.useEffect(() => {
     if (!open) return;
     function onEscape(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
-      // `autoFocus` marks the picker that is the page itself: closing its list
-      // would leave an empty screen and one field with no way back to the tree.
       if (autoFocus) return;
       e.stopPropagation();
       setOpen(false);
@@ -166,16 +127,10 @@ export function Combobox<T>({
     return () => window.removeEventListener("keydown", onEscape, true);
   }, [open, autoFocus]);
 
-  // Close on outside press - the menu lives inside a dialog, so it must not
-  // swallow the click that lands on another field. POINTERdown, captured: a
-  // Radix menu opening elsewhere sets `pointer-events: none` on the body, so
-  // the mousedown that followed never reached this listener and two dropdowns
-  // stayed open at once.
+  // pointerdown, captured: a Radix menu elsewhere sets pointer-events:none on the body, so mousedown never lands here.
   React.useEffect(() => {
     function onPointerDown(e: PointerEvent) {
       const target = e.target as Node;
-      // The menu is portaled, so it is NOT a descendant of the container - a
-      // press on an option would otherwise read as a press outside the field.
       if (menuRef.current?.contains(target)) return;
       if (containerRef.current && !containerRef.current.contains(target)) {
         setOpen(false);
@@ -190,13 +145,9 @@ export function Combobox<T>({
   const q = query.trim().toLowerCase();
   const filtered = React.useMemo(
     () => items.filter((i) => !q || matches(i, q)),
-    // `matches` is a fresh closure on every render at most call sites; the list
-    // and the query are what actually change the answer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [items, q],
   );
-  // The indices that can actually be landed on. Also guards a stale index after
-  // the list shrinks, so Enter never picks past the end, or a heading.
   const pickable = React.useMemo(() => {
     const out: number[] = [];
     filtered.forEach((item, i) => {
@@ -209,8 +160,6 @@ export function Combobox<T>({
     ? highlight
     : (pickable[0] ?? -1);
 
-  // Keep the highlighted row in view: a tree is taller than the menu, and the
-  // arrow keys walking off the bottom of it look like nothing is happening.
   const activeRef = React.useRef<HTMLButtonElement | null>(null);
   React.useEffect(() => {
     if (open) activeRef.current?.scrollIntoView({ block: "nearest" });
@@ -248,8 +197,7 @@ export function Combobox<T>({
       e.preventDefault();
       step(-1);
     } else if (e.key === "Enter") {
-      // Swallowed even with nothing to pick: the dialog's submit must not fire
-      // from inside an open menu.
+      // Swallowed even with nothing to pick: the dialog's submit must not fire from an open menu.
       e.preventDefault();
       if (activeIndex >= 0) choose(filtered[activeIndex]!);
     } else if (e.key === "Tab") {
@@ -259,11 +207,7 @@ export function Combobox<T>({
 
   return (
     <div ref={containerRef}>
-      {/**
-       * The positioning context is the FIELD, not the field plus whatever the caller
-       * hangs under it: the chevron is centred with `top-1/2`, so a footer inside this
-       * box would drag it down into that text and leave the input looking like a broken
-       */}
+      {/* The positioning context is the FIELD, not whatever the caller hangs under it. */}
       <div ref={fieldRef} className="relative">
         {selected && renderLeading && (
           <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2">
@@ -280,7 +224,6 @@ export function Combobox<T>({
           spellCheck={false}
           disabled={disabled}
           autoFocus={autoFocus}
-          // Open shows what you are typing; closed shows what you picked.
           value={open ? query : selected ? displayValue(selected) : ""}
           placeholder={
             open
@@ -290,17 +233,13 @@ export function Combobox<T>({
               : placeholder
           }
           onChange={(e) => {
-            // Open FIRST, then set the query: `openMenu` clears it, so doing it
-            // the other way round swallowed the character that opened the menu.
-            // With the field autofocused, that is every first keystroke.
             const typed = e.target.value;
             if (!open) openMenu();
             setQuery(typed);
             setHighlight(0);
           }}
           onFocus={() => {
-            // A dialog placing focus here as it opens is Radix, not the user,
-            // and it is not a reason to unfurl the menu or probe every bucket.
+            // A dialog placing focus here as it opens is Radix, not the user.
             if (isOverlayAutoFocusing()) return;
             if (!open) openMenu();
           }}
@@ -328,8 +267,6 @@ export function Combobox<T>({
               role="listbox"
               className={cn(
                 "z-[60] overflow-hidden rounded-md border border-border bg-popover shadow-md",
-                // Absolute against the dialog it was portaled into; `fixed` only
-                // in the bodyless case, where the viewport IS the reference.
                 host === document.body ? "fixed" : "absolute",
                 rect.flipped && "-translate-y-full",
               )}
@@ -343,9 +280,6 @@ export function Combobox<T>({
                 <ul className="max-h-72 overflow-auto p-1">
                   {filtered.map((item, i) => {
                     if (selectable && !selectable(item))
-                      // A heading: drawn, never landed on. Not a button and not
-                      // an option, so the keyboard and the screen reader agree
-                      // with the pointer about what can be picked.
                       return (
                         <li key={getKey(item)} role="presentation">
                           {renderOption(item)}
@@ -360,8 +294,7 @@ export function Combobox<T>({
                           ref={i === activeIndex ? activeRef : undefined}
                           aria-selected={getKey(item) === value}
                           onMouseEnter={() => setHighlight(i)}
-                          // mousedown, not click: the input's blur would otherwise
-                          // close the menu before the click landed.
+                          // mousedown, not click: the input's blur closes the menu first.
                           onMouseDown={(e) => {
                             e.preventDefault();
                             choose(item);
@@ -377,8 +310,6 @@ export function Combobox<T>({
                           {renderOption(item)}
                         </button>
                         {trailing ? (
-                          // On top of the row, not in it: the button fills the
-                          // width so the whole row still picks the item.
                           <span className="absolute top-1/2 right-1.5 -translate-y-1/2">
                             {trailing}
                           </span>
@@ -393,8 +324,7 @@ export function Combobox<T>({
           )}
       </div>
 
-      {/* Outside the field's positioning box on purpose (see above), so anything
-          the caller hangs here can be as tall as it needs to be. */}
+      {/* Outside the field's positioning box, so the footer can be as tall as it needs. */}
       {footer}
     </div>
   );

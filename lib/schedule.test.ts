@@ -14,12 +14,6 @@ import {
   type ScheduleParts,
 } from "./schedule";
 
-/**
- * The picker's contract with the scheduler: whatever a person chooses in the UI
- * must come back out as a cron the matcher understands, and whatever is already
- * stored must come back INTO the controls unchanged.
- */
-
 const parts = (over: Partial<ScheduleParts>): ScheduleParts => ({
   mode: "daily",
   hour: 3,
@@ -45,7 +39,6 @@ test("every offered preset round-trips back into the same controls", () => {
     const back = partsFromCron(cron);
     assert.ok(back, `${option.mode} (${cron}) did not read back as a preset`);
     assert.equal(back.mode, option.mode);
-    // Re-emitting from the parsed controls must give byte-identical cron.
     assert.equal(cronFromParts(back), cron);
   }
 });
@@ -136,18 +129,16 @@ test("extra whitespace still matches a preset", () => {
 });
 
 test("expressions outside the picker's vocabulary stay custom, not broken", () => {
-  // Each of these is a perfectly valid cron the controls simply can't express.
   for (const cron of [
-    "0,30 * * * *", // comma list
-    "0 1-5 * * *", // range
-    "0 0 1 6 *", // one specific month
+    "0,30 * * * *",
+    "0 1-5 * * *",
+    "0 0 1 6 *",
     "0 0 13 * 5", // both day fields restricted (Vixie union)
     "0 0 31 * *", // day 31 - deliberately not offered
-    "0-30/10 * * * *", // stepped range
+    "0-30/10 * * * *",
   ]) {
     assert.equal(partsFromCron(cron), null, `${cron} should be custom`);
     assert.equal(describeCron(cron), null, `${cron} should have no phrase`);
-    // Custom does NOT mean invalid - the scheduler still runs these.
     assert.ok(isValidSchedule(cron), `${cron} should still be a valid cron`);
   }
 });
@@ -177,7 +168,6 @@ test("the compact description keeps the facts and drops the filler", () => {
     describeCron("15 4 12 * *", { compact: true }),
     "Monthly, 12th 04:15 UTC",
   );
-  // Fixed intervals are already short - compact leaves them alone.
   assert.equal(describeCron("0 * * * *", { compact: true }), "Every hour");
 });
 
@@ -223,7 +213,6 @@ test("a macro reads back as the schedule it stands for", () => {
   assert.equal(partsFromCron("@monthly")?.mode, "monthly");
   assert.ok(isValidSchedule("@daily"));
   assert.ok(!isValidSchedule("@reboot"));
-  // Names have no control: they stay custom, and valid.
   assert.equal(describeCron("0 9 * * MON-FRI"), null);
   assert.ok(isValidSchedule("0 9 * * MON-FRI"));
 });

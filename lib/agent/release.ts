@@ -2,27 +2,22 @@ import "server-only";
 
 import { FALLBACK_AGENT_VERSION } from "../version";
 
-/**
- * The agent binary is no longer built inside this repo - it lives in its own
- * repository (AGENT_REPO) and ships as GitHub Release assets. Policy: ALWAYS
- * LATEST.
- */
+// The agent binary ships as GitHub Release assets from its own repo; the policy is ALWAYS LATEST.
 
-/** The repo that builds + releases the agent binary. */
+// The repo that builds + releases the agent binary.
 export const AGENT_REPO = "DeploCloud/deplo-agent";
 
 export { FALLBACK_AGENT_VERSION } from "../version";
 
-/** The asset basename the install script downloads, per Linux architecture. */
+// The asset basename the install script downloads, per Linux architecture.
 function assetName(arch: "amd64" | "arm64"): string {
   return `deplo-agent-linux-${arch}`;
 }
 
-/** A resolved agent release: everything the install path needs, nothing more. */
+// A resolved agent release: everything the install path needs, nothing more.
 export interface AgentRelease {
-  /** The release tag, normalized without a leading `v` (e.g. "1.2.0"). */
+  // The release tag, normalized without a leading `v` (e.g. "1.2.0").
   version: string;
-  /** Map of arch -> { url, sha256 } for each published Linux binary. */
   binaries: Record<"amd64" | "arm64", { url: string; sha256: string } | null>;
 }
 
@@ -40,14 +35,12 @@ const GH_HEADERS = {
   "User-Agent": "deplo-control-plane",
 };
 
-/** Strip a single leading v/V so tags ("v1.2.0") and bare versions compare equal. */
+// Strip a single leading v/V so tags ("v1.2.0") and bare versions compare equal.
 function normalizeTag(tag: string): string {
   return tag.trim().replace(/^v/i, "");
 }
 
-/**
- * Parse a `sha256sum`-format checksums file into { filename -> sha256 }.
- */
+// The `sha256sum` output format, whose binary mode prefixes the filename with `*`.
 function parseChecksums(text: string): Map<string, string> {
   const out = new Map<string, string>();
   for (const line of text.split("\n")) {
@@ -59,38 +52,26 @@ function parseChecksums(text: string): Map<string, string> {
   return out;
 }
 
-/**
- * In-process memo so a single render doesn't fan out to GitHub per field/server.
- */
+// In-process memo so a single render doesn't fan out to GitHub per field/server.
 const CACHE_KEY = Symbol.for("deplo.agent.release.cache");
 type ReleaseCacheCell = {
   value: { at: number; release: AgentRelease | null } | null;
-  /** The last release that DID resolve. GitHub answers 60 unauthenticated calls
-   *  an hour for the whole instance, and the installer is rendered per request:
-   *  without this one blip served `curl | bash` a 503 for five minutes. */
+  // The last release that DID resolve: GitHub allows 60 unauthenticated calls an hour per instance, and one blip served `curl | bash` a 503 for five minutes.
   lastGood?: AgentRelease | null;
 };
 const cacheCell: ReleaseCacheCell = ((globalThis as Record<symbol, unknown>)[
   CACHE_KEY
 ] ??= { value: null, lastGood: null }) as ReleaseCacheCell;
-/**
- * Short TTL: the memo only exists to coalesce the GitHub calls within a single
- * render (many server cards / GraphQL fields resolve the same release).
- */
-const CACHE_TTL_MS = 300_000; // 5m
-/** A failure is remembered far more briefly than a success: it is a blip until
- *  proven otherwise, and the next request should be allowed to find out. */
+const CACHE_TTL_MS = 300_000;
+// A failure is remembered far more briefly than a success: it is a blip until proven otherwise.
 const FAILURE_TTL_MS = 30_000;
 
-/** A monotonic-ish clock that tolerates environments where Date.now is shimmed. */
+// A monotonic-ish clock that tolerates environments where Date.now is shimmed.
 function now(): number {
   return Date.now();
 }
 
-/**
- * Resolve the latest agent release: its version plus a checksum-pinned download
- * URL per arch.
- */
+// Resolve the latest agent release: its version plus a checksum-pinned download URL per arch.
 export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> {
   const cache = cacheCell.value;
   const ttl = cache?.release ? CACHE_TTL_MS : FAILURE_TTL_MS;
@@ -105,30 +86,18 @@ export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> 
   return release ?? cacheCell.lastGood ?? null;
 }
 
-/**
- * Force an immediate re-resolution of the latest agent release, bypassing the
- * in-process memo.
- */
+// Force an immediate re-resolution of the latest agent release, bypassing the in-process memo.
 export async function refreshAgentRelease(): Promise<AgentRelease | null> {
   cacheCell.value = null;
   return resolveLatestAgentRelease();
 }
 
-/** Where a release's assets are downloaded from. NOT the API: this host serves
- *  files, and it does not count against the 60 calls an hour an unauthenticated
- *  api.github.com allows a whole instance. */
+// NOT the API host: these are plain file downloads, so they do not count against the 60 calls an hour api.github.com allows an instance.
 function downloadBase(tag: string): string {
   return `https://github.com/${AGENT_REPO}/releases/download/${tag}`;
 }
 
-/**
- * The PINNED version, resolved without asking the API at all.
- *
- * Deplo ships knowing which agent it expects, and the assets of that release are
- * plain downloads - so an exhausted API budget stops being fatal. It was: the
- * installer is rendered per request, so `/install-agent.sh` answered 503 in the
- * middle of an install and the agent never went on the host.
- */
+// The PINNED version, resolved without the API at all: an exhausted API budget used to make `/install-agent.sh` answer 503 mid-install.
 async function fetchPinnedRelease(): Promise<AgentRelease | null> {
   const base = downloadBase(`v${FALLBACK_AGENT_VERSION}`);
   let sums: Map<string, string>;
@@ -159,7 +128,7 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
       // no-store: the in-process memo (CACHE_TTL_MS) is the ONLY cache.
       { headers: GH_HEADERS, cache: "no-store" },
     );
-    if (!res.ok) return null; // 404 (no releases yet), rate limit, etc.
+    if (!res.ok) return null;
     rel = (await res.json()) as GitHubRelease;
   } catch {
     return null;
@@ -169,17 +138,14 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
   const assets = Array.isArray(rel.assets) ? rel.assets : [];
   if (!tag || assets.length === 0) return null;
 
-  // Pull the checksums asset and parse it; without it we cannot pin integrity,
-  // so we refuse the release rather than serve an unverifiable binary.
+  // Without checksums nothing pins integrity, so the release is refused rather than served as an unverifiable binary.
   const checksumAsset = assets.find((a) => a.name === "checksums.txt");
   if (!checksumAsset) return null;
   let sums: Map<string, string>;
   try {
     const res = await fetch(checksumAsset.browser_download_url, {
       headers: { "User-Agent": GH_HEADERS["User-Agent"] },
-      // no-store, same rationale as the release fetch above: the memo is the only
-      // cache, so this re-resolves with the (fresh) release rather than serving a
-      // checksums.txt from a prior release out of the on-disk Data Cache.
+      // no-store: otherwise the on-disk Data Cache serves a checksums.txt from a PRIOR release against the fresh one.
       cache: "no-store",
     });
     if (!res.ok) return null;
@@ -197,24 +163,19 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
   };
 
   const binaries = { amd64: pick("amd64"), arm64: pick("arm64") };
-  // At least one arch must be fully resolvable for the release to be usable.
   if (!binaries.amd64 && !binaries.arm64) return null;
 
   return { version: normalizeTag(tag), binaries };
 }
 
-/** Test-only: drop the in-process memo so a test can stub a fresh fetch. */
+// Test-only: drop the in-process memo so a test can stub a fresh fetch.
 export function __resetReleaseCacheForTests(): void {
   cacheCell.value = null;
   cacheCell.lastGood = null;
 }
 
-/**
- * The agent version every server should be running: the latest release, or the
- * offline fallback. Lives HERE, not in `lib/version.ts`, because that module is
- * client-reachable and even a dynamic import of this one drags `server-only`
- * into the browser bundle.
- */
+// The agent version every server should be running: the latest release, or the offline fallback.
+// Lives here, not in `lib/version.ts`: that module is client-reachable and importing this one drags `server-only` into the browser bundle.
 export async function resolveExpectedAgentVersion(): Promise<string> {
   const release = await resolveLatestAgentRelease();
   return release?.version || FALLBACK_AGENT_VERSION;

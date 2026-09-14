@@ -49,8 +49,7 @@ test("pick beats both and lands on the chooser", () => {
   );
 });
 
-// The one piece of security-shaped logic here: a remembered target the caller
-// may no longer read is simply absent from the list, and absence is refusal.
+// Security-shaped: a target the caller may no longer read is absent from the list, and absence is refusal.
 test("a target missing from the readable list resolves to nothing", () => {
   assert.equal(resolveLogTarget(TARGETS, { cookie: "app:deleted" }), null);
   assert.equal(resolveLogTarget(TARGETS, { app: "someone-elses-app" }), null);
@@ -86,10 +85,6 @@ test("the overview href points at the thing itself, not its logs", () => {
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* The tree the picker draws                                           */
-/* ------------------------------------------------------------------ */
-
 function app(slug: string, where: Partial<LogTarget> = {}): LogTarget {
   return {
     key: `app:${slug}`,
@@ -124,8 +119,7 @@ const TREE_TARGETS = [
   app("web", { projectId: "prc_a", environmentId: "environ_prod" }),
   app("api-staging", { projectId: "prc_a", environmentId: "environ_stage" }),
   app("landing", { folderId: "fld_sub" }),
-  // Its folder is one the caller holds no grant on, so `listFolders` never
-  // returned it. The app must still be pickable.
+  // Its folder is one the caller holds no grant on, so `listFolders` never returned it; the app stays pickable.
   app("orphan", { folderId: "fld_gone" }),
   app("scratch"),
   db,
@@ -152,9 +146,7 @@ test("the tree reads top down, the way the Overview is arranged", () => {
   );
 });
 
-// A heading with nothing readable under it is a dead end in a picker: the empty
-// project, its environment, and the project folder nobody deployed into are all
-// gone from the list above.
+// The empty project, its environment and the project folder nobody deployed into are all absent above.
 test("a branch with no readable target is not drawn", () => {
   const keys = buildLogTree(TREE_TARGETS, TREE_CTX).map((r) => r.key);
   for (const gone of [
@@ -175,7 +167,6 @@ test("no target is ever dropped, wherever it says it lives", () => {
       t.key,
     );
   }
-  // Nothing at all still answers with a list, not a crash.
   assert.deepEqual(buildLogTree([], TREE_CTX), []);
 });
 
@@ -183,17 +174,12 @@ test("typing keeps an app's headings, and a heading keeps its apps", () => {
   const rows = buildLogTree(TREE_TARGETS, TREE_CTX);
   const row = (key: string) => rows.find((r) => r.key === key)!;
 
-  // An app answers for its ancestors…
   assert.equal(logTreeMatches(row("grp:project:prc_a"), "staging"), true);
   assert.equal(logTreeMatches(row("grp:folder:fld_mkt"), "landing"), true);
-  // …and an ancestor answers for its apps.
   assert.equal(logTreeMatches(row("app:api"), "acme production"), true);
   assert.equal(logTreeMatches(row("app:landing"), "marketing"), true);
-  // A sibling branch is not dragged along.
   assert.equal(logTreeMatches(row("grp:project:prc_a"), "landing"), false);
   assert.equal(logTreeMatches(row("app:api"), "marketing"), false);
-  // The empty query matches everything, and matching is case-insensitive and
-  // term by term.
   assert.equal(logTreeMatches(row("app:api"), ""), true);
   assert.equal(logTreeMatches(row("db:db_main"), "MAIN postgres"), true);
   assert.equal(logTreeMatches(row("db:db_main"), "main mysql"), false);

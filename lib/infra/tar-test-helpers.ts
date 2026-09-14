@@ -1,14 +1,10 @@
-/**
- * Hand-rolled TAR builders for tests.
- */
-
 const BLOCK = 512;
 
 function octal(value: number, length: number): string {
   return value.toString(8).padStart(length - 1, "0") + "\0";
 }
 
-/** One 512-byte header block with a correct checksum. */
+// tarHeader - one 512-byte header block with a correct checksum.
 export function tarHeader(opts: {
   name: string;
   size: number;
@@ -23,7 +19,7 @@ export function tarHeader(opts: {
   block.write(octal(0, 8), 116, 8, "latin1");
   block.write(octal(opts.size, 12), 124, 12, "latin1");
   block.write(octal(0, 12), 136, 12, "latin1");
-  block.write("        ", 148, 8, "latin1"); // checksum placeholder = spaces
+  block.write("        ", 148, 8, "latin1");
   block.write(opts.type ?? "0", 156, 1, "latin1");
   if (opts.ustar !== false) {
     block.write("ustar\0", 257, 6, "latin1");
@@ -36,7 +32,7 @@ export function tarHeader(opts: {
   return block;
 }
 
-/** A header + its body, padded to whole 512-byte blocks. */
+// tarEntry - a header + its body, padded to whole 512-byte blocks.
 export function tarEntry(
   name: string,
   data: Buffer | string,
@@ -51,10 +47,10 @@ export function tarEntry(
   ]);
 }
 
-/** The two zero blocks that close an archive. */
+// TAR_END - the two zero blocks that close an archive.
 export const TAR_END = Buffer.alloc(BLOCK * 2, 0);
 
-/** A complete archive from `[name, data]` pairs. */
+// buildTar - a complete archive from `[name, data]` pairs.
 export function buildTar(files: [string, Buffer | string][]): Buffer {
   return Buffer.concat([
     ...files.map(([name, data]) => tarEntry(name, data)),
@@ -62,7 +58,7 @@ export function buildTar(files: [string, Buffer | string][]): Buffer {
   ]);
 }
 
-/** Feed a buffer as an async stream, optionally sliced into small chunks. */
+// tarStream - feed a buffer as an async stream, optionally sliced into small chunks.
 export async function* tarStream(
   buf: Buffer,
   chunkSize = buf.length,
@@ -72,11 +68,7 @@ export async function* tarStream(
   }
 }
 
-/**
- * A PAX extended-header record, `"<len> <key>=<value>\n"`, where `<len>` counts
- * its own bytes - the same fixpoint Go's `archive/tar` computes when it writes
- * one (which it does for any path over 100 bytes).
- */
+// paxRecord - a PAX record `"<len> <key>=<value>\n"`, where <len> counts its own bytes.
 export function paxRecord(key: string, value: string): Buffer {
   const kv = `${key}=${value}\n`;
   let size = Buffer.byteLength(kv) + 2;

@@ -3,9 +3,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-// useLayoutEffect on the client (measure before paint, no flash), useEffect on
-// the server (a layout effect there would warn). Renamed so the exhaustive-deps
-// lint doesn't try to police the caller-supplied dependency array.
+// useLayoutEffect on the client, useEffect on the server (a layout effect there warns); renamed so exhaustive-deps does not police the caller's dependency array.
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
@@ -16,11 +14,7 @@ export interface SlideRect {
   height: number;
 }
 
-/**
- * Track the active element's box inside a container so one highlight can SLIDE
- * between items. Re-measures on `deps`, on resize, and with `watchAttributes`
- * when a descendant's `data-state` flips (how Radix marks the active trigger).
- */
+// useSlidingRect tracks the active element's box; `watchAttributes` re-measures when a descendant's `data-state` flips, which is how Radix marks the active trigger.
 export function useSlidingRect(
   containerRef: React.RefObject<HTMLElement | null>,
   getActive: () => HTMLElement | null,
@@ -41,20 +35,16 @@ export function useSlidingRect(
       }
       const c = container.getBoundingClientRect();
       const r = el.getBoundingClientRect();
-      // A scaled ancestor (a dialog's zoom-in) shrinks every measured box, and
-      // nothing re-fires once it settles: divide the scale back out.
+      // A scaled ancestor (a dialog's zoom-in) shrinks every measured box and nothing re-fires once it settles: divide the scale back out.
       const scale = c.width / container.offsetWidth || 1;
       const next: SlideRect = {
-        // Scroll offsets included on purpose: the highlight is positioned inside the
-        // container's CONTENT box, which moves when the container scrolls (the tab strip
-        // does, on a narrow screen).
+        // Scroll offsets on purpose: the highlight sits in the container's CONTENT box, which moves when the tab strip scrolls on a narrow screen.
         top: (r.top - c.top) / scale + container.scrollTop,
         left: (r.left - c.left) / scale + container.scrollLeft,
         width: r.width / scale,
         height: r.height / scale,
       };
-      // Keep the same object when nothing moved so we don't re-render in a loop
-      // (ResizeObserver fires once on observe).
+      // Same object when nothing moved, or ResizeObserver's fire-on-observe re-renders in a loop.
       setRect((prev) =>
         prev &&
         prev.top === next.top &&
@@ -90,8 +80,7 @@ export function useSlidingRect(
   return rect;
 }
 
-/** The sliding underline - absolutely positioned at the bottom of a `relative`
- *  tab bar. Animates its x-offset and width between tabs. */
+// SlidingUnderline sits at the bottom of a `relative` tab bar and animates its x-offset and width between tabs.
 export function SlidingUnderline({
   rect,
   className,
@@ -112,9 +101,7 @@ export function SlidingUnderline({
   );
 }
 
-/** A sliding background "pill" - sits behind the active item in a `relative
- *  isolate` list and translates/resizes to it. Used for the sidebar nav so the
- *  selected item's background glides between entries on navigation. */
+// SlidingBackground is the pill behind the active item of a `relative isolate` list, translating and resizing to it.
 export function SlidingBackground({
   rect,
   className,

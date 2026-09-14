@@ -9,10 +9,7 @@ import { RedeployButton } from "@/components/apps/redeploy-button";
 import { useAppCan } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * Config saved but not live: a variable, a limit or a build setting changes
- * nothing inside a running container until the next deploy hands it over.
- */
+// PendingChangesNotice - config saved but not live until the next deploy.
 export function PendingChangesNotice({
   appId,
   slug,
@@ -21,9 +18,7 @@ export function PendingChangesNotice({
 }: {
   appId: string;
   slug: string;
-  /** `App.pendingChangesAt` - null renders nothing. */
   pendingChangesAt: string | null;
-  /** Nothing has ever been deployed, so there is no live version to be behind. */
   neverDeployed: boolean;
 }) {
   const router = useRouter();
@@ -32,8 +27,6 @@ export function PendingChangesNotice({
   const [pending, startTransition] = React.useTransition();
   if (!pendingChangesAt || neverDeployed) return null;
 
-  // The stamp is a hint, not a diff: adding a variable and taking it back leaves
-  // the app exactly as deployed, and only the person who did it knows that.
   function dismiss() {
     startTransition(async () => {
       const res = await gqlAction(

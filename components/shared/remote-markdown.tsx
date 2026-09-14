@@ -1,10 +1,7 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-/**
- * Markdown from somewhere else - a template description, a release note. Remote
- * input, so no `rehype-raw`: anything HTML-shaped renders as text.
- * Links open in a new tab with `rel="noopener"`. */
+// RemoteMarkdown - remote input, so no rehype-raw: anything HTML-shaped renders as text.
 export function RemoteMarkdown({ source }: { source: string }) {
   return (
     <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">

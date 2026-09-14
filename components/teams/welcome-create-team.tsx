@@ -15,9 +15,7 @@ const CREATE_TEAM = /* GraphQL */ `
   }
 `;
 
-/**
- * The create-team form for a user with ZERO teams. The dashboard needs an active
- * team, so this is the only screen they can reach until they make one. */
+// WelcomeCreateTeam - the only screen a user with zero teams can reach; the dashboard needs an active team.
 export function WelcomeCreateTeam({ userName }: { userName: string }) {
   const [pending, startTransition] = React.useTransition();
   const [team, setTeam] = React.useState(EMPTY_TEAM);

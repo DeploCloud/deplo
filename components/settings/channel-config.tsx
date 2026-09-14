@@ -17,16 +17,10 @@ import {
 import type {
   NotificationChannelInput,
   NotificationChannelInstance,
-} from "@/lib/types";
-
-/**
- * One channel's own fields - where to send, and what to send with. These used to
- * sit inline under twelve stacked rows, which made the page a wall of inputs
- * before you had decided anything.
- */
+} from "@/lib/types/notification";
 
 export type Secrets = NonNullable<NotificationChannelInput["secrets"]>;
-/** The instance being edited, before it has an id (creating) or after (editing). */
+// Draft - the instance being edited, before it has an id (creating) or after (editing).
 export type Draft = Omit<NotificationChannelInstance, "id">;
 
 export interface ChannelConfigProps {
@@ -37,11 +31,7 @@ export interface ChannelConfigProps {
   readOnly: boolean;
 }
 
-/**
- * Whether this channel has everything it needs to actually send. Drives both
- * the tile's "Needs setup" line and the sheet's Test button, so the two can
- * never disagree.
- */
+// isChannelReady - whether this channel has everything it needs to send.
 export function isChannelReady(i: Draft, s: Secrets): boolean {
   const has = (stored: boolean, typed?: string) => stored || !!typed;
   switch (i.kind) {
@@ -72,11 +62,7 @@ export function isChannelReady(i: Draft, s: Secrets): boolean {
   }
 }
 
-/**
- * The one line under a row's name: WHERE this channel sends. Pushover and browser
- * push have no address at all that is not a secret, so they show nothing and the
- * row leans on its status line instead.
- */
+// channelTarget - the one line under a row's name: where this channel sends.
 export function channelTarget(i: Draft): string {
   switch (i.kind) {
     case "push":
@@ -99,7 +85,6 @@ export function channelTarget(i: Draft): string {
   }
 }
 
-/** Host only, and nothing at all for something that is not a URL yet. */
 function host(url: string): string {
   try {
     return new URL(url).host;
@@ -108,7 +93,7 @@ function host(url: string): string {
   }
 }
 
-/** Host and path minus the last segment - the token, on every brand here. */
+// The last path segment is the token on every brand here, so it is dropped.
 function trimSecret(url: string): string {
   try {
     const u = new URL(url);
@@ -157,15 +142,11 @@ export function ChannelConfig(props: ChannelConfigProps) {
       />
     </Field>
   );
-  /** Every webhook-shaped kind is one URL field; only the placeholder differs. */
   const webhook = (label: string, placeholder: string) =>
     text(label, i.url, (v) => onPatch({ url: v }), placeholder);
 
   switch (i.kind) {
     case "push": {
-      // The one kind with no fields at all. A bare line of muted text in an
-      // otherwise empty modal reads as something that failed to load, so it
-      // wears the channel's own colour and looks deliberate.
       const brand = CHANNEL_BRAND.push;
       return (
         <div
@@ -208,9 +189,7 @@ export function ChannelConfig(props: ChannelConfigProps) {
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              {/* Resend first: it is the default, and a list should open on it.
-                  `SelectItem` wraps its children in Radix's `ItemText`, so the
-                  mark rides along into the closed trigger for free. */}
+              {/* `SelectItem` wraps children in Radix `ItemText`, so the mark rides into the trigger. */}
               <SelectContent>
                 <SelectItem value="resend">
                   <span className="flex items-center gap-2">

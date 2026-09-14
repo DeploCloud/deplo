@@ -12,19 +12,13 @@ import {
   __setMigrationFetchForTest,
 } from "../transport";
 
-/**
- * The Coolify adapter against a routed fake API. Every route here answers the
- * shape the real 4.x API answers with, which is the whole point: the three
- * defects below were all a field or an endpoint the adapter read wrongly.
- */
-
 const cred = {
   kind: "coolify" as const,
   baseUrl: "https://coolify.test",
   apiKey: "3|abcdefghijklmnopqrstuvwxyz012345",
 };
 
-/** The panel's own machine plus a second one, exactly as Coolify lists them. */
+// The panel's own machine plus a second one, exactly as Coolify lists them.
 const SERVERS = [
   { id: 0, uuid: "srv-panel", name: "localhost", ip: "host.docker.internal" },
   { id: 2, uuid: "srv-remote", name: "second", ip: "10.0.0.2" },
@@ -115,8 +109,7 @@ function serve(
   return seen;
 }
 
-// A flat 30 seconds was a two-container service on a panel that was also
-// building: the stop had worked, the wait had not.
+// A flat 30 seconds was a two-container service on a panel that was also building: the stop had worked, the wait had not.
 test("the stop deadline grows with the stack", () => {
   // Coolify's status is pushed about once a minute, so the base covers one push.
   assert.equal(stopDeadlineMs(0), 110_000);
@@ -157,8 +150,7 @@ test("a database's S3 backup schedules ride on its row, named after the store", 
         save_s3: false,
         database_type: "App\\Models\\StandalonePostgresql",
       },
-      // Measured on 4.3.16: the route filters by database_id alone, so the mysql
-      // that shares the number comes back too. The morph class tells it apart.
+      // Measured on 4.3.16: the route filters by database_id alone, so the mysql sharing the number comes back too; the morph class tells it apart.
       {
         uuid: "bk-9",
         enabled: true,
@@ -197,8 +189,7 @@ test("a database's S3 backup schedules ride on its row, named after the store", 
   ]);
 });
 
-// Measured on a two-machine Coolify: read + read:sensitive imported everything and
-// then could not stop one service, so every copy failed. Refused at Connect instead.
+// Measured on a two-machine Coolify: read + read:sensitive imported everything and then could not stop one service, so every copy failed.
 test("a token that cannot stop a service is refused before anything runs", async (t) => {
   serve(
     t,
@@ -254,8 +245,7 @@ test("what runs on the panel's own machine keeps the empty key", async (t) => {
 });
 
 test("a rate limit while probing a service is raised, never read as `not a service`", async (t) => {
-  // The probe used to treat EVERY failure as "this is an application", which sent
-  // the cutover's stop to applications/{uuid}/stop -> 404 -> data not copied.
+  // The probe used to treat EVERY failure as "this is an application", which sent the cutover's stop to applications/{uuid}/stop -> 404 -> data not copied.
   let hits = 0;
   serve(t, { "/api/v1/services": [] }, (path) => {
     if (path !== "/api/v1/services/svc-gitea") return null;
@@ -293,8 +283,7 @@ test("the resource index is read once, not once per service", async (t) => {
 });
 
 test("a shared-variable level the panel refuses is a note, not a silence", async (t) => {
-  // An older panel has no `envs` endpoint at that level. Answering `[]` there made
-  // a whole set of shared variables disappear with nothing said about it.
+  // An older panel has no `envs` endpoint at that level, and answering `[]` there made a whole set of shared variables disappear with nothing said.
   serve(t, {}, (path) =>
     path === "/api/v1/projects/prj-1/envs"
       ? new Response(JSON.stringify({ message: "Not found." }), {
@@ -324,9 +313,7 @@ test("the server level is read for the machine a resource runs on", async (t) =>
 });
 
 test("a token that cannot read a compose file is refused before anything runs", async (t) => {
-  // A service is DEFINED by its compose, so one that hands over none is the same
-  // missing scope showing up somewhere the env probe cannot see it - and the
-  // failure it made downstream read as a git problem.
+  // A service is DEFINED by its compose, so one handing over none is the same missing scope the env probe cannot see - and downstream it read as a git problem.
   serve(t, {
     "/api/v1/services/svc-gitea": { uuid: "svc-gitea", name: "gitea" },
   });
@@ -350,15 +337,13 @@ test("backing out starts the service again, on the group it belongs to", async (
   const seen = serve(t, {
     "/api/v1/services/svc-gitea/start": { message: "queued" },
   });
-  // A Coolify one-click service arrives as kind `compose`; the group is settled
-  // from the service list, the same way the stop settles it.
+  // A Coolify one-click service arrives as kind `compose`; the group is settled from the service list, the same way the stop settles it.
   await coolifyClient(cred).startService("compose", "svc-gitea");
   assert.ok(
     seen.includes("/api/v1/services/svc-gitea/start"),
     `no start was posted; calls were ${seen.join(", ")}`,
   );
-  // Measured on a real Coolify: `status` still reads `exited` minutes after the
-  // container is back, so a start that waited on it would invent a failure.
+  // Measured on a real Coolify: `status` still reads `exited` minutes after the container is back, so a start that waited on it would invent a failure.
   assert.ok(
     !seen.some(
       (p) => p.endsWith("/start") && p !== "/api/v1/services/svc-gitea/start",
@@ -404,14 +389,7 @@ test("a stack's config file on a real host path is carried by the data phase", a
   ]);
 });
 
-/**
- * Coolify renames EVERY compose volume to `<uuid>_<key>` and honours neither
- * `external: true` nor a pinned `name:` - verified against 4.3.14, whose rendered
- * `docker_compose` mounts its own volume and leaves the pinned declaration
- * dangling. So the storage row is the truth, and the volume the author named -
- * which their data may well be in - is data this stack never had. Copying it
- * would carry a stranger's bytes; saying nothing read as Deplo losing theirs.
- */
+// Coolify renames EVERY compose volume to `<uuid>_<key>` and honours neither `external: true` nor a pinned `name:` (4.3.14), so the volume the author named is data this stack never had - copying it would carry a stranger's bytes.
 test("a volume the panel renamed out from under the compose is named, not copied", async (t) => {
   serve(t, {
     "/api/v1/services/svc-gitea/storages": {
@@ -474,10 +452,8 @@ test("a pinned volume nothing in the stack mounts is not worth a line", async (t
   assert.deepEqual(state.notes, []);
 });
 
-// A Coolify token is bound to the team it was minted in: `/v1/teams` is filtered
-// down to that one team, so the panel cannot even count the others. Answering
-// `null` rather than `[]` is what makes the wizard ask instead of claiming
-// nothing is missing.
+// A Coolify token is bound to the team it was minted in: `/v1/teams` is filtered down to that one team, so the others cannot even be counted.
+// Answering `null` rather than `[]` is what makes the wizard ask instead of claiming nothing is missing.
 test("the token's own team is named, and the others cannot be", async (t) => {
   serve(t, { "/api/v1/team": { id: 4, name: "Acme Corp" } });
 

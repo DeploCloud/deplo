@@ -19,12 +19,10 @@ test("mimeForFaviconPath: maps supported extensions incl. .ico", () => {
 });
 
 test("scoreFaviconPath: ONLY files named `favicon` are candidates", () => {
-  // Accepted: `favicon` (any supported ext), plus size/variant suffixes.
   assert.notEqual(scoreFaviconPath("public/favicon.svg"), null);
   assert.notEqual(scoreFaviconPath("favicon.ico"), null);
   assert.notEqual(scoreFaviconPath("public/favicon.png"), null);
   assert.notEqual(scoreFaviconPath("public/favicon-32x32.png"), null);
-  // Rejected: everything NOT named favicon - logo, icon, apple-touch-icon, …
   assert.equal(scoreFaviconPath("logo.svg"), null);
   assert.equal(scoreFaviconPath("public/logo.png"), null);
   assert.equal(scoreFaviconPath("app/icon.svg"), null);
@@ -63,7 +61,7 @@ test("pickBestFavicon: extension order svg > png > ico for the same name", () =>
 test("pickBestFavicon: a bare favicon.ico IS picked when it's the only one", () => {
   assert.equal(
     pickBestFavicon([
-      { path: "public/logo.svg", size: 1000 }, // not a favicon → ignored
+      { path: "public/logo.svg", size: 1000 },
       { path: "favicon.ico", size: 1000 },
     ])?.path,
     "favicon.ico",
@@ -125,10 +123,6 @@ test("pickBestFavicon: ties break on the smaller path deterministically", () => 
   assert.equal(a?.path, "public/favicon-a.png");
 });
 
-/* ------------------------------------------------------------------ */
-/* faviconSourceKind, which pile of files an app's icon comes from     */
-/* ------------------------------------------------------------------ */
-
 const APP = {
   source: "docker-image",
   compose: null as string | null,
@@ -148,8 +142,7 @@ test("faviconSourceKind: a compose stack is scanned on its own server", () => {
 });
 
 test("faviconSourceKind: compose wins over a repo the app no longer builds from", () => {
-  // Switching an app to a compose stack KEEPS the repo (so it can switch back),
-  // but the deploy ignores it - detection must ignore it the same way.
+  // Switching to a compose stack KEEPS the repo so it can switch back, but the deploy ignores it.
   assert.equal(
     faviconSourceKind({
       ...APP,
@@ -181,7 +174,7 @@ test("faviconSourceKind: GitHub repos are read over the API", () => {
     }),
     "github",
   );
-  // A bare git URL that happens to be github.com counts too.
+  // The URL host decides, not the provider field: a bare git remote on github.com counts.
   assert.equal(
     faviconSourceKind({
       ...APP,
@@ -205,8 +198,7 @@ test("faviconSourceKind: a non-GitHub git host has nothing the control plane can
 
 test("faviconSourceKind: an upload is scanned from its archive", () => {
   assert.equal(faviconSourceKind({ ...APP, source: "upload" }), "upload");
-  // Even with a stale compose lingering from a previous source - an upload is
-  // explicit and still builds its archive.
+  // A stale compose from an earlier source must not win: an upload still builds its archive.
   assert.equal(
     faviconSourceKind({ ...APP, source: "upload", compose: "services: {}" }),
     "upload",

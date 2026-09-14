@@ -15,26 +15,22 @@ import {
 } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
-/** The presets `createBackup` refuses, derived from its own rule so the two cannot drift. */
+// The presets `createBackup` refuses, derived from its own rule so the two cannot drift.
 const TOO_FREQUENT = SCHEDULE_OPTIONS.filter((o) =>
   backupTooFrequent(cronFromParts({ ...DEFAULT_PARTS, mode: o.mode })),
 ).map((o) => o.mode);
 
-/** What a schedule keeps when the field is left empty - the server's own default. */
+// DEFAULT_RETENTION mirrors the server's own default for an empty field.
 export const DEFAULT_RETENTION = 7;
 
-/**
- * A name nobody has to invent - "Backup every day", from the frequency itself.
- */
+// suggestScheduleName derives "Backup every day" from the frequency itself.
 export function suggestScheduleName(cron: string): string {
   const mode = partsFromCron(cron)?.mode;
   const label = SCHEDULE_OPTIONS.find((o) => o.mode === mode)?.label;
   return label ? `Backup ${label.toLowerCase()}` : "Scheduled backup";
 }
 
-/**
- * When a backup runs, and how many of them are kept.
- */
+// BackupScheduleFields edits when a backup runs and how many are kept.
 export function BackupScheduleFields({
   idPrefix,
   schedule,
@@ -44,18 +40,16 @@ export function BackupScheduleFields({
   retention,
   onRetentionChange,
 }: {
-  /** Prefix for the generated control ids, so two forms on a page still bind. */
+  // Prefix for the generated control ids, so two forms on one page still bind.
   idPrefix: string;
   schedule: string;
   onScheduleChange: (cron: string) => void;
   timezone: string;
   onTimezoneChange: (tz: string) => void;
-  /** How many backups to keep. */
   retention: number;
   onRetentionChange: (count: number) => void;
 }) {
-  // Read once, lazily: the zone list shows a live clock per zone, and a fresh
-  // Date on every render would restart that ticking on each keystroke.
+  // Read once: the zone list ticks a live clock, and a fresh Date each render restarts it on every keystroke.
   const [pickerNow] = React.useState(() => Date.now());
   const dstWarning = dstSkipWarning(schedule, timezone);
 
@@ -97,8 +91,7 @@ export function BackupScheduleFields({
         >
           Keep
         </FieldLabel>
-        {/* The unit lives INSIDE the field: "7" alone is the one number on this
-            form whose unit you cannot guess, and it used to be days. */}
+        {/* The unit lives inside the field: "7" alone is unguessable, and it used to be days. */}
         <div className="relative">
           <Input
             id={`${idPrefix}-retention`}
@@ -124,7 +117,7 @@ export function BackupScheduleFields({
   );
 }
 
-/** The reader's own zone, which is what a new schedule should default to. */
+// browserTimezone is the reader's own zone, the default for a new schedule.
 export function browserTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";

@@ -3,29 +3,18 @@ import { Globe, Laptop, Terminal } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * The marks behind a signed-in device, keyed by the strings `describeUserAgent`
- * already returns - no second taxonomy to keep in step with the parser.
- */
+// DeviceBrand - the marks behind a signed-in device, keyed by the strings `describeUserAgent` returns.
 export interface DeviceBrand {
   label: string;
-  /** Brand background. A literal, not a token: a brand colour is not themeable. */
+  // A literal, not a token: a brand colour is not themeable.
   bg: string;
-  /** Foreground on that background, picked for contrast. */
   fg: string;
-  /** Single-path mark, drawn on `viewBox`. */
   path?: string;
-  /** Defaults to simple-icons' 24. */
   viewBox?: string;
-  /** Used when the brand has no mark we can render truthfully. */
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-/**
- * Real brand marks, single-path, taken from simple-icons (CC0) except Windows,
- * which Microsoft had removed from that set - that one is devicon (MIT). Nothing
- * here is drawn from memory.
- */
+// OS_BRAND - single-path marks from simple-icons (CC0), except Windows, which is devicon (MIT).
 export const OS_BRAND: Record<string, DeviceBrand> = {
   macOS: {
     label: "macOS",
@@ -164,7 +153,6 @@ const UNKNOWN: DeviceBrand = {
   icon: Laptop,
 };
 
-/** One brand on its own colour. */
 function BrandTile({
   brand,
   className,
@@ -196,11 +184,7 @@ function BrandTile({
   );
 }
 
-/**
- * The browser's mark, with the operating system's on its corner. Either half may
- * be missing - a script has no OS, a bare "Linux" has no browser - and what is
- * left stands alone rather than falling back to a generic laptop.
- */
+// DeviceMark - the browser's mark with the operating system's on its corner; either half may be missing.
 export function DeviceMark({
   os,
   browser,

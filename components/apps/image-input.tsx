@@ -5,12 +5,6 @@ import { Container, Check, X, Loader2, Star, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-/**
- * Docker-image reference input with live, registry-backed hinting. All registry
- * calls go through `/api/registry/images` because the registries don't allow
- * direct browser requests.
- */
-
 interface NameSuggestion {
   name: string;
   description?: string;
@@ -27,7 +21,6 @@ type Suggestion =
 
 type Existence = "exists" | "absent" | "private" | "unknown";
 
-/** Split input into the name part and the tag fragment after the last `:`. */
 function splitForCompletion(input: string): {
   namePart: string;
   tagPart: string | null;
@@ -59,8 +52,6 @@ function useDebounced<T>(value: T, ms: number): T {
 export interface ImageInputProps {
   value: string;
   onChange: (value: string) => void;
-  /** The port the image declares (`EXPOSE`), or null when it declares none or
-   *  several. Fires with the existence check, on the same round trip. */
   onPort?: (port: number | null) => void;
   placeholder?: string;
   id?: string;
@@ -83,22 +74,17 @@ export function ImageInput({
     Existence | "checking" | null
   >(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  // Held in a ref so an inline callback from the caller cannot re-fire the
-  // registry check on every render.
   const onPortRef = React.useRef(onPort);
   React.useEffect(() => {
     onPortRef.current = onPort;
   }, [onPort]);
 
   const debouncedValue = useDebounced(value, 280);
-  // Whether the user is currently completing a tag (after a ":") - drives the
-  // empty-state copy and whether we offered name vs tag suggestions.
   const mode = React.useMemo<"name" | "tag">(
     () => (splitForCompletion(value).tagPart !== null ? "tag" : "name"),
     [value],
   );
 
-  // --- Fetch suggestions (name while typing repo, tags after a colon) ---
   React.useEffect(() => {
     const raw = debouncedValue.trim();
     const { namePart, tagPart } = splitForCompletion(raw);
@@ -112,8 +98,7 @@ export function ImageInput({
       setLoading(true);
       try {
         if (tagPart !== null) {
-          // Completing a tag - forward the fragment as a server-side filter so a
-          // specific/old version surfaces (Docker Hub `name=`), not only newest.
+          // Server-side filter so an old version surfaces, not only the newest tags.
           const filterParam = tagPart
             ? `&filter=${encodeURIComponent(tagPart)}`
             : "";
@@ -131,7 +116,7 @@ export function ImageInput({
             })),
           );
         } else {
-          // Completing a name - only Docker Hub returns results; others no-op.
+          // Only Docker Hub returns search results; other registries no-op.
           const res = await fetch(
             `/api/registry/images?action=search&q=${encodeURIComponent(namePart)}`,
             { signal: controller.signal },
@@ -153,11 +138,9 @@ export function ImageInput({
     return () => controller.abort();
   }, [debouncedValue]);
 
-  // --- Validate existence once a full image:tag is present ---
   React.useEffect(() => {
     const raw = debouncedValue.trim();
     const { tagPart } = splitForCompletion(raw);
-    // Only validate when there's a concrete tag/digest to check.
     const checkable =
       raw && !((tagPart === null && !raw.includes("@")) || tagPart === "");
     const controller = new AbortController();
@@ -184,7 +167,6 @@ export function ImageInput({
     return () => controller.abort();
   }, [debouncedValue]);
 
-  // Close the dropdown on outside click.
   React.useEffect(() => {
     function onClick(e: MouseEvent) {
       if (

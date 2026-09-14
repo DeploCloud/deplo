@@ -1,9 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Same scheme as the Overview skeleton: the grid mirrors DatabasesGrid's
-// breakpoints (1 col, 2 from `sm`, 3 from `3xl`) and each extra placeholder
-// only appears once a column exists for it - two full rows at every width.
+// Mirrors DatabasesGrid's breakpoints: each extra placeholder appears only once a column exists for it.
 const ROW_FILL = [
   "",
   "",
@@ -31,7 +29,7 @@ export default function Loading() {
 
       {/* Tabs */}
       <div>
-        {/* UnderlineTabsList: Databases / Destinations / Backups (each with a count badge) */}
+        {/* UnderlineTabsList: Databases / Destinations / Backups */}
         <div className="flex h-12 items-center gap-1 border-b border-border">
           <div className="flex h-12 items-center gap-2 px-3">
             <Skeleton className="h-4 w-16" />
@@ -77,8 +75,7 @@ export default function Loading() {
                     </div>
                   </div>
 
-                  {/* connection box: the reveal chip + copy, then server ·
-                      exposure */}
+                  {/* connection box: reveal chip + copy, then server · exposure */}
                   <div className="rounded-lg border border-border bg-surface p-3">
                     <div className="flex items-center gap-1.5">
                       <Skeleton className="h-7 flex-1 rounded-md" />

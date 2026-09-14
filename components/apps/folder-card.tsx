@@ -50,31 +50,16 @@ export interface FolderCardData {
   id: string;
   name: string;
   appCount: number;
-  /** Number of immediate child folders (nesting), for the count label. */
   subfolderCount?: number;
-  /** Accent colour (`#rrggbb`), or null/undefined for the default tile. */
   color?: string | null;
-  /** The CURRENT caller's effective capabilities on this folder. Drives per-folder
-   *  action gating: rename/colour/move/delete show only when this includes
-   *  `deploy` (the owner always has it). Absent ⇒ treated as no caps. */
   capabilities?: string[];
-  /** True when the caller owns this folder or is a folder super-user - the only
-   *  ones who may share it (open the Share dialog). */
   isOwner?: boolean;
-  /** The folder's owner (creator), for reference; not needed for gating. */
   ownerUserId?: string | null;
-  /** Parent folder id when nested, or null/absent at the top level. Gates the
-   *  "Top level" move option (only offered when the folder is actually nested). */
   parentId?: string | null;
 }
 
-// The folder drill-in URL lives in lib/overview-links (shared with the RSC
-// Overview, which can't call into a client module); re-exported here so the
-// grid's existing import site keeps working.
 export { folderHref };
 
-/** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
- *  right-click context menu (see the note in app-card.tsx). */
 type MenuKit = {
   Item: React.ElementType;
   Separator: React.ElementType;
@@ -91,9 +76,7 @@ const DROPDOWN_KIT: MenuKit = {
   SubContent: DropdownMenuSubContent,
 };
 
-/**
- * A folder tile in the Overview grid.
- */
+// FolderCard is a folder tile in the Overview grid.
 export function FolderCard({
   folder,
   view = "grid",
@@ -107,17 +90,11 @@ export function FolderCard({
 }: {
   folder: FolderCardData;
   view?: "grid" | "list";
-  /** A super-user (manage_team / instance admin) may manage AND share every
-   *  folder, even ones they don't own - bypasses the per-folder cap checks. */
   isAdminOverride?: boolean;
   dragHandle?: React.ReactNode;
   dragActive?: boolean;
   dropActive?: boolean;
-  /** Every team folder (id + name) for the "Move to folder" menu (nesting).
-   *  This folder itself is excluded; the server also rejects descendant moves. */
   folders?: { id: string; name: string }[];
-  /** Deleting takes the card off the grid on the CLICK and puts it back if the
-   *  mutation is refused. Owned by the grid, which holds the cards. */
   onDeleted?: () => void;
   onRestored?: () => void;
 }) {
@@ -125,30 +102,19 @@ export function FolderCard({
   const [pending, startTransition] = React.useTransition();
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  // "Delete all apps" on the delete dialog - off on every open (see below).
   const [deleteApps, setDeleteApps] = React.useState(false);
   const [colorOpen, setColorOpen] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [name, setName] = React.useState(folder.name);
-  // What the card SHOWS: the rename/recolour lands here on the click and the
-  // server's own value takes over as soon as the refresh brings it.
   const [shownName, applyName] = useOptimisticValue(folder.name);
   const [shownColor, applyColor] = useOptimisticValue<string | null>(
     folder.color ?? null,
   );
 
-  // Per-folder gating, derived from the folder's own data (see the doc comment).
-  // A super-user override wins outright; otherwise `deploy` gates the mutating
-  // actions and ownership gates sharing.
   const caps = folder.capabilities ?? [];
   const canManageThisFolder = isAdminOverride || caps.includes("deploy");
   const canShare = isAdminOverride || (folder.isOwner ?? false);
-  // Deleting the apps too is `delete_apps` HERE - a different permission from
-  // deleting the folder, so a member who may tidy the grid isn't offered the
-  // one click that destroys its contents.
   const canDeleteApps = isAdminOverride || caps.includes("delete_apps");
-  // Draft colour while the colour dialog is open; seeded from the folder and
-  // reset on open so cancelling discards an unsaved choice.
   const [draftColor, setDraftColor] = React.useState<string | null>(
     folder.color ?? null,
   );
@@ -156,15 +122,12 @@ export function FolderCard({
   const href = folderHref(folder.id, view);
   const count = folder.appCount;
   const subCount = folder.subfolderCount ?? 0;
-  // "3 apps · 2 folders" - the subfolder part only shows when nested.
   const countLabel =
     `${count} ${count === 1 ? "app" : "apps"}` +
     (subCount > 0
       ? ` · ${subCount} ${subCount === 1 ? "folder" : "folders"}`
       : "");
 
-  // Start / stop / restart / redeploy every app in this folder, its subtree included
-  // (the same apps `count` covers).
   const bulk = useBulkAppActions({
     scope: { folderId: folder.id },
     name: folder.name,
@@ -173,9 +136,6 @@ export function FolderCard({
     canDeploy: caps.includes("deploy_apps"),
   });
 
-  // The folder's icon tile: its chosen colour with an auto-contrast icon, or the
-  // default neutral tile when no colour is set. One definition drives both
-  // layouts so the list and grid cards always match.
   const tileColored = Boolean(shownColor);
   const tileStyle = shownColor
     ? {
@@ -185,9 +145,6 @@ export function FolderCard({
     : undefined;
   const tileClass = tileColored ? "" : "bg-secondary text-muted-foreground";
 
-  // A coloured folder tints its whole card: a soft ~10% wash of the colour with a
-  // slightly stronger edge, so it reads as that colour at a glance while keeping the
-  // text legible.
   const cardStyle = shownColor
     ? {
         backgroundColor: `color-mix(in srgb, ${shownColor} 10%, var(--background))`,
@@ -214,8 +171,6 @@ export function FolderCard({
     );
   }
 
-  // Move (re-parent) this folder under another folder, or to the top level.
-  // The server rejects moving a folder into itself or a descendant.
   function moveTo(parentId: string | null) {
     startTransition(async () => {
       const res = await gqlAction(
@@ -252,7 +207,6 @@ export function FolderCard({
     );
   }
 
-  // Folder actions, rendered once for whichever menu primitive is passed.
   const menu = (K: MenuKit) => (
     <>
       <SimpleTooltip content="Open this folder" side="left">
@@ -288,8 +242,7 @@ export function FolderCard({
               Change colour
             </K.Item>
           </SimpleTooltip>
-          {/* "Move to folder" only makes sense when there's somewhere to go:
-              a parent to climb out of, or another folder to nest into. */}
+          {/* Only offered when there is somewhere to go. */}
           {folders &&
             (folder.parentId != null ||
               folders.some((f) => f.id !== folder.id)) && (
@@ -347,8 +300,7 @@ export function FolderCard({
           </SimpleTooltip>
         </>
       )}
-      {/* Share is a separate grant from managing: an owner who has shared their
-          folder can hand out access even to actions they can't perform. */}
+      {/* Share is a separate grant from managing. */}
       {canShare && (
         <>
           {canManageThisFolder && <K.Separator />}
@@ -366,9 +318,6 @@ export function FolderCard({
     </>
   );
 
-  // ⋯ menu: shown when the viewer may manage, share, or run the apps inside
-  // (open is always available, but a bare card with no actions would be an
-  // empty menu).
   const actions =
     canManageThisFolder || canShare || bulk.available ? (
       <div className="pointer-events-auto relative z-10 flex items-center gap-1">
@@ -481,8 +430,6 @@ export function FolderCard({
 
             <ConfirmAction
               open={deleteOpen}
-              // The option is a per-delete decision, so it resets on close: reopening
-              // the dialog must never arrive with the apps already ticked for deletion.
               onOpenChange={(o) => {
                 setDeleteOpen(o);
                 if (!o) setDeleteApps(false);

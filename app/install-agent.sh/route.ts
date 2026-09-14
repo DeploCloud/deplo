@@ -1,10 +1,6 @@
 import { renderInstallScript } from "@/lib/agent/install-script";
 
-/**
- * Serve the agent installer (PLAN Part B, P2). The per-arch binary URLs + their
- * sha256s are resolved from the latest GitHub release of the agent and substituted
- * into the template, so the script verifies the binary before running it.
- */
+// GET serves the agent installer; per-arch URLs + sha256s come from the latest agent release, so the script verifies the binary before running it.
 export async function GET() {
   const script = await renderInstallScript();
   if (!script) {

@@ -1,10 +1,3 @@
-/**
- * Which product is answering at that address.
- *
- * Deplo migrates from two, and works this out rather than asking. The wizard only
- * asks when this comes back empty-handed.
- */
-
 import {
   listProjects as coolifyProjects,
   panelFromHealth,
@@ -19,13 +12,10 @@ import {
   type PanelIdentity,
 } from "./transport";
 
-/**
- * Laravel Sanctum mints `<id>|<random>`, and Dokploy's keys have no pipe. Free,
- * and only ever used to decide which of the two to TRY first.
- */
+// Laravel Sanctum mints `<id>|<random>` and Dokploy's keys have no pipe; only ever decides which of the two to TRY first.
 const SANCTUM_TOKEN = /^\d+\|[A-Za-z0-9]{20,}$/;
 
-/** The one call an import cannot proceed without, per platform. */
+// The one call an import cannot proceed without, per platform.
 const PROBE: Record<
   MigrationPlatform,
   (c: SourceCredential) => Promise<unknown>
@@ -36,10 +26,7 @@ const PROBE: Record<
 
 const DEPLO_PANEL: PanelIdentity = { name: "Deplo", portHint: ":3000" };
 
-/**
- * Deplo's own API answering. Its `/api/health` says `{"ok":true}`, word for word
- * Dokploy's, so what tells them apart is the GraphQL endpoint neither panel has.
- */
+// Deplo's `/api/health` says `{"ok":true}` word for word as Dokploy's, so the GraphQL endpoint neither panel has is what tells them apart.
 async function answersAsDeplo(baseUrl: string): Promise<boolean> {
   try {
     const res = await sendRequest(
@@ -70,13 +57,7 @@ export class PanelNotIdentifiedError extends Error {
   }
 }
 
-/**
- * Ask each platform, cheapest guess first, and answer with the one that did.
- *
- * A TRANSPORT failure stops it dead: a machine that did not answer will not
- * answer the second guess either, and two timeouts are thirty seconds of spinner.
- * Only an application-level refusal moves on to the other candidate.
- */
+// A TRANSPORT failure stops it dead (two timeouts are thirty seconds of spinner); only a refusal moves on to the other candidate.
 export async function detectMigrationSource(
   baseUrl: string,
   apiKey: string,
@@ -99,14 +80,11 @@ export async function detectMigrationSource(
     }
   }
 
-  // Both refused, so this is asked before the healthcheck rather than never:
-  // Deplo answers that one exactly as a Dokploy does, and read as one it would
-  // tell somebody their own panel is a Dokploy with a bad key.
+  // Asked BEFORE the healthcheck: Deplo answers that one exactly as a Dokploy does, so read there it names somebody's own panel a Dokploy.
   if (await answersAsDeplo(baseUrl))
     throw new PanelNotIdentifiedError(SELF_PANEL_REFUSAL);
 
-  // The unauthenticated healthcheck only chooses the WORDS - a
-  // reverse proxy can answer 200 there, so it never decides which product it is.
+  // The unauthenticated healthcheck only chooses the WORDS: a reverse proxy can answer 200 there.
   const answered = await panelFromHealth(baseUrl);
   const name = answered === "coolify" ? "Coolify" : "Dokploy";
   const said = refused.find((r) => r.name === name);
@@ -115,8 +93,7 @@ export async function detectMigrationSource(
       `That is a ${name} panel, and it refused the token. ${said.said}`,
     );
 
-  // The first line is the whole message; what each probe got is a LOG, and the
-  // wizard puts it behind View logs rather than in the warning.
+  // The first line is the whole message; the wizard puts the rest behind View logs.
   const log = refused.map((r) => `${r.name} check: ${r.said}`).join("\n");
   throw new PanelNotIdentifiedError(
     `Deplo could not read ${baseUrl} as a Dokploy or a Coolify panel.\n${log}`,

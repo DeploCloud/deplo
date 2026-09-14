@@ -4,19 +4,14 @@ import * as React from "react";
 import { Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// The hidden-value placeholder. Matches the server-side MASK used for secrets in
-// lib/data/env.ts / global-env.ts.
+// REVEAL_MASK - matches the server-side MASK for secrets in lib/data/env.ts / global-env.ts.
 export const REVEAL_MASK = "••••••••••••";
 
-// The chip fills its container and owns no width of its own.
 const OUTER =
   "relative block h-7 w-full rounded-md align-middle ring-1 ring-inset";
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 
-/**
- * The click-to-reveal chip, one covered value with an eye toggle. - `locked`, a
- * secret the server will never hand back: dots + a padlock, and it never opens.
- */
+// RevealChip - one covered value with an eye toggle; `locked` never opens, it is a padlock and dots.
 export function RevealChip({
   value = null,
   revealed = false,
@@ -30,26 +25,20 @@ export function RevealChip({
   labels = { reveal: "Reveal value", hide: "Hide value" },
   className,
 }: {
-  /** The real value. Pass it only when it may legitimately be revealed. */
   value?: string | null;
   revealed?: boolean;
   onToggle?: () => void;
-  /** What stands in for the value while it is covered. */
   placeholder?: string;
   placeholderClassName?: string;
-  /** The value is being fetched - the chip is inert and spins. */
   pending?: boolean;
-  /** Write-only secret: masked with a padlock, never openable. */
   locked?: boolean;
   lockedHint?: string;
-  /** No reveal affordance at all (missing capability). */
   readOnly?: boolean;
   labels?: { reveal: string; hide: string };
   className?: string;
 }) {
   function handleClick() {
-    // A drag to copy the value leaves a selection behind; don't let the click
-    // that ends it also slam the chip shut.
+    // A drag to copy the value ends in a click; don't let that click slam the chip shut.
     if (revealed && (window.getSelection()?.toString().length ?? 0) > 0) return;
     onToggle?.();
   }
@@ -88,9 +77,7 @@ export function RevealChip({
       disabled={pending}
       aria-pressed={revealed}
       aria-label={revealed ? labels.hide : labels.reveal}
-      // No `value` in the title while hidden either - the tooltip is a DOM
-      // attribute, and the whole point is that the value is nowhere in the DOM
-      // until revealed.
+      // The value is nowhere in the DOM until revealed - the title attribute included.
       title={revealed && value !== null ? value : "Click to reveal"}
       className={cn(
         OUTER,
@@ -124,8 +111,6 @@ export function RevealChip({
             {value}
           </code>
         ) : (
-          // Placeholder ONLY. The real value is never rendered while hidden, so
-          // nothing in this subtree, text or attribute, carries it.
           <code
             aria-hidden
             className={cn(

@@ -17,19 +17,12 @@ import type { AttachHandle } from "../infra/docker";
 
 import { DELETE } from "@/app/api/apps/[id]/logs/route";
 
-/**
- * A live log stream is closed by `DELETE …/logs?sessionId=…`, and the session id
- * is the only thing the route was given to go on, so anyone holding one could cut
- * short somebody else's stream.
- */
-
 let db: TestDb;
 let pg: PGlite;
 const APP = "prj_logged";
 const OWNER = "u_owner";
 const OTHER = "u_other";
 
-/** A backing that does nothing - the session layer never inspects it here. */
 function inertHandle(): AttachHandle {
   return {
     onData: () => () => {},
@@ -76,7 +69,6 @@ const del = (userId: string, sessionId: string) =>
 test("only the member who opened a log stream can close it", async () => {
   const session = logs.open(APP, OWNER, "deplo-logged-1", inertHandle());
 
-  // Another member of the same team - holding the session id and nothing else.
   const res = await del(OTHER, session.id);
   assert.equal(
     res.status,
@@ -88,7 +80,6 @@ test("only the member who opened a log stream can close it", async () => {
     "a stranger's DELETE must not cut short a live log stream",
   );
 
-  // The principal that opened it still closes it.
   await del(OWNER, session.id);
   assert.equal(
     logs.get(session.id, APP),

@@ -5,18 +5,10 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 
-/**
- * Migration-parity test for 0128, which splits `member` into four finer types by
- * reading the messages already on disk. The half that matters is the second one:
- * a pattern that is not anchored files a people event under the wrong heading.
- */
-
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
 const SPLIT = "0128_split_member_activity_type.sql";
 
-/** One row per real message template, and where 0128 must file it. */
 const CASES: [string, string][] = [
-  // security
   ["Created the CI API token", "security"],
   ["Updated the CI API token", "security"],
   ["Revoked the CI API token", "security"],
@@ -26,9 +18,7 @@ const CASES: [string, string][] = [
   ["Removed @ada's 2 passkeys", "security"],
   ["Reset two-factor authentication for @ada", "security"],
   ["Two-factor sign-in is now required for this team", "security"],
-  // mcp - same call site as the API-token revoke, told apart by the message
   ["Revoked Claude's MCP access", "mcp"],
-  // server
   ["Connected server eu-main-1", "server"],
   ["Reissued install command for server eu-main-1", "server"],
   ["Removed server eu-main-1", "server"],
@@ -58,7 +48,6 @@ const CASES: [string, string][] = [
     "Set the certificate account email to admin@acme.com on 2 servers",
     "server",
   ],
-  // integration
   ["Connected GitLab as ada", "integration"],
   ["Updated the GitLab git connection", "integration"],
   ["Disconnected the GitLab git connection", "integration"],
@@ -67,7 +56,6 @@ const CASES: [string, string][] = [
   ["Removed GitHub App deplo-ci", "integration"],
   ["Added registry ghcr", "integration"],
   ["Removed registry ghcr", "integration"],
-  // instance
   ["Set the maximum log range to 30 days", "instance"],
   ["Turned on Gravatar profile pictures", "instance"],
   ["Turned off Gravatar profile pictures", "instance"],
@@ -75,8 +63,7 @@ const CASES: [string, string][] = [
   ["Cleared the Deplo panel address", "instance"],
   ["Moved the panel to https://deplo.acme.com", "instance"],
   ["3 activity entries could not be recorded on this instance", "instance"],
-  // …and everything that is still about people STAYS `member`. These are the
-  // ones an unanchored LIKE would carry off.
+  // Everything still about people stays `member` - the rows an unanchored LIKE would carry off.
   ["Created team Acme", "member"],
   ["Added @ada to the team", "member"],
   ["Removed @ada from the team", "member"],

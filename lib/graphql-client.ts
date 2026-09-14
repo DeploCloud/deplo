@@ -1,17 +1,10 @@
 "use client";
 
-/**
- * Minimal typed GraphQL client for the browser UI. Errors: a GraphQL error
- * response throws an `Error` carrying the first message, so call sites keep the
- * familiar try/catch they used to get from a thrown server action.
- */
-
 export class GraphQLRequestError extends Error {
   constructor(
     message: string,
     readonly errors: {
       message: string;
-      /** What the server said the error is ABOUT, e.g. `{ field: "password" }`. */
       extensions?: Record<string, unknown>;
     }[],
   ) {
@@ -29,12 +22,7 @@ import {
 import { TEAM_HEADER, teamSlugFromPath } from "./team-path";
 import { assertVariablesDeclared } from "./graphql-vars";
 
-/**
- * The team the open page belongs to. `/api/graphql` is flat, so this header is
- * what tells the server which team the request is for (lib/membership.ts). A
- * caller that must act in ANOTHER team names it: the migration wizard lands a
- * run in a team its page does not address.
- */
+// `/api/graphql` is flat, so this header is what tells the server which team the request is for (lib/membership.ts).
 function teamHeader(teamId?: string): Record<string, string> {
   const slug =
     teamId ??
@@ -44,30 +32,21 @@ function teamHeader(teamId?: string): Record<string, string> {
   return slug ? { [TEAM_HEADER]: slug } : {};
 }
 
-/** Per-call options. `teamId` sends the request to that team, not the page's. */
+// GqlOptions - per-call options; `teamId` sends the request to that team, not the page's.
 export interface GqlOptions {
   teamId?: string;
   signal?: AbortSignal;
 }
 
-/** An abort is the caller's own doing, never a connection problem. */
 function isAbort(e: unknown): boolean {
   return e instanceof DOMException && e.name === "AbortError";
 }
 
-/**
- * Turn "the server is gone" into the one custom message, and tell the
- * connection guard so it raises the notification (and pauses navigation) if it
- * hasn't already. Returns the error to throw.
- */
 function unreachable(): ServerUnreachableError {
   reportServerUnreachable();
   return new ServerUnreachableError();
 }
 
-/**
- * Read a response that MUST be JSON - `/api/graphql` never answers anything else.
- */
 async function readJsonBody<T>(res: Response): Promise<T> {
   let text: string;
   try {
@@ -83,10 +62,7 @@ async function readJsonBody<T>(res: Response): Promise<T> {
   }
 }
 
-/**
- * Run a GraphQL operation and box the outcome as an `ActionResult` - the shape the
- * UI's call sites already branch on (`if (res.ok) … else res.error`).
- */
+// gqlAction - run an operation and box the outcome as an `ActionResult`, the shape the UI's call sites branch on.
 export async function gqlAction<TData = unknown, TPick = TData>(
   query: string,
   variables?: Record<string, unknown>,
@@ -114,9 +90,7 @@ export async function gql<TData = unknown>(
   opts?: GqlOptions,
 ): Promise<TData> {
   assertVariablesDeclared(query, variables);
-  // Already latched offline: the request can only fail, so refuse it up front with
-  // the custom message instead of making the user wait out a timeout for a raw
-  // "Failed to fetch".
+  // Already latched offline: refuse up front rather than making the user wait out a raw "Failed to fetch".
   if (isServerDisconnected()) throw new ServerUnreachableError();
 
   let res: Response;
@@ -132,9 +106,6 @@ export async function gql<TData = unknown>(
       signal,
     });
   } catch (e) {
-    // An abort is the caller's; anything else at the network level means the
-    // panel's web server may be gone - let the connection guard verify and
-    // raise the notification.
     if (isAbort(e)) throw e;
     throw unreachable();
   }
@@ -153,10 +124,7 @@ export async function gql<TData = unknown>(
   return json.data as TData;
 }
 
-/**
- * Open a GraphQL subscription over Server-Sent Events against the same
- * `/api/graphql` endpoint.
- */
+// gqlSubscribe - open a subscription over Server-Sent Events against the same `/api/graphql` endpoint.
 export function gqlSubscribe<TData = unknown>(
   query: string,
   variables: Record<string, unknown> | undefined,
@@ -187,9 +155,7 @@ export function gqlSubscribe<TData = unknown>(
     }
 
     if (!res.ok || !res.body) {
-      // A gateway status or an HTML body means we never reached the app - the
-      // proxy answered for a server that isn't there. Report it as an outage
-      // rather than as a subscription that failed on its own merits.
+      // A gateway status or an HTML body means the proxy answered for an app that is not there: an outage, not a failed subscription.
       const html = (res.headers.get("content-type") ?? "").includes(
         "text/html",
       );
@@ -201,8 +167,7 @@ export function gqlSubscribe<TData = unknown>(
     const decoder = new TextDecoder();
     let buffer = "";
 
-    // SSE frames are separated by a blank line; each frame is a set of
-    // `field: value` lines. We only care about `event:` and `data:`.
+    // SSE frames are separated by a blank line; each frame is a set of `field: value` lines.
     while (!closed) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -224,9 +189,7 @@ export function gqlSubscribe<TData = unknown>(
         if (event === "complete") return;
         if (event !== "next" || dataLines.length === 0) continue;
 
-        // Our own frames are always JSON. One that isn't means the stream got
-        // cut and something else's bytes landed in it - drop the frame rather
-        // than letting a raw SyntaxError reach `onError` (and a toast).
+        // A non-JSON frame means the stream got cut: drop it rather than let a raw SyntaxError reach `onError`.
         let json: { data?: TData; errors?: { message: string }[] };
         try {
           json = JSON.parse(dataLines.join("\n")) as typeof json;
@@ -241,25 +204,18 @@ export function gqlSubscribe<TData = unknown>(
     }
   }
 
-  // Reconnect loop: keep the subscription alive across transient drops until
-  // the caller unsubscribes (which aborts and sets `closed`).
   (async () => {
     let backoff = 1000;
     while (!closed) {
-      // Once the connection guard has latched the UI behind its blocking overlay, stop
-      // self-healing: retrying would keep hammering a dead server (and spawning error
-      // toasts) behind a screen that promises nothing reconnects until the user reloads.
+      // Once the connection guard has latched the UI, stop self-healing: the overlay promises nothing reconnects until a reload.
       if (isServerDisconnected()) return;
       try {
         await connect();
-        // Clean `complete` or EOF - for a status stream that should not happen
-        // unless the project was deleted; stop trying in that case.
+        // A clean `complete` or EOF should not happen unless the app was deleted, so stop trying.
         if (!closed) return;
       } catch (e) {
         if (closed || controller.signal.aborted) return;
-        // `connect()` has already reported the outage and swapped the raw
-        // failure for the custom message, so whatever surfaces here is safe to
-        // show verbatim.
+        // `connect()` already swapped the raw failure for the custom message, so this is safe to show verbatim.
         onError?.(e instanceof Error ? e : new Error(String(e)));
         await new Promise((r) => setTimeout(r, backoff));
         backoff = Math.min(backoff * 2, 10_000);

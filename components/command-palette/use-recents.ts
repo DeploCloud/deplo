@@ -2,8 +2,6 @@
 
 import * as React from "react";
 
-/** The last few pages opened from the palette, per person per team. */
-
 export interface Recent {
   id: string;
   label: string;
@@ -38,14 +36,11 @@ export function readRecents(key: string): Recent[] {
 
 export function useRecents(userId: string, teamId: string) {
   const key = keyFor(userId, teamId);
-  // Read straight into the initial state: this only ever mounts inside an open
-  // dialog, so there is no server pass to mismatch and no "not read yet" guard.
+  // Only ever mounts inside an open dialog, so reading storage into the initial state cannot mismatch a server pass.
   const [recents, setRecents] = React.useState<Recent[]>(() =>
     readRecents(key),
   );
-  // A mirror, so the write below happens next to the call and not inside a
-  // state updater - React may run one of those more than once, and a
-  // reducer that touches storage is not a reducer.
+  // React may run a state updater more than once, so the storage write stays outside of one.
   const current = React.useRef(recents);
 
   const remember = React.useCallback(
@@ -54,9 +49,7 @@ export function useRecents(userId: string, teamId: string) {
       current.current = next;
       try {
         window.localStorage.setItem(key, JSON.stringify(next));
-      } catch {
-        /* a browser with storage blocked simply keeps no history */
-      }
+      } catch {}
       setRecents(next);
     },
     [key],
@@ -65,7 +58,7 @@ export function useRecents(userId: string, teamId: string) {
   return { recents, remember };
 }
 
-/** Most recent first, one row per id, capped. Pure, so it can be tested. */
+// nextRecents - most recent first, one row per id, capped.
 export function nextRecents(prev: Recent[], entry: Recent): Recent[] {
   return [entry, ...prev.filter((r) => r.id !== entry.id)].slice(0, CAP);
 }

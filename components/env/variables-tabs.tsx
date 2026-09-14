@@ -9,8 +9,7 @@ import {
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
 
-// Legacy deep links fold into the two tabs: `instance` was the "All teams" tab,
-// now a Teams scope on a shared variable (ADR-0027).
+// Legacy deep links fold into the two tabs: `instance` is now a Teams scope (ADR-0027).
 const LEGACY: Record<string, string> = {
   service: "app",
   environments: "app",
@@ -18,7 +17,7 @@ const LEGACY: Record<string, string> = {
   instance: "shared",
 };
 
-/** The Variables page's two tabs, with `?tab=shared` in the URL. */
+// VariablesTabs - the Variables page's two tabs, with `?tab=shared` in the URL.
 export function VariablesTabs({
   all,
   shared,
@@ -36,9 +35,6 @@ export function VariablesTabs({
     if (tab === "app") next.delete("tab");
     else next.set("tab", tab);
     const s = next.toString();
-    // The native History API, not `router.replace`: both panels are already in
-    // the browser, and re-running every server read to move an underline would
-    // be a page load.
     window.history.replaceState(
       null,
       "",
@@ -49,7 +45,7 @@ export function VariablesTabs({
   return (
     <Tabs value={active} onValueChange={selectTab}>
       <UnderlineTabsList>
-        {/* The value stays `app` - it is what every ?tab= deep link carries. */}
+        {/* The value stays `app` - what every ?tab= deep link carries. */}
         <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
       </UnderlineTabsList>

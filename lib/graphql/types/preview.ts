@@ -16,10 +16,6 @@ import {
 } from "@/lib/data/previews";
 import type { GithubPullRequestSummary } from "@/lib/github/app";
 
-/* ------------------------------------------------------------------ */
-/* Object types - pull request previews (ADR-0014)                     */
-/* ------------------------------------------------------------------ */
-
 export const AppPreviewRef = builder
   .objectRef<AppPreviewDTO>("AppPreview")
   .implement({
@@ -128,10 +124,6 @@ export const PreviewEnvVarRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Query                                                               */
-/* ------------------------------------------------------------------ */
-
 const deployScope = { capability: "manage_previews" } as const;
 const envScope = { capability: "manage_env" } as const;
 
@@ -161,10 +153,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { appId }) => listPreviewEnvVars(String(appId)),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 const PreviewSettingsInput = builder.inputType("AppPreviewSettingsInput", {
   fields: (t) => ({
@@ -223,9 +211,8 @@ builder.mutationFields((t) => ({
       input: t.arg({ type: PreviewSettingsInput, required: true }),
     },
     resolve: async (_r, { appId, input }) => {
-      // An explicit null CLEARS a nullable setting (the port, the server, the base
-      // domain); only an omitted field leaves it alone. `?? undefined` here made
-      // the form's "back to the app's port" a save that changed nothing.
+      // An explicit null CLEARS a nullable setting and only an omitted field leaves
+      // it alone; `?? undefined` made the form's "back to the app's port" a no-op save.
       await setAppPreviewSettings(String(appId), {
         enabled: input.enabled ?? undefined,
         baseDomain: input.baseDomain,

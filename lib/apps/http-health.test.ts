@@ -8,10 +8,7 @@ import {
   withinStartPeriod,
 } from "./http-health";
 
-/**
- * Deplo's own http probe has to keep Docker's rule, or a single blip would paint
- * a working app red: `retries` CONSECUTIVE failures, and a success forgets them.
- */
+// Docker's rule, kept so one blip cannot paint a working app red: `retries` CONSECUTIVE failures, a success forgets them.
 
 test("a check stays healthy until retries consecutive failures", () => {
   const app = "prj_streak";
@@ -53,10 +50,7 @@ test("a booting container is starting, not failing", () => {
   assert.equal(withinStartPeriod(started, 0, now), false);
 });
 
-/**
- * `Interval` is the field that says how often the app is asked. Without it, the
- * probe would fire once per open page instead of once per interval.
- */
+// Without `interval` the probe would fire once per open page instead of once per interval.
 test("the verdict is reused until the interval has elapsed", () => {
   const app = "prj_interval";
   forgetHttpHealth(app);
@@ -73,6 +67,6 @@ test("the verdict is reused until the interval has elapsed", () => {
 
   httpHealthVerdict(app, false, 1, t0);
   assert.equal(recentHttpHealth(app, 30, t0 + 1_000), "unhealthy");
-  // No interval means no reuse: ask every time.
+  // interval 0 means no reuse at all: ask every time.
   assert.equal(recentHttpHealth(app, 0, t0 + 1_000), null);
 });

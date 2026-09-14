@@ -103,9 +103,7 @@ test("a full mTLS handshake succeeds between minted server and client", async ()
 });
 
 test("signAgentCsr: a CSR-signed agent cert chains to the CA and uses control-plane-chosen SANs", async () => {
-  // The agent generates its own Ed25519 key pair and a PKCS#10 CSR (the remote
-  // bootstrap: its private key NEVER leaves the agent). The CSR carries a SAN
-  // the agent should NOT get to choose; the control plane overrides it.
+  // The agent's private key never leaves it, and the SAN the CSR claims is one the control plane must override.
   const agentKeys = await webcrypto.subtle.generateKey(
     { name: "Ed25519" },
     true,
@@ -138,13 +136,11 @@ test("signAgentCsr: a CSR-signed agent cert chains to the CA and uses control-pl
     /9\.9\.9\.9/,
     "the agent must not be able to choose its own SANs",
   );
-  // The fingerprint the control plane stores matches the cert it issued.
   assert.equal(signed.fingerprint, await certFingerprint(signed.certPem));
 });
 
 test("signAgentCsr: rejects a CSR whose self-signature does not verify", async () => {
-  // A CSR signed by key A but presenting key B's public key (proof-of-possession
-  // failure) must be refused before any cert is minted.
+  // A proof-of-possession failure must be refused before any cert is minted.
   const a = await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
     "sign",
     "verify",
@@ -158,10 +154,9 @@ test("signAgentCsr: rejects a CSR whose self-signature does not verify", async (
     keys: a as CryptoKeyPair,
     signingAlgorithm: { name: "Ed25519" },
   });
-  // Tamper: re-encode the CSR with B's public key but A's signature. Easiest
-  // reliable forgery in-test is to flip a byte in the DER signature region.
+  // The cheapest reliable in-test forgery is a flipped byte in the DER signature region.
   const der = Buffer.from(good.rawData);
-  der[der.length - 1] ^= 0xff; // corrupt the trailing signature byte
+  der[der.length - 1] ^= 0xff;
   void b;
   await assert.rejects(
     () =>
@@ -183,9 +178,7 @@ test("certFingerprint matches Node's own sha256 fingerprint of the same cert", a
 });
 
 test("the CSR-signed agent cert completes a real mTLS handshake with the control-plane client", async () => {
-  // End-to-end trust inversion: the agent serves TLS with a cert the control
-  // plane signed from the agent's OWN key (which the control plane never saw),
-  // and the control-plane client authenticates against the shared CA.
+  // The agent serves TLS with a cert signed from a key the control plane never saw, and the client authenticates against the shared CA.
   const agentKeyPem = generateKeyPairSync("ed25519")
     .privateKey.export({ format: "pem", type: "pkcs8" })
     .toString();
@@ -261,8 +254,7 @@ test("the CSR-signed agent cert completes a real mTLS handshake with the control
 
 test("the agent refuses a client that presents no CA-signed cert", async () => {
   const server = await issueAgentServerCert(["127.0.0.1"]);
-  // The security property is server-side: a peer without a CA-signed client cert
-  // never reaches an AUTHORIZED connection, and the server raises tlsClientError.
+  // The property is server-side: a peer without a CA-signed client cert never reaches an AUTHORIZED connection.
   await new Promise<void>((resolve, reject) => {
     let authorizedConnections = 0;
     const srv = tls.createServer(
@@ -278,7 +270,6 @@ test("the agent refuses a client that presents no CA-signed cert", async () => {
       },
     );
     srv.on("tlsClientError", () => {
-      // Expected: the certless client is rejected at handshake.
       srv.close();
       assert.equal(
         authorizedConnections,
@@ -296,8 +287,7 @@ test("the agent refuses a client that presents no CA-signed cert", async () => {
         ca: server.caPem,
         rejectUnauthorized: true,
       });
-      // The client may error or briefly connect; either way the server must
-      // reject. Swallow the client-side error so it doesn't fail the test.
+      // The client may error or briefly connect, so its error is swallowed rather than failing the test.
       cli.on("error", () => cli.destroy());
       cli.on("secureConnect", () => cli.destroy());
       // Safety net so a hung handshake fails loudly instead of timing out.

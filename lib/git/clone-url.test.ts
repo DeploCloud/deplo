@@ -7,10 +7,6 @@ import {
   redactCloneUrl,
 } from "./clone-url";
 
-/**
- * What a fork preview is allowed to clone.
- */
-
 const BASE = "https://github.com/acme/app.git";
 
 test("a fork on the same host is cloned from its own address", () => {

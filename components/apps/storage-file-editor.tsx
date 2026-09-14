@@ -10,22 +10,11 @@ import { languageForPath } from "@/components/apps/editor-language";
 import type { StorageFileDraft } from "@/lib/apps/storage-file-model";
 import { cn } from "@/lib/utils";
 
-/**
- * What a **File** storage entry actually contains - the box you write the file in,
- * right under the two paths that say where it goes. THE BOX IS ALWAYS THERE.
- */
-
-/**
- * The editor is CodeMirror (~40KB) and most apps have no File entry at all, so
- * it is code-split and never enters SSR - the Storage page pays for it only when
- * a File entry is actually on screen. Same reasoning as `xterm-lazy.tsx`.
- */
 const TextEditor = dynamic(
   () => import("./text-editor").then((m) => m.TextEditor),
   { ssr: false, loading: () => <EditorSkeleton /> },
 );
 
-/** How tall the box is before it scrolls - a config file, not a manuscript. */
 const EDITOR_MIN_HEIGHT = 220;
 
 export function StorageFileEditor({
@@ -35,15 +24,9 @@ export function StorageFileEditor({
   onChange,
   onRetry,
 }: {
-  /** The row's CURRENT path in Files, normalised. Empty ⇒ not named yet. */
   path: string;
-  /** Undefined until the row has either been typed into or read. */
   state: StorageFileDraft | undefined;
-  /**
-   * Whether the viewer may read and write this app's files. COSMETIC - the
-   * authoritative gate is the `configure_apps` capability on the `appStorageFile`
-   * query and the `writeAppFile` mutation.
-   */
+  // COSMETIC: the real gate is `configure_apps` on the appStorageFile query and writeAppFile mutation.
   canManageFiles: boolean;
   onChange: (text: string) => void;
   onRetry: () => void;
@@ -70,8 +53,6 @@ export function StorageFileEditor({
     );
   }
 
-  // The read that matches the entry's CURRENT path - undefined while a path edit
-  // is still being re-read, and for an entry that has no path at all.
   const current = state && state.path === path ? state : undefined;
 
   if (current?.status === "error") {
@@ -106,8 +87,6 @@ export function StorageFileEditor({
     return (
       <Section
         label={label}
-        // An entry with no path yet has no file to describe, so it gets no badge -
-        // only the box.
         badge={
           !path ? null : current.exists ? (
             current.draft !== current.saved ? (
@@ -128,7 +107,6 @@ export function StorageFileEditor({
     );
   }
 
-  // Nothing has been read for this path.
   const carried =
     state?.status === "editable" && state.draft !== state.saved
       ? state.draft
@@ -152,7 +130,6 @@ export function StorageFileEditor({
   );
 }
 
-/** Label row + body, so every state lines up under the same heading. */
 function Section({
   label,
   badge,
@@ -201,7 +178,6 @@ function Note({
   );
 }
 
-/** The box's footprint while the file is being read, so nothing jumps. */
 function EditorSkeleton() {
   return (
     <div

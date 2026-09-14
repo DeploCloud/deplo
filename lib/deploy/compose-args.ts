@@ -1,19 +1,9 @@
-/**
- * The app's own extra `docker compose up` flags. Here the operator adds only the
- * part that is theirs, Deplo keeps owning the rest, and both sides - control plane
- * and agent - refuse the flags that would take that ownership away.
- */
-
 /** At most this many tokens - a bring-up is a flag or two, not a script. */
 export const COMPOSE_UP_ARGS_MAX_TOKENS = 24;
 /** At most this many characters per token. */
 export const COMPOSE_UP_ARGS_MAX_TOKEN_LENGTH = 128;
 
-/**
- * The flags that decide WHICH stack is coming up. They are Deplo's to set, so
- * they can never be overridden here - mirrored by `composeArgDenied` in the
- * agent, which drops the whole set if one arrives anyway.
- */
+// The flags that decide WHICH stack is coming up - mirrored by `composeArgDenied` in the agent.
 const DENIED = new Set([
   "-p",
   "--project-name",
@@ -23,22 +13,15 @@ const DENIED = new Set([
   "--project-directory",
 ]);
 
-/** Every character a real compose flag or value is made of. An allowlist, so a
- * quote, a space inside a token, `;`, `&`, `|`, `$` or a control character is
- * refused without having to enumerate what people might try. */
+// An allowlist, so a quote, a space inside a token, `;`, `&`, `|`, `$` or a control character is refused.
 const TOKEN_RE = /^[A-Za-z0-9._:/=,+@-]+$/;
 
-/** Split the stored string into argv tokens (whitespace-separated, no quoting -
- * one token per element, exactly as the agent receives them). */
+/** Split the stored string into argv tokens, exactly as the agent receives them. */
 export function parseComposeUpArgs(raw: string | null | undefined): string[] {
   return (raw ?? "").trim().split(/\s+/).filter(Boolean);
 }
 
-/**
- * Why this set of flags can't be used, or null when it is fine. One message,
- * naming the token at fault - the field is advanced, but "invalid input" would
- * still leave the operator guessing which of six flags Deplo objected to.
- */
+/** Why this set of flags can't be used, or null when it is fine. */
 export function validateComposeUpArgs(raw: string): string | null {
   const tokens = parseComposeUpArgs(raw);
   if (tokens.length === 0) return null;
@@ -60,13 +43,7 @@ export function validateComposeUpArgs(raw: string): string | null {
   return null;
 }
 
-/**
- * The flags a DEPLOY of a compose stack brings it up with: `--pull always` in
- * front of the operator's own, so a redeploy fetches what its tags point at now.
- * `docker compose up` alone pulls only what is missing, which made "Redeploy" a
- * no-op for every `:latest` stack. An operator who sets `--pull` keeps theirs
- * (`--pull missing` is the opt-out for an image that exists only on the host).
- */
+/** Deploy flags: `--pull always` first, since `docker compose up` alone pulls only what is missing. */
 export function composeDeployArgs(extra: string[]): string[] {
   const own = extra.some((t) => t === "--pull" || t.startsWith("--pull="));
   // The agent drops the WHOLE set past its cap, pull included.
@@ -74,25 +51,18 @@ export function composeDeployArgs(extra: string[]): string[] {
   return ["--pull", "always", ...extra];
 }
 
-/**
- * The full command the owning server will run, for the settings page to show
- * live. Built from the same pieces the agent uses (`internal/server/deploy.go`
- * composeUpArgs), so the preview is the command, not a description of it.
- */
+/** The full command the owning server will run, for the settings page to show live. */
 export function composeUpCommandPreview(opts: {
   slug: string;
-  /** Compose stacks interpolate `${VAR}` and therefore get an env-file; a
-   * single-image app has its env baked into the rendered YAML. */
+  // A compose stack interpolates `${VAR}` and therefore gets an env-file; a single-image app bakes env into the rendered YAML.
   usesEnvFile: boolean;
-  /** The operator's extra flags, already parsed. */
   extra: string[];
 }): string {
   const stack = `/data/stacks/${opts.slug}.yml`;
   const parts = ["docker", "compose", "-p", `deplo-${opts.slug}`, "-f", stack];
   if (opts.usesEnvFile)
     parts.push("--env-file", `/data/stacks/${opts.slug}.env`);
-  // A compose stack's deploy pulls (composeDeployArgs); a single-image app's
-  // image is pulled or built before the bring-up, so its command stays bare.
+  // A compose stack's deploy pulls (composeDeployArgs); a single-image app's image is pulled or built before the bring-up.
   const extra = opts.usesEnvFile ? composeDeployArgs(opts.extra) : opts.extra;
   parts.push("up", "-d", "--remove-orphans", ...extra);
   return parts.join(" ");

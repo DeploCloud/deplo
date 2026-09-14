@@ -9,11 +9,6 @@ import {
   __setMigrationFetchForTest,
 } from "./transport";
 
-/**
- * Which panel is answering. The order is an optimisation; the ANSWER is always
- * the call that succeeded, never the guess.
- */
-
 const DOKPLOY_KEY = "dok_1a2b3c4d5e6f7g8h";
 const COOLIFY_TOKEN = "3|abcdefghijklmnopqrstuvwxyz012345";
 const BASE = "https://panel.test";
@@ -23,7 +18,6 @@ function reset(t: { after: (fn: () => void) => void }): void {
   t.after(__resetCoolifyRateLimitForTest);
 }
 
-/** Answers 200 to whichever path matches, 401 to everything else. */
 function only(match: string, body: unknown = []): string[] {
   const seen: string[] = [];
   __setMigrationFetchForTest(async (url) => {
@@ -58,16 +52,14 @@ test("a Coolify answers as a Coolify", async (t) => {
 
 test("the token's shape only chooses the order, never the answer", async (t) => {
   reset(t);
-  // A Coolify whose token does not look like one: Dokploy is asked first, refuses,
-  // and Coolify still wins.
+  // A Coolify whose token does not look like one: Dokploy is asked first and refuses.
   const seen = only("/api/v1/projects");
   assert.equal(await detectMigrationSource(BASE, DOKPLOY_KEY), "coolify");
   assert.equal(seen.length, 2);
   assert.ok(seen[0].includes("/api/project.all"));
 });
 
-// Two timeouts are thirty seconds of spinner for an address that answered
-// neither time. This is the assertion that pins it.
+// Two timeouts are thirty seconds of spinner for an address that answered neither time.
 test("a machine that does not answer is asked exactly once", async (t) => {
   reset(t);
   let calls = 0;
@@ -85,8 +77,7 @@ test("a machine that does not answer is asked exactly once", async (t) => {
 });
 
 test("Cloudflare's 521 stops the detection instead of quoting its page", async (t) => {
-  // The address is proxied whatever runs behind it, so a 52x is the PROXY talking:
-  // one sentence, and the second guess is never tried (it would answer the same).
+  // A 52x is the PROXY talking, so the second guess is never tried: it would answer the same.
   reset(t);
   const seen: string[] = [];
   __setMigrationFetchForTest(async (url) => {
@@ -118,8 +109,7 @@ test("both refusing names both refusals", async (t) => {
       ),
   );
   await assert.rejects(detectMigrationSource(BASE, DOKPLOY_KEY), (e: Error) => {
-    // One sentence, then a log: the wizard shows the first line and puts the
-    // rest behind View logs.
+    // One sentence, then a log: the wizard shows the first line and puts the rest behind View logs.
     const [headline, ...log] = e.message.split("\n");
     assert.match(headline, /^Deplo could not read https:\/\/panel\.test/);
     assert.doesNotMatch(headline, /request failed|refused/);
@@ -151,8 +141,7 @@ test("a Coolify that refuses the token is named as one", async (t) => {
   );
 });
 
-// A reverse proxy can answer 200 on /api/health. The probe chooses words, so a
-// front page must not turn a mystery into a confident wrong answer.
+// A reverse proxy can answer 200 on /api/health, so a front page must not turn a mystery into a confident wrong answer.
 test("somebody's front page on /api/health decides nothing", async (t) => {
   reset(t);
   __setMigrationFetchForTest(async (url) => {
@@ -169,8 +158,7 @@ test("somebody's front page on /api/health decides nothing", async (t) => {
   );
 });
 
-// Deplo's own health is `{"ok":true}`, which is Dokploy's word for word: read by
-// that alone, somebody's own panel came back "a Dokploy that refused the token".
+// Deplo's own health is `{"ok":true}`, Dokploy's word for word: read by that alone, somebody's own panel came back a Dokploy.
 test("Deplo's own address is named as Deplo, not as a Dokploy", async (t) => {
   reset(t);
   __setMigrationFetchForTest(async (url) => {

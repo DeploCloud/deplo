@@ -10,29 +10,16 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { isoTimestampParser } from "./timestamp-parser";
 import { schema } from "./schema";
 
-/**
- * pglite-backed Drizzle test harness (relational-store PLAN §8 / Step -1 GATE). -
- * `{ schema }` (and its sub-modules) import only drizzle, never `server-only`, so
- * the harness can pull it in directly under `node --test`.
- */
-
-/** A pglite Drizzle client over the full aggregated schema. */
+// TestDb is a pglite Drizzle client over the full aggregated schema.
 export type TestDb = PgliteDatabase<typeof schema>;
 
-// The committed migrations live at <repo>/lib/db/migrations and the test runner
-// starts from the repo root (package.json), so this cwd-relative path resolves.
 const MIGRATIONS = path.join(process.cwd(), "lib", "db", "migrations");
 
 const PARSERS = {
-  [types.TIMESTAMPTZ]: isoTimestampParser, // OID 1184
-  [types.TIMESTAMP]: isoTimestampParser, // OID 1114
+  [types.TIMESTAMPTZ]: isoTimestampParser,
+  [types.TIMESTAMP]: isoTimestampParser,
 };
 
-/**
- * Replaying every migration costs ~2.4s per test process; loading an already
- * migrated data directory costs ~0.6s. The key is the migrations' own content,
- * so a new or edited one invalidates the cache on its own.
- */
 function cachePath(): string {
   const h = crypto.createHash("sha256");
   for (const f of fs.readdirSync(MIGRATIONS).sort()) {
@@ -44,11 +31,7 @@ function cachePath(): string {
 
 let cacheFile: string | undefined;
 
-/**
- * Build a fresh, isolated in-memory Postgres with the canonical-ISO timestamp
- * parser bound and every migration applied. Call in a `before`; `await
- * db.$client.close()` (or close the returned `pg`) in the matching `after`.
- */
+// makeTestDb builds an isolated in-memory Postgres with every migration applied.
 export async function makeTestDb(): Promise<{ db: TestDb; pg: PGlite }> {
   cacheFile ??= cachePath();
   if (fs.existsSync(cacheFile)) {
@@ -79,11 +62,7 @@ export async function makeTestDb(): Promise<{ db: TestDb; pg: PGlite }> {
   return { db, pg };
 }
 
-/**
- * Empty every table and restart every sequence - the reset a matrix test runs
- * between hundreds of fixtures. `delete` under `session_replication_role =
- * replica` skips the FK triggers, which is ~100x faster than truncating.
- */
+// truncateAll empties every table and restarts every sequence.
 export async function truncateAll(pg: PGlite): Promise<void> {
   await pg.exec(RESET_ALL);
 }

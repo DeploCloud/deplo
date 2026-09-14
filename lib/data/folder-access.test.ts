@@ -4,8 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Same in-memory harness as folders.test.ts: no DEPLO_DATABASE_URL → the store runs
-// in its test-only in-memory mode.
+// No DEPLO_DATABASE_URL: the store runs in its test-only in-memory mode.
 process.env.DEPLO_DATA_DIR = mkdtempSync(
   join(tmpdir(), "deplo-folder-access-"),
 );
@@ -14,8 +13,6 @@ delete process.env.DATABASE_URL;
 
 test("boundedBy intersects and returns canonical capability order", async () => {
   const { boundedBy } = await import("./folder-access");
-  // Requested caps are clamped to the bound; order follows ALL_CAPABILITIES,
-  // not the input order, and duplicates collapse.
   assert.deepEqual(
     boundedBy(
       ["deploy_apps", "manage_backups", "view"],
@@ -59,9 +56,7 @@ test("withView always includes view, in canonical order", async () => {
 test("a granter can never hand out a capability they lack (double-bound)", async () => {
   const { boundedBy, withView } = await import("./folder-access");
   const { NODE_GRANTABLE_CAPABILITIES } = await import("../membership-shared");
-  // The Share flow computes: requested ∩ granterCaps ∩ NODE_GRANTABLE, +view.
-  // Granter holds only [view, deploy]; even if they request manage_backups,
-  // their own bound removes it. This is the bound ADR-0016 KEPT.
+  // The double bound ADR-0016 kept: requested ∩ the granter's own caps ∩ NODE_GRANTABLE.
   const requested = ["deploy_apps", "manage_backups"] as const;
   const granterCaps = ["view", "deploy_apps"] as const;
   const result = withView(
@@ -80,9 +75,7 @@ test("a granter can never hand out a capability they lack (double-bound)", async
 test("a node grant can never name a team-wide capability", async () => {
   const { NODE_GRANTABLE_CAPABILITIES, PROJECT_SCOPED_CAPABILITIES } =
     await import("../membership-shared");
-  // The bound that replaced the grantee clamp. Nothing in here can satisfy the
-  // last-admin check, mint a credential, or re-share, so a node grant is never a
-  // route back to team administration however it is asked for.
+  // A node grant must never be a route back to team administration.
   for (const cap of [
     "manage_members",
     "manage_roles",
@@ -102,8 +95,6 @@ test("a node grant can never name a team-wide capability", async () => {
       `${cap} must not be node-grantable`,
     );
   }
-  // It is the token's project set plus exactly three, for the reasons documented
-  // beside the constant.
   for (const cap of PROJECT_SCOPED_CAPABILITIES) {
     assert.ok(
       NODE_GRANTABLE_CAPABILITIES.includes(cap),

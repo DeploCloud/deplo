@@ -1,10 +1,5 @@
-/**
- * One source panel, whichever product it is.
- *
- * The importer and the mappers speak only this: an adapter turns its own API into
- * the row shapes in `./model`, and nothing above the seam learns which panel it is
- * reading. See https://deplo.build/docs/migrations/move-from-dokploy
- */
+// An adapter turns its own API into the row shapes in `./model`, so nothing above the seam learns which panel it reads.
+// See https://deplo.build/docs/migrations/move-from-dokploy
 
 import type {
   HostMount,
@@ -23,7 +18,7 @@ import type {
 import { coolifyClient } from "./coolify/adapter";
 import { dokployClient } from "./dokploy/adapter";
 
-/** The products Deplo migrates from. Anything else is refused by that name. */
+// The products Deplo migrates from. Anything else is refused by that name.
 export const MIGRATION_PLATFORMS = ["dokploy", "coolify"] as const;
 export type MigrationPlatform = (typeof MIGRATION_PLATFORMS)[number];
 
@@ -34,57 +29,44 @@ export function isMigrationPlatform(v: unknown): v is MigrationPlatform {
   );
 }
 
-/** A source panel and the credential that reads it. */
+// A source panel and the credential that reads it.
 export interface SourceCredential {
   kind: MigrationPlatform;
-  /** Origin with no trailing slash and no `/api`, e.g. https://panel.acme.com. */
+  // Origin with no trailing slash and no `/api`, e.g. https://panel.acme.com.
   baseUrl: string;
-  /** The panel's API key or token. Each adapter knows which header it rides in. */
+  // The panel's API key or token. Each adapter knows which header it rides in.
   apiKey: string;
 }
 
-/** What a service mounts right now, and whether it is still up. */
+// What a service mounts right now, and whether it is still up.
 export interface ServiceRuntime {
   volumes: NamedVolume[];
   hostMounts: HostMount[];
   running: boolean;
   notes: string[];
-  /**
-   * Deplo could not find out what this service mounts - no live container AND
-   * nothing declared. NOT the same fact as "it mounts nothing", which is why the
-   * report calls this one a decision for a person rather than a clean skip.
-   */
+  // No live container AND nothing declared: NOT the same fact as "it mounts nothing", so the report asks a person.
   undetermined?: boolean;
 }
 
-/** What `serviceRuntime` is asked about: enough to answer without the panel when
- *  the service is stopped, which is the normal state of one being left behind. */
+// Enough to answer without the panel when the service is stopped, which is the normal state of one being left behind.
 export interface RuntimeQuery {
   kind: string;
   id: string;
   appName: string;
-  /** The panel's own id for the machine it runs on; empty for the panel's host.
-   *  Dokploy inspects containers on THAT machine only when told which one. */
+  // Empty for the panel's host; Dokploy inspects containers on another machine only when told which one.
   serverId?: string;
   declaredVolumes: NamedVolume[];
   declaredBindMounts: HostMount[];
-  /** The stack's own YAML, which is the only place a volume's real name is
-   *  written when the file pins one. Null for anything that is not a stack. */
+  // The only place a volume's real name is written when the file pins one. Null for anything that is not a stack.
   composeFile: string | null;
 }
 
 export interface MigrationSourceClient {
   readonly platform: MigrationPlatform;
   readonly baseUrl: string;
-  /** The platform's name, for a report line a person reads. */
   readonly displayName: string;
 
-  /**
-   * Refuse NOW if this credential cannot read what an import needs. Coolify hides
-   * every variable value and every database password from a token without
-   * `read:sensitive`, and it hides them SILENTLY - the apps would land with empty
-   * variables and look like a migration that worked.
-   */
+  // Coolify hides every value and password from a token without `read:sensitive`, SILENTLY - apps would land empty and look imported.
   assertReadable(): Promise<void>;
 
   listProjects(): Promise<SourceProject[]>;
@@ -93,70 +75,36 @@ export interface MigrationSourceClient {
     kind: string,
     id: string,
   ): Promise<SourceApplication | SourceCompose | SourceDatabase>;
-  /** The compose the panel resolved, when the YAML lives in a repository. */
+  // The compose the panel resolved, when the YAML lives in a repository.
   getResolvedCompose(id: string): Promise<string | null>;
   listServers(): Promise<SourceServer[]>;
   listMembers(): Promise<SourceMember[]>;
-  /**
-   * The one team this credential reads. `id` is what tells two tokens of the same
-   * team apart from two tokens of two teams; every part is null when the panel
-   * would not say. No picture: only one of the two panels keeps one, so a list
-   * carrying it would read differently depending on where a row came from.
-   */
+  // `id` is what tells two tokens of one team apart from two tokens of two teams; every part is null when the panel would not say.
   sourceTeam(): Promise<{ id: string | null; name: string | null }>;
-  /**
-   * The teams on this panel this credential does NOT cover, by name, or null when
-   * the panel cannot say - Coolify filters `/v1/teams` down to the token's own
-   * team, so there it is never a list and the wizard has to ask.
-   */
+  // Null when the panel cannot say: Coolify filters `/v1/teams` down to the token's own team, so the wizard has to ask.
   otherTeams(): Promise<string[] | null>;
   listSchedules(kind: string, id: string): Promise<SourceSchedule[]>;
-  /**
-   * The panel's TEAM-level shared variables as a `KEY=value` blob, or null when it
-   * has no such level. Project and environment ones ride on the tree. THROWS when
-   * the level exists and the panel would not answer: an empty answer and a refused
-   * one are not the same fact, and the caller has to say which it was.
-   */
+  // Null when the panel has no such level; THROWS when it has one and would not answer - empty and refused are not the same fact.
   teamSharedEnv(): Promise<SourceSharedEnv | null>;
-  /**
-   * The panel's SERVER-level shared variables for one source machine, same shape
-   * and the same contract. `null` when the platform has no such level.
-   */
+  // Same shape and contract as `teamSharedEnv`; `null` when the platform has no such level.
   serverSharedEnv(sourceServerId: string): Promise<SourceSharedEnv | null>;
-  /** The S3 stores the panel backs up to, with their credentials. Empty when the
-   *  platform keeps none, or when this credential may not read them. */
+  // Empty when the platform keeps no S3 store, or when this credential may not read them.
   listBackupDestinations(): Promise<SourceS3Destination[]>;
 
-  /**
-   * What a service mounts right now. Dokploy answers by inspecting containers,
-   * Coolify by reading its own storage rows - which is why this is a method and
-   * not a function over one shape of API.
-   */
+  // Dokploy answers by inspecting containers, Coolify by reading its own storage rows.
   serviceRuntime(svc: RuntimeQuery): Promise<ServiceRuntime>;
 
-  /**
-   * Stop it over there, and do NOT return while it is still running: a volume read
-   * while its container writes cannot be trusted. This is the point of no return.
-   */
+  // Must NOT return while it is still running: a volume read while its container writes cannot be trusted.
   stopService(kind: string, id: string): Promise<void>;
 
-  /**
-   * Start it again over there. The ONE case Deplo writes to a platform it is
-   * leaving: an operator backing out of a takeover, whose services this migration
-   * is the reason are stopped.
-   */
+  // The ONE case Deplo writes to the platform it is leaving: an operator backing out of a takeover.
   startService(kind: string, id: string): Promise<void>;
 
-  /** The platform's own networks to take out of THIS service's compose. Fixed for
-   *  Dokploy, per-resource for Coolify. */
+  // The platform's own networks to take out of THIS service's compose. Fixed for Dokploy, per-resource for Coolify.
   platformNetworks(svc: { kind: string; id: string }): string[];
 }
 
-/** The client for one panel. The only place a platform is turned into code. */
-/**
- * The panel ACCEPTED the stop and still reported the service running when the
- * wait ran out. Deplo did ask for that stop, so whoever backs out has to undo it.
- */
+// The panel ACCEPTED the stop and still reported the service running, so whoever backs out has to undo it.
 export class StopAcceptedError extends Error {}
 
 export function sourceClient(c: SourceCredential): MigrationSourceClient {

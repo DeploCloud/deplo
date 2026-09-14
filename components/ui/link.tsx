@@ -10,11 +10,7 @@ export { useLinkStatus } from "next/link";
 
 type Href = string | UrlObject;
 
-/**
- * `next/link` with the team the page is in put back on the href, so every path in
- * this codebase stays FLAT (`/apps/web`). Import it from here, never from
- * `next/link`, or the link leaves the team behind (eslint enforces it).
- */
+// Link is next/link with the active team put back on the href so every path stays flat - import from here, never next/link (eslint enforces it).
 export default function Link({
   href,
   ...rest

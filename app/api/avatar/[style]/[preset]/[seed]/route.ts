@@ -13,11 +13,7 @@ import {
   isValidPreset,
 } from "@/lib/apps/avatar-shared";
 
-/**
- * The generated profile picture: a deterministic picture from the path, in one of
- * DiceBear's own presets. Public on purpose - onboarding shows the picker before
- * an account exists.
- */
+// Public on purpose: onboarding shows the picker before an account exists.
 
 export const runtime = "nodejs";
 
@@ -29,8 +25,7 @@ const STYLES: Record<AvatarStyle, Style> = {
   initials: new Style(initialsDefinition),
 };
 
-/** DiceBear's published option sets, verbatim; `default` is the style untouched.
- *  https://www.dicebear.com/styles */
+// DiceBear's published option sets, verbatim; `default` is the style untouched. https://www.dicebear.com/styles
 const PRESET_OPTIONS: Record<
   AvatarStyle,
   Record<string, Record<string, unknown>>
@@ -80,8 +75,7 @@ export async function GET(
   )
     return new Response("Not found", { status: 404 });
 
-  // A preset the offer list has and this table has not would render the plain
-  // style and look like it worked. It is a 404 instead.
+  // A preset the offer list has and this table has not would render the plain style: 404 instead.
   const options = PRESET_OPTIONS[style][preset];
   if (!options) return new Response("Not found", { status: 404 });
 
@@ -98,8 +92,7 @@ export async function GET(
       "Content-Security-Policy":
         "default-src 'none'; style-src 'unsafe-inline'",
       "X-Content-Type-Options": "nosniff",
-      // The style, the preset and the seed ARE the content, so a picture never
-      // changes under its own URL.
+      // The style, preset and seed ARE the content, so a picture never changes under its URL.
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });

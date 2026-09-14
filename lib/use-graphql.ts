@@ -4,11 +4,7 @@ import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "@/lib/nav";
 import { gql, GraphQLRequestError } from "./graphql-client";
 
-/**
- * Run a GraphQL mutation from a client component, with the ergonomics the old
- * server-action call sites had: a pending flag, an error string, and an automatic
- * RSC refresh (the GraphQL equivalent of the action's `revalidatePath`).
- */
+// useGraphqlMutation - run a GraphQL mutation from a client component: pending flag, error string, RSC refresh.
 export function useGraphqlMutation<TData = unknown>(
   query: string,
   opts: { refresh?: boolean } = { refresh: true },

@@ -11,10 +11,6 @@ import {
   typeOrFill,
 } from "./otp-field";
 
-/**
- * The split code field's edit model.
- */
-
 const L = 6;
 
 test("typing fills left to right and advances", () => {
@@ -23,7 +19,6 @@ test("typing fills left to right and advances", () => {
   for (const d of "123456") ({ value: v, caret } = typeDigit(v, caret, d, L));
   assert.equal(v, "123456");
   assert.ok(isComplete(v, L));
-  // The caret parks on the last box rather than running off the end.
   assert.equal(caret, L - 1);
 });
 
@@ -124,23 +119,18 @@ test("caretFor is where focus lands after any external change", () => {
 });
 
 test("the model works at other lengths", () => {
-  // Not a hypothetical: a recovery-style field would be a different length, and
-  // nothing here may assume six.
   assert.equal(pasteDigits("", 0, "12345678", 8).value, "12345678");
   assert.ok(isComplete("1234", 4));
   assert.equal(caretFor("1234", 4), 3);
 });
 
 test("an autofilled code fills the field instead of leaving one digit", () => {
-  // A password manager or platform one-time-code autofill puts the whole code
-  // into the first box as ONE input event, with no paste event to catch it.
-  // Keeping the last digit (which is right for a keystroke) would leave "6".
+  // Autofill delivers the whole code as ONE input event, with no paste event to catch it.
   assert.equal(typeOrFill("", 0, "123456", true, L).value, "123456");
 });
 
 test("replacing a digit is still a keystroke, not a fill", () => {
-  // An occupied box reports "old+new" on a normal keypress; that must not be
-  // mistaken for an autofill and written out as two digits.
+  // An occupied box reports "old+new" on a normal keypress, which is not an autofill.
   assert.equal(typeOrFill("1", 0, "19", false, L).value, "9");
   assert.equal(typeOrFill("123", 1, "27", false, L).value, "173");
 });

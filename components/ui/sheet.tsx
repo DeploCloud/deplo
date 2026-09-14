@@ -19,9 +19,7 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      // pointer-events-auto so the overlay reliably captures clicks instead of
-      // inheriting `pointer-events: none` from <body> while the sheet is open
-      // (see the note in dialog.tsx) - keeps background controls non-clickable.
+      // pointer-events-auto: else the overlay inherits pointer-events:none from <body> and stops capturing clicks (see dialog.tsx).
       "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
@@ -81,15 +79,13 @@ const SheetContent = React.forwardRef<
           }}
           className={cn(sheetVariants({ side }), className)}
           onInteractOutside={(event) => {
-            // Don't let the gesture that closed a nested popper (Select/menu/
-            // popover) also close the Sheet. See use-nested-layer-dismiss-guard.
+            // Don't let the gesture that closed a nested popper (Select/menu/popover) also close the Sheet.
             if (nestedLayerJustDismissed()) {
               event.preventDefault();
               return;
             }
             onInteractOutside?.(event);
           }}
-          // Same surface rules as a Dialog - it is the same Radix primitive.
           onOpenAutoFocus={(event) => {
             onOpenAutoFocus?.(event);
             overlayAutoFocus(event, contentRef.current);

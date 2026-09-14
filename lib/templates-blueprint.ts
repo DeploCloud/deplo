@@ -2,13 +2,6 @@ import "server-only";
 
 import { randomBytes, randomUUID } from "node:crypto";
 
-/**
- * Turns a one-click template's files - the docker-compose.yml plus the
- * template.toml the catalog serves alongside it - into a deployable blueprint: the
- * variables it declares, the environment it injects, which service is exposed
- * publicly, and any config files to mount into the stack.
- */
-
 export interface BlueprintEnv {
   key: string;
   value: string;
@@ -17,9 +10,7 @@ export interface BlueprintEnv {
 export interface BlueprintExpose {
   service: string;
   port: number;
-  /** Resolved public hostname this service is routed on (from config.domains). */
   host?: string;
-  /** Path this service answers on (`/api`); absent ⇒ the whole host. */
   path?: string;
 }
 
@@ -30,16 +21,9 @@ export interface BlueprintMount {
 
 export interface TemplateBlueprint {
   compose: string;
-  /** Environment variables the compose interpolates (config.env, resolved). */
   env: BlueprintEnv[];
-  /** Which service + container port Traefik should route to (primary domain). */
   expose: BlueprintExpose | null;
-  /**
-   * Every service the template exposes publicly (one per config.domains entry),
-   * each on its own resolved hostname.
-   */
   exposes: BlueprintExpose[];
-  /** Config files to write next to the stack and bind-mount (resolved). */
   mounts: BlueprintMount[];
 }
 
@@ -53,10 +37,7 @@ function randomHex(len: number): string {
     .slice(0, len);
 }
 
-/**
- * Generate a value for a template helper token. Helpers MUST produce fresh random
- * secrets so deployed stacks never share predictable credentials across installs.
- */
+// Helpers MUST produce fresh random secrets, so deployed stacks never share predictable credentials across installs.
 function generateHelper(name: string, lenRaw?: string): string | null {
   const len = lenRaw ? Number(lenRaw.replace(/_/g, "")) : undefined;
   switch (name) {
@@ -94,11 +75,6 @@ function stripQuotes(value: string): string {
   return v;
 }
 
-/**
- * Drop a trailing `# comment` from a TOML scalar/array entry, ignoring any `#`
- * that sits inside a quoted string (so `KEY = "a#b"` and URLs keep their hash).
- * Returns the text up to the first unquoted `#`, trimmed.
- */
 function stripComment(input: string): string {
   let q: string | null = null;
   for (let i = 0; i < input.length; i++) {
@@ -114,7 +90,7 @@ function stripComment(input: string): string {
   return input.trim();
 }
 
-/** TOML integers allow `_` digit separators (e.g. 5_006). */
+// TOML integers allow `_` digit separators (e.g. 5_006).
 function parseTomlInt(value: string): number {
   return Number(stripQuotes(value).replace(/_/g, ""));
 }
@@ -136,12 +112,6 @@ interface ParsedToml {
   mounts: BlueprintMount[];
 }
 
-/**
- * Minimal, purpose-built reader for the subset of TOML these templates use:
- * `[variables]`, `[config]` (with an inline multi-line `env = [...]` array),
- * `[config.env]` table, `[[config.domains]]` array-of-tables and
- * `[[config.mounts]]` array-of-tables (whose `content` is a `"""..."""` block).
- */
 function parseToml(toml: string): ParsedToml {
   const variables: BlueprintEnv[] = [];
   const configEnv: BlueprintEnv[] = [];
@@ -164,7 +134,6 @@ function parseToml(toml: string): ParsedToml {
     const raw = lines[i];
     const line = raw.trim();
 
-    // Capture a multi-line triple-quoted mount `content`.
     if (tripleOpen) {
       const endIdx = raw.indexOf('"""');
       if (endIdx !== -1) {
@@ -179,8 +148,6 @@ function parseToml(toml: string): ParsedToml {
       continue;
     }
 
-    // Collect entries of an open inline `env = [ ... ]` array. Skip whole-line
-    // comments and blank padding entries the template author left for humans.
     if (envArrayOpen) {
       if (line.includes("]")) envArrayOpen = false;
       const raw = line.replace(/[\],]+$/g, "").trim();
@@ -207,7 +174,6 @@ function parseToml(toml: string): ParsedToml {
       continue;
     }
 
-    // `env = [` opens the array form of config env.
     const arrayStart = line.match(/^env\s*=\s*\[(.*)$/);
     if (section === "[config]" && arrayStart) {
       const inline = arrayStart[1];
@@ -225,7 +191,6 @@ function parseToml(toml: string): ParsedToml {
     const key = line.slice(0, eq).trim();
     const rhs = line.slice(eq + 1).trim();
 
-    // A `content = """` that opens a triple-quoted block on this line.
     if (
       section === "[[config.mounts]]" &&
       key === "content" &&
@@ -243,8 +208,6 @@ function parseToml(toml: string): ParsedToml {
       continue;
     }
 
-    // Single-line scalar: drop any trailing `# comment` (the multi-line mount
-    // `content = """..."""` case is handled above and never reaches here).
     const value = stripQuotes(stripComment(rhs));
     if (section === "[variables]") {
       variables.push({ key, value });
@@ -267,7 +230,6 @@ function parseToml(toml: string): ParsedToml {
   return { variables, configEnv, domains, mounts };
 }
 
-/** Split a comma-separated array body, ignoring commas inside quotes. */
 function splitTopLevel(body: string): string[] {
   const out: string[] = [];
   let cur = "";
@@ -299,9 +261,6 @@ function pushKeyValEntry(list: BlueprintEnv[], entry: string): void {
   });
 }
 
-/**
- * Resolve template tokens to a flat variable map.
- */
 function resolveVariables(
   raw: BlueprintEnv[],
   domain: string,
@@ -313,13 +272,13 @@ function resolveVariables(
       if (m[1] === "domain") resolved[key] = domain;
       else {
         const gen = generateHelper(m[1], m[2]);
-        resolved[key] = gen ?? value; // unknown single-token ref: resolve below
+        resolved[key] = gen ?? value;
       }
     } else {
       resolved[key] = value;
     }
   }
-  // Substitute ${REF} references (two passes cover one level of nesting).
+  // Two passes cover one level of nesting.
   for (let pass = 0; pass < 2; pass++) {
     for (const key of Object.keys(resolved)) {
       resolved[key] = substituteRefs(resolved[key], resolved, domain);
@@ -328,10 +287,6 @@ function resolveVariables(
   return resolved;
 }
 
-/**
- * Replace ${...} tokens in a string: ${domain} -> domain, a known generator helper
- * -> a fresh secret, a reference to a resolved variable -> its value.
- */
 function substituteRefs(
   input: string,
   vars: Record<string, string>,
@@ -373,9 +328,7 @@ export function getTemplateBlueprint(
         value: substituteRefs(value, vars, domain),
       }));
 
-      // One expose per declared domain, each on its own resolved hostname. The explicitly
-      // marked primary is moved first because downstream creation treats the first expose
-      // as the service behind the generated main domain.
+      // The primary is moved first because creation treats the first expose as the service behind the main domain.
       const domains = parsed.domains.filter((d) => d.serviceName && d.port);
       const primary = domains.find((d) => d.primary);
       const orderedDomains = primary
@@ -407,7 +360,6 @@ export function getTemplateBlueprint(
   return { compose, env, expose, exposes, mounts };
 }
 
-/** Surface any token a template references that we could not resolve. */
 function warnUnresolved(
   id: string,
   env: BlueprintEnv[],

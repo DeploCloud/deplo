@@ -12,14 +12,8 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-/**
- * The timezone picker on a server's Advanced tab. A Popover with a search box
- * listing the CURRENT TIME in each zone, which is what an operator actually
- * picks by. Zones come from the browser's IANA database; matches are capped.
- */
 const MAX_ROWS = 80;
 
-/** The canonical IANA zones, from the platform. Static, so computed once. */
 function allTimezones(): string[] {
   try {
     return Intl.supportedValuesOf("timeZone");
@@ -28,8 +22,7 @@ function allTimezones(): string[] {
   }
 }
 
-/** One formatter per zone, reused across renders. Constructing them is the
- *  expensive half of showing a live clock next to every row. */
+// One formatter per zone: constructing them is the expensive half of a live clock on every row.
 const formatters = new Map<string, Intl.DateTimeFormat>();
 function timeIn(zone: string, at: number): string {
   let fmt = formatters.get(zone);
@@ -53,8 +46,7 @@ export function TimezonePicker({
   value,
   onChange,
   disabled,
-  /** The instant the rows show the time at: the server's clock, so the list
-   *  reads in the host's terms rather than the browser's. */
+  // The instant the rows show: the SERVER's clock, so the list reads in the host's terms, not the browser's.
   now,
 }: {
   id?: string;

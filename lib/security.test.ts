@@ -7,12 +7,6 @@ import { makeTestDb, type TestDb } from "./db/test-harness";
 import { __setTestDb, __resetTestDb } from "./db/client";
 import { rateLimit, sweepRateLimits } from "./security";
 
-/**
- * The rate limiter, which is what stands between a public mutation and an
- * unlimited number of password guesses. These tests exist because of what the
- * previous implementation could not do, not because counting to eight is hard.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -52,7 +46,6 @@ test("separate keys are separate buckets", async () => {
 });
 
 test("the count SURVIVES a restart", async () => {
-  // The whole reason this moved out of memory.
   const key = "test:restart";
   for (let i = 0; i < 3; i++)
     await rateLimit(key, { limit: 3, windowMs: 60_000 });
@@ -66,9 +59,7 @@ test("the count SURVIVES a restart", async () => {
 
 test("a closed window starts a fresh allowance", async () => {
   const key = "test:expiry";
-  // A one-millisecond window is floored to a second by the limiter, so the row
-  // is aged directly instead - the same state the clock would reach, without
-  // making the suite wait for it.
+  // The limiter floors a window to a second, so the row is aged directly instead of waited out.
   await rateLimit(key, { limit: 1, windowMs: 60_000 });
   assert.equal(
     (await rateLimit(key, { limit: 1, windowMs: 60_000 })).ok,
@@ -85,9 +76,6 @@ test("a closed window starts a fresh allowance", async () => {
 });
 
 test("concurrent attempts are all counted", async () => {
-  // The old read-modify-write on a Map was only ever safe because of the
-  // single-threaded event loop; two instances would both have read the same count and
-  // both written count+1.
   const key = "test:concurrent";
   await Promise.all(
     Array.from({ length: 10 }, () =>
@@ -115,8 +103,6 @@ test("the sweep removes closed windows and leaves open ones", async () => {
 });
 
 test("a limit of zero refuses the very first attempt", async () => {
-  // Nothing configures this today, but a limiter whose floor is off by one is
-  // the kind of thing that only shows up the day somebody sets it to zero.
   const r = await rateLimit("test:zero", { limit: 0, windowMs: 60_000 });
   assert.equal(r.ok, false);
 });

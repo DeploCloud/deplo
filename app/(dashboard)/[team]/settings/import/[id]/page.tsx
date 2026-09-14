@@ -1,10 +1,6 @@
 import { redirect } from "next/navigation";
 
-/**
- * A finished run no longer has a page of its own - the report opens in a dialog,
- * from the wizard that just ran it or from the History tab. A bookmarked run
- * lands on that tab.
- */
+// ImportRunRedirect - a finished run has no page of its own; the report opens in a dialog, so a bookmarked run lands on History.
 export default async function ImportRunRedirect(
   props: PageProps<"/[team]/settings/import/[id]">,
 ) {

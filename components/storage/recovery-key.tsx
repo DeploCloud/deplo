@@ -6,12 +6,6 @@ import { toast } from "sonner";
 import { gql } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
-/**
- * Handing over a destination's recovery key, from every screen that has a reason
- * to.
- */
-
-/** The destination's name, flattened into something safe for a filename. */
 function keyFileSlug(name: string): string {
   return (
     name
@@ -24,9 +18,7 @@ function keyFileSlug(name: string): string {
   );
 }
 
-/**
- * Fetch the key and save it as a file.
- */
+// downloadRecoveryKey - fetch the key and save it as a file.
 export async function downloadRecoveryKey(id: string): Promise<boolean> {
   try {
     const data = await gql<{
@@ -60,7 +52,6 @@ export async function downloadRecoveryKey(id: string): Promise<boolean> {
     const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
     const a = document.createElement("a");
     a.href = url;
-    // Named for what it is AND which destination it opens.
     a.download = `deplo-backups-recovery-key-${keyFileSlug(key.name)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
@@ -76,11 +67,7 @@ export async function downloadRecoveryKey(id: string): Promise<boolean> {
   }
 }
 
-/**
- * The nudge: these backups are encrypted and nobody has taken the key yet. It is a
- * button, not a banner, because the fix is one click and the click has to be the
- * user's own.
- */
+// RecoveryKeyNudge - these backups are encrypted and nobody has taken the key yet.
 export function RecoveryKeyNudge({
   destinationId,
   title = "Save your recovery key",
@@ -95,9 +82,7 @@ export function RecoveryKeyNudge({
   className?: string;
 }) {
   const [pending, startTransition] = React.useTransition();
-  // Local, and NOT just `onSaved` + a re-read: `router.refresh()` does not repaint
-  // the app's Backups tab (nothing on it does - a backup_run inserted while the page
-  // is open stays invisible too), so a warning that only clears on fresh data would
+  // Local, not a re-read: `router.refresh()` does not repaint the app's Backups tab.
   const [saved, setSaved] = React.useState(false);
   if (saved) return null;
   return (
@@ -127,10 +112,7 @@ export function RecoveryKeyNudge({
   );
 }
 
-/**
- * Offer the key right after a destination is created. It never expires, and the
- * card's own nudge stays as the fallback for a toast nobody saw.
- */
+// offerRecoveryKey - offer the key right after a destination is created; the card's nudge is the fallback.
 export function offerRecoveryKey(id: string, name: string): void {
   toast.warning(`Save the recovery key for ${name}`, {
     description:

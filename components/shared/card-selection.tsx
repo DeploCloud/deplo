@@ -6,18 +6,15 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CardSelection } from "@/components/shared/use-card-selection";
 
-/** The rubber-band box: an outline, so it never tints what it sweeps over. */
+// MARQUEE_BOX - the rubber-band box: an outline, so it never tints what it sweeps over.
 export const MARQUEE_BOX =
   "pointer-events-none absolute z-20 hidden rounded-xl border-2 border-primary";
 
-/** The multi-selection highlight, shared by every selectable card. */
+// SELECTED_RING - the multi-selection highlight, shared by every selectable card.
 export const SELECTED_RING =
   "ring-2 ring-primary ring-offset-2 ring-offset-background";
 
-/**
- * The coordinate space the marquee is drawn in and hit-tested against. The drag
- * itself starts anywhere in the page area, which the hook listens on.
- */
+// SelectionCanvas - the coordinate space the marquee is drawn in and hit-tested against.
 export function SelectionCanvas({
   canvasRef,
   marqueeRef,
@@ -32,8 +29,7 @@ export function SelectionCanvas({
       ref={canvasRef}
       className={cn("relative min-h-[60vh] select-none", className)}
     >
-      {/* Positioned imperatively by the selection hook during a drag (no
-          re-render per pointermove); hidden when idle. */}
+      {/* Positioned imperatively by the selection hook during a drag; hidden when idle. */}
       <div ref={marqueeRef} className={MARQUEE_BOX} />
       {children}
     </div>
@@ -42,11 +38,7 @@ export function SelectionCanvas({
 
 type Modifiers = { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean };
 
-/**
- * What makes an element part of the selection: the marquee's hit-test target,
- * and modifier-click instead of whatever a plain click does. Spread on a card
- * wrapper or straight onto a table row.
- */
+// selectableProps - the marquee's hit-test target plus modifier-click, spread on a card wrapper or a table row.
 export function selectableProps(
   id: string,
   onSelect: (e: Modifiers) => boolean,
@@ -57,8 +49,7 @@ export function selectableProps(
   return {
     "data-card-id": id,
     onClickCapture(e) {
-      // A menu or dialog this row opened is portalled out of its DOM but not out
-      // of its React tree (see lib/portal-event-scope.ts).
+      // A menu this row opened is portalled out of its DOM but not its React tree (lib/portal-event-scope.ts).
       if (!e.currentTarget.contains(e.target as Node)) return;
       if (!(e.metaKey || e.ctrlKey || e.shiftKey)) return;
       if ((e.target as HTMLElement).closest?.("[data-card-actions]")) return;
@@ -69,7 +60,7 @@ export function selectableProps(
   };
 }
 
-/** A card wrapper carrying {@link selectableProps} and the highlight. */
+// SelectableCard - a card wrapper carrying selectableProps and the highlight.
 export function SelectableCard({
   id,
   selected,
@@ -94,10 +85,7 @@ export function SelectableCard({
   );
 }
 
-/**
- * The bulk-actions bar: it floats at the bottom of the viewport whenever one or
- * more items are selected. `children` are this list's own actions.
- */
+// SelectionBar - the bulk-actions bar, floating at the bottom whenever something is selected.
 export function SelectionBar({
   count,
   onSelectAll,
@@ -112,8 +100,7 @@ export function SelectionBar({
   if (count === 0) return null;
   return (
     <div
-      // Not canvas: a press on the bar's own chrome must not clear the selection
-      // it acts on (use-card-selection).
+      // Not canvas: a press on the bar's own chrome must not clear the selection it acts on.
       data-selection-bar=""
       className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4"
     >
@@ -141,7 +128,7 @@ export function SelectionBar({
   );
 }
 
-/** Page-scoped shortcuts: ⌘/Ctrl+A selects all, Esc clears, Delete removes. */
+// useSelectionShortcuts - page-scoped shortcuts: ⌘/Ctrl+A selects all, Esc clears, Delete removes.
 export function useSelectionShortcuts({
   count,
   selectAll,
@@ -151,7 +138,6 @@ export function useSelectionShortcuts({
   count: number;
   selectAll: () => void;
   clear: () => void;
-  /** Omit when the viewer may not delete - Delete then does nothing. */
   onDelete?: () => void;
 }) {
   React.useEffect(() => {

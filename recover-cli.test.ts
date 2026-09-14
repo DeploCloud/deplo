@@ -7,10 +7,6 @@ import { join } from "node:path";
 
 import { hiddenEcho } from "./scripts/recover";
 
-/**
- * The break-glass CLI has to run where there is no source tree, no bun and no
- * tsx: the Docker image ships this bundle and nothing else of `scripts/`.
- */
 const build = spawnSync(process.execPath, ["scripts/build-recover.mjs"], {
   encoding: "utf8",
 });
@@ -25,8 +21,6 @@ function runOutsideTheRepo(env: Record<string, string>) {
     env: {
       PATH: process.env.PATH ?? "",
       NODE_ENV: process.env.NODE_ENV,
-      // A syntactically valid URL is all the module-load guard wants; `help`
-      // never opens a connection.
       DEPLO_DATABASE_URL: "postgres://u:p@127.0.0.1:5432/d",
       ...env,
     },
@@ -52,8 +46,6 @@ test("a checkout still names `bun run recover`", () => {
 
 test("the password prompt survives the first keypress", () => {
   const label = "  New password for @ada: ";
-  // Readline redraws `prompt + buffer` on every keypress after clearing the
-  // row, so echoing nothing at all erases the prompt and reads as a hang.
   assert.equal(hiddenEcho(label, `${label}hunter2`), label);
   assert.equal(hiddenEcho(label, "hunter2"), "");
 });

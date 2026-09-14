@@ -1,19 +1,10 @@
-/**
- * The wrap-aware line editor behind the exec console's terminal
- * (`components/apps/exec-terminal.tsx`).
- */
-
-/** The terminal surface the editor draws through. */
+// LineEditorHost - the terminal surface the editor draws through.
 export interface LineEditorHost {
-  /** Write raw bytes / escape sequences to the terminal. */
   write(data: string): void;
-  /** Current terminal width in columns. */
   cols(): number;
-  /** Wipe the viewport + scrollback (Ctrl-L). */
   reset(): void;
 }
 
-/** Readline-style word hop targets: skip separators, then the word itself. */
 function prevWord(line: string, caret: number): number {
   let i = caret;
   while (i > 0 && line[i - 1] === " ") i--;
@@ -31,25 +22,20 @@ export class LineEditor {
   private line = "";
   private caret = 0;
   private history: string[] = [];
-  /** -1 = editing the live draft; 0.. = browsing history entries. */
+  // -1 = editing the live draft; 0.. = browsing history entries.
   private histIdx = -1;
-  /** The in-progress line, parked while ↑/↓ browse history. */
+  // The in-progress line, parked while history is browsed.
   private draft = "";
 
   constructor(
     private host: LineEditorHost,
-    /** The prompt as written to the terminal (SGR colour wrappers welcome). */
     private promptStr: string,
-    /** VISIBLE prompt width - SGR sequences are zero-width. */
+    // VISIBLE prompt width - SGR sequences are zero-width.
     private promptLen: number,
-    /** Fired with the raw line on Enter (non-blank lines only). */
+    // Fired with the raw line on Enter (non-blank lines only).
     private onSubmit: (command: string) => void,
   ) {}
 
-  /**
-   * Repaint `prompt + next` and park the terminal cursor at `caret`, coping with
-   * input that wraps across rows.
-   */
   private repaint(next: string, caret: number, fromScratch = false): void {
     const w = Math.max(1, this.host.cols());
     let seq = "";
@@ -60,8 +46,7 @@ export class LineEditor {
     }
     seq += this.promptStr + next;
     const end = this.promptLen + next.length;
-    // Writing up to an exact row boundary leaves xterm in "pending wrap" (cursor
-    // logically past the last column).
+    // Writing up to an exact row boundary leaves xterm in "pending wrap" (cursor past the last column).
     if (end > 0 && end % w === 0) seq += " \r";
     const up = Math.floor(end / w) - Math.floor((this.promptLen + caret) / w);
     if (up > 0) seq += `\x1b[${up}A`;
@@ -72,15 +57,12 @@ export class LineEditor {
     this.host.write(seq);
   }
 
-  /** Write a fresh empty prompt. Cursor must be at column 0 of a clean line. */
+  // freshPrompt - the cursor must be at column 0 of a clean line.
   freshPrompt(): void {
     this.repaint("", 0, true);
   }
 
-  /**
-   * Slot a system line above the live prompt, then repaint prompt + line with
-   * the caret where it was (the late-resolved distroless caveat).
-   */
+  // insertAbove - slot a system line above the live prompt, then repaint with the caret where it was.
   insertAbove(text: string): void {
     const w = Math.max(1, this.host.cols());
     const fromRow = Math.floor((this.promptLen + this.caret) / w);
@@ -90,7 +72,7 @@ export class LineEditor {
     this.repaint(this.line, this.caret, true);
   }
 
-  /** Forget line, caret and history (the "New session" button). */
+  // resetSession - forget line, caret and history (the "New session" button).
   resetSession(): void {
     this.line = "";
     this.caret = 0;
@@ -99,7 +81,7 @@ export class LineEditor {
     this.draft = "";
   }
 
-  /** Feed one xterm `onData` chunk (a keystroke or a paste) into the editor. */
+  // data - feed one xterm `onData` chunk (a keystroke or a paste) into the editor.
   data(d: string): void {
     const l = this.line;
     const c = this.caret;
@@ -107,8 +89,7 @@ export class LineEditor {
     switch (d) {
       case "\r": {
         const cmd = l;
-        // Land on a fresh row below the (possibly wrapped) input first, so
-        // output never overprints the tail of the edit region.
+        // Land on a fresh row below the (possibly wrapped) input, so output never overprints the edit region.
         this.repaint(cmd, cmd.length);
         this.host.write("\r\n");
         this.line = "";
@@ -206,11 +187,9 @@ export class LineEditor {
       }
     }
 
-    // Remaining escape sequences (F-keys, PgUp/PgDn, mouse reports) have no
-    // meaning in a one-line editor - swallow them so they can't desync it.
+    // Escape sequences with no meaning in a one-line editor are swallowed so they cannot desync it.
     if (d.charCodeAt(0) === 0x1b) return;
 
-    // Printable input (keystroke or paste) inserts at the caret.
     const printable = [...d]
       .filter((ch) => ch >= " " && ch !== "\x7f")
       .join("");

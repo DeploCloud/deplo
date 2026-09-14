@@ -24,12 +24,6 @@ import type { ActionResult } from "@/lib/result";
 import { cn } from "@/lib/utils";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 
-/**
- * The confirm in front of every move of the panel's own address. So the dialog
- * states facts, counted live, and shows ONLY the lines that are true right now - a
- * line that would read "0 passkeys" is not shown at all.
- */
-
 type Impact = {
   url: string;
   currentUrl: string;
@@ -52,7 +46,7 @@ type Counted = { url: string; impact: Impact | null; error: string | null };
 
 export type ImpactSeverity = "critical" | "manual" | "minor";
 
-/** A consequence only the caller can vouch for, e.g. the proxy restarting. */
+// ImpactNote - a consequence only the caller can vouch for, e.g. the proxy restarting.
 export type ImpactNote = { severity: ImpactSeverity; text: string };
 
 type Row = ImpactNote & { weight: number };
@@ -124,11 +118,9 @@ export function PanelAddressDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /** The address being moved to, as the operator typed it. */
   url: string;
   title: string;
   confirmLabel: string;
-  /** Extra rows only the caller knows about, graded like the counted ones. */
   notes?: ImpactNote[];
   successMessage?: string;
   onConfirm: () => Promise<ActionResult<unknown>>;
@@ -136,8 +128,6 @@ export function PanelAddressDialog({
   const [result, setResult] = React.useState<Counted | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  // Counted in the BACKGROUND, so the dialog opens on its numbers instead of on
-  // a spinner - and counted again on open, so they are never an hour old.
   React.useEffect(() => {
     if (!url) return;
     let cancelled = false;
@@ -154,8 +144,6 @@ export function PanelAddressDialog({
           error: res.ok ? null : res.error,
         });
       });
-    // `url` is the address field itself, one keystroke at a time - except on
-    // open, where the answer is wanted now.
     const timer = setTimeout(load, open ? 0 : 300);
     return () => {
       cancelled = true;
@@ -163,7 +151,6 @@ export function PanelAddressDialog({
     };
   }, [url, open]);
 
-  // An answer about a different address is not this dialog's answer.
   const counted = result?.url === url ? result : null;
   const impact = counted?.impact ?? null;
   const failed = counted?.error ?? null;
@@ -184,12 +171,8 @@ export function PanelAddressDialog({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Portalled out of any ancestor form in the DOM, but React still bubbles
-    // the submit up the React tree - so without this an outer form (the
-    // address field's own) would silently submit too.
+    // Portalled in the DOM, but React still bubbles the submit to an outer form.
     e.stopPropagation();
-    // Nothing to agree to until the counts land: confirming before then would
-    // be agreeing to an unknown.
     if (busy) return;
     startTransition(async () => {
       const res = await onConfirm();
@@ -204,10 +187,7 @@ export function PanelAddressDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/**
-       * Wider than the house confirm on purpose: this one opens on an audit, not a
-       * sentence, and three graded cards need room to breathe.
-       */}
+      {/* Wider than the house confirm: this one opens on an audit. */}
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
         <form className="grid grid-cols-[minmax(0,1fr)]" onSubmit={onSubmit}>
           <div className="flex justify-center border-b border-border bg-surface px-6 pt-7 pb-5">
@@ -220,9 +200,7 @@ export function PanelAddressDialog({
           >
             <DialogHeader className="space-y-2">
               <DialogTitle>{title}</DialogTitle>
-              {/* The counts ARE the summary: how many things break, graded.
-                  Every other sentence that could go here is one the cards below
-                  repeat. */}
+              {/* The counts are the summary: how many things break, graded. */}
               <DialogDescription className="leading-relaxed">
                 {unchanged
                   ? "This is the address the panel already answers on, so nothing changes."
@@ -232,9 +210,7 @@ export function PanelAddressDialog({
               </DialogDescription>
             </DialogHeader>
 
-            {/* The move is still allowed: the counts are information, and
-                refusing to move an address because a probe failed would take
-                away the very recovery this page is for. */}
+            {/* The move is still allowed: a failed probe is information, not a refusal. */}
             {failed && (
               <p className="rounded-lg border border-destructive/40 bg-destructive-wash p-4 text-sm text-destructive">
                 {failed}
@@ -250,9 +226,7 @@ export function PanelAddressDialog({
                   key={tier.severity}
                   className={cn("rounded-lg border p-4", tier.box)}
                 >
-                  {/* The icon grades the GROUP once, up in the heading, instead
-                      of stamping every sentence: rows keep a quiet dot and the
-                      severity stays legible at a glance. */}
+                  {/* The icon grades the group once, in the heading. */}
                   <p
                     className={cn(
                       "flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase",
@@ -319,9 +293,7 @@ export function PanelAddressDialog({
                 aria-busy={busy}
                 aria-label={busy ? confirmLabel : undefined}
               >
-                {/* The only spinner left: it stands in for the label while the
-                    action runs, and on the rare open that beats the counts. The
-                    label stays mounted (just hidden) so the footer can't jump. */}
+                {/* The label stays mounted, just hidden, so the footer cannot jump. */}
                 <span className="grid place-items-center">
                   <span
                     className={cn(
@@ -344,10 +316,6 @@ export function PanelAddressDialog({
   );
 }
 
-/**
- * The move, drawn: traffic leaves the window on the old address, crosses the wire,
- * and the window on the new address answers with a ring.
- */
 function PanelMoveGraphic() {
   return (
     <svg
@@ -357,8 +325,7 @@ function PanelMoveGraphic() {
       aria-label="The panel moving from its old address to its new one"
       className="h-24 w-auto max-w-full sm:h-28"
     >
-      {/* The old address: the same window, already dimmed to what it is about
-          to become - somewhere traffic leaves. */}
+      {/* The old address. */}
       <g>
         <rect
           x="16"
@@ -413,9 +380,7 @@ function PanelMoveGraphic() {
         />
       </g>
 
-      {/* The wire. Its dashes drift towards the new address on their own short
-          clock - ambient, because the link exists whether or not a packet is
-          in flight. */}
+      {/* The wire. */}
       <path
         d="M94 56 H146"
         className="deplo-move-wire stroke-muted-foreground/50"
@@ -429,9 +394,7 @@ function PanelMoveGraphic() {
         className="deplo-move-packet fill-primary"
       />
 
-      {/* The ring is drawn BEFORE the new window so it lands behind its
-          strokes: an answer radiating from the address, not a lasso around
-          it. */}
+      {/* Drawn before the new window so it lands behind its strokes. */}
       <circle
         cx="188"
         cy="56"
@@ -440,8 +403,7 @@ function PanelMoveGraphic() {
         strokeWidth="1.5"
       />
 
-      {/* The new address: the same window at full strength, address bar lit -
-          the one element in the drawing that is already certain. */}
+      {/* The new address. */}
       <g>
         <rect
           x="152"
@@ -497,7 +459,6 @@ function PanelMoveGraphic() {
 const tierIndex = (s: ImpactSeverity) =>
   TIERS.findIndex((t) => t.severity === s);
 
-/** A caller's row sorts last inside its group: it carries no head count. */
 const asRow = (note: ImpactNote): Row => ({ ...note, weight: 0 });
 
 function summarise(rows: Row[]): string {
@@ -516,9 +477,7 @@ function summarise(rows: Row[]): string {
 }
 
 function countedRows(impact: Impact): Row[] {
-  // Whatever a browser welded to the origin dies on a hostname change and on
-  // losing https; on http -> https the session survives (Deplo hands Better Auth
-  // both cookie names) and there were no passkeys to lose.
+  // Origin-bound credentials die on a host change or on losing https; http -> https keeps the session.
   const originDies = impact.hostChanges || impact.losesHttps;
   const rows: Row[] = [];
 

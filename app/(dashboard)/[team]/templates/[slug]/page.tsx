@@ -50,8 +50,6 @@ import {
 import { defaultVariant } from "@/templates/types";
 import { titleClass } from "@/components/shared/page-header";
 
-/** How many siblings the Related rail carries: never fewer than the floor, so a
- *  lone template still gets a row worth scrolling. */
 const RELATED_MIN = 6;
 const RELATED_MAX = 12;
 
@@ -74,8 +72,7 @@ export default async function TemplatePage(
   const [placement, canDeploy, template] = await Promise.all([
     resolveOverviewPlacement(placementFromSearchParams(searchParams)),
     hasCapability("create_apps"),
-    // A stale `?template=` link degrades to "not available" rather than a 500,
-    // and an unreachable catalogue says so instead of taking the page down.
+    // A stale ?template= link or an unreachable catalogue degrades to "not available", not a 500.
     getTemplate(slug).catch(() => null),
   ]);
 
@@ -96,15 +93,12 @@ export default async function TemplatePage(
       </div>
     );
 
-  // `default` is the family default; an invalid or missing query selection
-  // returns to it rather than silently picking array order.
+  // An invalid or missing ?variant returns to the family default, never array order.
   const fallbackVariant = defaultVariant(template);
   const wanted = Array.isArray(searchParams.variant)
     ? searchParams.variant[0]
     : searchParams.variant;
-  // The family default IS the selection until the picker changes it: the page
-  // already reads as that variant, and a disabled Deploy over a description you
-  // are looking at is a dead end, not a decision.
+  // Never an unselected state: a disabled Deploy over a description you are reading is a dead end.
   const variant =
     template.variants.find((v) => v.slug === wanted) ?? fallbackVariant;
   const manyVariants = template.variants.length > 1;
@@ -138,7 +132,7 @@ export default async function TemplatePage(
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <TopBar placement={placement} />
 
-      {/* Header: the logo sits on its own wash, in its own colour. */}
+      {/* Header */}
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <LogoTile
@@ -180,8 +174,7 @@ export default async function TemplatePage(
 
       <RemoteMarkdown source={variant.description} />
 
-      {/* Metadata. Every row is a fact the catalogue carries; nothing is faked
-          when it is missing, the row simply isn't there. */}
+      {/* A row is omitted, never faked, when the catalogue has no value for it. */}
       <dl className="grid gap-x-8 gap-y-4 border-t border-border pt-6 sm:grid-cols-2">
         <Row label="Category">
           <span className="flex items-center gap-1.5">
@@ -254,11 +247,6 @@ export default async function TemplatePage(
   );
 }
 
-/**
- * The way back and the way sideways. The search stays on this page on purpose:
- * a store you can only search from its front page makes you go back before you
- * can look for the next thing.
- */
 function TopBar({ placement }: { placement: OverviewPlacement | null }) {
   const scope = templatesHref(placement).split("?")[1] ?? "";
   return (
@@ -286,7 +274,6 @@ function DeployButton({
 }) {
   if (canDeploy)
     return (
-      // The caret sits AFTER the action it qualifies, like every split button.
       <div
         role="group"
         aria-label="Deployment actions"
@@ -321,8 +308,7 @@ function DeployButton({
       </div>
     );
   return (
-    // A disabled button swallows pointer events, so the tooltip needs a
-    // focusable wrapper to stay reachable.
+    // A disabled button swallows pointer events, so the tooltip needs a focusable wrapper.
     <SimpleTooltip content="Needs the “Create apps” permission">
       <span tabIndex={0} className="shrink-0">
         <Button disabled className="w-full sm:w-32">
@@ -371,7 +357,6 @@ function ExternalLink({
   );
 }
 
-/** The bare host, so a metadata row never wraps onto three lines. */
 function hostOf(url: string): string {
   try {
     return new URL(url).host.replace(/^www\./, "");

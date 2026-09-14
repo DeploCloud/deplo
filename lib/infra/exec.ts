@@ -6,15 +6,10 @@ export interface StreamOpts {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   timeout?: number;
-  /** Written to the child's stdin, which is then closed (e.g. a Dockerfile). */
   input?: string;
 }
 
-/**
- * Spawn a process and stream combined stdout+stderr line-by-line to `onLine`.
- * Resolves with the exit code; rejects on spawn error or timeout. Used by the
- * real deploy pipeline so build/clone output reaches the logs as it happens.
- */
+// spawnStream - spawn a process and stream combined stdout+stderr line-by-line to onLine.
 export function spawnStream(
   bin: string,
   args: string[],

@@ -50,11 +50,7 @@ export interface PreviewOverride {
   updatedAt: string;
 }
 
-/**
- * Preview-only variable overrides (advanced). It stays a disclosure - an app that
- * never opens it should not have to read past an empty box, but everything inside
- * the disclosure is the neighbour's furniture.
- */
+// PreviewOverrides - preview-only variable overrides, as a disclosure (advanced).
 export function PreviewOverrides({
   appId,
   overrides,
@@ -64,8 +60,6 @@ export function PreviewOverrides({
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(overrides.length > 0);
-  // A removed override leaves the table on the click, like every other variable
-  // row on this page (see `useOptimisticRemove` in the env manager).
   const {
     visible: visibleOverrides,
     remove: hideOverride,
@@ -81,16 +75,11 @@ export function PreviewOverrides({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    // The dialog closes on the click; what was typed is kept aside so a refusal
-    // can put the form back with the rows intact.
     const typed = { rows, secret };
     setAddOpen(false);
     setRows([{ key: "", value: "" }]);
     setSecret(false);
     startTransition(async () => {
-      // No bulk mutation for overrides, and none is worth adding: setPreviewEnvVar
-      // is an upsert, so firing them together costs one round trip and a retry
-      // after a partial failure simply rewrites what already landed.
       const results = await Promise.all(
         filled.map((r) =>
           gqlAction(
@@ -101,8 +90,6 @@ export function PreviewOverrides({
               appId,
               key: r.key.trim(),
               value: r.value,
-              // Same rule as Add variable: the toggle only speaks for a single
-              // row, and a batch lands plain to be flipped from the table.
               secret: filled.length === 1 ? secret : false,
             },
           ),
@@ -117,8 +104,6 @@ export function PreviewOverrides({
         router.refresh();
       }
       if (failed.length > 0) {
-        // Reopen on the rows as typed: the ones that landed are idempotent, so
-        // fixing the bad key and submitting again is safe.
         setRows(typed.rows);
         setSecret(typed.secret);
         setAddOpen(true);
@@ -154,12 +139,9 @@ export function PreviewOverrides({
 
   return (
     <section className="space-y-4">
-      {/* The heading matches "Environment Variables" above, with the chevron
-          making it a disclosure rather than a second permanent section. */}
+      {/* A disclosure, not a second permanent section. */}
       <div>
-        {/* The info button is a SIBLING of the disclosure, never inside it: a
-            button nested in a button is invalid HTML and the browser unnests it,
-            which is a hydration mismatch on every render. */}
+        {/* The info button stays a sibling: a button inside a button is a hydration mismatch. */}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -195,9 +177,6 @@ export function PreviewOverrides({
 
       {open &&
         (visibleOverrides.length === 0 ? (
-          // Not an EmptyState card: this sits INSIDE a disclosure the reader just
-          // opened, and a second dashed box under the variables table would read
-          // as a second empty product rather than a note.
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border px-4 py-3">
             <p className="text-sm text-muted-foreground">
               Previews use the variables above exactly as they are.
@@ -236,8 +215,7 @@ export function PreviewOverrides({
                         </div>
                       </TableCell>
                       <TableCell>
-                        {/* Always locked: an override's value is never projected
-                            back, secret or not, so there is nothing to reveal. */}
+                        {/* An override's value is never projected back, so there is nothing to reveal. */}
                         <EnvValueCell value="" masked />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
@@ -266,11 +244,7 @@ export function PreviewOverrides({
           </div>
         ))}
 
-      {/**
-       * Deliberately the same dialog as Add variable, down to the row editor itself:
-       * overriding one value and adding one are the same act in the user's head, and
-       * doing five of them a modal at a time is the kind of thing nobody does twice.
-       */}
+      {/* The same dialog as Add variable, row editor included. */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>

@@ -7,10 +7,7 @@ import { ViewToggle, type ListView } from "@/components/shared/view-toggle";
 
 export type { ListView };
 
-/**
- * The one search / filter / view / create row every list wears: search on the
- * left, then the filters, then the view toggle, and the create button last.
- */
+// ListToolbar is the one search / filter / view / create row every list wears.
 export function ListToolbar({
   query,
   onQuery,
@@ -25,15 +22,11 @@ export function ListToolbar({
   query: string;
   onQuery: (v: string) => void;
   placeholder: string;
-  /** Omit both to render no view toggle. */
   view?: ListView;
   onView?: (v: ListView) => void;
-  /** What the two toggle buttons are called - a real table says "Table view". */
   gridLabel?: string;
   listLabel?: string;
-  /** The `Select`s for this list, rendered between the search and the toggle. */
   filters?: React.ReactNode;
-  /** The create button. Always last, so it sits in the same place on every list. */
   action?: React.ReactNode;
 }) {
   return (

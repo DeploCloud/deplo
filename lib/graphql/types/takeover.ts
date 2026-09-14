@@ -11,10 +11,7 @@ import {
   type TakeoverStatus,
 } from "@/lib/data/takeover";
 
-/**
- * The takeover - Deplo installed onto a machine another panel already owns. The
- * host-side work is the installer's; these are the three things a person decides.
- */
+// The host-side work is the installer's; these fields are only what a person decides.
 
 const TakeoverStateEnum = builder.enumType("TakeoverState", {
   description:

@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 
 import { buildConfigFor } from "./frameworks";
 
-/**
- * Since migration 0147 an empty command means "run nothing here", so the default
- * a NEW app is born with has to be null. Getting this wrong makes every new app
- * skip its own install and build, and nothing else in the suite would notice.
- */
+// Since migration 0147 an empty command means "run nothing here", so a new app's default must be null.
 test("a new app's commands are null, never empty strings", () => {
   const build = buildConfigFor();
   for (const key of [

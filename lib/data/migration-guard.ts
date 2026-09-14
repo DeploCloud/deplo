@@ -8,18 +8,9 @@ import { getDb } from "../db/client";
 import {
   environments as environmentsTable,
   projects as projectsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 
-/**
- * The rows a migration is still writing to, and the refusal that keeps everyone
- * else off them until it is done.
- */
-
-/**
- * Whether this async context IS the migration. Its own store rather than a field
- * on the identity, because production's cookie path installs no identity at all -
- * there is nothing to add a field to.
- */
+// Its own store rather than a field on the identity: the cookie path installs none.
 const STORE_KEY = Symbol.for("deplo.migration-context.als");
 const g = globalThis as unknown as {
   [STORE_KEY]?: AsyncLocalStorage<true>;
@@ -27,19 +18,17 @@ const g = globalThis as unknown as {
 const store: AsyncLocalStorage<true> = (g[STORE_KEY] ??=
   new AsyncLocalStorage<true>());
 
-/** Run the import's own writes, exempt from the marker they are setting. */
+// runAsMigration runs the import's own writes, exempt from the marker they set.
 export function runAsMigration<T>(fn: () => T): T {
   return store.run(true, fn);
 }
 
-/** True inside {@link runAsMigration}. */
+// inMigration is true inside runAsMigration.
 export function inMigration(): boolean {
   return store.getStore() === true;
 }
 
-/**
- * THE refusal, at every gate that guards a row an import can create.
- */
+// assertNotMigrating is THE refusal, at every gate guarding a row an import can create.
 export function assertNotMigrating(
   what: string,
   name: string,
@@ -53,9 +42,7 @@ export function assertNotMigrating(
   );
 }
 
-/**
- * The same refusal for a CONTAINER, which needs a read to make.
- */
+// assertContainerNotMigrating is the same refusal for a CONTAINER, which needs a read.
 export async function assertContainerNotMigrating(
   kind: "project" | "environment",
   id: string,

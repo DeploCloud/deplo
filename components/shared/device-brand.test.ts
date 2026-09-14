@@ -4,12 +4,6 @@ import assert from "node:assert/strict";
 import { describeUserAgent } from "@/lib/user-agent";
 import { BROWSER_BRAND, OS_BRAND } from "./device-brand";
 
-/**
- * The map and the parser have to stay in step: the day `user-agent.ts` learns a
- * browser this file has never heard of, the row silently loses its mark. These
- * are real user agents, so the check is on the pair, not on the key list.
- */
-
 const AGENTS = [
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",

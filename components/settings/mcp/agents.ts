@@ -1,9 +1,3 @@
-/**
- * The AI agents Deplo knows how to connect, and the exact configuration each one
- * wants. The wizard branches on `kind` and never shows one audience the other's
- * instructions. `docsUrl` is on every entry because these formats move.
- */
-
 import type * as React from "react";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import { Bot } from "lucide-react";
@@ -31,52 +25,26 @@ export type AgentId =
 export interface AgentDef {
   id: AgentId;
   label: string;
-  /**
-   * The line under the name. What the reader needs in order to recognise theirs
-   * and know the one thing that will surprise them, not a pitch.
-   */
   blurb: string;
   icon: React.ComponentType<{ className?: string }>;
-  /**
-   * The agent's own colours, as a tile behind its mark. Literal hexes and not
-   * tokens, because a brand colour is not themeable - the tile carries its own
-   * foreground so it is legible on either theme's background.
-   */
+  // Literal hexes, not tokens: a brand colour is not themeable, so the tile carries its own foreground.
   brand?: { bg: string; fg: string };
-  /**
-   * The wash the whole card wears on hover and once chosen, in the same grammar
-   * the template store uses (`veilProps`): a hue when the brand has one, its own
-   * ink when it does not.
-   */
   veil?: LogoAccent;
-  /**
-   * `web` connects over OAuth and is minted by the consent screen; `token`
-   * carries a `deplo_` bearer the wizard creates.
-   */
+  // `web` is minted by the OAuth consent screen; `token` carries a `deplo_` bearer the wizard creates.
   kind: "web" | "token";
-  /** The file the snippet goes in, shown as the code block's filename. */
   file?: string;
-  /** How the snippet is rendered: a shell command, or a file's contents. */
   form: "command" | "file";
-  /** Language hint for the code block. */
   language?: string;
-  /**
-   * How to get there, in one sentence - the exact path through that client's own
-   * UI, in that client's own words.
-   */
   hint: string;
+  // On every entry because these client config formats move.
   docsUrl: string;
-  /**
-   * The configuration itself. `token` is the real secret for a token client and
-   * empty for a web one (which never sees a token here).
-   */
+  // `token` is the real secret for a token client, empty for a web one (which never sees a token here).
   snippet: (a: { url: string; token: string }) => string;
 }
 
-/** Shown while the wizard has a client picked but no token minted yet. */
+// TOKEN_PLACEHOLDER - shown while the wizard has a client picked but no token minted yet.
 export const TOKEN_PLACEHOLDER = "deplo_your_token";
 
-/** Claude, ChatGPT and Claude Desktop all take the bare URL and nothing else. */
 const webSnippet = ({ url }: { url: string }) => url;
 
 export const AGENTS: AgentDef[] = [
@@ -274,7 +242,6 @@ export const AGENTS: AgentDef[] = [
     icon: Bot,
     kind: "token",
     form: "file",
-    // The connection details, not a curl.
     hint: "Two lines every MCP client asks for. Deplo speaks Streamable HTTP, protocol revision 2026-07-28.",
     docsUrl: "https://modelcontextprotocol.io/docs/concepts/transports",
     snippet: ({ url, token }) =>

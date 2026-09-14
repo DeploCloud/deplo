@@ -12,11 +12,7 @@ import {
 } from "@/lib/otp-field";
 import { cn } from "@/lib/utils";
 
-/**
- * A one-time code entered as separate boxes. Only the rendering lives here -
- * every edit rule is in [lib/otp-field.ts](../../lib/otp-field.ts) so it can be
- * tested without a DOM.
- */
+// OtpInput renders a one-time code as separate boxes; every edit rule lives in lib/otp-field.ts so it is testable without a DOM.
 export function OtpInput({
   value,
   onChange,
@@ -30,38 +26,28 @@ export function OtpInput({
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** Fired once the last box is filled - wire it to submit, not to a toast. */
   onComplete?: (value: string) => void;
   length?: number;
   disabled?: boolean;
   autoFocus?: boolean;
-  /** Paints the boxes as rejected. The caller owns the message. */
   invalid?: boolean;
   label?: string;
   className?: string;
 }) {
   const refs = React.useRef<(HTMLInputElement | null)[]>([]);
-  // The caret is derived, not stored: the model already decides where focus
-  // belongs for any value, so a second copy in state could only ever disagree.
   const focusBox = React.useCallback((i: number) => {
     const el = refs.current[i];
     el?.focus();
     el?.select();
   }, []);
 
-  /**
-   * The value as of the LAST EDIT, not the `value` prop during the tick an edit
-   * happens in: `apply` moves focus synchronously, so the newly focused box runs
-   * `onFocus` before React re-renders and would bounce focus backwards.
-   */
+  // The value as of the LAST EDIT: `apply` moves focus synchronously, so the newly focused box runs `onFocus` before the re-render and would bounce focus backwards.
   const editedRef = React.useRef(value);
   React.useEffect(() => {
     editedRef.current = value;
   }, [value]);
 
-  // A rejected code is cleared by the caller while the boxes are still disabled,
-  // which drops focus on the floor - the user is then looking at an empty field that
-  // swallows their next keystroke.
+  // The caller clears a rejected code while the boxes are still disabled, which drops focus on the floor and swallows the next keystroke.
   const filledRef = React.useRef(value.length > 0);
   React.useEffect(() => {
     const wasFilled = filledRef.current;
@@ -105,23 +91,20 @@ export function OtpInput({
             ref={(el) => {
               refs.current[i] = el;
             }}
-            // `text` and not `number`: a number input brings spinners, accepts
-            // "e" and "-", and strips leading zeros - all wrong for a code.
+            // Not `number`: it brings spinners, accepts "e" and "-", and strips leading zeros.
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
             // Only on the first box, where the platform expects to autofill.
             autoComplete={i === 0 ? "one-time-code" : "off"}
-            // Not maxLength=1: a controlled box that is already full would then
-            // swallow the keystroke instead of letting it replace the digit.
+            // Not maxLength=1: a controlled box that is already full would swallow the keystroke instead of letting it replace the digit.
             value={char}
             disabled={disabled}
             autoFocus={autoFocus && i === 0}
             aria-label={`Digit ${i + 1} of ${length}`}
             aria-invalid={invalid || undefined}
             onChange={(e) => {
-              // Not always one keystroke: an autofilled code arrives here whole,
-              // with no paste event. `typeOrFill` tells the two apart.
+              // Not always one keystroke: an autofilled code arrives here whole, with no paste event.
               apply(typeOrFill(value, i, e.target.value, !char, length));
             }}
             onKeyDown={(e) => onKeyDown(e, i)}
@@ -132,8 +115,7 @@ export function OtpInput({
               );
             }}
             onFocus={() => {
-              // Clicking an unreachable box lands on the caret instead of
-              // leaving a gap behind.
+              // Clicking an unreachable box lands on the caret instead of leaving a gap behind.
               const legal = caretFor(editedRef.current, length);
               if (i > legal) focusBox(legal);
               else refs.current[i]?.select();

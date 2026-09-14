@@ -29,11 +29,6 @@ import type { ServerSummary } from "./server-detail-tabs";
 import { DocsLink } from "@/components/ui/docs-link";
 import { ConsequenceNote } from "@/components/shared/confirm-action";
 
-/**
- * The Certificates tab: certificates the operator bought or generated elsewhere,
- * installed on this host's proxy.
- */
-
 type Certificate = {
   id: string;
   subject: string;
@@ -74,8 +69,7 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
     const res = await read();
     setLoading(false);
     if (!res.ok) {
-      // Includes "Deplo did not install the proxy on this server", the one that
-      // tells the operator this tab is not for them, so it is shown verbatim.
+      // Includes "Deplo did not install the proxy on this server", the answer that says this tab is not for them.
       setError(res.error);
       setCertificates(null);
       return;
@@ -83,9 +77,7 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
     setCertificates(res.data?.serverCertificates ?? []);
   }, [read]);
 
-  /**
-   * What the host has, after a write said it failed.
-   */
+  // What the host has, after a write said it failed.
   const settled = React.useCallback(
     async (before: Certificate[]): Promise<Certificate[] | null> => {
       const res = await read();
@@ -102,8 +94,7 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
   );
 
   React.useEffect(() => {
-    // Opening the tab IS the read: it synchronises with an external system (this
-    // server's agent). Same scoped exemption as the Advanced tab's host probe.
+    // Opening the tab IS the read: it synchronises with an external system (this server's agent).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
@@ -198,10 +189,6 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* One certificate                                                     */
-/* ------------------------------------------------------------------ */
-
 function CertificateRow({
   certificate,
   onRemove,
@@ -209,8 +196,7 @@ function CertificateRow({
   certificate: Certificate;
   onRemove: () => void;
 }) {
-  // Counted on the server: a viewer whose own clock is wrong would otherwise be
-  // told the wrong thing about a certificate that is fine.
+  // Counted on the server: a viewer with a wrong clock would be told the wrong thing about a fine certificate.
   const days = certificate.expiresInDays;
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border p-3">
@@ -225,8 +211,7 @@ function CertificateRow({
               Expired
             </Badge>
           ) : days <= 21 ? (
-            // Three weeks is the window in which a renewal has to be pasted in by
-            // hand: nothing renews these, and nothing else will say so.
+            // Nothing renews a custom certificate, so three weeks is the window to paste a renewal in by hand.
             <Badge variant="destructive" className="gap-1">
               <TriangleAlert className="size-3" />
               {days <= 0
@@ -254,10 +239,6 @@ function CertificateRow({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Add                                                                 */
-/* ------------------------------------------------------------------ */
-
 function AddCertificateDialog({
   server,
   open,
@@ -278,9 +259,7 @@ function AddCertificateDialog({
   const [privateKey, setPrivateKey] = React.useState("");
 
   function done() {
-    // The key is dropped the moment this closes, however it closed. It is the one
-    // thing typed here that has no read path anywhere else, and leaving it in
-    // state would put it back on screen the next time the dialog opens.
+    // The private key is dropped however this closed: left in state it would be back on screen on the next open.
     setCertificate("");
     setPrivateKey("");
     onOpenChange(false);
@@ -296,12 +275,9 @@ function AddCertificateDialog({
         { id: server.id, input: { certificate, privateKey } },
       );
       if (!res.ok) {
-        // A failed reply is not a failed install: recreating the proxy can kill
-        // the connection carrying it. Ask the host before saying it went wrong.
+        // A failed reply is not a failed install: recreating the proxy can kill the connection carrying it.
         const after = await settled(installed);
         if (!after) {
-          // "That private key does not belong to that certificate" and friends:
-          // each names the fix, so they are surfaced as they came.
           toast.error(res.error);
           return;
         }
@@ -392,10 +368,6 @@ function AddCertificateDialog({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Remove                                                              */
-/* ------------------------------------------------------------------ */
-
 function RemoveCertificateDialog({
   server,
   certificate,
@@ -423,8 +395,7 @@ function RemoveCertificateDialog({
         { id: server.id, certificateId: certificate.id },
       );
       if (!res.ok) {
-        // Same as installing: recreating the proxy can take the reply with it, so
-        // the host has the last word on whether this happened.
+        // Same as installing: recreating the proxy can take the reply with it, so the host has the last word.
         const after = await settled(installed);
         if (!after) {
           toast.error(res.error);

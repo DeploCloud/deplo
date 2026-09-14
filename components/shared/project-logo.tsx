@@ -5,12 +5,7 @@ import { Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { plateClass } from "@/components/templates/veil";
 
-/**
- * An app's display avatar: its custom logo when one is set (defaulted from a
- * template on deploy, editable in settings), otherwise a generic glyph. `tone`
- * is the plate a template's monochrome mark needs to be visible on both themes;
- * an uploaded or detected logo carries none and is drawn exactly as it is.
- */
+// AppLogo - an app's display avatar: its own logo when set, otherwise a generic glyph.
 export function AppLogo({
   logo,
   tone,
@@ -32,26 +27,20 @@ export function AppLogo({
   );
 }
 
-/**
- * The avatar tile itself, shared by every resource that has a display logo (an
- * App's uploaded/template logo, a database's uploaded logo or its engine's brand
- * mark).
- */
+// LogoImage - the avatar tile itself, shared by every resource that has a display logo.
 export function LogoImage({
   src,
   size = 36,
   className,
   fallback,
 }: {
-  /** Image source: a data-URI or a same-origin path (the CSP allows no host). */
   src: string | null;
   size?: number;
   className?: string;
   fallback: React.ReactNode;
 }) {
   const [broken, setBroken] = React.useState(false);
-  // A new source deserves a fresh attempt, otherwise replacing a broken logo
-  // would keep showing the fallback until a remount.
+  // A new source deserves a fresh attempt: otherwise a replaced logo shows the fallback until a remount.
   const [triedSrc, setTriedSrc] = React.useState(src);
   if (triedSrc !== src) {
     setTriedSrc(src);
@@ -84,9 +73,6 @@ export function LogoImage({
       <img
         src={src}
         alt=""
-        // The inset that keeps a full-bleed logo off the avatar's edge is worth 4px of a
-        // 36px tile and a quarter of a 16px one - at menu-icon size it would shrink the
-        // mark to a smudge, so it only applies once there is room for it.
         className={cn("size-full object-contain", size >= 24 && "p-1")}
         loading="lazy"
         onError={() => setBroken(true)}

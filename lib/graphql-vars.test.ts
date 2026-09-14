@@ -6,12 +6,6 @@ import { buildSchema, parse, validate, type GraphQLSchema } from "graphql";
 
 import { assertVariablesDeclared } from "./graphql-vars";
 
-/**
- * The two things that go wrong with the inline documents the dashboard sends:
- * a variable nobody declared (dropped in silence by the server) and a field the
- * schema no longer has.
- */
-
 const DOC = `
   mutation StartMigration($input: MigrationSourceInput!, $queued: [MigrationQueuedTeamInput!]) {
     startMigration(input: $input, queued: $queued)
@@ -39,8 +33,6 @@ test("a variable named in the SELECTION does not count as declared", () => {
   );
 });
 
-/* ---- every inline document the UI sends ---------------------------- */
-
 let cached: GraphQLSchema | undefined;
 const sdl = () =>
   (cached ??= buildSchema(readFileSync("schema.graphql", "utf8")));
@@ -55,7 +47,6 @@ function sources(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Every `/* GraphQL *\/` template in a file, minus the interpolated ones. */
 function documentsIn(path: string): string[] {
   const text = readFileSync(path, "utf8");
   return [...text.matchAll(/\/\* GraphQL \*\/\s*`([\s\S]*?)`/g)]

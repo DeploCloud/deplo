@@ -21,19 +21,12 @@ export function useTeamSlug(): string | null {
   return teamSlugFromPath(useNextPathname());
 }
 
-/**
- * The open path WITHOUT its team segment, which is how every path in this
- * codebase is written - so it is what a nav model or a tab bar compares against.
- */
+// useFlatPathname is the open path WITHOUT its team segment, how every path here is written.
 export function useFlatPathname(): string {
   return flatPath(useNextPathname());
 }
 
-/**
- * `next/navigation`'s router with the team the page is in put back on the path.
- * Import it from here, never from `next/navigation`, so a push stays in the team
- * the viewer is looking at (eslint enforces it).
- */
+// useRouter re-adds the team to every push: import it from here, never from `next/navigation` (eslint enforces it).
 export function useRouter() {
   const router = useNextRouter();
   const slug = useTeamSlug();

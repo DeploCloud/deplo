@@ -1,8 +1,4 @@
-/**
- * What the palette asks the server for. Kept out of the component so a test
- * can validate it against `schema.graphql`: a renamed field would otherwise
- * only fail at runtime, on a keystroke.
- */
+// Kept out of the component so a test can validate it against `schema.graphql`.
 export const SEARCH_QUERY = /* GraphQL */ `
   query PaletteSearch($q: String!) {
     search(q: $q) {

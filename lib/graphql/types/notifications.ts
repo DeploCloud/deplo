@@ -9,16 +9,7 @@ import {
   unsubscribeWebPush,
 } from "@/lib/data/notifications";
 
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * Channels are exposed as opaque `JSON`, deliberately and for the same reason the
- * settings object was: the instance shape follows the channel catalog, no
- * credential is ever in it (a stored one surfaces as a `…Set` bit with no read
- * path), and the settings UI reads and writes exactly this JSON.
- */
+// Channels ride as opaque JSON on purpose: the shape follows the channel catalog, and no credential is ever in it (a stored one surfaces as a `*Set` bit with no read path).
 builder.queryFields((t) => ({
   notificationChannels: t.field({
     type: "JSON",
@@ -36,10 +27,6 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
-
 builder.mutationFields((t) => ({
   saveNotificationChannel: t.field({
     type: "JSON",
@@ -50,8 +37,7 @@ builder.mutationFields((t) => ({
       id: t.arg.id({ required: false }),
       input: t.arg({ type: "JSON", required: true }),
     },
-    // Opaque JSON on the wire, so ANYTHING can arrive: the data layer coerces it
-    // field by field (`parseChannelInput`) rather than trusting the shape.
+    // Opaque JSON on the wire, so ANYTHING can arrive: the data layer coerces it field by field (`parseChannelInput`).
     resolve: (_r, { id, input }) =>
       saveNotificationChannel(id ? String(id) : null, input),
   }),
@@ -78,8 +64,7 @@ builder.mutationFields((t) => ({
   }),
   subscribeWebPush: t.field({
     type: "Boolean",
-    // Deliberately NOT `manage_notifications`: opting your own browser in is
-    // your own business, the same way revoking your own session is.
+    // Deliberately NOT `manage_notifications`: opting your own browser in is your own business.
     authScopes: { loggedIn: true },
     description: "Register this browser for push alerts in the active team.",
     args: {

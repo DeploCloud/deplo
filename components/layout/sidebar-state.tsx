@@ -5,17 +5,14 @@ import * as React from "react";
 const COLLAPSE_KEY = "deplo:sidebar-collapsed";
 const WIDTH_KEY = "deplo:sidebar-width";
 const MAX_WIDTH = 420;
-// The default is also the floor: narrower than this the nav labels stop fitting.
 const DEFAULT_WIDTH = 240;
 
-// Past the floor the sidebar slides out instead of shrinking; two thirds hidden
-// is where letting it go stops being a resize and becomes a close.
 const CLOSE_AT = DEFAULT_WIDTH * 0.66;
 
 const clampWidth = (n: number) =>
   Math.min(MAX_WIDTH, Math.max(DEFAULT_WIDTH, n));
 
-/** One pointer position → resize, slide out, or snap shut. */
+// resizeStep - one pointer position → resize, slide out, or snap shut.
 export function resizeStep(clientX: number) {
   if (clientX >= DEFAULT_WIDTH)
     return { width: clampWidth(clientX), peek: 0, close: false };
@@ -25,24 +22,17 @@ export function resizeStep(clientX: number) {
 
 type SidebarState = {
   collapsed: boolean;
-  /** False until the persisted preference has been read, so nothing animates on first paint. */
   hydrated: boolean;
   width: number;
   dragging: boolean;
-  /** How far the panel is slid off-screen mid-drag, in px. */
   peek: number;
   toggle: () => void;
-  /** Pointer-drag on the sidebar's right edge; persists the width on release. */
   startResize: (e: React.PointerEvent) => void;
 };
 
 const SidebarContext = React.createContext<SidebarState | null>(null);
 
-/**
- * Owns the desktop sidebar's collapsed flag and width. It lives above both the
- * sidebar and the topbar because the expand control sits in the topbar (the
- * sidebar itself collapses to zero width and has nowhere to host it).
- */
+// SidebarProvider - owns the desktop sidebar's collapsed flag and width.
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState({
     collapsed: false,
@@ -94,8 +84,6 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       if (close) finish(true);
       else setDrag({ active: true, peek });
     }
-    // Dropping `dragging` re-enables the transition, so the last stretch of the
-    // slide - back to the floor, or the rest of the way out - animates itself.
     function finish(close: boolean) {
       setDrag({ active: false, peek: 0 });
       window.removeEventListener("pointermove", onMove);
@@ -115,7 +103,6 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("pointerup", onUp);
   }, []);
 
-  // "[" toggles the sidebar from anywhere.
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName;

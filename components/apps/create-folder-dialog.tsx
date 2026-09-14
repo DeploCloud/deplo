@@ -17,11 +17,7 @@ import { Label } from "@/components/ui/label";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * Create a folder in the active team. Controlled (no trigger of its own) so it
- * can be opened from the Overview "Add new" menu. A folder is a team-wide,
- * single-level grouping - apps are moved into it afterward from the grid.
- */
+// CreateFolderDialog - controlled dialog that creates a folder in the active team.
 export function CreateFolderDialog({
   open,
   onOpenChange,
@@ -31,13 +27,8 @@ export function CreateFolderDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  /** Called with the new folder's id after it's created (before the refresh) -
-   *  e.g. to move a current selection of apps into it. */
   onCreated?: (folderId: string) => void | Promise<void>;
-  /** Override the default body copy (e.g. the "with selected apps" variant). */
   description?: React.ReactNode;
-  /** Create the folder nested under this parent (e.g. the folder currently open
-   *  on the Overview). Null/absent ⇒ a top-level folder. */
   parentId?: string | null;
 }) {
   const router = useRouter();
@@ -56,9 +47,6 @@ export function CreateFolderDialog({
 
   function create() {
     if (!name.trim()) return;
-    // The dialog gets out of the way NOW and the folder is written behind it: this is
-    // one control-plane insert, and what takes the time is the refresh that re-reads
-    // the whole Overview afterwards.
     const typed = { name, color };
     onOpenChange(false);
     reset();

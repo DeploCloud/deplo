@@ -1,8 +1,4 @@
-/**
- * What the toolbar can do to whichever terminal is mounted below it. Each
- * terminal hands these up on mount; `text()` is read at CLICK time because a
- * snapshot passed as a prop would always be one command behind.
- */
+// ConsoleControls - the mounted terminal's handles; text() is read at CLICK time, a snapshot prop would lag one command.
 export interface ConsoleControls {
   clear: () => void;
   text: () => string;

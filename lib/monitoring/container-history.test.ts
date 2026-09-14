@@ -17,12 +17,6 @@ import type {
   ContainerMetricsSample,
 } from "../data/container-metrics";
 
-/**
- * The per-app / per-database metrics ring buffer (container-history.ts): keyed by
- * id, online-samples-only, rate-ceiling, window eviction, the clear / prune paths,
- * and the separate latest-value CELL that holds the per-container breakdown.
- */
-
 // Read-time eviction is relative to Date.now(), so tests use near-now timestamps.
 const NOW = Date.now();
 
@@ -108,8 +102,7 @@ test("refuses offline snapshots (a gap, not a fake zero)", () => {
 });
 
 test("drops samples landing inside the rate ceiling (MIN_GAP_MS = 250)", () => {
-  // A ceiling, not a de-dupe: it sits BELOW the agent's 1s cadence clamp floor,
-  // so a legitimately fast host is never thinned - only a pathological writer is.
+  // A ceiling, not a de-dupe: it sits BELOW the agent's 1s cadence clamp floor, so a fast host is never thinned.
   recordContainerSample(sample("app_1", NOW - 4000));
   recordContainerSample(sample("app_1", NOW - 3900)); // 100ms later → dropped
   recordContainerSample(sample("app_1", NOW - 3700)); // 300ms after the kept one → kept
@@ -147,14 +140,8 @@ test("pruneContainerHistoryTo keeps only ids that still EXIST", () => {
   assert.equal(getContainerHistory("db_1").length, 1);
 });
 
-/* ------------------------------------------------------------------ */
-/* Absence is a gap, never a reason to forget                          */
-/* ------------------------------------------------------------------ */
-
 test("a container absent from a frame RETAINS its buffered window", () => {
-  // The behavioural change from the poll era, and the reason it matters: a container
-  // that STOPPED is exactly when its trailing window is worth the most - the operator
-  // opens the tab to see the CPU spike or the memory climb that PRECEDED the stop.
+  // A container that STOPPED is when its trailing window matters most: the spike that PRECEDED the stop.
   recordContainerSample(sample("app_1", NOW - 10_000, { cpu: 95 })); // the spike
   recordContainerSample(sample("app_1", NOW - 5000, { cpu: 98 }));
   recordContainerSample(sample("app_2", NOW - 5000)); // a sibling, still running
@@ -173,10 +160,6 @@ test("a container absent from a frame RETAINS its buffered window", () => {
   assert.equal(getContainerHistory("app_1").length, 0);
 });
 
-/* ------------------------------------------------------------------ */
-/* The breakdown CELL - a live table, not a series                     */
-/* ------------------------------------------------------------------ */
-
 test("the breakdown starts empty and is a per-resource cell", () => {
   assert.deepEqual(latestContainerInstances("app_1"), []);
   recordContainerInstances("app_1", [instance("web")]);
@@ -188,9 +171,7 @@ test("the breakdown starts empty and is a per-resource cell", () => {
 });
 
 test("recordContainerInstances REPLACES the cell, never appends", () => {
-  // The whole point of keeping this out of the ring buffer: nobody charts the
-  // breakdown, so it needs no history, and appending would multiply every
-  // sample by the container count, which is what toSample strips it out to avoid.
+  // Out of the ring buffer on purpose: appending would multiply every sample by the container count.
   recordContainerInstances("app_1", [instance("web"), instance("worker")]);
   recordContainerInstances("app_1", [instance("web")]); // the worker was removed
   assert.deepEqual(
@@ -203,8 +184,7 @@ test("recordContainerInstances REPLACES the cell, never appends", () => {
 });
 
 test("clearContainerHistory clears the breakdown cell too, per id and wholesale", () => {
-  // OFF must mean nothing stays saved. A cleared buffer beside a stale breakdown
-  // table would leave the tab rendering last week's containers under an empty chart.
+  // OFF must mean nothing stays saved: a stale breakdown would render last week's containers under an empty chart.
   recordContainerSample(sample("app_1", NOW));
   recordContainerInstances("app_1", [instance("web")]);
   recordContainerInstances("app_2", [instance("db")]);

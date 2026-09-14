@@ -1,9 +1,6 @@
 import { redirect } from "next/navigation";
 
-/**
- * Servers moved under Settings (it is now a settings section, reached from the
- * settings sidebar). Keep this path working for old bookmarks/links.
- */
+// ServersRedirect keeps the old /servers links working: Servers is a Settings section now.
 export default async function ServersRedirect(
   props: PageProps<"/[team]/servers">,
 ) {

@@ -1,15 +1,8 @@
-/**
- * Folding the Variables page's aggregate "All" tab into Project sections. The tab
- * holds every variable of every app in ONE flat row list (that is what lets its
- * filters cut across cards and its sort order the whole page).
- */
-
 /** The section key of every App that belongs to no Project. */
 export const TOP_LEVEL = "__top_level__";
 
-/** What that section is CALLED. The Project facet's option says "No project"
- *  (with a "standalone" hint); a section header is not a filter - it names what
- *  is inside, and those apps stand on their own, outside every project. */
+// Not the Project facet's "No project" on purpose: a section header names what is inside, not a filter.
+// What that section is CALLED: those apps stand on their own, outside every project.
 export const TOP_LEVEL_NAME = "Standalone";
 
 /** The least an App must carry to be grouped: who it is, and where it lives. */
@@ -34,19 +27,14 @@ export interface AppBucket<R extends { app: GroupableApp }> {
 
 /** One collapsible Project section. */
 export interface ProjectBucket<R extends { app: GroupableApp }> {
-  /** The Project's id, or {@link TOP_LEVEL}. Also the collapse-state key. */
   id: string;
   name: string;
   color: string | null;
   apps: AppBucket<R>[];
-  /** Rows across every app of the section - what a COLLAPSED header counts. */
   rowCount: number;
 }
 
-/**
- * Fold rows into Project → App buckets. The SECTIONS come out in `projects` order -
- * the team-wide Project order the Overview grid shows - with Standalone last.
- */
+// Fold rows into Project → App buckets, in `projects` order, with Standalone last.
 export function groupRowsByProject<R extends { app: GroupableApp }>(
   rows: readonly R[],
   projects: readonly GroupProject[],
@@ -66,9 +54,7 @@ export function groupRowsByProject<R extends { app: GroupableApp }>(
         : undefined;
       section = {
         id: sectionId,
-        // A project the caller never passed (deleted from under the page, or one
-        // the read didn't return) still gets a section: dropping its apps would
-        // silently take their variables off a page that says it shows them all.
+        // A project the caller never passed still gets a section: dropping its apps would hide their variables.
         name:
           sectionId === TOP_LEVEL
             ? TOP_LEVEL_NAME
@@ -91,9 +77,6 @@ export function groupRowsByProject<R extends { app: GroupableApp }>(
     section.rowCount += 1;
   }
 
-  // Sections follow the caller's Project order. A section whose project the
-  // caller never passed has no rank of its own: it sits after the ranked ones
-  // (before Standalone), in pass order - `sort` is stable.
   const rank = new Map(projects.map((p, i) => [p.id, i] as const));
   const rankOf = (section: ProjectBucket<R>) =>
     section.id === TOP_LEVEL

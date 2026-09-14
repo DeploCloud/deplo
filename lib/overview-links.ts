@@ -1,19 +1,12 @@
-/**
- * Overview drill-in URL builders. Client components import from here as well, so
- * the two sides can never disagree on the URL shape.
- */
-
-/**
- * The Overview drill-in an action was started from - an open folder, or a
- * project's selected environment (ADR-0009: never both).
- */
+// Client-reachable (the Overview cards, wizards and command palette import it): nothing server-only here.
+// OverviewPlacement - the drill-in an action was started from (ADR-0009: never both).
 export interface OverviewPlacement {
   folderId?: string | null;
   projectId?: string | null;
   environmentId?: string | null;
 }
 
-/** Build the Overview URL that opens a folder, preserving the list/grid view. */
+// folderHref builds the Overview URL that opens a folder, preserving the list/grid view.
 export function folderHref(id: string, view: "grid" | "list" = "grid"): string {
   const params = new URLSearchParams();
   params.set("folder", id);
@@ -21,7 +14,7 @@ export function folderHref(id: string, view: "grid" | "list" = "grid"): string {
   return `/?${params.toString()}`;
 }
 
-/** Build the Overview URL that opens a project, preserving the list/grid view. */
+// projectHref builds the Overview URL that opens a project, preserving the list/grid view.
 export function projectHref(
   id: string,
   view: "grid" | "list" = "grid",
@@ -32,7 +25,7 @@ export function projectHref(
   return `/?${params.toString()}`;
 }
 
-/** The Overview URL a placement came from, where "back" should land. */
+// placementHref is the Overview URL a placement came from, where "back" should land.
 export function placementHref(
   p: OverviewPlacement | null | undefined,
   view: "grid" | "list" = "grid",
@@ -48,7 +41,6 @@ export function placementHref(
   return view === "list" ? "/?view=list" : "/";
 }
 
-/** The drill-in params, appended to a creation flow's URL (empty when top level). */
 function placementParams(
   p: OverviewPlacement | null | undefined,
 ): URLSearchParams {
@@ -61,7 +53,7 @@ function placementParams(
   return params;
 }
 
-/** Link to the new-app wizard, carrying the drill-in it was opened from. */
+// newAppHref links to the new-app wizard, carrying the drill-in it was opened from.
 export function newAppHref(
   p?: OverviewPlacement | null,
   opts?: {
@@ -74,18 +66,13 @@ export function newAppHref(
   const params = placementParams(p);
   if (opts?.template) params.set("template", opts.template);
   if (opts?.variant) params.set("variant", opts.variant);
-  // The wizard opens straight on this source - what a dropped archive needs.
   if (opts?.source) params.set("source", opts.source);
   if (opts?.deploy === false) params.set("deploy", "false");
   const qs = params.toString();
   return qs ? `/new?${qs}` : "/new";
 }
 
-/**
- * Link to a template's page, carrying the drill-in and, optionally, which
- * variant of the family to show. The variant rides the URL so the choice is
- * shareable and the page stays a server component.
- */
+// templateHref links to a template's page, carrying the drill-in and which variant to show.
 export function templateHref(
   slug: string,
   p?: OverviewPlacement | null,
@@ -97,16 +84,13 @@ export function templateHref(
   return qs ? `/templates/${slug}?${qs}` : `/templates/${slug}`;
 }
 
-/** Link to the template catalogue, carrying the drill-in it was opened from. */
+// templatesHref links to the template catalogue, carrying the drill-in it was opened from.
 export function templatesHref(p?: OverviewPlacement | null): string {
   const qs = placementParams(p).toString();
   return qs ? `/templates?${qs}` : "/templates";
 }
 
-/**
- * Read a placement back out of a page's `searchParams` (the same `?folder=` /
- * `?project=` / `?env=` grammar the Overview uses).
- */
+// placementFromSearchParams reads a placement back out of a page's searchParams.
 export function placementFromSearchParams(sp: {
   folder?: string | string[];
   project?: string | string[];

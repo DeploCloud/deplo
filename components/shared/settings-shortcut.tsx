@@ -5,10 +5,7 @@ import { Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-/**
- * The gear that opens the settings page for the section on screen - the way from
- * what you are reading to what configures it.
- */
+// SettingsShortcut - the gear that opens the settings page for the section on screen.
 export function SettingsShortcut({
   href,
   label,
@@ -16,7 +13,7 @@ export function SettingsShortcut({
 }: {
   href: string;
   label: string;
-  /** Only for rows shorter than a button (the connection card's label line). */
+  // Only for rows shorter than a button (the connection card's label line).
   className?: string;
 }) {
   return (
