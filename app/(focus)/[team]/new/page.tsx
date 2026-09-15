@@ -102,7 +102,6 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const variantId = one(params.variant);
   const repoParam = one(params.repo);
   const sourceParam = one(params.source);
-  const shouldDeploy = one(params.deploy) !== "false";
   const presetSource = SOURCES.find((s) => s === sourceParam) ?? null;
 
   const template =
@@ -200,7 +199,6 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
         presetRepo={repoParam}
         presetName={template?.slug}
         presetSource={presetSource}
-        shouldDeploy={shouldDeploy}
         placement={placement}
         exitHref={exitHref}
       />

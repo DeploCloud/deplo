@@ -29,7 +29,7 @@ export function DetailsStep({
   onBack,
   onNext,
   usesGit,
-  shouldDeploy,
+  onCreateWithoutDeploy,
   nextDisabled,
   pending,
   sourceFields,
@@ -52,7 +52,7 @@ export function DetailsStep({
   onBack: () => void;
   onNext: () => void;
   usesGit: boolean;
-  shouldDeploy: boolean;
+  onCreateWithoutDeploy?: () => void;
   nextDisabled: boolean;
   pending: boolean;
   sourceFields: React.ReactNode;
@@ -87,8 +87,9 @@ export function DetailsStep({
       backLabel={isTemplate ? "Back to templates" : "Back"}
       onBack={onBack}
       onNext={onNext}
-      nextLabel={usesGit ? "Next" : shouldDeploy ? "Deploy" : "Create app"}
-      deploy={!usesGit && shouldDeploy}
+      nextLabel={usesGit ? "Next" : "Deploy"}
+      deploy={!usesGit}
+      onCreateWithoutDeploy={onCreateWithoutDeploy}
       nextDisabled={nextDisabled}
       pending={pending}
     >

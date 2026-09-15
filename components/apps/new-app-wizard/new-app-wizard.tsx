@@ -86,7 +86,6 @@ export function NewAppWizard({
   connections,
   providers,
   isInstanceAdmin,
-  shouldDeploy = true,
   placement,
   exitHref,
 }: {
@@ -101,7 +100,6 @@ export function NewAppWizard({
   connections: GitConnectionDTO[];
   providers: GitProviderChoice[];
   isInstanceAdmin: boolean;
-  shouldDeploy?: boolean;
   placement?: WizardPlacement | null;
   exitHref: string;
 }) {
@@ -243,7 +241,7 @@ export function NewAppWizard({
     deploy();
   }
 
-  function deploy() {
+  function deploy(startDeployment = true) {
     const input = buildCreateAppInput({
       name,
       serverId,
@@ -267,7 +265,7 @@ export function NewAppWizard({
       sharedIds,
       usesGit,
       autoDeploy,
-      shouldDeploy,
+      shouldDeploy: startDeployment,
       primaryService,
       routeCandidates,
       extraRouted,
@@ -396,7 +394,7 @@ export function NewAppWizard({
             onBack={onBack}
             onNext={onNext}
             usesGit={usesGit}
-            shouldDeploy={shouldDeploy}
+            onCreateWithoutDeploy={isTemplate ? () => deploy(false) : undefined}
             nextDisabled={nextDisabled}
             pending={pending}
             sourceFields={
@@ -436,7 +434,6 @@ export function NewAppWizard({
             meta={meta}
             onBack={onBack}
             onNext={onNext}
-            shouldDeploy={shouldDeploy}
             nextDisabled={nextDisabled}
             pending={pending}
             nameField={nameField}

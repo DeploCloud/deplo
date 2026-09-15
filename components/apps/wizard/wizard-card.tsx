@@ -1,10 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { ArrowLeft, ArrowRight, Loader2, Rocket } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  Loader2,
+  Plus,
+  Rocket,
+} from "lucide-react";
 
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export type StepDirection = "forward" | "back";
@@ -87,6 +100,7 @@ export function WizardCard({
   onNext,
   nextDisabled = false,
   deploy = false,
+  onCreateWithoutDeploy,
   pending = false,
 }: {
   title: string;
@@ -100,8 +114,38 @@ export function WizardCard({
   onNext?: () => void;
   nextDisabled?: boolean;
   deploy?: boolean;
+  /** The alternative on the last step: create the app, deploy it later. */
+  onCreateWithoutDeploy?: () => void;
   pending?: boolean;
 }) {
+  const nextButton = onNext && (
+    <Button
+      type="button"
+      onClick={onNext}
+      disabled={nextDisabled || pending}
+      className={onCreateWithoutDeploy ? "rounded-none" : undefined}
+    >
+      <span className="grid place-items-center">
+        <span
+          className={cn(
+            "col-start-1 row-start-1 flex items-center gap-2",
+            pending && "invisible",
+          )}
+        >
+          {deploy ? (
+            <Rocket className="size-4" />
+          ) : (
+            <ArrowRight className="order-last size-4" />
+          )}
+          {nextLabel}
+        </span>
+        {pending && (
+          <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+        )}
+      </span>
+    </Button>
+  );
+
   return (
     <div className="flex max-h-[calc(100dvh-10rem)] flex-col rounded-xl border border-border bg-card shadow-sm">
       <div className="shrink-0 px-6 pt-6 pb-4">
@@ -131,32 +175,39 @@ export function WizardCard({
           ) : (
             <span />
           )}
-          {onNext && (
-            <Button
-              type="button"
-              onClick={onNext}
-              disabled={nextDisabled || pending}
-            >
-              <span className="grid place-items-center">
-                <span
-                  className={cn(
-                    "col-start-1 row-start-1 flex items-center gap-2",
-                    pending && "invisible",
-                  )}
-                >
-                  {deploy ? (
-                    <Rocket className="size-4" />
-                  ) : (
-                    <ArrowRight className="order-last size-4" />
-                  )}
-                  {nextLabel}
-                </span>
-                {pending && (
-                  <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
-                )}
-              </span>
-            </Button>
-          )}
+          {nextButton &&
+            (onCreateWithoutDeploy ? (
+              // The caret sits AFTER the action it qualifies, like every
+              // split button.
+              <div
+                role="group"
+                aria-label="Deployment actions"
+                className="inline-flex overflow-hidden rounded-md shadow-sm"
+              >
+                {nextButton}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      aria-label="More deployment options"
+                      disabled={nextDisabled || pending}
+                      className="rounded-none border-l border-primary-foreground/20 px-2 shadow-none"
+                    >
+                      <ChevronDown className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onSelect={onCreateWithoutDeploy}>
+                      <Plus className="size-4" />
+                      Create without deploying
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : (
+              nextButton
+            ))}
         </div>
       )}
     </div>

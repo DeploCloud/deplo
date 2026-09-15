@@ -20,7 +20,6 @@ export function ConfigureStep({
   meta,
   onBack,
   onNext,
-  shouldDeploy,
   nextDisabled,
   pending,
   nameField,
@@ -42,7 +41,6 @@ export function ConfigureStep({
   meta: React.ReactNode;
   onBack: () => void;
   onNext: () => void;
-  shouldDeploy: boolean;
   nextDisabled: boolean;
   pending: boolean;
   nameField: React.ReactNode;
@@ -68,8 +66,8 @@ export function ConfigureStep({
       meta={meta}
       onBack={onBack}
       onNext={onNext}
-      nextLabel={shouldDeploy ? "Deploy" : "Create app"}
-      deploy={shouldDeploy}
+      nextLabel="Deploy"
+      deploy
       nextDisabled={nextDisabled}
       pending={pending}
     >
