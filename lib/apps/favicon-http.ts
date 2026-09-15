@@ -1,14 +1,11 @@
 import { faviconFormatScore, mimeForFaviconPath } from "./favicon-shared";
 
-// Bounds the work a hostile or huge page can cost, whatever the agent returned.
 const MAX_HTML_SCAN = 256 * 1024;
 
-// MAX_ICON_FETCHES - icon URLs tried before giving up; a page's four dead apple-touch variants must not use them all.
 export const MAX_ICON_FETCHES = 6;
 
 const DEFAULT_FAVICON_PATH = "/favicon.ico";
 
-// IconLink - one icon <link> as the document declared it.
 export interface IconLink {
   href: string;
   rel: string[];
@@ -16,17 +13,14 @@ export interface IconLink {
   type: string;
 }
 
-// IconCandidate - a path worth fetching, or bytes the page already inlined.
 export type IconCandidate =
   | { kind: "path"; path: string }
   | { kind: "inline"; mime: string; bytes: Uint8Array };
 
 const LINK_TAG_RE = /<link\b[^>]*>/gi;
-// An unquoted value runs to the next space or `>`, `=` included - how browsers tokenize it.
 const ATTR_RE =
   /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>][^\s>]*))/g;
 
-// parseIconLinks - every icon <link> in document order; `mask-icon` is excluded, it is a silhouette, not the icon.
 export function parseIconLinks(html: string): IconLink[] {
   const headEnd = html.slice(0, MAX_HTML_SCAN).search(/<\/head\s*>/i);
   const scope = html.slice(0, headEnd >= 0 ? headEnd : MAX_HTML_SCAN);
@@ -51,7 +45,6 @@ export function parseIconLinks(html: string): IconLink[] {
   return out;
 }
 
-// Not a general HTML decoder: an unknown entity is left alone, never half-decoded.
 function decodeEntities(s: string): string {
   return s.replace(/&(amp|lt|gt|quot|#39|apos);/g, (_, e) =>
     e === "amp"
@@ -89,7 +82,6 @@ function formatOf(link: IconLink): string {
   return dot >= 0 ? path.slice(dot + 1).toLowerCase() : "";
 }
 
-// rankIconLinks - order icon links best-first; document order breaks the last tie, so a page always yields the same icon.
 export function rankIconLinks(links: readonly IconLink[]): IconLink[] {
   return links
     .map((link, i) => ({ link, i }))
@@ -108,7 +100,6 @@ export function rankIconLinks(links: readonly IconLink[]): IconLink[] {
     .map((e) => e.link);
 }
 
-// Control characters in a request path are smuggling, not a typo: the agent refuses them.
 function cleanPath(path: string): string | null {
   const encoded = path.replace(/ /g, "%20");
   if (!encoded.startsWith("/") || encoded.length > 2000) return null;
@@ -121,7 +112,6 @@ function joinPath(basePath: string, href: string): string {
   return `${base}/${href.replace(/^\.?\//, "")}`;
 }
 
-// resolveIconHref - one declared href as something we can act on, or null.
 export function resolveIconHref(
   href: string,
   opts: { basePath: string; host: string },
@@ -129,7 +119,6 @@ export function resolveIconHref(
   const raw = href.trim();
   if (!raw) return null;
   if (raw.toLowerCase().startsWith("data:")) return parseDataUri(raw);
-  // Protocol-relative (`//cdn/x.png`) is always another origin.
   if (raw.startsWith("//")) return null;
   if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
     let url: URL;
@@ -167,7 +156,6 @@ function parseDataUri(uri: string): IconCandidate | null {
   }
 }
 
-// iconCandidates - everything the page declared, best first, then /favicon.ico as the fallback.
 export function iconCandidates(
   html: string,
   opts: { basePath: string; host: string },
@@ -184,7 +172,6 @@ export function iconCandidates(
   };
   for (const link of rankIconLinks(parseIconLinks(html))) {
     push(resolveIconHref(link.href, opts));
-    // One slot is held back so the well-known path is always tried.
     if (out.length >= MAX_ICON_FETCHES - 1) break;
   }
   const fallback = cleanPath(
@@ -222,19 +209,16 @@ function startsWith(
   return sig.every((b, i) => bytes[at + i] === b);
 }
 
-// sniffImageMime - the format the bytes actually are, from their magic number.
 export function sniffImageMime(bytes: Uint8Array): string | null {
   if (bytes.length < 4) return null;
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47])) return "image/png";
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return "image/jpeg";
   if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) return "image/gif";
-  // RIFF....WEBP
   if (
     startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
     startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)
   )
     return "image/webp";
-  // ICO / CUR: a 2-byte zero, then the type, then a non-zero image count.
   if (
     bytes[0] === 0 &&
     bytes[1] === 0 &&
@@ -251,7 +235,6 @@ function looksLikeSvg(text: string): boolean {
   return /<svg[\s>]/i.test(head);
 }
 
-// imageMimeFor - the storable MIME for a fetched icon; the bytes decide, the content type only for SVG.
 export function imageMimeFor(
   bytes: Uint8Array,
   contentType: string,
@@ -261,7 +244,6 @@ export function imageMimeFor(
   if (sniffed) return sniffed;
   const declared = normalizeImageMime(contentType.split(";")[0]);
   const byExtension = mimeForFaviconPath(path.split(/[?#]/)[0]);
-  // SVG has no magic number, so a claim of SVG counts only if the bytes read as one.
   if (declared === "image/svg+xml" || byExtension === "image/svg+xml") {
     const text = new TextDecoder("utf-8", { fatal: false }).decode(
       bytes.slice(0, 1024),

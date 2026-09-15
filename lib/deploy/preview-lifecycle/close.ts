@@ -22,8 +22,6 @@ import {
   teardownPreviewStack,
 } from "./stack-teardown";
 
-// Close a preview: stop accepting builds for it, cancel anything still queued, and
-// tear the stack down.
 export async function closePreview(
   previewId: string,
   reason: string,
@@ -48,8 +46,6 @@ export async function closePreview(
   await cancelQueuedPreviewDeploys(previewId);
   const gone = await teardownPreviewStack(p);
   publishAppChanged(p.appId);
-  // Every way a preview closes tells the pull request, not only the webhook's:
-  // the reaper's idle timeout and the Destroy button left a "Ready" link that 404s.
   void syncPreviewComment(previewId, { kind: "destroyed" });
   const app = await loadAppGraph(p.appId);
   await recordActivity(
@@ -64,12 +60,8 @@ export async function closePreview(
   return gone;
 }
 
-// Stop every running preview of an app because the machine they run on is about to
-// change. Their stacks live on the OLD host and every lifecycle verb resolves the host
-// from the app row, so this MUST run BEFORE that row is written.
 export async function stopPreviewsForServerChange(
   appId: string,
-  // The server previews will run on from now on.
   newServerId: string,
 ): Promise<number> {
   const rows = await getDb()
@@ -98,10 +90,6 @@ export async function stopPreviewsForServerChange(
       max: settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT,
     });
   }
-  // A nip.io host carries the server's IP in its last label, so a preview minted
-  // on the old machine would keep resolving THERE after Redeploy built it here.
-  // Same re-host an app's own auto domains get on a move; a base-domain host is
-  // the operator's DNS and stays.
   const newIp = resolveServerIp(
     (await getServerById(newServerId)) ?? undefined,
   );
@@ -121,9 +109,6 @@ export async function stopPreviewsForServerChange(
   return victims.length;
 }
 
-// Tear down every preview stack of an app, for the paths that delete the app itself.
-// MUST run before the app row goes: the FK cascade drops the preview rows, and with
-// them the only record that those containers and volumes exist.
 export async function destroyPreviewsForApp(appId: string): Promise<void> {
   const rows = await getDb()
     .select({
@@ -132,8 +117,6 @@ export async function destroyPreviewsForApp(appId: string): Promise<void> {
       prNumber: appPreviewsTable.prNumber,
       appName: appsTable.name,
       teamId: appsTable.teamId,
-      // Previews may be pinned to their own machine (`preview_server_id`), which
-      // is where `startDeployment` sent this stack.
       serverId: sql<string>`coalesce(${appsTable.previewServerId}, ${appsTable.serverId})`,
     })
     .from(appPreviewsTable)
@@ -144,10 +127,6 @@ export async function destroyPreviewsForApp(appId: string): Promise<void> {
         isNull(appPreviewsTable.tornDownAt),
       ),
     );
-  // The queue, not `teardownPreviewStack`: these rows are about to CASCADE away with
-  // the app, so the stamp they retry on is gone in a moment and nothing would ever
-  // name these containers again. The comment goes first, and is awaited: the row
-  // it reads is what the cascade is about to drop.
   await mapLimit(rows, 4, async (r) => {
     await syncPreviewComment(r.id, { kind: "destroyed" });
     await teardownOrQueue({

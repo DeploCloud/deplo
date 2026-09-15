@@ -13,7 +13,6 @@ import {
   type EditUserSeedUser,
 } from "./account-editor";
 
-// EditUserDialog - the same editor in a modal, for Settings → Users.
 export function EditUserDialog({
   user,
   seed,

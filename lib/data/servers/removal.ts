@@ -15,12 +15,8 @@ import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
 import { getServerById, serverRole } from "./roster";
 
-// What removeServer hands back to the operator.
 export interface ServerRemoval {
-  // The paste-on-the-server command that uninstalls the agent. ALWAYS returned -
-  // removal never cleans the host.
   uninstallCommand: string;
-  // A non-blocking hazard the operator must know about, or null.
   warning: string | null;
 }
 
@@ -34,8 +30,6 @@ async function hostUninstallCommand(): Promise<string> {
   return uninstallCommand({ baseUrl, insecure });
 }
 
-// agentUninstallCommand is the paste-on-the-host command that takes Deplo's agent
-// back off a machine - the row that needs it is the one Deplo cannot reach.
 export async function agentUninstallCommand(): Promise<string> {
   await requireActiveTeamId();
   return hostUninstallCommand();
@@ -47,8 +41,6 @@ function nameList(names: string[], max = 5): string {
   return rest > 0 ? `${shown} …and ${rest} more` : shown;
 }
 
-// assertNoWorkloads refuses when the host still RUNS something, BEFORE anything is
-// touched: both `server_id` FKs are RESTRICT, but a raw FK error tells nobody anything.
 export async function assertNoWorkloads(id: string): Promise<void> {
   const [apps, dbs] = await Promise.all([
     getDb()
@@ -72,8 +64,6 @@ export async function assertNoWorkloads(id: string): Promise<void> {
     );
 }
 
-// Everything assertNoWorkloads refuses plus the backup destinations kept here. It
-// runs before the trust revoke, so a blocked removal has no side effects at all.
 async function assertServerRemovable(id: string): Promise<void> {
   await assertNoWorkloads(id);
   const destinations = await getDb()
@@ -88,8 +78,6 @@ async function assertServerRemovable(id: string): Promise<void> {
     );
 }
 
-// removeServer forgets a server, revoking trust first so even a box we can no
-// longer reach never keeps a valid badge.
 export async function removeServer(id: string): Promise<ServerRemoval> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
@@ -97,7 +85,6 @@ export async function removeServer(id: string): Promise<ServerRemoval> {
   return removeServerRow(id, user.name, teamId);
 }
 
-// The removal itself, with NO gate of its own.
 async function removeServerRow(
   id: string,
   actorName: string,
@@ -107,38 +94,27 @@ async function removeServerRow(
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
-  // (0) The host running Deplo itself is NOT removable, by anyone, ever.
   if (isDeploHostServer(server))
     throw new Error(
       `${server.name} is the host running Deplo itself - it can't be removed, ` +
         `because doing so would cut this dashboard off from its own server.`,
     );
 
-  // (a) Block on live workloads - before any side effect.
   await assertServerRemovable(id);
 
-  // An App mid-move OFF this server is NOT a blocker (the source host may be the
-  // thing that died), but its volumes still sit here and
-  // `apps.migrate_from_server_id` is SET NULL on delete, so the marker vanishes.
   const stranded = await getDb()
     .select({ slug: appsTable.slug })
     .from(appsTable)
     .where(eq(appsTable.migrateFromServerId, id));
 
-  // Queued teardowns go with the host: retrying them would dial an address that
-  // is no longer ours.
   const abandoned = await pendingTeardownsForServer(id);
 
-  // (b) Revoke trust before the delete: if anything below fails, the agent's
-  // badge is already dead.
   const pinned = server.agent?.certFingerprint ?? "";
   await getDb()
     .update(serversTable)
     .set({ agentCertFingerprint: "" })
     .where(eq(serversTable.id, id));
 
-  // (c) Delete - restoring the pin if it fails, so we never leave a server that
-  // is present in the table yet can never be dialed again.
   try {
     await getDb().delete(serversTable).where(eq(serversTable.id, id));
   } catch (e) {
@@ -181,20 +157,13 @@ async function removeServerRow(
   };
 }
 
-// What uninstallServerAgent hands back.
 export interface ServerUninstall {
-  // True when the host is clean AND the row is gone. False leaves both in place.
   removed: boolean;
-  // The host-side one-liner, ALWAYS returned - on failure it is the only way through.
   uninstallCommand: string;
-  // Why it did not happen, or null. Surfaced verbatim in the UI.
   error: string | null;
-  // A non-blocking hazard, or null - same shape as ServerRemoval.
   warning: string | null;
 }
 
-// uninstallServerAgent takes Deplo off a MIGRATION SOURCE: uninstall the agent
-// from the host, then forget the server.
 export async function uninstallServerAgent(
   id: string,
 ): Promise<ServerUninstall> {
@@ -204,8 +173,6 @@ export async function uninstallServerAgent(
   return uninstallMigrationSource(id, user.name, teamId);
 }
 
-// The uninstall itself, with NO capability gate - also what the automatic sweep
-// does with nobody signed in at all.
 export async function uninstallMigrationSource(
   id: string,
   actorName: string,
@@ -216,8 +183,6 @@ export async function uninstallMigrationSource(
   if (!server) throw new Error("Server not found");
   const command = await hostUninstallCommand();
 
-  // Scoped to the one role that asked for it: an ordinary server's removal is a
-  // deliberate, unchanged flow (ADR-0011).
   if (serverRole(server) !== "import")
     throw new Error(
       `${server.name} is a server in your fleet, not a migration source. ` +

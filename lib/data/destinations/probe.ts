@@ -34,13 +34,11 @@ import {
 import type { S3Target } from "../../agent/gen/agent";
 import type { BackupDestination } from "../../types/backup";
 
-// DestinationTestResult is the destination repainted from the live verdict, plus the verdict.
 export interface DestinationTestResult {
   destination: DestinationDTO;
   report: S3TestReport;
 }
 
-// testDestination verifies one destination for real and persists the live verdict.
 export async function testDestination(
   id: string,
 ): Promise<DestinationTestResult> {
@@ -50,7 +48,6 @@ export async function testDestination(
   return probeAndRecord(id, teamId);
 }
 
-// testDestinations re-probes every destination in the active team, in listDestinations order.
 export async function testDestinations(): Promise<DestinationDTO[]> {
   const teamId = (await requireCapability("manage_backup_destinations")).teamId;
   const current = await listDestinations();
@@ -65,7 +62,6 @@ export async function testDestinations(): Promise<DestinationDTO[]> {
 
 const PROBE_CONCURRENCY = 4;
 
-// `Promise.all` with a ceiling on how many run at once; results keep input order.
 async function mapBounded<T, R>(
   items: T[],
   limit: number,
@@ -94,7 +90,6 @@ async function probeAndRecord(
   const creds = await getDestinationWithSecrets(id);
   const d = creds.destination;
 
-  // The agent probe (RPC) runs BEFORE the status write, never inside a transaction.
   const startedAt = nowIso();
   const began = Date.now();
   let ok = false;
@@ -114,11 +109,8 @@ async function probeAndRecord(
       totalBytes = verdict.totalBytes;
       resolvedPath = verdict.root || null;
     } else {
-      // `S3Check` ignores the object key (it's a bucket probe), but the wire type
-      // requires one - a sentinel that documents intent.
       const verdict = await checkOnAnyBackupAgent(
         s3TargetFor(creds, "deplo/.s3check"),
-        // An ENCRYPTED bucket needs an agent that honours the recipient.
         Boolean(d.ageRecipient),
       );
       ok = verdict.ok;
@@ -138,12 +130,9 @@ async function probeAndRecord(
     .set({
       status,
       lastTestAt: startedAt,
-      // Empty string would read as "tested and passed" - store NULL on success.
       lastTestError: ok ? null : error || "The destination probe failed.",
       lastTestServerId: serverId,
       lastTestMs: durationMs,
-      // A probe that could not reach the host measured nothing, and nothing is not
-      // zero: keep the last real figures rather than losing the folder and the bar.
       lastFreeBytes: freeBytes ?? d.lastFreeBytes,
       lastTotalBytes: totalBytes ?? d.lastTotalBytes,
       resolvedPath: resolvedPath ?? d.resolvedPath,
@@ -167,7 +156,6 @@ async function probeAndRecord(
   };
 }
 
-// The destination fields the report prints, never a credential.
 function testTargetOf(d: DestinationDTO): S3TestTarget {
   return {
     name: d.name,
@@ -176,20 +164,15 @@ function testTargetOf(d: DestinationDTO): S3TestTarget {
     endpoint: destinationWhere(d),
     region: d.region ?? "",
     bucket: d.bucket ?? "",
-    // The folder the agent actually resolved beats the one that was configured; both
-    // are empty for a managed root nobody has tested yet.
     path: d.resolvedPath ?? d.path ?? "",
   };
 }
 
-// A legible stand-in covers the window where a report is read against a server
-// deleted moments ago (the FK is SET NULL on removal).
 async function serverLabelFor(serverId: string): Promise<string> {
   const server = (await listAllServers()).find((s) => s.id === serverId);
   return server ? serverLabel(server) : "a server that has since been removed";
 }
 
-// destinationTestReport is the STORED report, so reading the last failure never re-dials.
 export async function destinationTestReport(id: string): Promise<S3TestReport> {
   const teamId = await requireActiveTeamId();
   await requireTeamWide("backup destinations");
@@ -210,8 +193,6 @@ export async function destinationTestReport(id: string): Promise<S3TestReport> {
   });
 }
 
-// Probe a `server` destination on ITS OWN host: unlike a bucket, this question is
-// about one machine's disk.
 async function checkStoreOnItsServer(d: BackupDestination): Promise<{
   ok: boolean;
   error: string;
@@ -228,7 +209,6 @@ async function checkStoreOnItsServer(d: BackupDestination): Promise<{
       root: "",
     };
   }
-  // `store: true` is what makes an old agent say so.
   const conn = await connectBackupAgent(d.serverId, { store: true });
   try {
     const verdict = await conn.storeCheck(storeTargetFor(d, ""));
@@ -240,15 +220,12 @@ async function checkStoreOnItsServer(d: BackupDestination): Promise<{
       root: verdict.root,
     };
   } catch (e) {
-    // An agent old enough to back up to S3 but not to hold artifacts must say exactly
-    // that, rather than "the check failed".
     throw mapBackupUnsupported(e);
   } finally {
     conn.close();
   }
 }
 
-// Run `S3Check` on the first reachable, backup-capable agent.
 async function checkOnAnyBackupAgent(
   target: S3Target,
   encrypted = false,
@@ -256,11 +233,8 @@ async function checkOnAnyBackupAgent(
   ok: boolean;
   error: string;
   serverId: string | null;
-  // `<server> - <why>` for each server tried and skipped, in order.
   attempts: string[];
 }> {
-  // Any provisioned agent can reach a bucket - except a migration source, which is
-  // another platform's host that happens to have our agent on it for one job.
   const servers = (await listAllServers()).filter(
     (s) => s.agent?.certFingerprint && !s.importOnly,
   );
@@ -271,8 +245,6 @@ async function checkOnAnyBackupAgent(
   }
   let lastUnsupported: Error | null = null;
   let lastUnreachable: Error | null = null;
-  // Every server we walked past, so the connection log can distinguish "your bucket
-  // is wrong" from "no host here could even run the check".
   const attempts: string[] = [];
   for (const server of servers) {
     let conn;
@@ -289,8 +261,6 @@ async function checkOnAnyBackupAgent(
       const verdict = await conn.s3Check(target);
       return { ...verdict, serverId: server.id, attempts };
     } catch (e) {
-      // An old agent (UNIMPLEMENTED) or a transport drop → try the next; otherwise
-      // it's a real probe failure.
       const mapped = mapBackupUnsupported(e);
       if (mapped instanceof AgentUnreachableError) lastUnreachable = mapped;
       else if (mapped.name === "AgentBackupUnsupportedError")
@@ -307,8 +277,6 @@ async function checkOnAnyBackupAgent(
       conn.close();
     }
   }
-  // Prefer the actionable "update the agent" when at least one server was
-  // reachable-but-too-old; else report unreachable.
   throw (
     lastUnsupported ??
     lastUnreachable ??

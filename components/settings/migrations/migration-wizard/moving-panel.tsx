@@ -13,7 +13,6 @@ import { copyFor, type SourceKind } from "../sources";
 import { StepShell } from "../step-shell";
 import type { MigrationProgress } from "../types";
 
-// MovingPanel - what the review turns into once the move starts.
 export function MovingPanel({
   kind,
   progress,
@@ -42,8 +41,6 @@ export function MovingPanel({
   isTakeover?: boolean;
 }) {
   const pct = progress.total === 0 ? 0 : (progress.done / progress.total) * 100;
-  // A heartbeat goes cold with the clock and nothing else: no frame arrives to
-  // say so, so the panel has to change its mind on its own.
   const now = useNow(startedAt != null || heartbeatAt != null);
   const driven = isDriven({ heartbeatAt }, now);
   const panelName = copyFor(kind).name;
@@ -156,7 +153,6 @@ export function MovingPanel({
   );
 }
 
-// useNow - the panel's clock, ticking once a second while there is a run.
 function useNow(active: boolean): number {
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -167,7 +163,6 @@ function useNow(active: boolean): number {
   return now;
 }
 
-// ElapsedLine - how long it has been going, and roughly how much is left.
 function ElapsedLine({
   startedAt,
   progress,

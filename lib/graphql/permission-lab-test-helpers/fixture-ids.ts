@@ -19,9 +19,7 @@ export const SOLO = "u_solo";
 export const GRANTEE = "u_grantee";
 export const NEWBIE = "u_newbie";
 export const STRANGER = "u_stranger";
-// SYSADMIN is an instance admin who is NOT in the lab team.
 export const SYSADMIN = "u_sysadmin";
-// OWNER2 is an assigned (non-founder) Owner of the lab team.
 export const OWNER2 = "u_owner2";
 
 export const PRJ_A = "prc_a";
@@ -70,7 +68,6 @@ export const HR_CAPS: Capability[] = [
   "manage_members",
   "manage_roles",
 ];
-// SCOPED_CAPS is what a contractor's role is authored with; its scope removes the team-wide part.
 export const SCOPED_CAPS: Capability[] = [
   "view",
   "create_apps",

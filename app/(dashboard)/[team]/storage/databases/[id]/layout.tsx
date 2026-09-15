@@ -48,16 +48,12 @@ export default async function DatabaseLayout(
 
   return (
     <DatabaseLiveStatusProvider key={db.id} initial={initialLive}>
-      {/* Publishes this database's nav facts to the sidebar, which lives outside
-          this layout and so cannot read a context. Renders nothing. */}
       <DbNavSync
         id={db.id}
         cronsEnabled={db.cronEnabled}
         logo={db.logo}
         type={db.type}
       />
-      {/* Same readable width as the App pages, and the same exception: on a
-          full-bleed route DetailFrame drops both the measure and the header. */}
       <DetailFrame
         locked={Boolean(db.migrationRunId)}
         header={
@@ -74,9 +70,6 @@ export default async function DatabaseLayout(
                   <h1 className={titleClass.page}>{db.name}</h1>
                   <DatabaseStatusBadge id={db.id} status={db.status} />
                 </div>
-                {/* Same slot the App header uses for its URL: a database has no
-                  domain, so it always says what it is (engine display name, not
-                  the raw id - "PostgreSQL", never "postgres"). */}
                 <p className="text-sm text-muted-foreground">
                   {DB_NAMES[db.type] ?? titleCase(db.type)} database · v
                   {db.version}

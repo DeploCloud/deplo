@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-// The installer never edits a firewall, it only detects one and prints the command; this drives the real function against stub binaries.
 async function firewallFn(): Promise<string> {
   const script = await readFile(
     join(process.cwd(), "install-agent.sh"),
@@ -73,7 +72,6 @@ test("a port that merely CONTAINS the agent port is not a match", async () => {
   );
 });
 
-// A real `ufw status` prints progressively: `grep -q` closed the pipe mid-write and under `pipefail` the SIGPIPE read as "no firewall".
 test("a firewall that writes slowly is still read, not lost to SIGPIPE", async () => {
   assert.equal(
     await runFirewallCheck({

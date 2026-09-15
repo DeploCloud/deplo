@@ -90,7 +90,6 @@ test("pinning the app's OWN server means build here, even with a builder availab
 });
 
 test("a mismatched architecture is refused, not warned about", () => {
-  // An amd64 image loads on an arm64 host, then the container dies with `exec format error`.
   const builder = srv({ id: "srv_build", buildOnly: true, hostArch: "arm64" });
   assert.deepEqual(pickBuildServer(app(), TARGET, [TARGET, builder]), {
     serverId: null,
@@ -188,7 +187,6 @@ test("the least busy builder wins, and ties break on creation order", () => {
       .serverId,
     "srv_b",
   );
-  // A tie must be DETERMINISTIC: two deploys racing must not depend on map order.
   assert.equal(
     pickBuildServer(app(), TARGET, [TARGET, b, a]).serverId,
     "srv_a",

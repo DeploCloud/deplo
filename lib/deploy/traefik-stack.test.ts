@@ -309,14 +309,10 @@ test("a stack with no certificates of ours reports none", () => {
 test("the certificate file is mounted 0400 - it holds a private key", () => {
   const doc = parse(withTraefikCertificates(INSTALLED, [CERT]));
   const mount = (doc.services.traefik.configs as Array<{ mode?: number }>)[0];
-  // 256 IS 0400. Compose's default for a config is 0444, which every process in that
-  // container can read.
   assert.equal(mount.mode, 256);
 });
 
 test("a proxy running as its own user keeps compose's default mode", () => {
-  // 0400 is owned by root: a Traefik the operator moved onto a `user:` of their own could
-  // not read it, and an unreadable certificate file makes it serve its self-signed default.
   const asUser = INSTALLED.replace(
     "    container_name: deplo-traefik",
     '    container_name: deplo-traefik\n    user: "1000:1000"',
@@ -486,8 +482,6 @@ test("turning HTTPS off moves the panel to plain http, and back", () => {
 });
 
 test("a plain-http panel outranks the entrypoint redirect, which is what makes it reachable", () => {
-  // MEASURED on traefik:v3.7: an entrypoint redirection answers 301 ahead of every router on that entrypoint.
-  // Including one pinned to MaxInt32 - which is what rules out raising the router priority.
   assert.ok(
     !commandOf(INSTALLED).some((c) =>
       c.includes("redirections.entrypoint.priority"),
@@ -617,7 +611,6 @@ test("the fallback certificate survives every edit made from the panel", () => {
 });
 
 test("the installer's two-router file survives a panel edit byte for byte", () => {
-  // The KEEP IN SYNC contract with install.sh: re-rendering what it wrote must reproduce it.
   const config = (yaml_: string) =>
     (parse(yaml_) as Doc & { configs: Record<string, { content: string }> })
       .configs["deplo-panel"].content;

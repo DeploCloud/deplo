@@ -13,8 +13,6 @@ import { FacetClearRow, FacetOptionList, toggleValue } from "./facet-options";
 import { facetSummary, facetTitle } from "./facet-summary";
 import type { EnvFacet } from "./types";
 
-// FacetCombobox is the `searchable` facet control: the value is always the needle,
-// so what you typed and what is picked never fight over the same box.
 export function FacetCombobox<T>({
   facet,
   values,
@@ -31,8 +29,6 @@ export function FacetCombobox<T>({
   const anchorRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [open, setOpen] = React.useState(false);
-  // The autocomplete needle. Reset on close so the menu reopens whole - a stale
-  // needle would read as options having vanished.
   const [query, setQuery] = React.useState("");
   const [active, setActive] = React.useState(0);
 
@@ -40,8 +36,6 @@ export function FacetCombobox<T>({
   const empty = facet.options.length === 0;
 
   const needle = query.trim().toLowerCase();
-  // Never hide a TICKED option: unticking must stay one click away even when the
-  // needle no longer matches it.
   const shownOptions = needle
     ? facet.options.filter(
         (o) =>
@@ -50,8 +44,6 @@ export function FacetCombobox<T>({
       )
     : facet.options;
 
-  // Index 0 is the clear row; the options follow. Clamp instead of resetting so
-  // the highlight survives the list shrinking under a longer needle.
   const rowCount = shownOptions.length + 1;
   const activeIndex = Math.min(active, rowCount - 1);
   const optionId = (index: number) => `${baseId}-opt-${index}`;
@@ -61,7 +53,6 @@ export function FacetCombobox<T>({
     document
       .getElementById(optionId(activeIndex))
       ?.scrollIntoView({ block: "nearest" });
-    // optionId is render-stable (useId); only the highlight moves the scroll.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeIndex]);
 
@@ -73,12 +64,9 @@ export function FacetCombobox<T>({
 
   function toggle(value: string) {
     onChange(toggleValue(values, value));
-    // A row is a <label> whose activation forwards to the checkbox button -
-    // reclaim the caret so the next keystroke keeps narrowing.
     inputRef.current?.focus();
   }
 
-  // The menu STAYS open on a pick - this is a multi-select, one pick is rarely the last.
   function pick(index: number) {
     if (index === 0) {
       onChange([]);
@@ -106,7 +94,6 @@ export function FacetCombobox<T>({
       if (open) pick(activeIndex);
       else setOpen(true);
     } else if (e.key === "Tab") {
-      // Let the Tab through - just don't leave a menu floating behind it.
       close();
     }
   }
@@ -149,9 +136,6 @@ export function FacetCombobox<T>({
             className={cn(
               "h-9 pr-8",
               Icon ? "pl-8" : "pl-3",
-              // An active filter wears the same tint as an active FacetMenu
-              // button, and its summary-as-placeholder reads as a VALUE, not a
-              // hint - it is what the filter is doing right now.
               on &&
                 "border-primary/60 bg-primary-wash placeholder:text-foreground",
             )}
@@ -163,16 +147,11 @@ export function FacetCombobox<T>({
         align="start"
         className="min-w-64 p-1"
         style={{ width: "var(--radix-popper-anchor-width)" }}
-        // Focus lives in the input for the combobox's whole life: never yank it into the
-        // menu on open, never fling it elsewhere on close, and don't treat clicks on the
-        // input (the ANCHOR - outside the content) as a dismissal.
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => {
           if (anchorRef.current?.contains(e.target as Node)) e.preventDefault();
         }}
-        // Escape backs out one layer at a time: a needle is cleared, an empty
-        // box is closed.
         onEscapeKeyDown={(e) => {
           if (query) {
             e.preventDefault();

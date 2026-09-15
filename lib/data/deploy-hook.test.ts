@@ -7,7 +7,6 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
-// Set BEFORE the module loads, so the hook never reaches for request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -72,7 +71,6 @@ const tokenOf = (url: string) => url.slice(url.lastIndexOf("/") + 1);
 test("no app carries a live hook token until someone opens it", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
 
-  // Not even an empty token passes, which a naive compare against a missing one would accept.
   assert.deepEqual(await verifyDeployHookToken("prj_1", ""), {
     ok: false,
     reason: "bad-token",
@@ -181,7 +179,6 @@ test("a member without configure_apps can't open the hook", async () => {
   );
 });
 
-// The reachability check runs BEFORE the 403, or a 403 tells a caller an app it may not see exists.
 test("an app outside the token's project scope answers the same 404 as an unknown app", async () => {
   const { POST } =
     await import("../../app/api/apps/[id]/deploy-hook/[token]/route");

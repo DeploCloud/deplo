@@ -25,8 +25,6 @@ export interface DatabaseDTO extends Omit<Database, "connectionStringEnc"> {
   connectionStringMasked: string;
 }
 
-// maskConnectionString - fails CLOSED: anything we cannot confidently parse is
-// fully redacted rather than risk leaking the secret.
 function maskConnectionString(conn: string): string {
   const FULL_MASK = "••••••••••••";
   try {
@@ -39,8 +37,6 @@ function maskConnectionString(conn: string): string {
   }
 }
 
-// mountsByDatabase - the config files of one or more databases, keyed by id and
-// in stored order.
 export async function mountsByDatabase(
   ids: string[],
 ): Promise<Map<string, DatabaseMount[]>> {
@@ -63,7 +59,6 @@ export async function mountsByDatabase(
   return out;
 }
 
-// mountsFor - the one database's config files, in stored order.
 export async function mountsFor(id: string): Promise<DatabaseMount[]> {
   return (await mountsByDatabase([id])).get(id) ?? [];
 }
@@ -78,7 +73,6 @@ export function toDTO(db: Database): DatabaseDTO {
   };
 }
 
-// loadDatabaseForTeam - one team-scoped database row, assembled, or null.
 export async function loadDatabaseForTeam(
   id: string,
   teamId: string,
@@ -86,15 +80,10 @@ export async function loadDatabaseForTeam(
   return loadDatabase(id, teamId, { forRead: true });
 }
 
-// getDatabaseForTeam - cookie-free team-scoped DTO load, the `databaseStatus`
-// subscription generator's only data edge (masked, no `connectionStringEnc`).
 export async function getDatabaseForTeam(
   id: string,
   teamId: string,
 ): Promise<DatabaseDTO | null> {
-  // The SESSION-FREE twin: its ticks run after the HTTP handler returned the
-  // streaming Response, with no cookies left to read. The token scope is not a
-  // cookie - yoga re-establishes it on every tick.
   if (narrowedScope()) return null;
   const rows = await getDb()
     .select()
@@ -105,16 +94,11 @@ export async function getDatabaseForTeam(
   return toDTO(assembleDatabase(rows[0], await mountsFor(rows[0].id)));
 }
 
-// loadDatabase - a database row for the active team, and - by default - a
-// REFUSAL while a migration is still creating it. Reads as NOT FOUND rather than
-// as a scope error, so a scope can never become an oracle for which ids exist.
 export async function loadDatabase(
   id: string,
   teamId: string,
   opts: { forRead?: boolean } = {},
 ): Promise<Database | null> {
-  // A database belongs to the team and to no project, so a principal who reaches
-  // only part of the team reaches none of them.
   if (narrowedScope()) return null;
   if (!(await reachesWholeTeam())) return null;
   const rows = await getDb()
@@ -128,7 +112,6 @@ export async function loadDatabase(
   return assembleDatabase(rows[0], await mountsFor(rows[0].id));
 }
 
-// requireDatabase - {@link loadDatabase}, refusing an id the caller cannot reach.
 export async function requireDatabase(
   id: string,
   teamId: string,
@@ -138,8 +121,6 @@ export async function requireDatabase(
   return db;
 }
 
-// assertNotProvisioning - the compose project does not exist until provisioning
-// finishes, so every lifecycle verb against one would fail confusingly.
 export function assertNotProvisioning(db: Database, verb: string): void {
   if (db.status === "provisioning")
     throw new Error(
@@ -147,7 +128,6 @@ export function assertNotProvisioning(db: Database, verb: string): void {
     );
 }
 
-// databaseExists - id-only existence probe, not team-scoped.
 export async function databaseExists(id: string): Promise<boolean> {
   const rows = await getDb()
     .select({ id: databasesTable.id })
@@ -157,7 +137,6 @@ export async function databaseExists(id: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-// databaseOrderRank - the team-wide manual order (`team_database_order`), id to rank.
 async function databaseOrderRank(teamId: string): Promise<Map<string, number>> {
   const rows = await getDb()
     .select({
@@ -169,8 +148,6 @@ async function databaseOrderRank(teamId: string): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.databaseId, r.position] as const));
 }
 
-// listDatabases - every database in the active team. `query` filters by name or
-// id with the same match `listApps` and `search` use.
 export async function listDatabases(query?: string): Promise<DatabaseDTO[]> {
   await requireTeamWide("databases");
   const teamId = await requireActiveTeamId();
@@ -181,8 +158,6 @@ export async function listDatabases(query?: string): Promise<DatabaseDTO[]> {
       .where(eq(databasesTable.teamId, teamId)),
     databaseOrderRank(teamId),
   ]);
-  // The team's manual order first, anything not listed falls back to
-  // newest-first - the same rule the Overview apps grid uses.
   const mounts = await mountsByDatabase(rows.map((r) => r.id));
   return rows
     .map((r) => toDTO(assembleDatabase(r, mounts.get(r.id) ?? [])))
@@ -195,13 +170,9 @@ export async function listDatabases(query?: string): Promise<DatabaseDTO[]> {
     });
 }
 
-// reorderDatabases - persist the team-wide order of the Storage grid. A dead id
-// can't be stored (the FK CASCADE makes the self-healing a DB invariant).
 export async function reorderDatabases(orderedIds: string[]): Promise<void> {
   const teamId = (await requireCapability("configure_databases")).teamId;
   await getDb().transaction(async (tx) => {
-    // Newest-first, so a database the client omitted appends in a sensible,
-    // deterministic order after the explicitly-ordered ones.
     const teamDbIds = (
       await tx
         .select({ id: databasesTable.id })
@@ -241,12 +212,7 @@ export async function getDatabase(id: string): Promise<DatabaseDTO | null> {
 }
 
 export async function getConnectionString(id: string): Promise<string> {
-  // This returns the plaintext connection string (it embeds the DB password), so
-  // it enforces the capability at the data-layer boundary itself rather than
-  // leaning on the revealConnection field's authScope alone (keep BOTH gates).
   const { teamId } = await requireCapability("reveal_secrets");
-  // A read: the credentials of a database still arriving are the same
-  // credentials it will have, and somebody watching it land may want them.
   const db = await loadDatabase(id, teamId, { forRead: true });
   if (!db) throw new Error("Not found");
   return decryptSecret(db.connectionStringEnc);

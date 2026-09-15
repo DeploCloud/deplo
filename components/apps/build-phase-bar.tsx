@@ -11,7 +11,6 @@ import type { DeploymentStatus, LogLine } from "@/lib/types/deployment";
 
 const TICK_MS = 500;
 
-// BuildPhaseBar - where a build's time went, one segment per phase, from its logged command lines.
 export function BuildPhaseBar({
   logs,
   status,
@@ -38,7 +37,6 @@ export function BuildPhaseBar({
     [logs, startedAt, buildDurationMs, now],
   );
 
-  // Adjusted during render, not in an effect: an effect opens every phase one frame late.
   const [painted, setPainted] = React.useState(0);
   if (painted === 0 && phases.length > 0) setPainted(phases.length);
 
@@ -62,7 +60,6 @@ export function BuildPhaseBar({
             <div
               key={i}
               className={cn(
-                // --phase-min is measured: a narrow phase still holds its `HH:MM:SS.mmm` start (72.3px).
                 "flex min-w-[var(--phase-min)] flex-col gap-1 overflow-hidden",
                 "transition-[flex-grow] duration-300 ease-out",
                 opening && "animate-phase-in",

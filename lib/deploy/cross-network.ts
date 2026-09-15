@@ -1,18 +1,12 @@
-// https://deplo.build/docs/advanced/network-isolation
-
-/** Why a name is out of reach - the two produce different advice. */
 export type OutOfReach = "elsewhere" | "other-host";
 
-/** A name some other stack of this team answers to, and how it relates to us. */
 export interface Neighbour {
   name: string;
   network: string;
   where: string;
-  /** `reachable` is same network AND same host: not a warning, a possible CLASH. */
   why: OutOfReach | "reachable";
 }
 
-/** A name some other stack answers to, and why this app cannot reach it. */
 export interface ForeignName {
   name: string;
   network: string;
@@ -20,9 +14,7 @@ export interface ForeignName {
   why: OutOfReach;
 }
 
-/** An env var (or compose text) pointing at a name this stack cannot resolve. */
 export interface CrossNetworkRef {
-  /** The env key that carries it, or "" when it came from the compose file. */
   key: string;
   name: string;
   where: string;
@@ -51,7 +43,6 @@ export function usesAsHost(key: string, value: string, name: string): boolean {
   return v.toLowerCase() === n && HOST_KEY.test(key);
 }
 
-/** Every foreign name this app's env points at, deduped by name. */
 export function crossNetworkRefs(
   env: Record<string, string>,
   foreign: ForeignName[],
@@ -70,7 +61,6 @@ export function crossNetworkRefs(
   return out;
 }
 
-/** The one line a deploy prints per unreachable neighbour. */
 export function crossNetworkMessage(ref: CrossNetworkRef): string {
   if (ref.why === "other-host") {
     return (
@@ -87,13 +77,11 @@ export function crossNetworkMessage(ref: CrossNetworkRef): string {
   );
 }
 
-/** One name this stack puts on its network that a neighbour already answers to. */
 export interface NameClash {
   name: string;
   where: string;
 }
 
-/** The names this stack would take over - Docker round-robins a name two containers claim (ADR-0028). */
 export function nameClashes(
   mine: string[],
   neighbours: Neighbour[],
@@ -110,7 +98,6 @@ export function nameClashes(
   return out;
 }
 
-/** The one line a deploy prints per name two stacks now both answer to. */
 export function nameClashMessage(clash: NameClash): string {
   return (
     `\`${clash.name}\` is also answered by a stack in ${clash.where}, on the same ` +
@@ -119,7 +106,6 @@ export function nameClashMessage(clash: NameClash): string {
   );
 }
 
-/** The hostnames a mounted CONFIG FILE points at, as `{where: host}` pairs. */
 export function hostsInMountedFile(
   path: string,
   content: string,

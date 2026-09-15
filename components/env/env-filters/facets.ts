@@ -11,17 +11,14 @@ import {
   type TypedVar,
 } from "./types";
 
-// The display name, or the handle when a user never set one. Also the sort key.
 function authorLabel(author: VarAuthor): string {
   return author.name.trim() || author.username;
 }
 
-// lastEditor is whoever the "Modified by" column shows: the last editor, else the creator.
 export function lastEditor(row: FilterableVar): VarAuthor | null {
   return row.updatedBy ?? row.createdBy ?? null;
 }
 
-// typeFacet filters plain vs secret.
 export function typeFacet<T extends TypedVar>(rows: T[]): EnvFacet<T> {
   const seen = new Set(rows.map((r) => r.type));
   return {
@@ -43,15 +40,11 @@ function authorFacet<T extends FilterableVar>(spec: {
   id: string;
   label: string;
   info: React.ReactNode;
-  // The authorship column this facet reads.
   pick: (row: T) => VarAuthor | null;
   persistent?: boolean;
 }): EnvFacet<T> {
   const { rows, pick } = spec;
   const byId = new Map<string, VarAuthor>();
-  // Rows written before authorship was recorded (and shared rows whose editor
-  // left the team) carry no author - they get their own bucket rather than
-  // silently dropping out of every person's filter.
   let anonymous = false;
   for (const row of rows) {
     const author = pick(row);
@@ -67,7 +60,6 @@ function authorFacet<T extends FilterableVar>(spec: {
       .map((a) => ({
         value: a.id,
         label: authorLabel(a),
-        // The handle disambiguates two "Ada"s - pointless when it IS the label.
         hint: a.name.trim() ? `@${a.username}` : undefined,
         author: a,
       })),
@@ -87,10 +79,8 @@ function authorFacet<T extends FilterableVar>(spec: {
   };
 }
 
-// editorFacet filters on who touched the row LAST - the "Modified by" column.
 export function editorFacet<T extends FilterableVar>(
   rows: T[],
-  // What the rows are, for the help text - "variable" (default) or e.g. "credential".
   noun = "variable",
 ): EnvFacet<T> {
   return authorFacet({
@@ -102,7 +92,6 @@ export function editorFacet<T extends FilterableVar>(
   });
 }
 
-// creatorFacet filters on who CREATED the row, whatever happened to it since.
 export function creatorFacet<T extends FilterableVar>(
   rows: T[],
   noun = "variable",
@@ -113,8 +102,6 @@ export function creatorFacet<T extends FilterableVar>(
     label: "Added by",
     pick: (row) => row.createdBy ?? null,
     info: `Who originally added the ${noun}, even if someone else has changed it since. Type a name straight into the box to narrow the list.`,
-    // NOT persistent, unlike "Modified by". On a table where one person added
-    // everything this facet can only answer "yes, them".
     persistent: false,
   });
 }
@@ -126,10 +113,7 @@ const WINDOWS: { value: string; label: string; within: number }[] = [
   { value: "30d", label: "Last 30 days", within: 30 * DAY },
 ];
 
-// updatedFacet filters on when the row was last modified, as time windows.
 export function updatedFacet<T extends FilterableVar>(): EnvFacet<T> {
-  // Read once per build (the facet is memoised on the rows), so every option of
-  // one render measures against the same "now".
   const now = Date.now();
   return {
     id: "updated",
@@ -148,7 +132,6 @@ export function updatedFacet<T extends FilterableVar>(): EnvFacet<T> {
   };
 }
 
-// sourceFacet filters standalone vs shared - shared always means "the app opted in" (ADR-0012).
 export function sourceFacet<T extends FilterableVar & SourceRow>(
   rows: T[],
 ): EnvFacet<T> {

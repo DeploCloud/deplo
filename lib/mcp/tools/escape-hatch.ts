@@ -7,7 +7,6 @@ const PASSTHROUGH_VARIABLES = z
   .optional()
   .describe("Values for the document's variables.");
 
-// passthrough - runs a document the model wrote, as the token's own principal.
 async function passthrough(
   args: { query: string; variables?: Record<string, unknown> },
   ctx: GraphQLContext,
@@ -19,8 +18,6 @@ async function passthrough(
     args.variables ?? {},
     ctx,
   );
-  // Thrown, not returned: the handler's catch is what turns it into an isError
-  // result, and a `run` tool's value is otherwise reported as success.
   if (error) throw new Error(error);
   return data;
 }
@@ -51,8 +48,6 @@ export const ESCAPE_HATCH: McpToolDef[] = [
       'Last resort: a write no curated tool covers, straight from Deplo\'s GraphQL API. Prefer a named tool where one exists. Discover fields with graphql_query and __type(name: "Mutation").',
     group: "Escape hatch",
     requires: null,
-    // One tool covering every write, from a rename to a deletion, so the client
-    // has to ask. What it may actually DO is still the token's Capabilities.
     destructive: true,
     input: z.object({
       query: z

@@ -55,7 +55,6 @@ type LogsResponse = {
   } | null;
 };
 
-// BuildLogStream renders one deployment build output, polled while live.
 export function BuildLogStream({
   deploymentId,
   initialLogs,
@@ -190,7 +189,6 @@ export function BuildLogStream({
         buildDurationMs={buildDurationMs}
       />
       <div className="mt-4 overflow-hidden rounded-xl border border-border bg-terminal">
-        {/* Controls beside the search input are h-9, not size="sm" (h-8). */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
             {logs.length === 1 ? "1 line" : `${logs.length} lines`}
@@ -230,7 +228,6 @@ export function BuildLogStream({
                 {stopping ? "Stopping" : "Stop build"}
               </Button>
             )}
-            {/* h-9 to match the search input beside it. */}
             <CopyButton value={logText} label="Copy logs" className="h-9" />
             <DownloadButton
               value={logText}
@@ -255,7 +252,6 @@ export function BuildLogStream({
             />
           ))}
 
-          {/* Claimed but silent: live with no line printed yet. */}
           {logs.length === 0 && live ? <LogLinesSkeleton /> : null}
 
           {logs.length > 0 && filters.shown.length === 0 ? (

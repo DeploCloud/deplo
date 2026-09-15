@@ -16,7 +16,6 @@ import {
 } from "../migration-import/run-report";
 import { STALE_MS, credentialFor, panelNameFor } from "./runner-state";
 
-// requestStopMigrationRun - ask a run to stop. It notices between steps; nothing is abandoned mid-call.
 export async function requestStopMigrationRun(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
   const [row] = await getDb()
@@ -30,15 +29,11 @@ export async function requestStopMigrationRun(runId: string): Promise<void> {
   publishMigrationChanged();
   if (!row || row.status !== "running") return;
 
-  // Nobody is driving it. The flag alone would leave the row `running` forever -
-  // which is what a run whose runner died without a successor looks like.
   const beatAt = row.heartbeatAt ? Date.parse(row.heartbeatAt) : 0;
   if (Date.now() - beatAt < STALE_MS) return;
   await stopRun(runId);
 }
 
-/** Is this run still wanted? A pure read - it is called from the heartbeat, which
- *  must never undo anything by itself. */
 export async function stopWanted(runId: string): Promise<boolean> {
   const [r] = await getDb()
     .select({ stop: runsTable.stopRequested, status: runsTable.status })
@@ -48,8 +43,6 @@ export async function stopWanted(runId: string): Promise<boolean> {
   return !r || r.status !== "running" || r.stop;
 }
 
-/** Has somebody asked it to stop? Read fresh, between steps, every time - and if
- *  they have, this is where the migration is taken back out. */
 export async function stopped(runId: string): Promise<boolean> {
   const [r] = await getDb()
     .select({ stop: runsTable.stopRequested, status: runsTable.status })
@@ -63,8 +56,6 @@ export async function stopped(runId: string): Promise<boolean> {
   return true;
 }
 
-// A Stop, honoured. In the config phase it is total; in the DATA phase what was
-// created is kept, marked, and the source's services are started again.
 async function stopRun(runId: string): Promise<void> {
   const [row] = await getDb()
     .select()
@@ -74,8 +65,6 @@ async function stopRun(runId: string): Promise<void> {
   if (row && row.phase === "data") {
     await getDb()
       .update(runsTable)
-      // Seen: the person stopped it themselves, and an unseen stop reopened the
-      // wizard on it - toast included - every time they came back.
       .set({ status: "stopped", finishedAt: nowIso(), reportSeenAt: nowIso() })
       .where(and(eq(runsTable.id, runId), eq(runsTable.status, "running")));
     await releaseMigrating(runId);

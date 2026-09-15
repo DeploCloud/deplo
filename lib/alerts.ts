@@ -1,11 +1,9 @@
 import type { AlertKey } from "./types/notification";
 import { ALL_ALERTS } from "./types/notification";
 
-// AlertMeta - how an alert is shown in the notification settings.
 export interface AlertMeta {
   label: string;
   description: string;
-  // Extra weight in search: words a user might type that aren't in the label.
   keywords?: string;
   defaultOn: boolean;
 }
@@ -67,14 +65,12 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     description:
       "A scheduled command exited with an error, or its outcome is unknown.",
     keywords: "cron schedule scheduled task command error exit",
-    // On by default: a job that fails at 03:00 and tells nobody is the failure a cron manager exists to prevent.
     defaultOn: true,
   },
   cron_job_succeeded: {
     label: "Cron job finished",
     description: "A scheduled command completed successfully.",
     keywords: "cron schedule scheduled task command ok",
-    // Off by default: a nightly job that works is not news, and ten jobs would be ten mails a night.
     defaultOn: false,
   },
 
@@ -245,7 +241,6 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
   },
 };
 
-// ALERT_CATEGORIES - the settings' browse order; every alert appears in exactly one category.
 export const ALERT_CATEGORIES: {
   key: string;
   label: string;
@@ -343,12 +338,10 @@ export const ALERT_CATEGORIES: {
   },
 ];
 
-// DEFAULT_ALERTS - also the fallback for an alert key added later, so a new alert never needs a backfill.
 export const DEFAULT_ALERTS: AlertKey[] = ALL_ALERTS.filter(
   (a) => ALERT_META[a].defaultOn,
 );
 
-// alertSearchText - lower-cased haystack for the alert picker's search box.
 export function alertSearchText(alert: AlertKey): string {
   const meta = ALERT_META[alert];
   return `${alert} ${meta.label} ${meta.description} ${meta.keywords ?? ""}`
@@ -356,7 +349,6 @@ export function alertSearchText(alert: AlertKey): string {
     .replace(/_/g, " ");
 }
 
-// searchAlerts - alerts matching a free-text query, in catalog order; an empty query means all.
 export function searchAlerts(query: string): AlertKey[] {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [...ALL_ALERTS];

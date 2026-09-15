@@ -19,15 +19,9 @@ import {
 import { runTargets } from "./landed-targets";
 import { sourceServices, type SourceService } from "./source-services";
 
-/**
- * Which OTHER app on one machine mounts a host path. Cross-team on purpose: a bind
- * is a path on the box, and the copy WIPES its target before writing - two apps that
- * both mount /opt/data is all it takes for the second migration to erase the first.
- */
 export async function hostPathOwners(
   serverId: string | null | undefined,
   exceptAppId: string,
-  /** The team reading the note: another team's app is named as exactly that. */
   teamId?: string,
 ): Promise<{ appId: string; name: string; path: string }[]> {
   if (!serverId) return [];
@@ -68,16 +62,10 @@ export async function hostPathOwners(
   return out;
 }
 
-/** Equal, inside, or containing: any of the three and a wipe takes the other one out. */
 export function pathsOverlap(a: string, b: string): boolean {
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 }
 
-/**
- * Is the app that owns a clashing path another service of THIS run, from the
- * same source machine as `svc`? Then it is the same directory over there, and one
- * copy fills it for both - not a stranger's data about to be wiped.
- */
 export async function runTwinFor(
   c: SourceCredential,
   runId: string,
@@ -93,7 +81,6 @@ export async function runTwinFor(
   return other != null && other.serverId === svc.serverId;
 }
 
-/** A host path this run already filled - itself or a parent of it. */
 export async function copiedInRun(
   runId: string,
   targetPath: string,

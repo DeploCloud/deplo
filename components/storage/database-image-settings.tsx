@@ -20,8 +20,6 @@ import { DbVersionInput } from "@/components/storage/db-version-input";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-// DatabaseImageSettings - expert image/command/version overrides, applied on the next Redeploy.
-// Expert escape hatch: a risky override only warns, it is never blocked.
 export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();

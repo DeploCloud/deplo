@@ -7,7 +7,6 @@ import { getCurrentUser } from "./auth/current-user";
 import { myTeamSlugOwning } from "./data/teams";
 import { withTeam } from "./team-path";
 
-// LegacyProps: one optional catch-all under a section that used to be a first segment.
 export type LegacyProps = {
   params: Promise<{ rest?: string[] }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -31,7 +30,6 @@ async function teamFor(
   return teams.find((t) => t.id === active)?.slug ?? teams[0]?.slug ?? null;
 }
 
-// legacyRedirect sends a flat, pre-team address to the same page inside a team, query included.
 export async function legacyRedirect(
   section: string,
   props: LegacyProps,

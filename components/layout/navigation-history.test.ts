@@ -15,7 +15,6 @@ const history = {
 };
 (globalThis as { window?: unknown }).window = { history };
 
-/** A pushed entry carries no stamp of ours until `record` puts one there. */
 function visit(path: string) {
   history.state = null;
   record(path);

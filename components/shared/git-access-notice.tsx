@@ -3,8 +3,6 @@ import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// GitAccessNotice shows what a git host has not allowed, in that host's own words.
-// https://deplo.build/docs/guides/git-providers
 export function GitAccessNotice({
   heading,
   items,

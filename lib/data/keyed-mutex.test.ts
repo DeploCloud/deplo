@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import { withKeyedLock, hasPendingLock } from "./keyed-mutex";
 
-/** A controllable async task: resolves only when `release()` is called. */
 function deferred<T = void>() {
   let resolve!: (v: T) => void;
   let reject!: (e: unknown) => void;
@@ -33,7 +32,6 @@ test("same key runs operations one at a time, in submission order", async () => 
   });
 
   await tick();
-  // b must NOT have started while a holds the lock.
   assert.deepEqual(order, ["a:start"]);
 
   a.resolve();
@@ -60,7 +58,6 @@ test("different keys run concurrently", async () => {
   });
 
   await tick();
-  // Both started despite neither having resolved - they don't block each other.
   assert.deepEqual(order.sort(), ["k1:start", "k2:start"]);
 
   a.resolve();
@@ -86,7 +83,6 @@ test("a thrown operation rejects its own promise but not the next waiter", async
 
   await assert.rejects(p1, /boom/);
   assert.equal(await p2, "ok");
-  // The failure of p1 did not prevent p2 from running.
   assert.deepEqual(results, ["ran-after-failure"]);
 });
 
@@ -99,13 +95,11 @@ test("the key is dropped from the registry once its chain drains", async () => {
 
   d.resolve();
   await p;
-  await tick(); // let the cleanup .then fire
+  await tick();
   assert.equal(hasPendingLock("drain-me"), false);
 });
 
 test("a key contended again after draining still serializes", async () => {
-  // Run once to completion (drops the key), then contend again - the second round
-  // must still serialize, proving cleanup didn't break the lock.
   await withKeyedLock("reuse", async () => {});
   await tick();
   assert.equal(hasPendingLock("reuse"), false);
@@ -121,7 +115,7 @@ test("a key contended again after draining still serializes", async () => {
     order.push("b");
   });
   await tick();
-  assert.deepEqual(order, ["a:start"]); // b is queued behind a
+  assert.deepEqual(order, ["a:start"]);
   a.resolve();
   await Promise.all([p1, p2]);
   assert.deepEqual(order, ["a:start", "a:end", "b"]);

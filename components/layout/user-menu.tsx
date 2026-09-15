@@ -23,14 +23,12 @@ import { DISCORD_URL, GITHUB_URL } from "@/lib/links";
 import { docsUrl } from "@/lib/docs";
 import type { PublicUser } from "@/lib/types/identity";
 
-/** The account's own settings - the same three the Settings sidebar groups under "Account". */
 const ACCOUNT_LINKS = [
   { href: "/settings/account", icon: UserIcon, label: "Account" },
   { href: "/settings/security", icon: Fingerprint, label: "Security" },
   { href: "/settings/tokens", icon: KeyRound, label: "API tokens" },
 ];
 
-/** The manual, the room where questions get answered, and the source. */
 const EXTERNAL_LINKS = [
   { href: docsUrl("docs.home"), icon: BookOpen, label: "Documentation" },
   { href: DISCORD_URL, icon: DiscordIcon, label: "Discord" },
@@ -40,7 +38,6 @@ const EXTERNAL_LINKS = [
 export function UserMenu({ user }: { user: PublicUser }) {
   async function handleLogout() {
     await gqlAction(`mutation { logout }`);
-    // Hard, not the router: what it cached is the dashboard of the person leaving.
     window.location.assign("/login");
   }
 

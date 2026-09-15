@@ -14,8 +14,6 @@ import {
 } from "../../db/schema/control-plane/env-vars";
 import type { EnvTarget } from "../../types/env";
 
-// replaceTargets - whole-set replace, but ONLY when the caller sent a set: `null` leaves
-// the stored targets untouched (see `saveSharedVar`).
 export async function replaceTargets(
   tx: DbTx,
   varId: string,
@@ -29,7 +27,6 @@ export async function replaceTargets(
       .values(targets.map((target) => ({ varId, target })));
 }
 
-// insertScopeChildren - whole-set replace of a var's environment/project junctions.
 export async function insertScopeChildren(
   tx: DbTx,
   varId: string,
@@ -48,7 +45,6 @@ export async function insertScopeChildren(
       .values(projectIds.map((projectId) => ({ varId, projectId })));
 }
 
-// replaceTeams - whole-set replace of the team-reach junction.
 export async function replaceTeams(
   tx: DbTx,
   varId: string,
@@ -61,13 +57,10 @@ export async function replaceTeams(
       .values(teamIds.map((teamId) => ({ varId, teamId })));
 }
 
-// replaceAppLinks - whole-set replace of the per-app links, but ONLY when the caller
-// sent a set: `undefined` leaves the junction untouched (see `saveSharedVar`).
 export async function replaceAppLinks(
   tx: DbTx,
   varId: string,
   appIds: string[] | undefined,
-  // The acting team's stored links - the ONLY rows this replace may delete.
   storedLinks: string[],
 ): Promise<void> {
   if (!appIds) return;
@@ -86,9 +79,6 @@ export async function replaceAppLinks(
       .values(appIds.map((appId) => ({ varId, appId })));
 }
 
-// currentAppLinks - the var's per-app links IN THE ACTING TEAM. Scoped by the APP's team,
-// never the variable's owner: counting a receiving team's opt-in here made the owner's
-// own save ask for `manage_env` on an app in another team, and be refused forever.
 export async function currentAppLinks(
   teamId: string,
   varId: string | undefined,
@@ -102,7 +92,6 @@ export async function currentAppLinks(
   return rows.map((r) => r.appId);
 }
 
-// currentReach - what a stored variable reaches now (all empty for one not yet created).
 export async function currentReach(varId: string | undefined): Promise<{
   teams: string[];
   environments: string[];

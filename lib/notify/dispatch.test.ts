@@ -26,7 +26,6 @@ import { __resetCooldowns } from "./cooldown";
 import { dispatchAlertNow } from "./dispatch";
 import type { AlertKey, NotificationChannel } from "../types/notification";
 
-// The first test is the regression net: it pins the exact body each channel puts on the wire.
 let db: TestDb;
 let pg: PGlite;
 let capture: FetchCapture | null = null;
@@ -56,7 +55,6 @@ afterEach(() => {
   capture = null;
 });
 
-// One channel per kind that POSTs, so one alert produces nine comparable calls.
 async function seedChannels(alerts: AlertKey[]): Promise<void> {
   const kinds: [NotificationChannel, Partial<Record<string, unknown>>][] = [
     ["discord", { url: "https://discord/hook" }],
@@ -113,7 +111,6 @@ test("one alert reaches every enabled channel, in each one's own shape", async (
   assert.equal(capture.calls.length, 9);
   const by = (host: string) =>
     capture!.calls.find((c) => c.url.includes(host))!;
-  // The team is on the link, so a click lands in the alert's team, not the browser's last one.
   const link = "https://deplo.acme.com/alpha/apps/api";
   const body = "The build log has the error that stopped it.";
 
@@ -169,7 +166,6 @@ test("one alert reaches every enabled channel, in each one's own shape", async (
 
   assert.equal(by("gotify").headers["X-Gotify-Key"], "gotify-token");
   assert.equal(by("ntfy").headers.Authorization, "Bearer ntfy-token");
-  // Gotify's token must never ride in the URL, where an access log would keep it.
   assert.equal(by("gotify").url, "https://gotify/message");
 
   for (const call of capture.calls) assert.equal(call.method, "POST");
@@ -177,7 +173,6 @@ test("one alert reaches every enabled channel, in each one's own shape", async (
 
 test("a channel only gets the alerts IT subscribed to", async () => {
   await seedChannels(["deployment_failed"]);
-  // Two channels of the SAME kind, deliberately: what an `alerts[kind]` lookup used to get wrong.
   await asUser1(() =>
     saveNotificationChannel(null, {
       kind: "slack",
@@ -268,7 +263,6 @@ test("one dead channel does not silence the others, and nothing throws", async (
       ? new Response("nope", { status: 500 })
       : new Response("{}", { status: 200 }),
   );
-  // Must RESOLVE: an alert that rejects would take down the deploy that raised it.
   await dispatchAlertNow({
     teamId: TEAM_A,
     key: "deployment_failed",
@@ -297,7 +291,6 @@ test("with no panel address, a path never leaks as a bare string", async () => {
     assert.equal(generic.url, null);
     const discord = capture.calls.find((c) => c.url.includes("discord"))!
       .body as { embeds: { url?: string }[] };
-    // No panel address ⇒ no title link at all, never a bare path.
     assert.equal(JSON.stringify(discord).includes("/apps/api"), false);
     assert.equal(discord.embeds[0].url, undefined);
   } finally {
@@ -340,7 +333,6 @@ test("a repeated condition is deduped, and the state change gets through", async
 });
 
 test("the link names the team the alert is about", async () => {
-  // The dispatcher runs with no active team of its own, so the link has to name the alert's team.
   const id = `mem_${USER_1}_${TEAM_B}`;
   await db.insert(membershipsTable).values({
     id,

@@ -8,15 +8,11 @@ import { AccountPanel } from "@/components/settings/account-panel";
 export const metadata = { title: "Settings · Account" };
 
 export default async function SettingsAccountPage() {
-  // Counts only: the Security shortcuts say whether a thing needs attention,
-  // and the page that manages it is one click away.
   const [user, passkeys, sessions] = await Promise.all([
     getCurrentUser(),
     listMyPasskeys(),
     listMySessions(),
   ]);
-  // Their own address, and null when the instance keeps Gravatar off: the same
-  // resolver every avatar goes through, asked about one person.
   const gravatar = user
     ? await avatarUrlFor({ image: "gravatar", email: user.email })
     : null;

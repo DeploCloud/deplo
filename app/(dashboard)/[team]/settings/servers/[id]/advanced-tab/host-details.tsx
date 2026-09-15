@@ -25,7 +25,6 @@ function Detail({
   );
 }
 
-// HostDetails reads what this machine is running, from the owning server's agent.
 export function HostDetails({
   info,
   loading,

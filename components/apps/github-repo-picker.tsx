@@ -100,7 +100,6 @@ function ConnectPanel({ onUsePublicUrl }: { onUsePublicUrl?: () => void }) {
   );
 }
 
-// GithubRepoPicker - pick the connected GitHub App, then a repository and branch.
 export function GithubRepoPicker({
   installations,
   initial,
@@ -119,7 +118,6 @@ export function GithubRepoPicker({
   onUsePublicUrl?: () => void;
 }) {
   const { items: ownerItems, dialog: ownerDialog } = useGithubOwnerConnect();
-  // Never seed an App the user did not choose - see `pickerInstallationId`.
   const [installationId, setInstallationId] = React.useState(() =>
     pickerInstallationId(initial, installations),
   );
@@ -137,7 +135,6 @@ export function GithubRepoPicker({
 
   return (
     <div className="space-y-3">
-      {/* Connected App */}
       <div className="space-y-1.5">
         <FieldLabel
           className="text-sm font-medium"

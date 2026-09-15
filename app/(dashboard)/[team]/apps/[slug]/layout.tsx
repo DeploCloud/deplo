@@ -42,9 +42,7 @@ export default async function AppLayout(
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
-  // Irreversible from the confirm: a reload during teardown must not serve the pages back.
   if (!project || project.deletingAt) notFound();
-  // Per-app, so folder grants count - the sidebar's team-wide union cannot answer this.
   const capabilities = await appCapabilities(project.id);
 
   const initialLive: LiveApp = {
@@ -59,7 +57,6 @@ export default async function AppLayout(
   return (
     <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
       <AppCapabilitiesProvider capabilities={capabilities}>
-        {/* Detail views, not grids: a readable width instead of the list pages' wide shell. */}
         <DetailFrame
           locked={Boolean(project.migrationRunId)}
           header={
@@ -79,10 +76,8 @@ export default async function AppLayout(
                   <div>
                     <div className="flex items-center gap-2">
                       <h1 className={titleClass.page}>{project.name}</h1>
-                      {/* Container lifecycle, not the deployment status shown further down. */}
                       <AppStatusBadge status={project.status} />
                     </div>
-                    {/* The live URL when a domain is linked, never an empty line under the name. */}
                     {project.productionUrl ? (
                       <a
                         href={project.productionUrl}
@@ -125,7 +120,6 @@ export default async function AppLayout(
             </div>
           }
           sidecars={
-            // Renders nothing: it feeds the sidebar, which swaps the main nav for the app sub-menu.
             <AppNavSync
               slug={slug}
               logo={project.logo}

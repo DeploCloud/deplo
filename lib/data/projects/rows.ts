@@ -17,14 +17,11 @@ import { appScopeWhere } from "../app-graph-load";
 import type { Project } from "../../types/team";
 
 export interface ProjectSummary extends Project {
-  // Legacy: ADR-0009 no longer files folders into projects, kept for older rows.
   folderCount: number;
-  // Apps across every environment, plus any inside a legacy folder-in-project subtree.
   appCount: number;
   environmentCount: number;
 }
 
-// Cap names so one can't break the grid layout or the audit log.
 const MAX_NAME = 60;
 
 export function cleanName(name: string): string {
@@ -50,7 +47,6 @@ export function assembleProject(r: typeof projectsTable.$inferSelect): Project {
   };
 }
 
-// uniqueProjectSlug - a URL-safe slug from a name, unique within the team.
 export async function uniqueProjectSlug(
   teamId: string,
   name: string,
@@ -76,7 +72,6 @@ export async function uniqueProjectSlug(
   }
 }
 
-// counts - live folder/app/environment counts per container, one query each.
 export async function counts(teamId: string): Promise<{
   folders: Map<string, number>;
   apps: Map<string, number>;
@@ -94,8 +89,6 @@ export async function counts(teamId: string): Promise<{
   for (const r of folderRows)
     if (r.projectId)
       folders.set(r.projectId, (folders.get(r.projectId) ?? 0) + 1);
-  // An app counts DIRECTLY (its own project_id, ADR-0009) or through a LEGACY
-  // folder-in-project row: filing into a folder clears the app's own project link.
   const folderById = new Map(folderRows.map((r) => [r.id, r] as const));
   const projectOfFolder = (folderId: string): string | null => {
     const seen = new Set<string>();
@@ -119,7 +112,6 @@ export async function counts(teamId: string): Promise<{
       r.projectId ?? (r.folderId ? projectOfFolder(r.folderId) : null);
     if (pid) apps.set(pid, (apps.get(pid) ?? 0) + 1);
   }
-  // Environments are project-scoped (no team column); count via the join.
   const environments = new Map<string, number>();
   for (const r of await getDb()
     .select({ projectId: environmentsTable.projectId })
@@ -144,7 +136,6 @@ export function summarize(
   };
 }
 
-// projectInTeam - true if a container belongs to a team, and is in the caller's scope.
 export async function projectInTeam(
   id: string,
   teamId: string,
@@ -157,8 +148,6 @@ export async function projectInTeam(
   return rows[0]?.teamId === teamId && inProjectScope(id);
 }
 
-// requireReachableProject - a member limited to part of the team must not rename,
-// recolour or delete a container outside it, and the refusal must not confirm the id.
 export async function requireReachableProject(
   id: string,
   teamId: string,

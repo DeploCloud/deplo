@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/advanced/network-isolation
-
 import { and, eq, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -12,7 +10,6 @@ import { usesAsHost } from "../deploy/cross-network";
 import { appEnv } from "../deploy/build/deploy-env";
 import type { Placement } from "./name-clash";
 
-// LostNeighbour is a name this app reaches today and would lose after the move.
 export interface LostNeighbour {
   name: string;
   kind: "database" | "app";
@@ -26,7 +23,6 @@ async function safeEnv(appId: string): Promise<Record<string, string>> {
   }
 }
 
-// neighboursLostByMove lists what this app reaches today and would lose by moving to `to`.
 export async function neighboursLostByMove(
   appId: string,
   to: Omit<Placement, "serverId">,
@@ -96,7 +92,6 @@ export async function neighboursLostByMove(
   return out;
 }
 
-// lostNeighbourMessage is the line a move records when it takes something out of reach.
 export function lostNeighbourMessage(
   appName: string,
   lost: LostNeighbour[],

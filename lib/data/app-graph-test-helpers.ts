@@ -24,7 +24,6 @@ import { TEAM_A, USER_1 } from "./identity-test-helpers";
 export const SERVER_1 = "srv_1";
 const T0 = "2026-01-01T00:00:00.000Z";
 
-// TRUNCATE_PROJECT_GRAPH clears every app-graph table; call it in `beforeEach` before seeding.
 export const TRUNCATE_PROJECT_GRAPH = `truncate table
   team_app_order, team_folder_order,
   shared_env_var_apps, shared_env_var_projects, shared_env_var_environments,
@@ -45,7 +44,6 @@ async function appSlug(db: TestDb, appId: string): Promise<string> {
   return rows[0]?.slug ?? appId;
 }
 
-// seedServer seeds the instance-wide server row a project's `server_id` FK references.
 export async function seedServer(
   db: TestDb,
   id: string = SERVER_1,
@@ -92,7 +90,6 @@ export interface SeedAppOpts {
   healthCheck?: HealthCheck | null;
 }
 
-// seedApp seeds one project plus its 1-to-1 build / method-settings rows and returns the id.
 export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
   const teamId = opts.teamId ?? TEAM_A;
   const serverId = opts.serverId ?? SERVER_1;
@@ -149,7 +146,6 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
   return project.id;
 }
 
-// seedDeployment seeds a deployment row; `serverId` denormalizes the owning server onto it.
 export async function seedDeployment(
   db: TestDb,
   opts: {
@@ -204,7 +200,6 @@ export async function seedDeployment(
   });
 }
 
-// seedPreview seeds a pull request preview row, defaulting to an open, same-repo preview.
 export async function seedPreview(
   db: TestDb,
   opts: {

@@ -3,7 +3,6 @@
 import { Loader2 } from "lucide-react";
 import { useFullBleedRoute } from "@/components/layout/shell-frame";
 
-// The body of an app's or a database's section pages; `sidecars` must render either way and draws nothing.
 export function DetailFrame({
   header,
   sidecars,
@@ -12,7 +11,6 @@ export function DetailFrame({
 }: {
   header: React.ReactNode;
   sidecars?: React.ReactNode;
-  // A migration still owns the row: the page renders inert so nothing here can be pressed.
   locked?: boolean;
   children: React.ReactNode;
 }) {

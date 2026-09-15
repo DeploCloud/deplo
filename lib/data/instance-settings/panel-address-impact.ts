@@ -34,36 +34,22 @@ import {
 } from "./settings-store";
 import { hostOf, normalizePanelUrl, schemeOf } from "./panel-address";
 
-// What moving the panel to `url` would break, counted live and instance-wide.
 export type PanelAddressImpact = {
-  // The address as it would be stored, normalised the same way the save does.
   url: string;
   currentUrl: string;
-  // Whether the hostname moves. Everything origin-bound dies on this.
   hostChanges: boolean;
-  // Whether http/https changes. An origin change too, and https->https is not one.
   schemeChanges: boolean;
-  // https -> http specifically: the browser remembers the old HSTS either way.
   losesHttps: boolean;
-  // The address that keeps working through all of it, when there is one.
   panelFallbackUrl: string | null;
-  // Passkeys welded to the address as it is now, and how many accounts hold them.
   passkeys: number;
   passkeyPeople: number;
-  // Live sessions, and the people behind them, who will have to sign in again.
   sessions: number;
   sessionPeople: number;
-  // Deploy hooks whose URL is already pasted into somebody else's CI.
   deployHooks: number;
-  // AI clients connected over MCP, which have to be reconnected.
   mcpConnections: number;
-  // Registration links already handed out. Repairable: the same link re-renders.
   registrationLinks: number;
-  // Servers whose install command was issued but never run. Repairable.
   pendingServers: number;
-  // Browser notification subscriptions, which are per-origin.
   pushSubscriptions: number;
-  // Git connections and GitHub Apps, pinned to the INSTALLER's address, not this one.
   gitConnections: number;
   githubApps: number;
 };
@@ -99,13 +85,9 @@ export async function getPanelAddressImpact(
     hostIp && !(await loadSettings()).panelFallbackDisabled
       ? `https://${panelFallbackHost(hostIp)}`
       : null;
-  // Same address, nothing to warn about. Counting anyway would put a wall of
-  // red in front of a save that changes nothing.
   if (!base.hostChanges && !base.schemeChanges) return base;
 
   const db = getDb();
-  // Null when this instance cannot have passkeys at all (no address, or plain
-  // http): then there are none to lose, rather than "none matched".
   const rp = passkeyRelyingParty();
   const now = nowIso();
   const [
@@ -181,13 +163,11 @@ export async function getPanelAddressImpact(
   };
 }
 
-// What an address change cost, said in the trail rather than only in a dialog.
 export function passkeyLossSuffix(lost: number): string {
   if (lost <= 0) return "";
   return ` (${lost} passkey${lost === 1 ? "" : "s"} stopped working)`;
 }
 
-// How many passkeys this address currently holds, for the Activity entry.
 export async function passkeysBoundToThisAddress(): Promise<number> {
   const rp = passkeyRelyingParty();
   if (!rp) return 0;

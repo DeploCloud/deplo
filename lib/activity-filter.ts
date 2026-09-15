@@ -1,9 +1,7 @@
 import type { ActivityType } from "./types/activity";
 
-/** How many rows a page of the feed holds, first one included. */
 export const ACTIVITY_PAGE_SIZE = 40;
 
-/** How long "the last N days" is, per preset. Absent from the URL = all time. */
 export const ACTIVITY_RANGES: { value: string; label: string; days: number }[] =
   [
     { value: "1d", label: "Last 24 hours", days: 1 },
@@ -12,14 +10,12 @@ export const ACTIVITY_RANGES: { value: string; label: string; days: number }[] =
     { value: "30d", label: "Last 30 days", days: 30 },
   ];
 
-/** The Activity page's filters, exactly as they live in the URL. */
 export interface ActivityParams {
   actorUserIds: string[];
   types: ActivityType[];
   resourceIds: string[];
   range: string;
   from: string;
-  /** `YYYY-MM-DD`, INCLUSIVE. Set only for a custom range. */
   to: string;
 }
 
@@ -56,7 +52,6 @@ function list(v: string | string[] | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Read the filters out of `searchParams`. Anything unrecognised reads as unset. */
 export function parseActivityParams(
   sp: Record<string, string | string[] | undefined>,
 ): ActivityParams {
@@ -73,7 +68,6 @@ export function parseActivityParams(
   };
 }
 
-// The href for a set of filters, with the defaults omitted, so "no filters" is `base` itself.
 export function activityHref(p: ActivityParams, base = "/activity"): string {
   const q = new URLSearchParams();
   if (p.actorUserIds.length) q.set("actor", p.actorUserIds.join(","));
@@ -89,7 +83,6 @@ export function activityHref(p: ActivityParams, base = "/activity"): string {
   return `${base}${base.includes("?") ? "&" : "?"}${s}`;
 }
 
-/** Short month names, for every date the trail spells out itself. */
 export const MONTH_SHORT = [
   "Jan",
   "Feb",
@@ -107,7 +100,6 @@ export const MONTH_SHORT = [
 
 const DEFAULT_COUNT_RANGE = ACTIVITY_RANGES.find((r) => r.value === "30d")!;
 
-// Turn the picked range into the half-open window the query wants.
 export function activityWindow(
   p: ActivityParams,
   now = Date.now(),
@@ -117,14 +109,12 @@ export function activityWindow(
     return { from: new Date(now - preset.days * 86_400_000).toISOString() };
   return {
     from: p.from ? `${p.from}T00:00:00.000Z` : undefined,
-    // A custom `to` is the last day the reader means to INCLUDE, so it becomes the start of the day after.
     to: p.to
       ? new Date(Date.parse(`${p.to}T00:00:00.000Z`) + 86_400_000).toISOString()
       : undefined,
   };
 }
 
-// The reader's own dates, else the last 30 days: `activities` has no retention, so an aggregate over it is never left unbounded.
 export function activityCountWindow(
   p: ActivityParams,
   now = Date.now(),
@@ -136,11 +126,9 @@ export function activityCountWindow(
   };
 }
 
-/** What a page pins the trail to: one app or database, or one person. */
 export type ActivityScope =
   { kind: "resource"; resourceId: string } | { kind: "actor"; userId: string };
 
-// What a scoped page queries: the pin BEATS the URL, so `?actor=` cannot widen a person's own page to somebody else.
 export function scopedActivityFilter(
   p: ActivityParams,
   scope: ActivityScope,
@@ -160,7 +148,6 @@ export function scopedActivityFilter(
   };
 }
 
-/** What {@link activityCountWindow} chose, said out loud above the counts. */
 export function activityCountWindowLabel(p: ActivityParams): string {
   const preset = ACTIVITY_RANGES.find((r) => r.value === p.range);
   if (preset) return preset.label;

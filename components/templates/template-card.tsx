@@ -5,13 +5,11 @@ import { veilProps } from "@/components/templates/veil";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import { defaultVariant, type CatalogTemplate } from "@/templates/types";
 
-// StoreTemplate - what a card draws and nothing else: the store is a client component, so an untrimmed catalogue crosses the RSC boundary per entry.
 export interface StoreTemplate {
   slug: string;
   name: string;
   shortDescription: string;
   logo: string | null;
-  // How many variants the family has: one means Deploy can skip the page.
   variants: number;
   category: { slug: string; name: string; icon: string };
 }
@@ -32,7 +30,6 @@ export function toStoreTemplate(t: CatalogTemplate): StoreTemplate {
   };
 }
 
-// TemplateCard - the whole card is the link; deploying is decided on the template's own page.
 export function TemplateCard({
   template,
   accent,

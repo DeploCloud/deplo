@@ -9,7 +9,6 @@ export interface StreamOpts {
   input?: string;
 }
 
-// spawnStream - spawn a process and stream combined stdout+stderr line-by-line to onLine.
 export function spawnStream(
   bin: string,
   args: string[],
@@ -24,10 +23,10 @@ export function spawnStream(
     });
 
     if (opts.input != null) {
-      child.stdin?.on("error", () => {}); // ignore EPIPE if the child exits early
+      child.stdin?.on("error", () => {});
       child.stdin?.end(opts.input);
     } else {
-      child.stdin?.end(); // close stdin so children waiting on it don't hang
+      child.stdin?.end();
     }
 
     let buf = "";

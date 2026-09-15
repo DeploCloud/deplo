@@ -5,7 +5,6 @@ import { ArrowRight, Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-// ChoiceCard is one option as a big, clickable card - icon, title, blurb, tick.
 export function ChoiceCard({
   title,
   blurb,
@@ -68,7 +67,6 @@ export function ChoiceCard({
   );
 }
 
-// CheckMark is the square tick of a card that is itself the control.
 export function CheckMark({
   selected,
   className,

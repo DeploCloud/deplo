@@ -21,8 +21,6 @@ export default async function RolePage(
     hasCapability("manage_roles"),
     listTeamScopeTree(),
   ]);
-  // A role of another team resolves to nothing here, exactly as it does in the
-  // data layer - there is no id to guess your way into.
   if (!role) notFound();
 
   return (

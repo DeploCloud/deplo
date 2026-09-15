@@ -92,7 +92,6 @@ interface PlanService {
   notes: string[];
 }
 
-// RecopyDataDialog copies a workload's data over again, from the page where its absence is felt.
 export function RecopyDataDialog({
   open,
   onOpenChange,

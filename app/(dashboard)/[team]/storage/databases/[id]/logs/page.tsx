@@ -15,8 +15,6 @@ export default async function DatabaseLogsPage(
 
   const info = await getDatabaseLogsInfo(id);
 
-  // Full-bleed route: the pane fills the frame, so there is no header above it.
-  // See components/layout/shell-frame.tsx.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <DatabaseLogs

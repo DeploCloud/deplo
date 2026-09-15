@@ -10,7 +10,6 @@ import {
 import { toAgentError } from "./errors";
 import type { AgentChannel } from "./mtls-channel";
 
-// agentSelfRpc - the calls where the agent acts on ITSELF: its cert, its binary.
 export function agentSelfRpc(
   channel: AgentChannel,
 ): Pick<

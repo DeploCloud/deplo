@@ -128,7 +128,6 @@ test("rows are most recently seen first, and describe the device", async () => {
 });
 
 test("a bearer request has no `current` session to mark", async () => {
-  // `runWithIdentity` IS the bearer path: no cookie, so nothing is "this device".
   await seedSession({ id: "s1", userId: USER_1 });
   const rows = await asUser(USER_1, listMySessions);
   assert.equal(rows[0]!.current, false);
@@ -152,7 +151,6 @@ test("another user's session id cannot be revoked, and reveals nothing", async (
   await seedSession({ id: "theirs", userId: USER_2 });
   await assert.rejects(
     () => asUser(USER_1, () => revokeSession("theirs")),
-    // The SAME message a nonexistent id gets: nothing about that id is revealed.
     /no longer signed in/,
   );
   const survived = await db
@@ -204,13 +202,11 @@ async function signInWith(headers: Headers) {
 }
 
 test("a real sign-in stamps the device onto the session row", async () => {
-  // Guards the regression where `login()` passed only the cookie and stamped "" here.
   const row = await signInWith(
     authRequestHeaders(
       new Headers({
         "user-agent": CHROME_MAC,
         "x-forwarded-for": "203.0.113.9",
-        // Would break sign-in on any host that is not DEPLO_PUBLIC_URL if forwarded.
         origin: "https://somewhere-else.example",
       }),
       "",
@@ -226,7 +222,6 @@ test("a real sign-in stamps the device onto the session row", async () => {
 });
 
 test("the client address survives a Cloudflare-in-front-of-Traefik chain", async () => {
-  // `cf-connecting-ip` is single-valued, which is why the address still resolves.
   const row = await signInWith(
     authRequestHeaders(
       new Headers({
@@ -241,7 +236,6 @@ test("the client address survives a Cloudflare-in-front-of-Traefik chain", async
 });
 
 test("a multi-hop chain with no single-valued header degrades to no address", async () => {
-  // Known limit: Better Auth will not guess which hop of an untrusted chain is the client.
   const row = await signInWith(
     authRequestHeaders(
       new Headers({

@@ -6,7 +6,6 @@ import { TriangleAlert, X } from "lucide-react";
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
 
-// RepoLinkNotice - warns that an App names a repository but no credential for it.
 export function RepoLinkNotice({
   slug,
   repoName,
@@ -26,7 +25,6 @@ export function RepoLinkNotice({
     }
   }, [key]);
 
-  // `null` is "not read yet" - rendering earlier flashes an already-dismissed notice.
   if (dismissed === null || dismissed === repoName) return null;
 
   function dismiss() {

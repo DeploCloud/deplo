@@ -65,7 +65,6 @@ builder.queryFields((t) => ({
     resolve: () => countMcpAgents(),
   }),
   mcpConnected: t.boolean({
-    // `loggedIn`, not `manage_mcp`: the person who mints a token holds `manage_tokens`.
     authScopes: { loggedIn: true },
     description:
       "Has this API token spoken MCP yet? What the connect wizard waits on " +

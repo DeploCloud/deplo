@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/team/members
-
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb, type DbTx } from "../../db/client";
 import {
@@ -31,36 +29,26 @@ import { effectiveRoleCapabilities } from "../roles/member-capabilities";
 import { loadRoleScopes } from "../roles/scope";
 import type { Capability, Role } from "../../types/identity";
 
-/** A team member projected for the client (no password hash, no email). */
 export interface MemberDTO {
   userId: string;
   membershipId: string;
   username: string;
   name: string;
-  /** The member's RANK - 'owner' outranks everyone; for what to SHOW use {@link roleName}. */
   role: Role;
-  /** The assigned team role, or null for a hand-picked ("Custom") set. */
   roleId: string | null;
-  /** The assigned role's name, or null when the member holds a custom set. */
   roleName: string | null;
-  /** Their role reaches only part of the team. */
   roleScoped: boolean;
   capabilities: Capability[];
-  /** How their access compares with the role they hold, `null` when they are exactly it. */
   accessDelta: "less" | "more" | null;
-  /** Counts only: a token is its owner's, and this is all a team gets to know about it. */
   tokenCount: number;
   agentCount: number;
-  /** True for the team's ABSOLUTE owner - the founder who created the team (the "crown"). */
   isPrimaryOwner: boolean;
   isInstanceAdmin: boolean;
   avatarColor: string;
-  /** Resolved picture: uploaded image, else Gravatar, else null for the monogram. */
   avatarUrl: string | null;
   createdAt: string;
 }
 
-// Batch-load each membership's capabilities from the junction in ONE query. Returns membershipId → caps.
 async function capabilitiesByMembership(
   db: ReturnType<typeof getDb> | DbTx,
   membershipIds: string[],
@@ -82,13 +70,10 @@ async function capabilitiesByMembership(
   return byId;
 }
 
-/** Members of the active team. Email is never projected to the client. */
 export async function listMembers(): Promise<MemberDTO[]> {
   await requireTeamWide("team members");
   const teamId = await requireActiveTeamId();
   const db = getDb();
-  // Self-healing: a team that predates roles gets its three defaults here, so the
-  // list names a real role instead of "Custom" for everyone.
   await ensureTeamRoles(db, teamId);
   const founderId = await teamFounderUserId(db, teamId);
   const rows = await db
@@ -105,8 +90,6 @@ export async function listMembers(): Promise<MemberDTO[]> {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
-      // Selected, never projected: both are consumed by `avatarUrl` below and
-      // dropped. This DTO's contract is "no email", and it still holds.
       image: usersTable.image,
       email: usersTable.email,
       isInstanceAdmin: usersTable.isInstanceAdmin,
@@ -144,7 +127,6 @@ export async function listMembers(): Promise<MemberDTO[]> {
   }));
 }
 
-// Each member's access measured against the role they hold, for the chip on their tile.
 async function memberDeltas(
   db: ReturnType<typeof getDb>,
   teamId: string,
@@ -164,8 +146,6 @@ async function memberDeltas(
     teamId,
     rows.map((r) => r.userId),
   );
-  // A membership with no role has nothing to differ FROM: it is the legacy
-  // hand-picked set, which the roster already names "Custom".
   const personalised = rows.filter(
     (r) =>
       r.roleId != null &&
@@ -222,7 +202,6 @@ async function memberDeltas(
   return out;
 }
 
-// The nodes these people hold grants on inside one team, by user.
 async function memberNodeIds(
   db: ReturnType<typeof getDb>,
   teamId: string,
@@ -279,7 +258,6 @@ async function memberNodeIds(
   return out;
 }
 
-/** The user id of a team's founder (absolute owner / "crown"), or null. */
 export async function teamFounderUserId(
   db: ReturnType<typeof getDb> | DbTx,
   teamId: string,

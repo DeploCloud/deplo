@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-// NoResultsGraphic is the "no templates match" illustration: a lens sweeping a row of templates.
 export function NoResultsGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -40,9 +39,7 @@ export function NoResultsGraphic({ className }: { className?: string }) {
         ))}
       </g>
 
-      {/* Fades in and out at the row edges so the loop has no seam. */}
       <g className="deplo-find-lens">
-        {/* No fill: the row has to stay visible through the glass. */}
         <circle
           cx="60"
           cy="60"
@@ -59,7 +56,6 @@ export function NoResultsGraphic({ className }: { className?: string }) {
           strokeWidth="4"
           strokeLinecap="round"
         />
-        {/* The glint that reads as glass rather than a ring. */}
         <path
           d="M50 52a12 12 0 0 1 8-6"
           className="stroke-background"

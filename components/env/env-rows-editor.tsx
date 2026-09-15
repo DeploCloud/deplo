@@ -15,17 +15,14 @@ const GRID =
 const GRID_SINGLE =
   "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-2";
 
-// filledRows - the rows that carry a name, the ones a save would actually write.
 export function filledRows(rows: EnvRow[]): EnvRow[] {
   return rows.filter((r) => r.key.trim() !== "");
 }
 
-// invalidRows - the named rows whose name isn't a legal variable name.
 export function invalidRows(rows: EnvRow[]): EnvRow[] {
   return filledRows(rows).filter((r) => !KEY_RE.test(r.key.trim()));
 }
 
-// EnvRowsEditor - the multi-row key/value editor shared by every batch-of-variables form.
 export function EnvRowsEditor({
   rows,
   onChange,
@@ -68,7 +65,6 @@ export function EnvRowsEditor({
   return (
     <>
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-        {/* Header and rows share one grid, so KEY sits over the keys. */}
         <div
           className={cn(
             singleRow ? GRID_SINGLE : GRID,
@@ -115,7 +111,6 @@ export function EnvRowsEditor({
                   valueReadOnly && "text-muted-foreground",
                 )}
               />
-              {/* Hidden, not unmounted: a column that comes and goes shifts every input. */}
               {!singleRow && (
                 <Button
                   variant="ghost"

@@ -161,14 +161,12 @@ test("null when an asset has no matching checksum line", async () => {
   });
   __resetReleaseCacheForTests();
   try {
-    // amd64 has no checksum -> unresolvable -> no usable arch -> null.
     assert.equal(await resolveLatestAgentRelease(), null);
   } finally {
     restore();
   }
 });
 
-// A stub whose served "latest" can change between calls, counting hits on the release endpoint.
 function countingStub(version: () => string) {
   const orig = globalThis.fetch;
   let releaseHits = 0;
@@ -215,7 +213,6 @@ test("memo coalesces repeated resolves within the TTL (one GitHub hit)", async (
     const b = await resolveLatestAgentRelease();
     assert.equal(a!.version, "1.0.0");
     assert.equal(b!.version, "1.0.0");
-    // Second resolve served from the memo, no extra GitHub call.
     assert.equal(s.hits(), 1);
   } finally {
     s.restore();
@@ -223,7 +220,6 @@ test("memo coalesces repeated resolves within the TTL (one GitHub hit)", async (
 });
 
 test("refreshAgentRelease busts the memo and surfaces a newly-published version", async () => {
-  // The "Check for updates" regression: without busting the shared memo, a release cut after the first resolve stayed hidden until the TTL lapsed.
   let latest = "1.0.0";
   const s = countingStub(() => latest);
   __resetReleaseCacheForTests();
@@ -233,22 +229,19 @@ test("refreshAgentRelease busts the memo and surfaces a newly-published version"
 
     latest = "1.5.0";
 
-    // A stale read still comes from the memo, which proves the memo was real.
     assert.equal((await resolveLatestAgentRelease())!.version, "1.0.0");
     assert.equal(s.hits(), 1);
 
-    // A forced refresh re-hits GitHub and re-populates the memo for the render that follows.
     const refreshed = await refreshAgentRelease();
     assert.equal(refreshed!.version, "1.5.0");
     assert.equal(s.hits(), 2);
     assert.equal((await resolveLatestAgentRelease())!.version, "1.5.0");
-    assert.equal(s.hits(), 2); // re-populated - no third hit
+    assert.equal(s.hits(), 2);
   } finally {
     s.restore();
   }
 });
 
-// One rate-limited call used to serve `curl … | bash` a 503 for five minutes, which exits 0 and leaves the machine never coming online.
 test("a resolved release keeps being served through a GitHub blip", async () => {
   const good = stub({
     release: {
@@ -276,8 +269,6 @@ test("a resolved release keeps being served through a GitHub blip", async () => 
   );
 });
 
-// Regression: the 60 unauthenticated calls an hour are an instance-wide budget, and a fresh process had no last-good to serve.
-// The pinned assets are plain downloads, not the API, so they resolve with that budget at zero.
 test("the pinned release resolves without the API when the budget is spent", async () => {
   const orig = globalThis.fetch;
   const seen: string[] = [];

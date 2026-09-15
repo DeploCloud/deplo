@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Backup artifacts empty-state illustration: copies landing on a shelf, one after another, building the stack the list will show. */
 export function BackupGraphic({ className }: { className?: string }) {
   return (
     <svg

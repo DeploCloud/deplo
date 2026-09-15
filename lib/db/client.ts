@@ -8,10 +8,8 @@ import type { NodePgQueryResultHKT } from "drizzle-orm/node-postgres";
 import { getPool } from "./pg";
 import { schema } from "./schema";
 
-// DrizzleClient is the single Drizzle client for the control-plane backend.
 export type DrizzleClient = NodePgDatabase<typeof schema>;
 
-// DbTx is a transaction handle yielded by getDb().transaction().
 export type DbTx = PgTransaction<
   NodePgQueryResultHKT,
   typeof schema,
@@ -28,17 +26,14 @@ export function getDb(): DrizzleClient {
   return (g[CLIENT_KEY] ??= drizzle(getPool(), { schema }));
 }
 
-// __setTestDb routes every getDb() at the given client; pair with __resetTestDb.
 export function __setTestDb(db: unknown): void {
   testOverride = db as DrizzleClient;
 }
 
-// __resetTestDb clears the __setTestDb override.
 export function __resetTestDb(): void {
   testOverride = null;
 }
 
-// hasTestDb is true when a test client is installed.
 export function hasTestDb(): boolean {
   return testOverride !== null;
 }

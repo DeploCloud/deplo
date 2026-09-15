@@ -6,7 +6,6 @@ import { LogoImage } from "@/components/shared/project-logo";
 import { DB_LOGOS } from "@/components/storage/db-engines";
 import type { DatabaseType } from "@/lib/types/database";
 
-// DatabaseLogo - a database's display avatar; a database is never logo-less.
 export function DatabaseLogo({
   type,
   logo = null,

@@ -22,16 +22,12 @@ import {
 } from "../../types/identity";
 import { type Db } from "./role-guards";
 
-// Strip these from everyone and the team locks itself out of member/team
-// administration irrecoverably. Same list (and reason) as lib/data/members.
 const CRITICAL: { cap: Capability; label: string }[] = [
   { cap: "manage_members", label: "manage members" },
   { cap: "manage_roles", label: "manage roles" },
   { cap: "manage_team", label: "manage the team" },
 ];
 
-// effectiveRoleCapabilities - what a role's capabilities mean once its reach is taken
-// into account: the set that lands in `membership_capabilities`, which every check reads.
 export function effectiveRoleCapabilities(
   authored: Capability[],
   scoped: boolean,
@@ -41,7 +37,6 @@ export function effectiveRoleCapabilities(
   );
 }
 
-// capabilitiesByMembership - membershipId → capabilities, in ONE query (never per-membership).
 export async function capabilitiesByMembership(
   db: Db,
   membershipIds: string[],
@@ -63,8 +58,6 @@ export async function capabilitiesByMembership(
   return byId;
 }
 
-// lockTeamMemberships - lock the team's memberships for the rest of the transaction, so
-// two concurrent edits serialize instead of both leaving the team with zero admins.
 export async function lockTeamMemberships(
   tx: DbTx,
   teamId: string,
@@ -76,8 +69,6 @@ export async function lockTeamMemberships(
     .for("update");
 }
 
-// assertTeamAdminCoverage - the team still has a holder of each critical capability.
-// Runs inside the transaction (so it sees the write) and throws to roll it back.
 export async function assertTeamAdminCoverage(
   tx: DbTx,
   teamId: string,
@@ -104,8 +95,6 @@ export async function assertTeamAdminCoverage(
   }
 }
 
-// syncMembersOfRole - re-write the effective capabilities of every member holding this
-// role, bar the ones whose set is their OWN (`memberships.custom_capabilities`).
 export async function syncMembersOfRole(
   tx: DbTx,
   teamId: string,
@@ -114,8 +103,6 @@ export async function syncMembersOfRole(
   scoped: boolean,
 ): Promise<number> {
   const caps = effectiveRoleCapabilities(authored, scoped);
-  // A holder who keeps their own set is narrowed with the role's reach all the
-  // same: the reach and the capabilities have to agree, whoever wrote the set.
   if (scoped) {
     const custom = await tx
       .select({ id: membershipsTable.id })
@@ -166,16 +153,12 @@ export async function syncMembersOfRole(
   return ids.length;
 }
 
-// Known capabilities only, `view` always included (it is the floor). A retired coarse
-// name arriving from an API client expands rather than being dropped on the floor.
 function sanitizeCapabilities(caps: Capability[] | undefined): Capability[] {
   const set = new Set(expandLegacyCapabilities((caps ?? []) as string[]));
   set.add("view");
   return ALL_CAPABILITIES.filter((c) => set.has(c));
 }
 
-// withinActor - a caller can only put capabilities they hold THEMSELVES into a role (or
-// an API token): otherwise a `manage_members` holder could author an all-powerful role.
 export function withinActor(
   caps: Capability[] | undefined,
   actor: Membership,

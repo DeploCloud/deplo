@@ -35,25 +35,18 @@ export interface DataMoveVolume {
 }
 
 export interface DataMoveService {
-  /** `Project / Environment / service`, as it reads on the source panel. */
   path: string;
-  /** `application` | `compose` | one of the five engines. */
   sourceKind: string;
   sourceId: string;
   sourceName: string;
   projectName: string;
   environmentName: string;
-  /** The source machine that runs it; empty string is the panel's own host. */
   sourceServerId: string;
   targetKind: "app" | "database";
   targetId: string;
   targetName: string;
-  /** The Deplo server that holds the data once it is here. */
   targetServerId: string;
-  /** Whether the source is still up over there. */
   running: boolean;
-  /** Whether the machine holding this service's data ANSWERS us - a live Hello,
-   *  not the stored status, which goes green on the call-home. */
   sourceReachable: boolean;
   volumes: DataMoveVolume[];
   notes: string[];
@@ -78,14 +71,10 @@ export async function planMigrationDataMove(
   const targets = await runTargets(input.runId);
   if (targets.size === 0) return [];
 
-  // The mappers write `{panel}`; only `Report.add` used to resolve it, so every
-  // note that reached a SCREEN instead of the run log still said "{panel} says".
   const panel = sourceClient(c).displayName;
   const said = (text: string) => withPanel(text, panel);
   const machines = await migrationMachines(c, teamId);
   const out: DataMoveService[] = [];
-  // One Hello per distinct machine, not per service: several services share a host
-  // and the answer cannot differ between them.
   const answered = new Map<string, Promise<boolean>>();
   const agentAnswers = (serverId: string) => {
     let p = answered.get(serverId);
@@ -96,8 +85,6 @@ export async function planMigrationDataMove(
     return p;
   };
 
-  // One pass per MACHINE, not per service: the plan lists tens of services and
-  // reading who owns a host path parses every app's compose on that host.
   const ownedBy = new Map<
     string,
     Promise<{ appId: string; name: string; path: string }[]>
@@ -126,7 +113,6 @@ export async function planMigrationDataMove(
     const sourceServer = machines.find(
       (m) => m.sourceId === svc.serverId,
     )?.deploServerId;
-    // Same machine, same path: nothing is copied, so nothing can be wiped either.
     const inPlace = (b: PairedHostMount) =>
       sourceServer === landed.targetServerId && b.sourcePath === b.targetPath;
     const owners = binds.length ? await ownersOn(landed.targetServerId) : [];
@@ -144,9 +130,6 @@ export async function planMigrationDataMove(
           : sharedPathNote(clash, b.targetPath),
       );
     }
-    // Said HERE, before anything is stopped: a machine Deplo cannot read is a machine
-    // whose data cannot move at all, and the review screen is where that has to be read
-    // - not the cutover, with the old platform already down.
     const reachable = sourceServer ? await agentAnswers(sourceServer) : false;
 
     out.push({
@@ -165,9 +148,6 @@ export async function planMigrationDataMove(
       sourceReachable: reachable,
       volumes: [
         ...paired.value,
-        // A bind mount is listed as what it is: a host PATH - a directory or a single
-        // file - copied by a different RPC behind a different permission. Which of the
-        // two it is only the host knows, so the copy says it and the plan does not guess.
         ...binds.map((b) => ({
           sourceVolume: b.sourcePath,
           targetVolume: b.targetPath,

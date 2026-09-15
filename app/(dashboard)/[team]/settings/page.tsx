@@ -19,7 +19,6 @@ import { Lock } from "lucide-react";
 export const metadata = { title: "Settings · General" };
 
 export default async function SettingsGeneralPage() {
-  // A team-wide read: a member who reaches only part of the team gets the empty state, not an error.
   const wholeTeam = await reachesWholeTeam();
   const [team, canManageTeam, viewer] = await Promise.all([
     getTeamIdentity(),
@@ -39,7 +38,6 @@ export default async function SettingsGeneralPage() {
         { without: 0, total: 0 },
       ];
 
-  // The crown, not the rank: manage_team hands out the owner role, it does not hand over the team (lib/data/team-ownership.ts).
   const canTransfer =
     canManageTeam && !!viewer && settings?.founderUserId === viewer.id;
   const candidates =
@@ -62,7 +60,6 @@ export default async function SettingsGeneralPage() {
       />
 
       {settings ? (
-        // Direct grid children, so Team and Security share one row's height.
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>

@@ -76,7 +76,6 @@ const DROPDOWN_KIT: MenuKit = {
   SubContent: DropdownMenuSubContent,
 };
 
-// FolderCard is a folder tile in the Overview grid.
 export function FolderCard({
   folder,
   view = "grid",
@@ -242,7 +241,6 @@ export function FolderCard({
               Change colour
             </K.Item>
           </SimpleTooltip>
-          {/* Only offered when there is somewhere to go. */}
           {folders &&
             (folder.parentId != null ||
               folders.some((f) => f.id !== folder.id)) && (
@@ -259,7 +257,6 @@ export function FolderCard({
                   </>
                 }
               >
-                {/* Only offer "Top level" when the folder is actually nested. */}
                 {folder.parentId != null && (
                   <>
                     <SimpleTooltip content="Move to the top level" side="left">
@@ -300,7 +297,6 @@ export function FolderCard({
           </SimpleTooltip>
         </>
       )}
-      {/* Share is a separate grant from managing. */}
       {canShare && (
         <>
           {canManageThisFolder && <K.Separator />}

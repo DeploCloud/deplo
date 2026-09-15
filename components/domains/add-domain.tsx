@@ -29,22 +29,18 @@ import { gqlAction } from "@/lib/graphql-client";
 import { regenerateNipDomain } from "@/lib/nip-suggestion";
 import { DocsLink } from "@/components/ui/docs-link";
 
-// A project as the dialog needs it: the compose YAML populates the service selector.
 export interface AddDomainApp {
   id: string;
   name: string;
   compose?: string | null;
-  // The app's default container port (build.port) - seeds the port field.
   defaultPort?: number;
 }
 
-// `suggestedDomain` is a zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`) resolved server-side.
 export interface AddDomainProps {
   project: AddDomainApp;
   suggestedDomain?: string;
 }
 
-// Parsed in the browser (js-yaml is a client-safe dep); [] for a missing or malformed compose ⇒ no service selector.
 function composeServices(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
   try {
@@ -64,7 +60,6 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   const [open, setOpen] = React.useState(false);
   const { create } = usePendingCreate();
   const [name, setName] = React.useState("");
-  // Tracks the last generated suggestion so the field help matches what Generate dropped into the field.
   const [suggestion, setSuggestion] = React.useState(suggestedDomain);
   const [config, setConfig] = React.useState<DomainConfigState>(() =>
     initialDomainConfig(undefined, project.defaultPort),
@@ -95,7 +90,6 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
       toast.error(resolved.error);
       return;
     }
-    // What was typed is kept aside so a rejected add can hand the form back untouched.
     const typed = { name: name.trim(), config };
     setOpen(false);
     reset();
@@ -111,7 +105,6 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
             name: typed.name,
             config: {
               port: resolved.port,
-              // Add takes the auto entrypoint by omitting it (null ⇒ undefined).
               entrypoint: resolved.entrypoint ?? undefined,
               certProvider: resolved.certProvider,
               middlewares: resolved.middlewares,
@@ -119,17 +112,14 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
               stripPrefix: resolved.stripPrefix,
               service: resolved.service,
               proxied: resolved.proxied,
-              // The server adds the second hostname, checks its DNS and wires the 301 before the add returns.
               www: resolved.www,
             },
           },
         ),
       {
         onSuccess: (data) => {
-          // DNS is checked as part of the add, so the toast reports the real outcome.
           const status = data?.addDomain.status;
           if (resolved.proxied)
-            // A proxied host's DNS verdict says nothing; what matters is that it is routed.
             toast.success(
               "Domain added - routed through your proxy. Point the proxy at this server.",
             );

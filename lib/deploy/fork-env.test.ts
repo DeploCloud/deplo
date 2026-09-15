@@ -25,8 +25,6 @@ import {
 } from "../data/app-graph-test-helpers";
 import { appEnv } from "./build/deploy-env";
 
-// A fork's code is a stranger's (ADR-0017 §7): its preview gets the preview-only overrides and nothing else, whatever the type.
-
 let db: TestDb;
 let pg: PGlite;
 

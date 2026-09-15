@@ -22,7 +22,6 @@ function allTimezones(): string[] {
   }
 }
 
-// One formatter per zone: constructing them is the expensive half of a live clock on every row.
 const formatters = new Map<string, Intl.DateTimeFormat>();
 function timeIn(zone: string, at: number): string {
   let fmt = formatters.get(zone);
@@ -46,7 +45,6 @@ export function TimezonePicker({
   value,
   onChange,
   disabled,
-  // The instant the rows show: the SERVER's clock, so the list reads in the host's terms, not the browser's.
   now,
 }: {
   id?: string;

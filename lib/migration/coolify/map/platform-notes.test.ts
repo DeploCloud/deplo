@@ -5,7 +5,6 @@ import { coolifyNotes } from "./platform-notes";
 import { APP } from "./map-test-helpers";
 import type { CoolifyApplication } from "../client";
 
-// Measured on 4.3.16: basic auth is ALSO a custom label, with the htpasswd line as its value - and the report printed the hash.
 test("coolifyNotes never puts a basic-auth credential in the report", () => {
   const notes = coolifyNotes({
     uuid: "app-9",
@@ -48,7 +47,6 @@ test("coolifyNotes names everything Deplo has nowhere to put", () => {
   });
   const all = notes.join("\n");
 
-  // Traefik's own labels are Deplo's grammar, and go in silence.
   assert.doesNotMatch(all, /traefik\.enable/);
   assert.match(all, /com\.acme\.tier=web/);
   assert.match(all, /--gpus all/);
@@ -61,7 +59,6 @@ test("coolifyNotes names everything Deplo has nowhere to put", () => {
   assert.match(all, /method POST/);
   assert.match(all, /expected code 204/);
   assert.match(all, /Dockerfile was typed into/);
-  // Every one of them speaks about the panel through the token.
   assert.doesNotMatch(all, /Dokploy|Coolify/);
 });
 
@@ -70,7 +67,6 @@ test("an application with nothing exotic produces no notes", () => {
 });
 
 test("custom labels Coolify never encoded are read as they came", () => {
-  // Measured: Coolify answers `custom_labels` in CLEAR for an app it never deployed, and `Buffer.from(x, "base64")` drops what it cannot read rather than throwing, so the report used to invent a label out of mojibake.
   const plain = "com.acme.team=core\ncom.acme.tier=web";
   const notes = coolifyNotes({
     uuid: "a",
@@ -78,7 +74,6 @@ test("custom labels Coolify never encoded are read as they came", () => {
   } as CoolifyApplication);
   assert.match(notes.join(" "), /com\.acme\.team=core, com\.acme\.tier=web/);
 
-  // And a real base64 payload still decodes.
   const encoded = Buffer.from(plain).toString("base64");
   assert.deepEqual(
     coolifyNotes({ uuid: "a", custom_labels: encoded } as CoolifyApplication),

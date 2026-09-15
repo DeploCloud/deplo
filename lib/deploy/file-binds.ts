@@ -1,9 +1,5 @@
-// https://deplo.build/docs/guides/data/persistent-storage
-
 import yaml from "../yaml";
 import { volumeSource, volumeTarget } from "./compose-lint/volumes";
-
-// Docker answers a missing bind source with an empty DIRECTORY, so file-shaped binds are created empty first.
 
 const FILE_EXTENSIONS = new Set([
   "yml",
@@ -68,7 +64,6 @@ const FILE_EXTENSIONS = new Set([
   "ovpn",
 ]);
 
-// Well-known config files with no extension; a .ssh-style dir is not here on purpose, a leading dot says nothing.
 const FILE_NAMES = new Set([
   "caddyfile",
   "dockerfile",
@@ -82,7 +77,6 @@ const FILE_NAMES = new Set([
   ".gitconfig",
 ]);
 
-// Whether a path names a FILE by its shape: a known extension or a known name.
 export function looksLikeFile(path: string): boolean {
   if (path.endsWith("/")) return false;
   const name = (path.split("/").pop() ?? "").toLowerCase();
@@ -91,7 +85,6 @@ export function looksLikeFile(path: string): boolean {
   return dot > 0 && FILE_EXTENSIONS.has(name.slice(dot + 1));
 }
 
-// A bind is a file when either side of it looks like one (`./nginx:/etc/nginx/nginx.conf`).
 export function looksLikeFileMount(source: string, target: string): boolean {
   return looksLikeFile(source) || looksLikeFile(target);
 }
@@ -100,7 +93,6 @@ function normalizeRel(p: string): string {
   return p.replace(/^(\.\/|\/)+/, "").replace(/\/+$/, "");
 }
 
-// The file-shaped binds a rendered stack takes from `filesDir`, relative to it, minus `written`; a knownFiles path is always a file.
 export function fileBindsUnderFilesDir(
   stackYaml: string,
   filesDir: string,

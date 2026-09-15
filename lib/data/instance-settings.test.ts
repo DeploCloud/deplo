@@ -128,7 +128,6 @@ test("the settings name the instance owner, and null when nobody holds it", asyn
     ownerUserId: ADMIN,
     updatedAt: new Date().toISOString(),
   });
-  // `seedIdentity` writes the id into `name`, so this is the display name.
   assert.equal(
     (await asUser(ADMIN, () => getInstanceSettings())).ownerName,
     ADMIN,
@@ -261,7 +260,6 @@ test("dropping https is counted as a loss even though the hostname stays", async
     assert.equal(impact.hostChanges, false);
     assert.equal(impact.schemeChanges, true);
     assert.equal(impact.losesHttps, true);
-    // WebAuthn has no relying party on plain http, so every one of them dies.
     assert.equal(impact.passkeys, 1);
   });
 });
@@ -286,7 +284,6 @@ test("a Deplo whose own host is not added as a server says so, rather than faili
   assert.equal(cert.domain, null);
   assert.equal(cert.fallbackDomain, null);
   assert.equal(cert.enabled, false);
-  // Null, not false: nothing was dialled, and unknown is not untrusted.
   assert.equal(cert.certificateTrusted, null);
   assert.match(cert.unavailable ?? "", /not added here yet/i);
   await assert.rejects(
@@ -369,7 +366,6 @@ test("Gravatar defaults OFF, and only an instance admin can turn it on", async (
   );
   assert.equal(await asUser(ADMIN, () => gravatarEnabled()), false);
 
-  // A row born of an unrelated setting takes the column's own default (migration 0142).
   await db
     .insert(instanceSettings)
     .values({ id: "default", updatedAt: "2024-01-01T00:00:00.000Z" });
@@ -411,7 +407,6 @@ test("the panel's DNS check classifies the address the instance answers on", asy
     assert.equal((await at([])).status, "pending");
     assert.equal((await at([])).host, "panel.example.com");
 
-    // A bare address needs no record, so there is nothing to check.
     await asUser(ADMIN, () => setPanelUrl(null));
     await withPanelUrl(`http://${HOST_IP}:3000`, async () => {
       assert.equal((await at([HOST_IP])).status, "unknown");
@@ -427,7 +422,6 @@ test("only an instance admin may ask", async () => {
   await assert.rejects(() => asUser(MEMBER, checkPanelDns));
 });
 
-// HOST_IP as the hex label of the generated host.
 const FALLBACK = "deplo-cb00710a.nip.io";
 
 const TRAEFIK_STACK = `services:

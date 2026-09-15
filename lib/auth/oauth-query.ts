@@ -1,6 +1,3 @@
-/**
- * Rebuild the signed authorization query the consent page was handed.
- */
 export function rebuildOauthQuery(
   params: Record<string, string | string[] | undefined>,
 ): string {

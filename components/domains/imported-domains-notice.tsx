@@ -9,13 +9,11 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 
-// A migrated app keeps everything except its address. Dismissed per app, and dismissing clears `importedFrom` on its domains.
 export function ImportedDomainsNotice({
   appId,
   domains,
 }: {
   appId: string;
-  // This app's domains that answer on a different name than they used to.
   domains: { id: string; name: string; importedFrom: string }[];
 }) {
   const router = useRouter();
@@ -51,7 +49,6 @@ export function ImportedDomainsNotice({
         <ul className="space-y-1">
           {domains.map((d) => (
             <li key={d.id} className="flex flex-wrap items-center gap-1.5">
-              {/* Dimmer, not struck through: the old address is not a mistake, it is what a person scans for. */}
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-muted-foreground/70">
                 {d.importedFrom}
               </code>
@@ -59,7 +56,6 @@ export function ImportedDomainsNotice({
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">
                 {d.name}
               </code>
-              {/* On the new address only: it is the one somebody needs to paste. */}
               <CopyButton value={d.name} className="size-6" />
             </li>
           ))}

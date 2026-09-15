@@ -18,7 +18,6 @@ import { appCapabilitiesForTeam, nodeCapabilitiesFor } from "../node-access";
 import { memberScopeFor } from "../node-scope";
 import { type Db } from "./role-guards";
 
-// The four id lists a scope stores, resolved.
 export type ResolvedScope = {
   projectIds: string[];
   environmentIds: string[];
@@ -26,7 +25,6 @@ export type ResolvedScope = {
   appIds: string[];
 };
 
-// A role that reaches nothing left - every node it named was deleted.
 export const EMPTY_SCOPE: ResolvedScope = {
   projectIds: [],
   environmentIds: [],
@@ -34,7 +32,6 @@ export const EMPTY_SCOPE: ResolvedScope = {
   appIds: [],
 };
 
-// The nodes a role is limited to, as the editor sends them.
 export interface RoleScopeInput {
   projectIds?: string[];
   environmentIds?: string[];
@@ -42,8 +39,6 @@ export interface RoleScopeInput {
   appIds?: string[];
 }
 
-// loadRoleScopes - the scope junctions of several roles at once: three queries for a
-// page, never one per role. Only the SCOPED ones need asking.
 export async function loadRoleScopes(
   db: Db,
   roleIds: string[],
@@ -94,9 +89,6 @@ export async function loadRoleScopes(
   return out;
 }
 
-// resolveRoleScope - validate a scope against the team and the ACTOR's own reach. A node
-// the actor cannot reach answers as one that isn't in the team: a refusal must never
-// confirm which private folders exist.
 export async function resolveRoleScope(
   teamId: string,
   actingUserId: string,
@@ -156,8 +148,6 @@ export async function resolveRoleScope(
         throw new Error("One of those isn't in this team any more");
     }
   }
-  // An environment is checked through its PROJECT: it is not a node of the grant
-  // ladder in its own right, and reaching the project reaches the environments in it.
   if (out.environmentIds.length > 0) {
     const envs = await getDb()
       .select({
@@ -187,7 +177,6 @@ export async function resolveRoleScope(
   return out;
 }
 
-// writeRoleScope - whole-set replace of a role's scope junctions.
 export async function writeRoleScope(
   tx: DbTx,
   roleId: string,

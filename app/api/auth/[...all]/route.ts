@@ -7,10 +7,8 @@ function notConfigured() {
   return new Response("Auth provider not configured", { status: 501 });
 }
 
-// The only unauthenticated write endpoint Deplo exposes: clients cannot pre-register (RFC 7591), so it is keyed on IP.
 const REGISTER_LIMIT = { limit: 5, windowMs: 60_000 };
 
-// The ceiling the per-address limit cannot provide.
 const REGISTER_CEILING = { limit: 60, windowMs: 60_000 };
 
 async function registrationAllowed(request: Request): Promise<Response | null> {

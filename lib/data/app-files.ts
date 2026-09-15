@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/data/persistent-storage
-
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import { getCurrentUser } from "../auth/current-user";
 import { recordActivity } from "./activity";
@@ -17,7 +15,6 @@ import { AgentUnreachableError } from "../infra/agent-client/errors";
 
 const MAX_WRITE_BYTES = 1024 * 1024;
 
-// normalizeRel cleans a relative path, rejecting absolute paths and any `..` traversal (backslashes folded).
 export function normalizeRel(relPath: string): string {
   const rel = (relPath ?? "")
     .replace(/\\/g, "/")
@@ -28,13 +25,11 @@ export function normalizeRel(relPath: string): string {
   if (rel.split("/").some((seg) => seg === "..")) {
     throw new Error("Path traversal is not allowed");
   }
-  // `a/./b` and `.env/.` are `a/b` and `.env` on the host: judge what lands.
   const clean = rel
     .split("/")
     .filter((seg) => seg !== "." && seg !== "")
     .join("/");
   if (clean === "") return "";
-  // The stack's decrypted env-file lives at this root: reading it is reveal_secrets, writing it manage_env.
   if (clean === ".env")
     throw new Error(
       "The .env file is written by Deplo from the app's variables - edit those in Settings → Environment.",
@@ -45,7 +40,6 @@ export function normalizeRel(relPath: string): string {
 async function requireAppInTeam(
   appId: string,
 ): Promise<{ slug: string; teamId: string; serverId: string }> {
-  // A File volume's body is part of the app's configuration, so it rides that capability.
   const { teamId } = await requireAppCapability(appId, "configure_apps");
   const project = await loadTeamApp(appId, teamId);
   if (!project) {
@@ -58,7 +52,6 @@ function agentFor(serverId: string): Promise<AgentConnection> {
   return connectAgent(serverId);
 }
 
-// writeAppFile creates or overwrites a text file, capped so the editor stays a config editor.
 export async function writeAppFile(
   appId: string,
   path: string,
@@ -72,7 +65,6 @@ export async function writeAppFile(
   const conn = await agentFor(serverId);
   try {
     const entry = await conn.writeFile(slug, path, content);
-    // The stored copy moves with the file, or the next deploy undoes this.
     await syncAppMount(appId, path, content);
     await note(appId, `Edited file ${entry.path}`);
     return entry.path;
@@ -81,11 +73,9 @@ export async function writeAppFile(
   }
 }
 
-// StorageFileState is what the Storage editor found at a File entry's path.
 export type StorageFileState =
   "text" | "new" | "folder" | "binary" | "too-large";
 
-// storageFileStateForError says what a FAILED agent read means, or null when it must be rethrown.
 export function storageFileStateForError(e: unknown): StorageFileState | null {
   const code = (e as { code?: number } | null)?.code;
   const message = e instanceof Error ? e.message : String(e);
@@ -96,7 +86,6 @@ export function storageFileStateForError(e: unknown): StorageFileState | null {
   return null;
 }
 
-// storageFileReadError is the user-facing failure for a read Deplo could not classify.
 export function storageFileReadError(e: unknown): Error {
   return new Error(
     e instanceof AgentUnreachableError
@@ -112,7 +101,6 @@ export interface StorageFile {
   text: string;
 }
 
-// readAppStorageFile reads a File entry's path; a path that is not there yet answers state "new".
 export async function readAppStorageFile(
   appId: string,
   path: string,
@@ -120,7 +108,6 @@ export async function readAppStorageFile(
   const { slug, serverId } = await requireAppInTeam(appId);
   const rel = normalizeRel(path);
   if (!rel) throw new Error("A path in this app's Files is required");
-  // The dial is INSIDE the try: an unprovisioned agent must read as "the server didn't answer" too.
   let conn: AgentConnection | undefined;
   try {
     conn = await agentFor(serverId);

@@ -15,7 +15,6 @@ export type Db = ReturnType<typeof getDb> | DbTx;
 const MAX_NAME = 40;
 const MAX_DESCRIPTION = 160;
 
-// cleanRoleName - the role name as it is stored, or a clear error.
 export function cleanRoleName(raw: string): string {
   const name = raw.trim().replace(/\s+/g, " ");
   if (!name) throw new Error("Give the role a name");
@@ -24,7 +23,6 @@ export function cleanRoleName(raw: string): string {
   return name;
 }
 
-// cleanDescription - the role description as it is stored, or null when empty.
 export function cleanDescription(
   raw: string | undefined | null,
 ): string | null {
@@ -35,7 +33,6 @@ export function cleanDescription(
   return text;
 }
 
-// roleInTeam - one role of THIS team, or a clear error. Never leaks another team's rows.
 export async function roleInTeam(
   db: Db,
   teamId: string,
@@ -67,7 +64,6 @@ export async function roleInTeam(
   return role;
 }
 
-// assertNameFree - refuse a name another role of the team already uses (case-insensitively).
 export async function assertNameFree(
   tx: DbTx,
   teamId: string,
@@ -84,13 +80,10 @@ export async function assertNameFree(
   if (clash) throw new Error(`This team already has a role called “${name}”`);
 }
 
-// actorName - who did it, as the Activity trail names everyone else: the display name.
 export async function actorName(): Promise<string> {
   return (await getCurrentUser())?.name ?? "an admin";
 }
 
-// assertActorCanMandateTwoFactor - refuse a 2FA mandate on a role the actor HOLDS
-// while the actor has no second factor.
 export async function assertActorCanMandateTwoFactor(
   userId: string,
   roleId: string,

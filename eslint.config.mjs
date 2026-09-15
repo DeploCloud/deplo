@@ -6,8 +6,6 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
-    // The team is in the address (lib/team-path.ts), and these two wrappers are
-    // what put it there. Reaching past them drops it and the link leaves the team.
     files: [
       "app/**/*.{ts,tsx}",
       "components/**/*.{ts,tsx}",
@@ -33,15 +31,11 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  // Override default ignores of eslint-config-next.
   globalIgnores([
-    // Default ignores of eslint-config-next:
     ".next/**",
-    // A restart keeps the previous build beside the new one.
     ".next.prev-*/**",
     "out/**",
     "build/**",
-    // The bundled break-glass CLI (`bun run build:recover`).
     "dist/**",
     "next-env.d.ts",
   ]),

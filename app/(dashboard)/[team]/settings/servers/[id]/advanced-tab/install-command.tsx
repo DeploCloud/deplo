@@ -20,7 +20,6 @@ import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "../server-detail-tabs";
 
-// InstallCommand mints a fresh one-time bootstrap command for this host.
 export function InstallCommand({ server }: { server: ServerSummary }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();

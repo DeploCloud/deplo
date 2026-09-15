@@ -48,7 +48,6 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
-  // The Deplo host answers on DEPLO_SERVER_IP, which is what makes it the default fallback with nothing configured.
   await seedServerRow(db, { id: PANEL, ip: "10.9.0.1", host: "10.9.0.1" });
   target = await seedServerRow(db, {
     id: TARGET,
@@ -83,7 +82,6 @@ test("a build server that is down hands the build to the Deplo host", async () =
 });
 
 test("a fallback this team cannot reach is never asked to build", async () => {
-  // A fallback is handed the app's source and its DECRYPTED env, so the team grant - not the fallback flag - is the gate.
   await seedServerRow(db, {
     id: SPARE,
     ip: "203.0.113.12",

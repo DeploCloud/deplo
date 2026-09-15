@@ -5,7 +5,6 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-// AddressForm is the address row, shared by the states that need one.
 export function AddressForm({
   value,
   onChange,
@@ -32,7 +31,6 @@ export function AddressForm({
           onSubmit();
         }}
       >
-        {/* EMPTY, never prefilled: the address we hold is the one that just failed. */}
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -58,8 +56,6 @@ export function AddressForm({
           </Button>
         )}
       </form>
-      {/* The panel is reached at a name, the machine at an IP -
-          https://deplo.build/docs/migrations/move-from-dokploy */}
       <p className="text-xs text-muted-foreground">
         The machine&rsquo;s own IP address, not the panel&rsquo;s.
       </p>

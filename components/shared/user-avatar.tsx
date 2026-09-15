@@ -21,7 +21,6 @@ const SIZE = {
 
 export type AvatarSize = keyof typeof SIZE;
 
-// avatarInitials - two letters for the monogram, from the first thing that reads like a name.
 export function avatarInitials(
   ...parts: (string | null | undefined)[]
 ): string {
@@ -46,19 +45,12 @@ function Mark({
 }) {
   return (
     <Avatar className={cn(SIZE[size], className)}>
-      <AvatarImage
-        src={src}
-        alt=""
-        // Without this, every avatar tells gravatar.com which page it was rendered on.
-        referrerPolicy="no-referrer"
-      />
-      {/* A picture still arriving, or one that will not: a plain disc, never the letters. */}
+      <AvatarImage src={src} alt="" referrerPolicy="no-referrer" />
       <AvatarFallback className="bg-muted" />
     </Avatar>
   );
 }
 
-// UserAvatar - a person; `alt=""` on purpose, it sits before their name and must not be read twice.
 export function UserAvatar({
   name,
   username,
@@ -101,7 +93,6 @@ export function TeamAvatar({
   );
 }
 
-// TeamPlaceholder - a team with no name yet has no letters to draw, so it wears the generic mark.
 export function TeamPlaceholder({ className }: { className?: string }) {
   return (
     <span

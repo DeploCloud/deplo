@@ -15,7 +15,6 @@ import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 
-// DeployHookPanel shows the app's deploy hook: one URL that deploys it.
 export function DeployHookPanel({
   appId,
   enabled: initialEnabled,
@@ -146,7 +145,6 @@ export function DeployHookPanel({
         />
       </div>
 
-      {/* Shown only once the URL is revealed, so the command never carries dots. */}
       {revealed && url && (
         <CommandLine
           command={`curl -X POST -H "Authorization: Bearer deplo_your_token" ${url}`}

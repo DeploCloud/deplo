@@ -29,7 +29,6 @@ const SEEN = /* GraphQL */ `
   }
 `;
 
-// WelcomeCelebration ends first-run setup: showing it stamps the instance, so it happens once.
 export function WelcomeCelebration({
   show,
   takeoverOf = null,
@@ -37,14 +36,12 @@ export function WelcomeCelebration({
   show: boolean;
   takeoverOf?: string | null;
 }) {
-  // Latched at mount: stripping the flag below would take the dialog away mid-celebration.
   const [armed] = React.useState(show);
   const [open, setOpen] = React.useState(show);
   const [confetti, setConfetti] = React.useState(show);
 
   React.useEffect(() => {
     if (!armed) return;
-    // The History API, not the router: a router replace would re-render this away mid-burst.
     const url = new URL(window.location.href);
     url.searchParams.delete("welcome");
     url.searchParams.delete("takeover");

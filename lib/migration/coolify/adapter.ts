@@ -72,16 +72,13 @@ import {
 } from "./map/instance";
 import { coolifyMounts } from "./map/mounts";
 
-// Well under the 200/min the bucket already caps.
 const CONCURRENCY = 5;
 
-// Coolify's `status` is not the container: a sentinel pushes it about once a minute, so a stop that took 5 s reads "running" for up to 60 s more.
 const STOP_BASE_MS = 90_000;
 const STOP_PER_CONTAINER_MS = 20_000;
 const STOP_DEADLINE_CAP_MS = 240_000;
 const STOP_POLL_MS = 1_500;
 
-// `GET /servers/{uuid}/resources` is the only reliable join: an application's `destination_id` is a Docker network, not a machine.
 async function serverOfResource(
   c: SourceCredential,
 ): Promise<Map<string, string>> {
@@ -99,7 +96,6 @@ interface ResourceIndex {
   serviceIds: Set<string>;
 }
 
-// Read once per scan: the data phase asks about every service's placement, and the answer cannot differ between two questions a minute apart.
 const INDEX_TTL_MS = 60_000;
 const indexes = new Map<
   string,
@@ -118,24 +114,20 @@ function resourceIndex(c: SourceCredential): Promise<ResourceIndex> {
     return { serverOf, serviceIds: new Set(services.map((s) => s.uuid)) };
   })();
   indexes.set(key, { at: Date.now(), value });
-  // A read that failed must not be the answer for the next minute.
   value.catch(() => indexes.delete(key));
   return value;
 }
 
-// Tests drive several panels through one module; this puts it back.
 export function __resetCoolifyIndexForTest(): void {
   indexes.clear();
 }
 
 function groupOfKind(kind: string): CoolifyResourceGroup | null {
   if (kind === "application") return "applications";
-  if (kind === "compose") return null; // ambiguous, see resolveGroup
+  if (kind === "compose") return null;
   return "databases";
 }
 
-// A `compose` kind is either a one-click SERVICE or a compose-built application.
-// Settled from the service LIST: a probe whose timeout or 429 read as "not a service" sent the stop to `applications/{uuid}/stop`, which 404s, and the data was not copied.
 async function resolveGroup(
   c: SourceCredential,
   kind: string,
@@ -145,7 +137,6 @@ async function resolveGroup(
   if (known) return known;
   const { serviceIds } = await resourceIndex(c);
   if (serviceIds.has(id)) return "services";
-  // Not in the list is not proof - a service created since the index was read is missing too - and only a 404 Coolify ANSWERED counts as "no".
   try {
     await getServiceRow(c, id);
     return "services";
@@ -169,7 +160,6 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
   const envsByProject = new Map<string, CoolifyEnvironment[]>();
   const sharedByProject = new Map<string, SourceSharedEnv | null>();
   const sharedByEnv = new Map<string, SourceSharedEnv | null>();
-  // A level the panel will not answer for is a REPORT LINE, never a silence: swallowing the 404 an older build returns lost a whole set of shared variables.
   const notesByProject = new Map<string, string[]>();
   const notesByEnv = new Map<string, string[]>();
   await mapLimit(projects, CONCURRENCY, async (p) => {
@@ -228,7 +218,6 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
 
       for (const a of applications) {
         if (!here(a.environment_id)) continue;
-        // A compose-built application is a STACK, not a single-image app - the shared importer branches on this and nothing else.
         if (a.build_pack === "dockercompose")
           env.compose!.push(coolifyCompose(a, extras(a.uuid)).value);
         else env.applications!.push(coolifyApplication(a, extras(a.uuid)));
@@ -238,7 +227,6 @@ async function tree(c: SourceCredential): Promise<SourceProject[]> {
           env.compose!.push(coolifyCompose(s, extras(s.uuid)).value);
       for (const d of databases) {
         if (!here(d.environment_id)) continue;
-        // Named by neither column it still reaches the plan, as a database nobody can import: dropping it here is how one disappeared in silence.
         const kind = coolifyDbKindOf(d) ?? "unknown";
         const list = (env[kind] ??= []) as SourceDatabase[];
         list.push(coolifyDatabase(d, kind, extras(d.uuid)));
@@ -287,7 +275,6 @@ async function detail(
   ]);
   const env = coolifyEnvBlob(envRows);
   const { mounts } = coolifyMounts(storages, id);
-  // A variable the panel would not answer for arrives EMPTY: unsaid, the report reads as a clean import of nine variables when four of them are gone.
   const envNotes = [
     ...(env.unreadableKeys.length > 0
       ? [
@@ -300,7 +287,6 @@ async function detail(
         ]
       : []),
   ];
-  // The MACHINE this resource runs on: left out, the data phase asked the panel's host for volumes living on the second one and called the service never-started.
   const extras = {
     env: env.blob,
     envNotes,
@@ -308,14 +294,12 @@ async function detail(
     secretEnvKeys: env.secretKeys,
     mounts,
     serverId: index.serverOf.get(id) ?? "",
-    // Where Coolify puts a resource's own files, so every `./x` bind resolves here; nothing in the storage rows names it, so the copy never saw it.
     stackDir: `/data/coolify/${group}/${id}`,
   };
 
   if (group === "databases") {
     const row = await getDatabase(c, id);
     const engine = coolifyDbKindOf(row) ?? (kind as SourceDbKind);
-    // Only the schedules that save to a store, and a list the panel would not answer for is a LINE: a 429 used to read as "no schedule" and "no store".
     const unread: string[] = [];
     const [schedules, stores] = await Promise.all([
       listDatabaseBackups(c, id).catch((e) => {
@@ -332,12 +316,10 @@ async function detail(
       }),
     ]);
     envNotes.push(...unread);
-    // By id when the list carries one, else the only store there is - the API lists stores without their id (4.3.16).
     const storeFor = (b: { s3_storage_id?: number | null }) =>
       stores.find((st) => st.id != null && st.id === b.s3_storage_id)?.name ??
       (stores.length === 1 ? (stores[0].name ?? null) : null);
     const backups = schedules
-      // Coolify filters by database_id ALONE, so a postgres schedule comes back for the mysql whose row shares the number; the morph class tells them apart.
       .filter((b) => coolifyBackupIsFor(b, engine))
       .filter((b) => b.frequency?.trim())
       .map((b) => ({
@@ -371,23 +353,19 @@ async function detail(
   });
 }
 
-// root is a single tick and covers both reading secrets and stopping a service.
 const TOKEN_RECIPE =
   "Mint a new token with root ticked, from an admin or owner, and connect again.";
 
 const READ_SENSITIVE_REFUSAL = `This token cannot read values, so every variable and every database password would arrive empty. ${TOKEN_RECIPE}`;
 
-// Measured: a token with read and read:sensitive imported every service and then could not stop one - the stop is the data step's one write and needs `deploy`.
 const STOP_REFUSAL = `This token cannot stop a service, and the data step stops each one before it copies its data. ${TOKEN_RECIPE}`;
 
-// Coolify drops the fields rather than refusing a token without `read:sensitive`, so this probe runs ONCE, before anything is created here or stopped over there.
 async function assertReadable(c: SourceCredential): Promise<void> {
   await assertValuesReadable(c);
   await assertComposeReadable(c);
   if (!(await canStop(c))) throw new Error(STOP_REFUSAL);
 }
 
-// A one-click SERVICE is DEFINED by a compose file, so one handing over none is the same missing scope - and downstream it read as a git problem.
 async function assertComposeReadable(c: SourceCredential): Promise<void> {
   const services = await listServices(c);
   if (services.length === 0) return;
@@ -397,7 +375,6 @@ async function assertComposeReadable(c: SourceCredential): Promise<void> {
   throw new Error(COMPOSE_REFUSAL);
 }
 
-// `database_type` on a backup row is the morph class of the database it belongs to.
 const BACKUP_CLASS: Record<string, string> = {
   postgres: "StandalonePostgresql",
   mysql: "StandaloneMysql",
@@ -415,14 +392,12 @@ function coolifyBackupIsFor(
 ): boolean {
   const cls = BACKUP_CLASS[engine];
   const type = b.database_type?.trim();
-  // A row that does not say which engine it is for is kept: better a schedule too many than a silent none.
   return !cls || !type || type.endsWith(cls);
 }
 
 const COMPOSE_REFUSAL = `This token cannot read compose files, so every one-click service would arrive with nothing to deploy. ${TOKEN_RECIPE}`;
 
 async function assertValuesReadable(c: SourceCredential): Promise<void> {
-  // A database is the sharpest probe: without the scope its password column is not blank, it is ABSENT from the JSON.
   const databases = (await listDatabases(c)).filter((d) => coolifyDbKindOf(d));
   if (databases.length > 0) {
     const visible = databases.some((d) =>
@@ -432,7 +407,6 @@ async function assertValuesReadable(c: SourceCredential): Promise<void> {
     return;
   }
 
-  // An empty list proves nothing, and a token that may be fine is never accused.
   const [applications, services] = await Promise.all([
     listApplications(c),
     listServices(c),
@@ -448,7 +422,6 @@ async function assertValuesReadable(c: SourceCredential): Promise<void> {
     throw new Error(READ_SENSITIVE_REFUSAL);
 }
 
-// Straight from Coolify's own storage rows: `name` IS the volume's name on the host, so there is nothing to inspect and nothing to guess.
 async function serviceRuntime(
   c: SourceCredential,
   svc: RuntimeQuery,
@@ -464,7 +437,6 @@ async function serviceRuntime(
       (m) =>
         m.hostPath &&
         (m.type === "bind" ||
-          // A config file on a real host path is data the copy has to carry - the same rule the Storage row is written by (`mapMounts`).
           (m.type === "file" &&
             svc.kind === "compose" &&
             m.hostPath.startsWith("/") &&
@@ -472,7 +444,6 @@ async function serviceRuntime(
             deploFilesPath(m.hostPath) == null)),
     )
     .map((m) => ({ hostPath: m.hostPath!, mountPath: m.mountPath }));
-  // A `./x` bind is nowhere in the storage rows: without this the report said the service "mounts nothing" over a directory holding every file it had.
   for (const m of svc.declaredBindMounts)
     if (m.stackRelative && !hostMounts.some((h) => h.mountPath === m.mountPath))
       hostMounts.push(m);
@@ -480,7 +451,6 @@ async function serviceRuntime(
   const status = await resourceStatus(c, group, svc.id);
   const running = status.startsWith("running");
   const notes: string[] = [];
-  // {panel} renames EVERY volume a stack declares to its own `<uuid>_<key>` and honours neither `external: true` nor a pinned `name:`, so the file's volume is not the one that ran.
   const pinnedPaths = new Map(
     composeVolumeMounts(svc.composeFile ?? "").map((m) => [
       m.name,
@@ -506,7 +476,6 @@ async function serviceRuntime(
   return { volumes, hostMounts, running, notes };
 }
 
-// Coolify's stop returns 200 the moment the job is queued, and a volume read while its container is still writing cannot be trusted.
 async function stopService(
   c: SourceCredential,
   kind: string,
@@ -530,7 +499,6 @@ async function stopService(
   }
 }
 
-// No polling on the way back: Coolify's `status` stays `exited` for minutes after the container is up again, so waiting on it would only invent a failure.
 async function startService(
   c: SourceCredential,
   kind: string,
@@ -555,15 +523,12 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
     assertReadable: () => assertReadable(c),
     listProjects: () => tree(c),
 
-    // Coolify keeps no environment-level blob of its own beyond the shared variables, which the importer reads separately.
     getEnvironment: async () => null,
 
     getService: (kind, id) => detail(c, kind, id),
 
-    // Coolify hands over the compose in the resource's own row, so there is never a second call to resolve one.
     getResolvedCompose: async () => null,
 
-    // The panel's OWN host is left out: the importer puts it in itself keyed `""`, and Coolify records it as `host.docker.internal`, so its address can only come from the panel URL.
     listServers: async (): Promise<SourceServer[]> =>
       (await listServers(c))
         .filter((s) => !coolifyIsPanelHost(s))
@@ -572,7 +537,6 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
     listMembers: async (): Promise<SourceMember[]> =>
       (await listTeamMembers(c)).map(coolifyMember),
 
-    // A Coolify team is a name and a description - the model carries no picture at all.
     sourceTeam: async () => {
       const t = await currentTeam(c);
       return {
@@ -580,7 +544,6 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
         name: t?.name?.trim() || null,
       };
     },
-    // `/v1/teams` is filtered down to the token's own team, so the others cannot even be counted.
     otherTeams: async () => null,
 
     listSchedules: async (kind, id): Promise<SourceSchedule[]> => {
@@ -589,13 +552,10 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
       return (await listScheduledTasks(c, group, id)).map(coolifySchedule);
     },
 
-    // Coolify's own `COOLIFY_*` bookkeeping is dropped at every shared level: it names the machine and the panel being left.
     teamSharedEnv: async () =>
       sharedRead(await listSharedEnvs(c, { level: "team" })),
 
-    // Coolify's fourth level is a variable scoped to a MACHINE (`{{server.KEY}}`); Deplo has no server scope, so it is offered to the project instead.
     serverSharedEnv: async (sourceServerId) => {
-      // The importer keys the panel's own host `""` (see `serverOfResource`).
       const uuid = (await listServers(c)).find(
         (s) => (coolifyIsPanelHost(s) ? "" : s.uuid) === sourceServerId,
       )?.uuid;
@@ -614,7 +574,6 @@ export function coolifyClient(c: SourceCredential): MigrationSourceClient {
     stopService: (kind, id) => stopService(c, kind, id),
     startService: (kind, id) => startService(c, kind, id),
 
-    // Coolify puts every service of ONE stack on a network named after that resource, so this is per-resource rather than a fixed name.
     platformNetworks: (svc) => [svc.id, "coolify"],
   };
 }

@@ -5,7 +5,6 @@ import type { folders } from "../../db/schema/control-plane/projects";
 
 export type FolderRow = typeof folders.$inferSelect;
 
-/** Reassemble a {@link Folder} from its row. */
 export function assembleFolder(row: FolderRow): Folder {
   return {
     id: row.id,

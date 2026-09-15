@@ -33,7 +33,6 @@ const DEFAULT_USERS: SeedUser[] = [
   { id: USER_1, teamId: TEAM_A, role: "owner" },
 ];
 
-// seedIdentity seeds the pglite FK roots: two teams and one owner user by default.
 export async function seedIdentity(
   db: TestDb,
   opts: { teams?: SeedTeam[]; users?: SeedUser[] } = {},

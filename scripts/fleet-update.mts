@@ -1,8 +1,3 @@
-/**
- * Roll the current GitHub `releases/latest` agent onto every provisioned server,
- * in the order docs/agents/fleet-rollout.md §4 requires. `.mts` because a `.ts`
- * compiles as CJS and rejects the top-level await below.
- */
 import { count, inArray, sql } from "drizzle-orm";
 
 import { markServerSeen } from "../lib/data/servers/agent-handshake";
@@ -20,11 +15,6 @@ import { agentPreflight } from "../lib/infra/agent-client/preflight";
 const dryRun = process.argv.includes("--dry-run");
 const localIp = process.env.DEPLO_SERVER_IP ?? "";
 const only = argOf("--only");
-/**
- * The capability the new binary must answer with. A release published on a MOVED
- * tag carries the same version number, so "the version changed" cannot be the
- * proof that the swap took - what it advertises can.
- */
 const expectCapability = argOf("--expect");
 
 function argOf(flag: string): string {
@@ -32,11 +22,6 @@ function argOf(flag: string): string {
   return hit ? hit.slice(flag.length + 1) : "";
 }
 
-/**
- * Servers with a deploy the agent's re-exec would kill. This check would then come
- * back all-clear and the self-update would `syscall.Exec` straight through the
- * live Deploy stream it exists to protect - a safety check that fails open.
- */
 async function busyServerIds(): Promise<Set<string>> {
   const rows = await getDb()
     .select({
@@ -48,11 +33,6 @@ async function busyServerIds(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.serverId).filter(Boolean));
 }
 
-/**
- * How many Apps each server carries, which is the blast radius §4 orders the
- * rollout by. Without it the "canary" was whichever row the list happened to
- * return first - a 3-App host, while a 0-App one sat later in the queue.
- */
 async function appsPerServer(): Promise<Map<string, number>> {
   const rows = await getDb()
     .select({ serverId: apps.serverId, n: count() })
@@ -62,19 +42,14 @@ async function appsPerServer(): Promise<Map<string, number>> {
 }
 
 const all = await listAllServers();
-// A MIGRATION SOURCE is not fleet: it is somebody else's machine, registered by the
-// import wizard to be read once and then let go (ADR-0025).
 const provisioned = all.filter(
   (s) => Boolean(s.agent?.certFingerprint) && !s.importOnly,
 );
 const load = await appsPerServer();
-// Fewest Apps first, so the canary is the smallest real host that can disprove
-// the release - see docs/agents/fleet-rollout.md §4.
 const remotes = provisioned
   .filter((s) => s.ip !== localIp)
   .sort((a, b) => (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0));
 const agentZero = provisioned.filter((s) => s.ip === localIp);
-// Canary first, then the other remotes, then this host.
 const order = [...remotes, ...agentZero].filter((s) => !only || s.id === only);
 
 if (!order.length) {
@@ -107,7 +82,6 @@ for (const [i, s] of order.entries()) {
     continue;
   }
 
-  // Prove it answers, and record what it was on, BEFORE touching it.
   let before: string;
   try {
     before = (await agentPreflight(s.id)).agentVersion;
@@ -146,15 +120,11 @@ for (const [i, s] of order.entries()) {
     break;
   }
 
-  // A host ALREADY on the release has nothing to come back as - unless the proof
-  // asked for is a capability, which a re-published tag does change.
   if (target && target === before && !expectCapability) {
     console.log(`OK    ${label} - already on ${before}`);
     continue;
   }
 
-  // The agent re-execs after replying; wait for the new binary to answer Hello
-  // and CONFIRM the version, rather than trusting the response echo.
   let confirmed = "";
   for (let attempt = 0; attempt < 20; attempt++) {
     await new Promise((r) => setTimeout(r, 1500));
@@ -172,9 +142,6 @@ for (const [i, s] of order.entries()) {
           h.traefikRunning,
           undefined,
           h.dockerVersion,
-          // The host's CPU architecture, which a build server is matched on. The
-          // preflight above already persists it; passing it here too keeps this
-          // call from depending on that side effect to be complete.
           h.hostArch,
         );
         console.log(
@@ -182,9 +149,7 @@ for (const [i, s] of order.entries()) {
         );
         break;
       }
-    } catch {
-      // Expected while it re-execs; keep polling.
-    }
+    } catch {}
   }
   if (!confirmed) {
     console.log(

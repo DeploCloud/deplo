@@ -2,7 +2,6 @@ import type { ClientReadableStream } from "@grpc/grpc-js";
 
 type Normalise = (err: unknown) => Error;
 
-// streamEvents - bridge a grpc server-stream into a backpressured async generator.
 export async function* streamEvents<E>(
   stream: ClientReadableStream<E>,
   opts: { maxQueued?: number; pauseAbove?: number; normalise?: Normalise } = {},
@@ -59,7 +58,6 @@ export async function* streamEvents<E>(
   }
 }
 
-// pumpClientStream - pump a header frame then byte frames into a client-streaming call, honouring backpressure.
 export function pumpClientStream<T>(
   call: {
     write(v: T): boolean;

@@ -111,7 +111,6 @@ test("a second project links to the shared variable already here", async () => {
 });
 
 test("a shared variable never clobbers an app's own value of the same name", async () => {
-  // A link outranks the app's own var (ADR-0012), so linking everything in scope rewrites values nobody chose.
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
 

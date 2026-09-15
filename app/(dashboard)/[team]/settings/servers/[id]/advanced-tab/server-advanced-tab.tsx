@@ -11,8 +11,6 @@ import { InstallCommand } from "./install-command";
 import { DangerZone } from "./danger-zone";
 import { ServerRolePanel } from "./server-role-panel";
 
-// ServerAdvancedTab: what this box IS, what time it thinks it is, and the two
-// irreversible things.
 export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
   const [reading, setReading] = React.useState<Reading | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -30,7 +28,6 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
     );
     setLoading(false);
     if (!res.ok) {
-      // Verbatim: "the agent on this server is too old" is the actionable one.
       setError(res.error);
       setReading(null);
       return;
@@ -40,8 +37,6 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
   }, [server.id]);
 
   React.useEffect(() => {
-    // Opening the tab IS the read - it synchronises with an external system (the
-    // owning server's agent) and `load` manages its own state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);

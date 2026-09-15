@@ -107,8 +107,6 @@ services:
 });
 
 test("a label whose KEY comes from a variable is dropped, router and all", () => {
-  // `- "${LBL}"` is ONE value to compose, so the env-file supplies the whole key=value
-  // pair - a router rule claiming any hostname.
   const doc = buildDoc(
     `
 services:

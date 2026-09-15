@@ -108,9 +108,6 @@ builder.mutationFields((t) => ({
       "Close a run somebody stopped part-way, WITHOUT finishing it - the migration sources keep their agents, because re-running is how a stopped migration is resumed.",
     args: { runId: t.arg.string({ required: true }) },
     resolve: async (_r, { runId }) => {
-      // A REQUEST, not a return from a loop: the thing that stops now runs in
-      // the control plane and checks between steps, never mid-call. A run with
-      // no live runner is closed on the spot instead - see the function.
       await requestStopMigrationRun(runId);
       return true;
     },

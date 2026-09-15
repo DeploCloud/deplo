@@ -4,7 +4,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// No DEPLO_DATABASE_URL: in-memory store; lazy imports because the runner is CJS.
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-folders-"));
 delete process.env.DEPLO_DATABASE_URL;
 delete process.env.DATABASE_URL;

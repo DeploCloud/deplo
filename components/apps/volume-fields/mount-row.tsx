@@ -42,14 +42,10 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { KIND_ICON, KindCard } from "./kind-picker";
 import { Field } from "./field";
 
-// The sentinel for "let Deplo pick": the choice is stored as absent, and Radix
-// forbids an empty item value, so a row could never return to the default.
 const SERVICE_AUTO = "auto";
 
-// The same sentinel trick for "no propagation": the stored value is absent.
 const PROPAGATION_NONE = "none";
 
-// IdentityLine is `<source> → <path>`, the one line that identifies a collapsed entry.
 export function IdentityLine({
   mount,
   containerWorkdir,
@@ -81,7 +77,6 @@ export function IdentityLine({
   );
 }
 
-// MountRow is one storage entry: a collapsed identity line that expands into its form.
 export function MountRow({
   mount,
   slug,

@@ -25,7 +25,6 @@ export const EMPTY_HEALTH_CHECK_FORM: HealthCheckForm = {
   startPeriodS: String(HEALTH_CHECK_DEFAULTS.startPeriodS),
 };
 
-// healthCheckToForm maps the saved check to the editable form (null ⇒ defaults, off).
 export function healthCheckToForm(h: HealthCheck | null): HealthCheckForm {
   if (!h) return { ...EMPTY_HEALTH_CHECK_FORM };
   return {
@@ -47,7 +46,6 @@ function num(v: string, fallback: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
-// healthCheckFromForm is what a save sends, or null when the switch is off.
 export function healthCheckFromForm(f: HealthCheckForm): HealthCheck | null {
   if (!f.enabled) return null;
   const port = f.port.trim() ? num(f.port, 0, 1, 65535) : null;
@@ -68,7 +66,6 @@ export function healthCheckFromForm(f: HealthCheckForm): HealthCheck | null {
   };
 }
 
-// healthCheckProblem is why this check cannot be saved, or null.
 export function healthCheckProblem(h: HealthCheck | null): string | null {
   if (!h) return null;
   if (h.type === "command" && !h.command?.trim())

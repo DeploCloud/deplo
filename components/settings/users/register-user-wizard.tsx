@@ -48,7 +48,6 @@ const STEP_LABEL: Record<StepId, string> = {
   link: "Link",
 };
 
-// RegisterUserWizard mints a single-use registration link for a new instance user (instance-admin only).
 export function RegisterUserWizard({
   open,
   onOpenChange,
@@ -56,7 +55,6 @@ export function RegisterUserWizard({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  // Pre-select the join branch with the active team ticked (default true).
   pinActiveTeam?: boolean;
 }) {
   const router = useRouter();
@@ -87,7 +85,6 @@ export function RegisterUserWizard({
     reset();
   }
 
-  // The state writes are deferred to a timeout to avoid cascading renders.
   React.useEffect(() => {
     if (!open || teamsLoaded) return;
     let cancelled = false;
@@ -146,12 +143,10 @@ export function RegisterUserWizard({
 
   const selectedCount = Object.keys(assign).length;
   const teamFilter = teamQuery.trim().toLowerCase();
-  // Filtering only hides rows - a ticked team the query hides stays ticked, hence the running count.
   const shownTeams = teamFilter
     ? teams.filter((tm) => tm.name.toLowerCase().includes(teamFilter))
     : teams;
 
-  // The own-team branch has nothing to configure, so it never shows an empty middle step.
   const steps: StepId[] = [
     "access",
     ...(choice === "existing_teams" ? (["teams"] as const) : []),
@@ -199,7 +194,6 @@ export function RegisterUserWizard({
       );
       if (res.ok && res.data) {
         setLink(res.data.link);
-        // The server stamps the TTL from the instant it answered, so a clock started here is right to the second.
         setExpiresAt(new Date(Date.now() + 24 * 3_600_000).toISOString());
         setStep("link");
         router.refresh();
@@ -232,7 +226,6 @@ export function RegisterUserWizard({
           <WizardStepper
             steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
             current={step}
-            // Re-minting from a revisited step would quietly leave a second live link behind.
             reachable={(s) =>
               link
                 ? s === "link"
@@ -243,7 +236,6 @@ export function RegisterUserWizard({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-4">
-          {/* The height is the step's: padding to the tallest step wastes a third of the dialog. */}
           <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
             {step === "access" && (
               <>
@@ -306,12 +298,10 @@ export function RegisterUserWizard({
                     placeholder="Search teams"
                     aria-label="Search teams"
                     className="h-9 pl-9"
-                    // A filter box, not a field of the form: Enter here would otherwise mint the link mid-search.
                     onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
                   />
                 </div>
 
-                {/* No scroller of its own: the dialog's body is the ONE scrolling region, so a long list never traps the wheel. */}
                 <div className="space-y-2">
                   {loadingTeams &&
                     [0, 1].map((i) => (
@@ -354,7 +344,6 @@ export function RegisterUserWizard({
                                 toggleTeam(tm.id, v === true)
                               }
                             />
-                            {/* The same mark the topbar switcher shows. */}
                             <TeamAvatar
                               name={tm.name}
                               avatarUrl={tm.avatarUrl}
@@ -364,7 +353,6 @@ export function RegisterUserWizard({
                               {tm.name}
                             </span>
                           </label>
-                          {/* Only the joinable default roles - owner is not one of them. */}
                           {a && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {(["member", "viewer"] as Role[]).map((r) => (
@@ -459,7 +447,6 @@ export function RegisterUserWizard({
                   disabled={pending || loadingTeams || !valid[step]}
                   aria-busy={pending}
                 >
-                  {/* Spinner over the label so the button keeps its width and the footer doesn't jump. */}
                   <span className="grid place-items-center">
                     <span
                       className={cn(

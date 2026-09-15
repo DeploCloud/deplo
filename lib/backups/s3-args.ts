@@ -1,9 +1,6 @@
-// S3_ARGS_MAX_TOKENS - at most this many flags per destination.
 export const S3_ARGS_MAX_TOKENS = 8;
-// S3_ARGS_MAX_TOKEN_LENGTH - at most this many characters per flag.
 export const S3_ARGS_MAX_TOKEN_LENGTH = 128;
 
-// S3_ARGS_ALLOWED - the flags the agent maps onto its minio client, and what each is for.
 export const S3_ARGS_ALLOWED: Record<string, string> = {
   "--s3-sign-accept-encoding":
     "Whether Accept-Encoding takes part in the request signature. Set it false for a gateway that rejects the signature Deplo sends.",
@@ -15,10 +12,8 @@ export const S3_ARGS_ALLOWED: Record<string, string> = {
     "Upload without the streaming content hash, for a gateway that rejects it.",
 };
 
-// An allowlist, so a quote, a space, `;`, `&`, `|` or `$` is refused.
 const TOKEN_RE = /^[A-Za-z0-9._:/=,+@-]+$/;
 
-// parseS3Args - split the stored string into whitespace-separated flags.
 export function parseS3Args(raw: string | null | undefined): string[] {
   return (raw ?? "").trim().split(/\s+/).filter(Boolean);
 }
@@ -27,7 +22,6 @@ function allowedList(): string {
   return Object.keys(S3_ARGS_ALLOWED).join(", ");
 }
 
-// validateS3Args - why these flags can't be used, or null when they are fine.
 export function validateS3Args(raw: string): string | null {
   const tokens = parseS3Args(raw);
   if (tokens.length === 0) return null;

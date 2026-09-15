@@ -42,7 +42,6 @@ export default async function MemberPage(
   if (!(await hasCapability("manage_members"))) notFound();
   const { id } = await props.params;
 
-  // Full role rows, not a summary: the picker reads each role's permission count and the Owner rank.
   const [viewer, members, access, roles, tree, isAdmin] = await Promise.all([
     getCurrentUser(),
     listMembers(),
@@ -52,14 +51,11 @@ export default async function MemberPage(
     isInstanceAdmin(),
   ]);
   const member = members.find((m) => m.userId === id);
-  // Not a member of the team you are acting in: no id to guess your way into.
   if (!member || !access) notFound();
 
-  // The VIEWER's rank, not the target's: reading it off the edited member answers a different question.
   const viewerIsOwner = members.some(
     (m) => m.role === "owner" && m.userId === viewer?.id,
   );
-  // The crown, not the rank: an assigned owner may not hand over the team (lib/data/team-ownership.ts).
   const viewerIsPrimaryOwner = members.some(
     (m) => m.isPrimaryOwner && m.userId === viewer?.id,
   );
@@ -106,7 +102,6 @@ async function MemberActivity({
   username: string;
   searchParams: Record<string, string | string[] | undefined>;
 }) {
-  // listDatabases refuses a role that reaches only part of the team, and such a role sees no database row anyway.
   const [apps, folders, projects, teamWide] = await Promise.all([
     listApps(),
     listFolders(),

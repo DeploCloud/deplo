@@ -43,7 +43,6 @@ import { requirePersonalSession } from "../auth/request-context";
 
 type ChannelRow = InferSelectModel<typeof notificationChannels>;
 
-// Scoped by team, so a cross-team id hits nothing.
 async function channelRow(
   teamId: string,
   id: string,
@@ -87,7 +86,6 @@ async function alertsForChannels(
   return out;
 }
 
-// The row plus its selection, with every credential reduced to a bit.
 function rowToInstance(
   row: ChannelRow,
   alerts: AlertKey[],
@@ -112,7 +110,6 @@ function rowToInstance(
   };
 }
 
-// listNotificationChannels - the team's destinations; gated like the write, it returns real addresses.
 export async function listNotificationChannels(): Promise<
   NotificationChannelInstance[]
 > {
@@ -130,7 +127,6 @@ export async function listNotificationChannels(): Promise<
 }
 
 const bool = (v: unknown): boolean => v === true;
-// Capped: an uncapped JSON scalar is a free row-size multiplier for anyone who can save.
 const MAX_FIELD = 512;
 const str = (v: unknown): string =>
   typeof v === "string" ? v.trim().slice(0, MAX_FIELD) : "";
@@ -139,7 +135,6 @@ const port = (v: unknown): number => {
   return Number.isInteger(n) && n > 0 && n <= 65535 ? n : 587;
 };
 
-// parseChannelInput - coerce the JSON scalar into one real channel; an unknown kind is refused.
 export function parseChannelInput(raw: unknown): NotificationChannelInput {
   const i = (raw ?? {}) as Partial<NotificationChannelInput>;
   const kind = str(i.kind) as NotificationChannel;
@@ -177,7 +172,6 @@ const URL_LABEL: Partial<Record<NotificationChannel, string>> = {
   ntfy: "ntfy server URL",
 };
 
-// saveNotificationChannel - create (id === null) or replace one channel, returning what was saved.
 export async function saveNotificationChannel(
   id: string | null,
   raw: unknown,
@@ -185,19 +179,15 @@ export async function saveNotificationChannel(
   const teamId = (await requireCapability("manage_notifications")).teamId;
   const next = parseChannelInput(raw);
 
-  // SSRF guard: the control plane dials these from a background loop with nobody behind it.
   const label = URL_LABEL[next.kind];
   if (label && next.url) await assertSafeOutboundUrl(next.url, label);
-  // SMTP is a bare host rather than a URL, so it takes the HOST form of the same guard.
   if (next.kind === "email" && next.emailProvider === "smtp" && next.smtpHost)
     await assertSafeOutboundHost(next.smtpHost, "SMTP host");
 
-  // Read before the transaction: a query on its own connection inside one deadlocks pglite.
   const prev = id ? await channelRow(teamId, id) : null;
   if (id && !prev) throw new Error("Channel not found");
   if (!prev) await assertRoomForOneMore(teamId);
 
-  // A stored credential is kept only while the destination it was typed for is the same one.
   if (
     prev &&
     prev.secretEnc &&
@@ -213,7 +203,6 @@ export async function saveNotificationChannel(
   const row: ChannelRow = {
     id: prev?.id ?? newId("chan"),
     teamId,
-    // Frozen at create: a changed kind would carry a selection made about something else.
     kind: prev?.kind ?? next.kind,
     name: next.name,
     enabled: next.enabled,
@@ -262,7 +251,6 @@ async function assertRoomForOneMore(teamId: string): Promise<void> {
     );
 }
 
-// deleteNotificationChannel - forget one channel; its alert rows go with it, by FK cascade.
 export async function deleteNotificationChannel(id: string): Promise<void> {
   const teamId = (await requireCapability("manage_notifications")).teamId;
   const gone = await getDb()
@@ -278,7 +266,6 @@ export async function deleteNotificationChannel(id: string): Promise<void> {
 }
 
 function channelFor(row: ChannelRow, userId?: string): AlertChannel | string {
-  // Validated against ALL_CHANNELS on the way in (parseChannelInput).
   const kind = row.kind as NotificationChannel;
   switch (kind) {
     case "discord":
@@ -339,7 +326,6 @@ function channelFor(row: ChannelRow, userId?: string): AlertChannel | string {
     case "push":
       return { kind: "push", teamId: row.teamId, userId };
     default: {
-      // The never makes a NEW kind a compile error; the return handles a retired one.
       const unreachable: never = kind;
       return `Unknown channel type ${String(unreachable)}`;
     }
@@ -376,7 +362,6 @@ function emailChannelFor(row: ChannelRow): AlertChannel | string {
   };
 }
 
-// channelsForAlert - the channels that want this alert; returns plaintext credentials, never a DTO.
 export async function channelsForAlert(
   teamId: string,
   key: AlertKey,
@@ -417,11 +402,8 @@ export async function channelsForAlert(
     .filter((c): c is AlertChannel => typeof c !== "string");
 }
 
-// sendTestNotification - one test alert through one channel; browser push goes to the caller's devices.
 export async function sendTestNotification(channelId: string): Promise<void> {
-  // A real outbound POST, so it takes the write's gate: view-only cannot drive traffic.
   const { teamId, userId } = await requireCapability("manage_notifications");
-  // One press is one outbound request to an address the presser chose, so it is counted.
   if (
     !(await rateLimit(`notify-test:${userId}`, { limit: 10, windowMs: 60_000 }))
       .ok
@@ -435,7 +417,6 @@ export async function sendTestNotification(channelId: string): Promise<void> {
     await sendToChannel(
       target,
       {
-        // A success key on purpose: the Discord embed colours itself from the key.
         key: "deployment_succeeded",
         title: "Deplo test alert",
         body: "This channel is wired up correctly.",
@@ -449,7 +430,6 @@ export async function sendTestNotification(channelId: string): Promise<void> {
   }
 }
 
-// deliveryReason - why a send failed; fetch says only "fetch failed" and hides the rest on cause.
 export function deliveryReason(e: unknown): string {
   const seen: string[] = [];
   let cur: unknown = e;
@@ -462,13 +442,11 @@ export function deliveryReason(e: unknown): string {
   return seen.join(" - ") || "The channel could not be reached";
 }
 
-// getWebPushPublicKey - the instance's VAPID public key, minted on first use. Public by design.
 export async function getWebPushPublicKey(): Promise<string> {
   await assertUser();
   return ensureVapidKeys();
 }
 
-// subscribeWebPush - opt this browser in; the endpoint is caller-supplied, so it takes the URL guard.
 export async function subscribeWebPush(
   sub: PushSubscriptionInput,
 ): Promise<void> {
@@ -489,7 +467,6 @@ async function assertRoomForOneMoreDevice(
   userId: string,
   endpoint: string,
 ): Promise<void> {
-  // Counts the OTHER devices: the save is an upsert, so a key rotation must not hit the cap.
   const [row] = await getDb()
     .select({ n: count() })
     .from(pushSubscriptions)
@@ -506,7 +483,6 @@ async function assertRoomForOneMoreDevice(
     );
 }
 
-// unsubscribeWebPush - opt this browser back out, scoped to the caller's own row.
 export async function unsubscribeWebPush(endpoint: string): Promise<void> {
   requirePersonalSession("push notifications");
   const user = await assertUser();

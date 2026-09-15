@@ -25,5 +25,4 @@ export const HOST_INFO_FIELDS = `
   canRestartControlPlane
 `;
 
-// Reading is a host reading, paired with the local instant it arrived.
 export type Reading = { info: HostInfo; readAt: number };

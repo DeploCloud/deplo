@@ -1,7 +1,6 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-// RemoteMarkdown - remote input, so no rehype-raw: anything HTML-shaped renders as text.
 export function RemoteMarkdown({ source }: { source: string }) {
   return (
     <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">

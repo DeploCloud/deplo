@@ -200,6 +200,5 @@ test("an imported path is stored canonical, backtick and all", async () => {
     ),
   );
   const [row] = await rows();
-  // The router rule interpolates this into a backtick literal.
   assert.equal(row.pathPrefix, "/api) || Host(victim.example.com");
 });

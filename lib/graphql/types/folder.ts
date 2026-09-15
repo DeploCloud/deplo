@@ -98,7 +98,6 @@ builder.queryFields((t) => ({
   }),
   folderGrants: t.field({
     type: [FolderGrantRef],
-    // The data layer restricts this to the folder owner / super-user.
     authScopes: { loggedIn: true },
     description:
       "Who can access a folder - its owner plus every user it's shared with. Owner/admin only.",
@@ -128,18 +127,15 @@ builder.queryFields((t) => ({
   }),
 }));
 
-// reorderFolders writes the team-wide folder order, so it stays gated on a super-user: instance admin OR manage_team.
 const folderScopes = {
   $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
-// Every other folder mutation is a per-folder decision (owner / grantee / super-user) the data layer gates authoritatively.
 const perFolder = { loggedIn: true } as const;
 
 builder.mutationFields((t) => ({
   createFolder: t.field({
     type: FolderRef,
-    // Creating a folder is its own permission, like creating an app.
     authScopes: { capability: "create_folders" },
     description:
       "Create a folder in the active team; nest it by passing a parent folder id. Requires the create_folders capability; the creator becomes the folder's owner.",

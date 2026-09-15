@@ -1,5 +1,3 @@
-// https://deplo.build/docs/guides/networking/domains-and-https
-
 import {
   Document,
   isMap,
@@ -12,12 +10,8 @@ import {
 
 import { composeTruthy } from "./compose-lint/document";
 
-// The host's stack file is EDITED in place: re-rendering it from a template silently drops
-// the operator's own config, and they find out when their certificates stop renewing.
-// The container the installer creates. A Traefik under any other name is not ours.
 export const TRAEFIK_CONTAINER = "deplo-traefik";
 
-// The address this host's certificates are issued under, read off its own flags.
 export function acmeEmail(currentYaml: string): string | null {
   const resolver = stackCertResolver(currentYaml);
   if (resolver === null) return null;
@@ -29,7 +23,6 @@ export function acmeEmail(currentYaml: string): string | null {
   return found ? found.slice(flag.length) : "";
 }
 
-// The name of the ACME resolver this host defines, or null when it defines none.
 export function stackCertResolver(currentYaml: string): string | null {
   let command: string[];
   try {
@@ -44,7 +37,6 @@ export function stackCertResolver(currentYaml: string): string | null {
   return certResolver(command);
 }
 
-// Point this host's ACME resolver at a different account email. Throws when it has none.
 export function withAcmeEmail(currentYaml: string, email: string): string {
   const address = email.trim();
   if (!address)
@@ -69,22 +61,18 @@ export function withAcmeEmail(currentYaml: string, email: string): string {
   return dump(doc);
 }
 
-// One certificate the operator brought themselves: the PEM chain and its key.
 export type CustomCertificate = { certPem: string; keyPem: string };
 
 const CERT_CONFIG = "deplo-certificates";
 const CERT_FILE = "deplo-certificates.yml";
 const PANEL_CONFIG = "deplo-panel";
 const PANEL_FILE = "deplo-panel.yml";
-// install.sh's fallback certificate. Nothing here writes it - it is listed so removing the
-// panel's route or the last custom certificate does not strip the file provider out from under it.
 const DEFAULT_CERT_CONFIG = "deplo-default-cert";
 const OUR_CONFIGS = [CERT_CONFIG, PANEL_CONFIG, DEFAULT_CERT_CONFIG];
 const DEPLO_DYNAMIC_DIR = "/deplo-dynamic";
 const FILE_DIRECTORY_FLAG = "--providers.file.directory=";
 const FILE_WATCH_FLAG = "--providers.file.watch=true";
 
-// The certificates Deplo installed on this host, read back out of its own stack file.
 export function traefikCertificates(currentYaml: string): CustomCertificate[] {
   let text: unknown;
   try {
@@ -113,10 +101,7 @@ export function traefikCertificates(currentYaml: string): CustomCertificate[] {
     .filter((c) => c.certPem && c.keyPem);
 }
 
-// Custom certificates ride in the stack file as a compose `configs` entry: the agent writes no arbitrary path (ADR-0006).
 // ponytail: the KEY sits in the host's compose file in cleartext, so the exposure
-// is "whoever can read it", i.e. root. Closing it needs an agent RPC that writes a
-// secret file, at which point the stack would carry a path instead of a PEM.
 export function withTraefikCertificates(
   currentYaml: string,
   certificates: CustomCertificate[],
@@ -196,7 +181,6 @@ function mountDeploConfig(
   addTo(doc, service, "configs", {
     source: name,
     target: `${dir}/${file}`,
-    // 0400, owned by root, which is who the official image runs Traefik as.
     ...(service.has("user") ? {} : { mode: 256 }),
   });
   doc.setIn(["configs", name], doc.createNode({ content }));
@@ -279,7 +263,6 @@ const PANEL_ROUTER = "deplo-panel";
 
 const PANEL_FALLBACK_ROUTER = "deplo-panel-fallback";
 
-// How this host publishes the Deplo panel.
 export type PanelRoute = {
   domain: string;
   fallbackDomain: string | null;
@@ -288,16 +271,12 @@ export type PanelRoute = {
   target: string;
 };
 
-// A whole-host router must stay a FALLBACK so an app's own route on the same host outranks
-// it, while still beating the entrypoint redirect pinned at 1.
 const PANEL_PRIORITY = 2;
 
 const REDIRECT_PRIORITY = 1;
 
-// Where the panel lives on a host `install.sh` set up: the control plane's own compose service name.
 export const DEFAULT_PANEL_TARGET = "http://deplo:3000";
 
-// The panel route this host serves, or null when Deplo does not own one.
 export function panelRoute(currentYaml: string): PanelRoute | null {
   let content: unknown;
   try {
@@ -352,7 +331,6 @@ function ruleHost(rule: unknown): string | null {
   return rule.match(/^Host\(`([^`]+)`\)$/)?.[1] ?? null;
 }
 
-// Publish the Deplo panel on this host's proxy (or, with `null`, stop).
 export function withPanelRoute(
   currentYaml: string,
   route: PanelRoute | null,
@@ -524,8 +502,6 @@ function scalar(node: unknown): string {
   return node == null ? "" : String(node);
 }
 
-// KEEPS the item nodes that survive: rebuilding the list from strings would leave every flag
-// in place and drop every line explaining them.
 function setList(
   doc: Stack,
   owner: YAMLMap,
@@ -577,7 +553,5 @@ function certResolver(command: string[]): string {
 }
 
 function dump(doc: Stack): string {
-  // lineWidth 0 disables folding - a wrapped basicauth hash or `Host(...)` rule is valid
-  // YAML but unreadable in the file an operator may open on the host.
   return doc.toString({ lineWidth: 0 });
 }

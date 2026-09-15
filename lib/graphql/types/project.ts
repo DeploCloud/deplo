@@ -41,7 +41,6 @@ export const ProjectRef = builder
       environmentCount: t.int({
         resolve: (p) => ("environmentCount" in p ? p.environmentCount : 0),
       }),
-      // The container's environments (seeded Development/Preview/Production).
       environments: t.field({
         type: [EnvironmentRef],
         resolve: (p) => listEnvironmentsForProject(p.id),
@@ -66,12 +65,10 @@ builder.queryFields((t) => ({
   }),
 }));
 
-// The team-wide container order stays gated on a super-user: instance admin OR manage_team.
 const reorderScope = {
   $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
-// One scope per action - creating, renaming, deleting and moving an app in are four different permissions.
 const createScope = { capability: "create_projects" } as const;
 const organizeScope = { capability: "organize_projects" } as const;
 const deleteScope = { capability: "delete_projects" } as const;

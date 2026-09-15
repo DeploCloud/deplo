@@ -12,15 +12,11 @@ import { requireActiveTeamId } from "../../membership";
 import { backupTargetInScope } from "./target-access";
 import type { Backup, BackupRun, BackupRunStatus } from "../../types/backup";
 
-// listBackupRuns - the runs for a target's artifact list, newest first. Exactly
-// one of `appId` / `databaseId` is given; team-scoped.
 export async function listBackupRuns(filter: {
   appId?: string;
   databaseId?: string;
 }): Promise<BackupRun[]> {
   const teamId = await requireActiveTeamId();
-  // A run history is reachable only through a target the caller can reach: an
-  // out-of-scope app, or any database, yields nothing for a scoped token.
   if (
     !(await backupTargetInScope(
       filter.appId ? "app" : "database",
@@ -34,7 +30,6 @@ export async function listBackupRuns(filter: {
       ? eq(backupRunsTable.databaseId, filter.databaseId)
       : null;
   if (!targetWhere) return [];
-  // (started_at, seq) DESC is deterministic under a same-millisecond tie.
   const rows = await getDb()
     .select()
     .from(backupRunsTable)
@@ -43,18 +38,12 @@ export async function listBackupRuns(filter: {
   return rows.map(assembleBackupRun);
 }
 
-// DatabaseBackupSummary - what backs a database up, for the one card the overview shows.
 export interface DatabaseBackupSummary {
-  // This database's schedules, newest first. Empty ⇒ nothing backs it up.
   schedules: Backup[];
-  // The newest run of ANY kind, scheduled or ad-hoc.
   lastRunAt: string | null;
   lastStatus: BackupRunStatus | null;
 }
 
-// getDatabaseBackupSummary - a database's backup state in one read. The runs query
-// is not redundant with `Backup.lastRunAt`, which only tracks SCHEDULED runs: an
-// ad-hoc run carries `backupId: null`.
 export async function getDatabaseBackupSummary(
   databaseId: string,
 ): Promise<DatabaseBackupSummary> {
@@ -68,8 +57,6 @@ export async function getDatabaseBackupSummary(
 
   const db = getDb();
   const [scheduleRows, runRows] = await Promise.all([
-    // assembleBackup, not toDTO: the DTO resolves an app graph, a database and a
-    // destination name PER ROW, and this runs on the most-visited database page.
     db
       .select()
       .from(backupsTable)

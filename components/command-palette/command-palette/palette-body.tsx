@@ -26,12 +26,10 @@ import type { Hit } from "./search-hits";
 import { useEntryMatches } from "./use-entry-matches";
 import { useSearchResults } from "./use-search-results";
 
-// The always-last row, named because the highlight logic has to know it.
 const DOCS_ROW = "docs:search";
 
 const MORE_PAGES_ROW = "owned:more";
 
-// PaletteBody - everything inside the palette dialog, remounted on each opening.
 export function PaletteBody({
   userId,
   team,
@@ -74,8 +72,6 @@ export function PaletteBody({
     }
     remember({
       id: entry.id,
-      // A page of an app is remembered WITH the app: "Environment" on its own
-      // says nothing about whose it was.
       label: entry.owner ? `${entry.owner.name} / ${entry.label}` : entry.label,
       href: entry.href,
     });
@@ -105,8 +101,6 @@ export function PaletteBody({
       return;
     }
     toast.success(`Switched to ${to.name}`);
-    // REPLACE, never push: the entry we would leave behind points at the team we
-    // just left, so "back" would land on a page that no longer resolves.
     router.replace(href);
     router.refresh();
   }
@@ -120,9 +114,6 @@ export function PaletteBody({
     here.length === 0 &&
     elsewhere.length === 0;
 
-  // cmdk keeps a selection that still exists, and the documentation row exists
-  // from the first keystroke - so typing an app name selected THAT. Own the
-  // highlight: the first row, unless the person moved off it within this query.
   const rowIds = React.useMemo(
     () => [
       ...(showRecents ? recents.map((r) => `recent:${r.id}`) : []),
@@ -146,8 +137,6 @@ export function PaletteBody({
       showDocs,
     ],
   );
-  // cmdk also fires onValueChange when it re-selects on its own; only a real
-  // arrow key or a pointer over the list counts as moving.
   const userMoved = React.useRef(false);
   const [moved, setMoved] = React.useState<{ q: string; value: string } | null>(
     null,
@@ -184,8 +173,6 @@ export function PaletteBody({
             }
           }}
           placeholder="Search"
-          // 16px, because iOS Safari zooms a focused field under it and this
-          // opens full screen there.
           className="h-14 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
         />
       </div>
@@ -194,16 +181,11 @@ export function PaletteBody({
         onMouseMove={() => {
           userMoved.current = true;
         }}
-        // +1rem is this element's own p-2. NO fallback on purpose: until cmdk
-        // has measured, the declaration is invalid and the height stays `auto` -
-        // with `0px` the list opened a sliver tall and stayed scrolled past it.
         style={{
           height: "min(calc(var(--cmdk-list-height) + 1rem), 24rem)",
         }}
         className="max-h-96 min-h-0 overscroll-contain p-2 transition-[height] duration-200 ease-out max-sm:h-auto! max-sm:max-h-none max-sm:flex-1 max-sm:transition-none"
       >
-        {/* Ours, not cmdk's CommandEmpty: that one counts MOUNTED items, and
-            the documentation row below is always one of them. */}
         {nothing && !loading && (
           <div className="flex flex-col items-center py-8 text-center">
             <PaletteEmptyGraphic className="mb-3" />
@@ -298,8 +280,6 @@ export function PaletteBody({
               value={DOCS_ROW}
               onSelect={() => {
                 closePalette();
-                // The manual has its own search, on the same chord. It does not
-                // read a query out of the URL, so do not promise one here.
                 window.open(DOCS_BASE, "_blank", "noopener");
               }}
             >

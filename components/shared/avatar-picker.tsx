@@ -31,7 +31,6 @@ import {
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 import { TeamPlaceholder } from "@/components/shared/user-avatar";
 
-// AvatarSources - a person picks a source; a team has only its own file.
 export type AvatarSources = {
   choice: AvatarChoice;
   letters: string;
@@ -75,7 +74,6 @@ export function AvatarPicker({
   React.useEffect(() => {
     const seed = letters === undefined ? "" : previewSeed(letters, team);
     if (!preload || !seed) return;
-    // Fetched now, not on the click: the dialog would otherwise fill its circles one by one.
     for (const pack of packsFor(team))
       for (const tile of packRow(pack, seed)) {
         const img = new window.Image();
@@ -157,7 +155,6 @@ export function AvatarPicker({
         className="hidden"
         onChange={(e) => {
           pick(e.target.files?.[0]);
-          // Reset so re-picking the same file fires change again.
           e.target.value = "";
         }}
       />
@@ -193,7 +190,6 @@ export function AvatarPicker({
         )}
       >
         {preview}
-        {/* The affordance: a round picture says nothing about being a control until hover. */}
         <span
           className={cn(
             "absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 transition",
@@ -461,7 +457,6 @@ function AvatarSourceDialog({
         </div>
         <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
           Pictures by DiceBear.{" "}
-          {/* CC BY asks for the credit where the art it covers is shown. */}
           {packs.some((p) => p.style === "glyphs") ? (
             <>
               {AVATAR_ATTRIBUTION.style} is a remix of{" "}

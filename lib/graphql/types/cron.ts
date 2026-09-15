@@ -21,8 +21,6 @@ import {
 } from "@/lib/data/crons/runs";
 import type { CronTargetKind } from "@/lib/types/cron";
 
-// Cron jobs are agent-tracked container execs (ADR-0018).
-
 export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
   description:
     "A command run inside one container of an App or a Database, on a cron " +
@@ -214,8 +212,6 @@ const CronJobInputRef = builder.inputType("CronJobInput", {
   }),
 });
 
-// A pre-check only; the real gate is `manage_crons` (plus `open_database_console`
-// for a database) inside lib/data/crons/gates.ts.
 const cronScope = { capability: "manage_crons" } as const;
 
 builder.queryFields((t) => ({

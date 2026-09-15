@@ -38,8 +38,6 @@ after(() => closeMigrationHarness(db, pg));
 
 beforeEach(() => resetMigrationHarness(db));
 
-// A key reads ONE organization, so a panel with three needs three keys - and a full scan per
-// key is hundreds of calls against a fresh Dokploy key rate-limited to ten a day.
 test("a key says which team it reads, and which it does not", async () => {
   const who = await asOwner(() => identifyMigrationSource(CONNECT));
 
@@ -99,8 +97,6 @@ test("a database the tree gives only an id for is still named, not a crash", asy
   const db = plan.projects[0].environments[0].services.find(
     (s) => s.kind === "postgres",
   )!;
-  // `project.all` returns `{postgresId}` and nothing else for a database - the "Cannot read
-  // properties of undefined (reading 'trim')" crash: the name has to come from the detail row.
   assert.equal(db.name, "blink-db");
   assert.equal(db.targetKind, "database");
 });

@@ -7,7 +7,6 @@ import { users as usersTable } from "../db/schema/control-plane/identity";
 import { avatarResolver } from "../avatar";
 import type { VarAuthor } from "../types/identity";
 
-// loadUserIdentities - batch-resolve the display identity behind the authorship columns.
 export async function loadUserIdentities(
   ids: readonly (string | null | undefined)[],
 ): Promise<Map<string, VarAuthor>> {
@@ -42,7 +41,6 @@ export async function loadUserIdentities(
   );
 }
 
-// authorOf - resolve one author column against a batch loaded by loadUserIdentities.
 export function authorOf(
   id: string | null,
   authors: Map<string, VarAuthor>,

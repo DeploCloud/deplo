@@ -6,14 +6,9 @@ import {
 } from "./messages";
 import type { ReadinessCheck } from "./types";
 
-/**
- * Disk thresholds, on the filesystem the AGENT measures, which the installer
- * points at `/` (the host's ROOT filesystem), not `/var/lib/docker`.
- */
 export const DISK_WARN_PCT = 90;
 export const DISK_FAIL_PCT = 95;
 
-/** `diskTotal === 0` means the agent's statfs FAILED. It is not "0% used" - it is unknown. */
 export function diskCheck(metrics: HostMetrics | null): ReadinessCheck {
   const base = {
     id: "capacity.disk",
@@ -36,8 +31,6 @@ export function diskCheck(metrics: HostMetrics | null): ReadinessCheck {
       detail: READINESS_MESSAGES.diskUnmeasured,
       hint: READINESS_HINTS.retry,
     };
-  // ONE number, displayed and classified: classifying on the raw field while PRINTING the
-  // fallback would render a 98%-full host as a green `pass` whose own text says it is 98% full.
   const rawPct = Number(metrics.diskPct);
   const pct = Math.floor(
     Number.isFinite(rawPct) && rawPct > 0 ? rawPct : (used / total) * 100,
@@ -64,7 +57,6 @@ export function diskCheck(metrics: HostMetrics | null): ReadinessCheck {
   };
 }
 
-/** GB with one decimal. Exported for the tests that pin the disk copy. */
 export function formatBytes(bytes: number): string {
   const gb = bytes / 1024 ** 3;
   return `${gb.toFixed(1)} GB`;

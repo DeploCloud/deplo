@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-// UnsavedChangesGuard - warns before leaving a page that has unsaved edits.
 export function UnsavedChangesGuard({
   when,
   title = "Discard unsaved changes?",
@@ -33,7 +32,6 @@ export function UnsavedChangesGuard({
     if (!when) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      // Legacy browsers require a returnValue to trigger the prompt.
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -66,7 +64,6 @@ export function UnsavedChangesGuard({
         return;
       }
       if (href === window.location.pathname + window.location.search) return;
-      // Capture phase + stopPropagation runs before Next's delegated Link handler.
       e.preventDefault();
       e.stopPropagation();
       setPendingHref(href);

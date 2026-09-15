@@ -3,7 +3,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-// useLayoutEffect on the client, useEffect on the server (a layout effect there warns); renamed so exhaustive-deps does not police the caller's dependency array.
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
@@ -14,7 +13,6 @@ export interface SlideRect {
   height: number;
 }
 
-// useSlidingRect tracks the active element's box; `watchAttributes` re-measures when a descendant's `data-state` flips, which is how Radix marks the active trigger.
 export function useSlidingRect(
   containerRef: React.RefObject<HTMLElement | null>,
   getActive: () => HTMLElement | null,
@@ -35,16 +33,13 @@ export function useSlidingRect(
       }
       const c = container.getBoundingClientRect();
       const r = el.getBoundingClientRect();
-      // A scaled ancestor (a dialog's zoom-in) shrinks every measured box and nothing re-fires once it settles: divide the scale back out.
       const scale = c.width / container.offsetWidth || 1;
       const next: SlideRect = {
-        // Scroll offsets on purpose: the highlight sits in the container's CONTENT box, which moves when the tab strip scrolls on a narrow screen.
         top: (r.top - c.top) / scale + container.scrollTop,
         left: (r.left - c.left) / scale + container.scrollLeft,
         width: r.width / scale,
         height: r.height / scale,
       };
-      // Same object when nothing moved, or ResizeObserver's fire-on-observe re-renders in a loop.
       setRect((prev) =>
         prev &&
         prev.top === next.top &&
@@ -80,7 +75,6 @@ export function useSlidingRect(
   return rect;
 }
 
-// SlidingUnderline sits at the bottom of a `relative` tab bar and animates its x-offset and width between tabs.
 export function SlidingUnderline({
   rect,
   className,
@@ -101,7 +95,6 @@ export function SlidingUnderline({
   );
 }
 
-// SlidingBackground is the pill behind the active item of a `relative isolate` list, translating and resizing to it.
 export function SlidingBackground({
   rect,
   className,

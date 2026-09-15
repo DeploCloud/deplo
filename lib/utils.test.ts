@@ -124,10 +124,7 @@ test("pickerInstallationId never invents a GitHub App for an app that already ha
     pickerInstallationId({ installationId: "gi_real" }, insts),
     "gi_real",
   );
-  // An imported app: repo set, credential NULL. Answering "gi_first" here is how the UI
-  // came to claim a connection the database never had.
   assert.equal(pickerInstallationId({ installationId: null }, insts), "");
-  // A re-installed App re-keys the row: the stored id is gone. Same lie, same answer.
   assert.equal(pickerInstallationId({ installationId: "gi_gone" }, insts), "");
   assert.equal(pickerInstallationId(undefined, []), "");
 });
@@ -146,8 +143,6 @@ test("only a row that claims a GitHub App it lacks is flagged", () => {
     repoCredentialMissing({ source: "github", repo: { connectionId: "gc_1" } }),
     false,
   );
-  // A bare Repository URL is the documented use of that source: an anonymous clone of a
-  // PUBLIC repo deploys fine, so widening this to "no credential" warns on a healthy app.
   assert.equal(repoCredentialMissing({ source: "git", repo: bare }), false);
   assert.equal(
     repoCredentialMissing({ source: "docker-image", repo: null }),
@@ -175,8 +170,6 @@ test("safeReturnPath keeps in-app paths and refuses anything that leaves the app
     "//evil.example.com",
     "/\\evil.example.com",
     "javascript:alert(1)",
-    // An API route is never a page to land on, and the GitHub ones would re-enter the
-    // flow that issued the address.
     "/api/github/setup",
   ]) {
     assert.equal(safeReturnPath(bad), null, `expected ${bad} to be refused`);

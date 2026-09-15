@@ -67,11 +67,9 @@ test("disk gets its own key, because the answer is different", () => {
 test("a value inside the hysteresis band does not announce a recovery", () => {
   evaluate(sample({ cpu: 91 }), 0);
   evaluate(sample({ cpu: 91 }), SUSTAIN_MS + 1);
-  // 91 -> 89 -> 91 must not flap the alert closed and open again.
   assert.deepEqual(evaluate(sample({ cpu: 89 }), SUSTAIN_MS + 2), []);
   const stillHigh = evaluate(sample({ cpu: 91 }), SUSTAIN_MS + 3);
   assert.equal(stillHigh[0]?.dedupe.state, "high");
-  // The cooldown throttles the repeated "high"; here it must only never turn into an "ok".
   assert.equal(
     stillHigh.some((a) => a.dedupe.state === "ok"),
     false,
@@ -88,6 +86,5 @@ test("falling below the clear band announces the recovery exactly once", () => {
 });
 
 test("a server that was never in trouble never reports a recovery", () => {
-  // The bug: on the first frame after a restart every healthy host announced itself "back to normal".
   assert.deepEqual(evaluate(sample({ cpu: 1, memPct: 1, diskPct: 1 }), 0), []);
 });

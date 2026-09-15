@@ -11,7 +11,6 @@ import { listCatalog } from "@/templates/catalog";
 
 export const metadata = { title: "Templates" };
 
-// `?q=` / `?category=` arrive as a string or, when repeated, an array.
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
@@ -21,13 +20,11 @@ export default async function TemplatesPage(
 ) {
   const searchParams = await props.searchParams;
 
-  // The catalogue is a catalogue: anyone on the team may read it.
   const [placement, canDeploy] = await Promise.all([
     resolveOverviewPlacement(placementFromSearchParams(searchParams)),
     hasCapability("create_apps"),
   ]);
 
-  // Remote service: no egress, or a bad day, renders this page instead of the section's error boundary.
   const templates = await listCatalog().catch(() => null);
   if (!templates)
     return (
@@ -44,7 +41,6 @@ export default async function TemplatesPage(
   return (
     <TemplateStore
       templates={templates.map(toStoreTemplate)}
-      // Not awaited: decoding every logo costs a cold process seconds, so a slow catalogue costs colour, not the page.
       accents={templateAccents(templates).catch(() => ({}))}
       canDeploy={canDeploy}
       placement={placement}

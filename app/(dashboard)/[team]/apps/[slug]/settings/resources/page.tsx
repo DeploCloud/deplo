@@ -12,7 +12,6 @@ import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 
 export const metadata = { title: "Resources" };
 
-/** Per-app caps, baked into the rendered compose on the next deploy. */
 export default async function AppResourcesSettingsPage(
   props: PageProps<"/[team]/apps/[slug]/settings/resources">,
 ) {

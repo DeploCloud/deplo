@@ -20,8 +20,6 @@ import { runAgentDeploy } from "./agent-deploy";
 import { rerouteApp } from "./build/reroute";
 import { stackFilesDir } from "./deploy-key";
 
-// What matters is the ORDER: the file bind exists before `compose up`, on the deploy stream and on the reroute.
-
 let db: TestDb;
 let pg: PGlite;
 let calls: string[] = [];

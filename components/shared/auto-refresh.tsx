@@ -5,9 +5,7 @@ import { useRouter } from "@/lib/nav";
 
 const DEFAULT_INTERVAL_MS = 5_000;
 
-// AutoRefresh re-runs the page's RSC reads while something on it is still moving.
 // ponytail: each instance owns its own timer, so N rows ask for N refreshes per
-//   tick. Hoist to one instance driven by a count if a page ever needs dozens.
 export function AutoRefresh({
   active,
   intervalMs = DEFAULT_INTERVAL_MS,

@@ -24,7 +24,6 @@ import {
   type ScheduleFields,
 } from "./schedule-fields";
 
-// EditScheduleDialog - change an existing schedule's name, destination, frequency and retention.
 export function EditScheduleDialog({
   schedule,
   target,
@@ -42,8 +41,6 @@ export function EditScheduleDialog({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // Seeded on mount; the parent remounts this dialog (via `key`) each time it
-  // opens, so a cancelled edit never leaks stale input into the next open.
   const [fields, setFields] = React.useState<ScheduleFields>({
     name: schedule.name,
     destinationId: schedule.destinationId,
@@ -58,7 +55,6 @@ export function EditScheduleDialog({
   }
 
   function submit() {
-    // Closes on the click; a refusal reopens it with the fields as typed.
     onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction(
@@ -94,7 +90,6 @@ export function EditScheduleDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          {/* No auto-rename here: the name is already the user's own. */}
           <NameField
             value={fields.name}
             onChange={(v) => setFields((f) => ({ ...f, name: v }))}

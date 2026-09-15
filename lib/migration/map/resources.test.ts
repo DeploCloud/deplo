@@ -61,7 +61,6 @@ test("mapResources reports a limit it could not read", () => {
 });
 
 test("`0` in a limit column is no limit, not an unreadable value", () => {
-  // Coolify writes 0 in every limit column: read as unparsable it produced three false alarms per application.
   const { value, notes } = mapResources({
     memoryLimit: "0",
     memoryReservation: "0",
@@ -70,6 +69,5 @@ test("`0` in a limit column is no limit, not an unreadable value", () => {
   });
   assert.equal(value, null);
   assert.deepEqual(notes, []);
-  // A value that genuinely cannot be read still says so.
   assert.equal(mapResources({ memoryLimit: "lots" }).notes.length, 1);
 });

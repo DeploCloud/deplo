@@ -22,7 +22,6 @@ export default async function AppPullRequestsSettingsPage(
   if (!project) notFound();
 
   const isGithubApp = project.source === "github";
-  // Checked before the read: `listAppPreviews` is gated and throws, which would take the page down.
   const canManage = await hasAppCapability(project.id, "manage_previews");
   const [view, servers] = await Promise.all([
     isGithubApp && canManage ? listAppPreviews(project.id) : null,

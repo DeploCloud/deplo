@@ -44,7 +44,6 @@ test("cleanupRunsStream yields the initial snapshot + multiple change pings (coo
     startedAt: "2026-01-01T00:00:00.000Z",
   });
 
-  // No runWithIdentity on purpose: the gate is on the subscription field, not the generator.
   const gen = cleanupRunsStream();
 
   const first = await gen.next();

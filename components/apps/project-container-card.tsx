@@ -60,7 +60,6 @@ type MenuKit = {
   SubContent: React.ElementType;
 };
 
-// ProjectContainerCard is a Project tile on the Overview - an advanced folder (ADR-0009).
 export function ProjectContainerCard({
   project,
   view = "grid",

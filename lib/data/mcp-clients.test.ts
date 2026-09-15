@@ -75,7 +75,6 @@ async function registerClientRow(clientId: string, name: string) {
   );
 }
 
-// Seeded the way the APPLICATION writes it, a JS `Date` through the driver, and never with SQL `now()`.
 async function consentRow(clientId: string, userId: string, ageMs = 0) {
   await db.insert(oauthConsent).values({
     id: `ocs_${clientId}_${userId}`,
@@ -200,9 +199,6 @@ test("naming nothing means every team you may connect agents to, live", async ()
 });
 
 test("no approval on file mints nothing", async () => {
-  // The hole this closes: the mint used to answer to a `client_id` plus a session and nothing else, so a
-  // crafted `/oauth/consent?client_id=<mine>` link made anyone with the capabilities mint a live API token
-  // bound to a client they had never heard of.
   await pg.query(`delete from oauth_consent`);
   await assert.rejects(
     as(OWNER, () =>
@@ -704,8 +700,6 @@ test("mcpTokenConnected answers only for your own token", async () => {
   await markSpokeMcp(id);
   assert.equal(await as(OWNER, () => mcpTokenConnected(id)), true);
 
-  // Somebody else's token answers FALSE, not an error: an error would confirm the row exists to
-  // somebody with no business knowing it does.
   const theirs = await bearer("Their Cursor", MEMBER);
   await markSpokeMcp(theirs);
   assert.equal(await as(OWNER, () => mcpTokenConnected(theirs)), false);

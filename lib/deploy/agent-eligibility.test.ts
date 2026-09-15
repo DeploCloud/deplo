@@ -62,14 +62,12 @@ test("buildSpecFor flattens the build config", () => {
   assert.equal(spec.buildCommand, "npm run build");
   assert.equal(spec.startCommand, "node server.js");
   assert.equal(spec.runtimeVersion, "20");
-  // A pinned version declares "node": that is how the agent knows to set NIXPACKS_NODE_VERSION.
   assert.equal(spec.runtimeLanguage, "node");
   assert.equal(spec.nixpacksPublishDirectory, "dist");
   assert.equal(spec.staticSinglePageApp, true);
 });
 
 test("buildSpecFor defaults Nixpacks/Railpack to the current Node major when unpinned", () => {
-  // Unpinned, Nixpacks would pick its own stale default (Node 18).
   for (const m of ["nixpacks", "railpack"] as const) {
     const spec = buildSpecFor(build(m));
     assert.equal(spec.runtimeVersion, "24", `${m} defaults to Node 24`);
@@ -94,7 +92,6 @@ test("buildSpecFor honours an explicit pin over the default", () => {
 });
 
 test("explicit dockerfile descriptor carries methodSettings (parity with builders.ts)", () => {
-  // Dropping these silently shipped the last stage of a multi-stage Dockerfile, not the chosen --target.
   const b = build("dockerfile");
   b.methodSettings = {
     dockerfilePath: "docker/Dockerfile.prod",

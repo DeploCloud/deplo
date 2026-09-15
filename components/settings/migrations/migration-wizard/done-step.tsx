@@ -12,10 +12,8 @@ import type { SourceKind } from "../sources";
 import { ReportBody } from "./report-card";
 import type { RunReport } from "./session";
 
-// REDIRECT_MS - how long the celebration is left up before the panel opens itself.
 const REDIRECT_MS = 3000;
 
-// DoneStep - the end: what happened and the way out, and on a takeover the run's report too.
 export function DoneStep({
   kind,
   panelUrl,

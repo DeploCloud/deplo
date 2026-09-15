@@ -42,7 +42,6 @@ function toLogoDataUri(
   return isValidLogoValue(uri) ? uri : null;
 }
 
-// detectGithubFavicon - an icon in a GitHub repo, via the API.
 export async function detectGithubFavicon(
   repo: GitRepo,
   rootDirectory: string | null | undefined,
@@ -73,7 +72,6 @@ export async function detectGithubFavicon(
   return toLogoDataUri(bytes, best.path);
 }
 
-// detectConnectionFavicon - the same behind a git connection; its tree listing has no sizes, so the cap lands on the bytes.
 export async function detectConnectionFavicon(
   repo: GitRepo,
   rootDirectory: string | null | undefined,
@@ -100,7 +98,6 @@ export async function detectConnectionFavicon(
   return toLogoDataUri(bytes, best.path);
 }
 
-// The extracted tree is attacker-controlled, so the walk is hard-bounded on every axis.
 const MAX_DIRS_WALKED = 4000;
 const MAX_PENDING_DIRS = 8000;
 const MAX_ENTRIES_PER_DIR = 50_000;
@@ -123,12 +120,10 @@ async function collectTreeCandidates(root: string): Promise<FaviconFile[]> {
     } catch {
       continue;
     }
-    // `for await` closes the handle on completion and on `break`, so an early bail leaks no fd.
     let seen = 0;
     for await (const e of dir) {
       if (out.length >= MAX_CANDIDATES || seen >= MAX_ENTRIES_PER_DIR) break;
       seen++;
-      // extractArchive already rejects symlinks; this is belt-and-braces for any other tree.
       if (e.isSymbolicLink()) continue;
       const childRel = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
@@ -147,13 +142,11 @@ async function collectTreeCandidates(root: string): Promise<FaviconFile[]> {
   return out;
 }
 
-// detectTreeFavicon - an icon inside an already-extracted source tree on local disk.
 export async function detectTreeFavicon(
   root: string,
   rootDirectory?: string | null,
 ): Promise<string | null> {
   const candidates = await collectTreeCandidates(root);
-  // Candidates carry their real size, so pickBestFavicon already dropped any over the logo cap.
   const best = pickBestFavicon(candidates, {
     rootRel: normalizeRootRel(rootDirectory),
   });
@@ -163,7 +156,6 @@ export async function detectTreeFavicon(
   return toLogoDataUri(bytes, best.path);
 }
 
-// detectUploadFavicon - an icon in a stored upload archive, scanned in a throwaway temp dir.
 export async function detectUploadFavicon(
   archive: UploadArchive,
   rootDirectory?: string | null,
@@ -180,7 +172,6 @@ export async function detectUploadFavicon(
   }
 }
 
-// detectAppFilesFavicon - an icon in an app's files dir on its owning server.
 export async function detectAppFilesFavicon(
   serverId: string,
   slug: string,
@@ -189,7 +180,6 @@ export async function detectAppFilesFavicon(
   return found ? toLogoDataUri(found.bytes, found.path) : null;
 }
 
-// detectServedAppFavicon - the icon a running compose app serves, asked for through its server's agent.
 export async function detectServedAppFavicon(
   serverId: string,
   target: ServedIconTarget,
@@ -198,7 +188,6 @@ export async function detectServedAppFavicon(
   return found ? toLogoDataUri(found.bytes, found.path, found.mime) : null;
 }
 
-// detectComposeAppFavicon - the whole compose arm: the app's own files first, then the icon it serves.
 export async function detectComposeAppFavicon(
   serverId: string,
   slug: string,
@@ -209,7 +198,6 @@ export async function detectComposeAppFavicon(
   return target ? detectServedAppFavicon(serverId, target) : null;
 }
 
-// FaviconDetectApp - the minimal app shape favicon detection reads.
 export interface FaviconDetectApp {
   id: string;
   slug: string;
@@ -222,7 +210,6 @@ export interface FaviconDetectApp {
   build: { rootDirectory?: string | null };
 }
 
-// appIconProbeTarget - where to reach a compose app's own web service, for the served-icon read.
 export function appIconProbeTarget(
   app: FaviconDetectApp,
   routes: readonly IconProbeRoute[],
@@ -235,7 +222,6 @@ export function appIconProbeTarget(
   );
 }
 
-// detectAppFavicon - a logo from whichever files an app actually owns, behind the settings "Detect from source" action.
 export async function detectAppFavicon(
   project: FaviconDetectApp,
   routes: readonly IconProbeRoute[] = [],
@@ -248,7 +234,6 @@ export async function detectAppFavicon(
         project.slug,
         appIconProbeTarget(project, routes, primaryHost),
       );
-    // Keyed on the repo itself, not the `source` string: "github" and "git" both carry a repo.
     case "github":
       return project.repo
         ? detectGithubFavicon(project.repo, project.build.rootDirectory ?? null)

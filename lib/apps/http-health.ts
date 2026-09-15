@@ -1,11 +1,8 @@
-// https://deplo.build/docs/guides/observability/monitoring
-
 const state = new Map<
   string,
   { failures: number; verdict: "healthy" | "unhealthy"; at: number }
 >();
 
-// httpHealthVerdict follows Docker's rule: unhealthy only after `retries` consecutive failures.
 export function httpHealthVerdict(
   appId: string,
   ok: boolean,
@@ -19,7 +16,6 @@ export function httpHealthVerdict(
   return verdict;
 }
 
-// recentHttpHealth is the verdict already taken, while the check's interval has not elapsed.
 export function recentHttpHealth(
   appId: string,
   intervalS: number,
@@ -30,12 +26,10 @@ export function recentHttpHealth(
   return now - seen.at < intervalS * 1000 ? seen.verdict : null;
 }
 
-// forgetHttpHealth forgets an app's streak - it stopped, moved, or was deleted.
 export function forgetHttpHealth(appId: string): void {
   state.delete(appId);
 }
 
-// withinStartPeriod reports whether this container is still inside its start period.
 export function withinStartPeriod(
   startedAtUnix: number,
   startPeriodS: number,

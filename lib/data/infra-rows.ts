@@ -51,7 +51,6 @@ const SERVER_FIELDS = {
 } satisfies Record<keyof Server, true>;
 void SERVER_FIELDS;
 
-// serverToRow explodes a Server (+ nested agent/bootstrap) into a servers row.
 export function serverToRow(s: Server): ServerInsert {
   return {
     id: s.id,
@@ -70,7 +69,6 @@ export function serverToRow(s: Server): ServerInsert {
     buildOnly: s.buildOnly,
     buildFallback: s.buildFallback,
     importOnly: s.importOnly,
-    // Retry state (attempts, next_at, run_id) is written by targeted UPDATEs, never from a DTO.
     uninstallError: s.uninstallError,
     hostArch: s.hostArch,
     deployConcurrency: s.deployConcurrency,
@@ -82,14 +80,12 @@ export function serverToRow(s: Server): ServerInsert {
     bootstrapExpiresAt: s.bootstrap?.expiresAt ?? null,
     bootstrapUsedAt: s.bootstrap?.usedAt ?? null,
     lastSeenAt: s.lastSeenAt ?? null,
-    // Absent means "never probed", which the UI renders as "Unknown" - so it is not defaulted.
     statusCheckedAt: s.statusCheckedAt ?? null,
     statusMessage: s.statusMessage ?? null,
     createdAt: s.createdAt,
   };
 }
 
-// assembleServer rebuilds a Server from a servers row, nesting agent/bootstrap.
 export function assembleServer(row: ServerRow): Server {
   const server: Server = {
     id: row.id,
@@ -106,12 +102,10 @@ export function assembleServer(row: ServerRow): Server {
     allTeams: row.allTeams,
     storageOnly: row.storageOnly ?? false,
     buildOnly: row.buildOnly ?? false,
-    // NULL is automatic, not false: unanswered, so the Deplo host stays a fallback.
     buildFallback: row.buildFallback ?? null,
     importOnly: row.importOnly ?? false,
     uninstallPending: row.uninstallNextAt !== null,
     uninstallError: row.uninstallError ?? "",
-    // "" means the agent never told us, so an un-upgraded server is never offered as a builder.
     hostArch: row.hostArch ?? "",
     deployConcurrency: row.deployConcurrency ?? 1,
     createdAt: row.createdAt,
@@ -138,7 +132,6 @@ export function assembleServer(row: ServerRow): Server {
   return server;
 }
 
-// githubAppToRow explodes a GithubApp into its github_apps row.
 export function githubAppToRow(a: GithubApp): GithubAppInsert {
   return {
     id: a.id,
@@ -155,7 +148,6 @@ export function githubAppToRow(a: GithubApp): GithubAppInsert {
   } satisfies Record<keyof GithubApp, unknown> as GithubAppInsert;
 }
 
-// assembleGithubApp rebuilds a GithubApp from its github_apps row.
 export function assembleGithubApp(row: GithubAppRow): GithubApp {
   return {
     id: row.id,
@@ -172,7 +164,6 @@ export function assembleGithubApp(row: GithubAppRow): GithubApp {
   };
 }
 
-// githubInstallationToRow explodes a GithubInstallation into its row.
 export function githubInstallationToRow(
   i: GithubInstallation,
 ): GithubInstallationInsert {
@@ -190,7 +181,6 @@ export function githubInstallationToRow(
   > as GithubInstallationInsert;
 }
 
-// assembleGithubInstallation rebuilds a GithubInstallation from its row.
 export function assembleGithubInstallation(
   row: GithubInstallationRow,
 ): GithubInstallation {
@@ -205,7 +195,6 @@ export function assembleGithubInstallation(
   };
 }
 
-// activityToRow explodes an Activity into its row; never writes seq (the DB assigns it).
 export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
   return {
     id: a.id,
@@ -214,7 +203,6 @@ export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
     message: a.message,
     actor: a.actor,
     actorUserId: a.actorUserId,
-    // Named only to satisfy the Record<keyof Activity> guard: a decoration, not a column.
     actorUser: undefined,
     actorProvider: a.actorProvider,
     appId: a.appId,
@@ -223,7 +211,6 @@ export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
   } satisfies Record<keyof Omit<Activity, "seq">, unknown> as ActivityInsert;
 }
 
-// assembleActivity rebuilds an Activity from its row; seq travels with the row.
 export function assembleActivity(row: ActivityRow): Activity {
   return {
     id: row.id,
@@ -233,7 +220,6 @@ export function assembleActivity(row: ActivityRow): Activity {
     message: row.message,
     actor: row.actor,
     actorUserId: row.actorUserId,
-    // A decoration the caller batch-resolves, never a column.
     actorUser: null,
     actorProvider: row.actorProvider ?? null,
     appId: row.appId,

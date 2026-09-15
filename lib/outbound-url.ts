@@ -3,9 +3,6 @@ import "server-only";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-// The SSRF guard for every user-supplied URL Deplo dials itself; the one exemption is `probePanel`, instance-admin gated instead.
-
-// Swappable so the pglite suite stays hermetic; production always uses node's resolver.
 let dnsLookup: (host: string) => Promise<{ address: string }[]> = (host) =>
   lookup(host, { all: true });
 
@@ -19,7 +16,6 @@ export function __resetDnsLookupForTest(): void {
   dnsLookup = (host) => lookup(host, { all: true });
 }
 
-// assertSafeOutboundUrl - SSRF guard: a user-supplied URL must be http(s) and must never aim INSIDE the deployment.
 export async function assertSafeOutboundUrl(
   raw: string,
   label: string,
@@ -41,12 +37,10 @@ export async function assertSafeOutboundUrl(
   await assertSafeOutboundHost(url.hostname.replace(/^\[|\]$/g, ""), label);
 }
 
-// assertSafeOutboundHost - the same guard for a bare HOST (an SMTP server), which never goes near assertSafeOutboundUrl.
 export async function assertSafeOutboundHost(
   raw: string,
   label: string,
 ): Promise<void> {
-  // A bare SMTP host arrives raw, so `[::1]` must be judged as `::1`, not sailed past as an opaque literal.
   const host = raw
     .trim()
     .toLowerCase()
@@ -57,9 +51,7 @@ export async function assertSafeOutboundHost(
     throw refuseError();
   };
   if (isInternalHost(host)) refuse();
-  // isInternalHost only reads the compressed IPv6 form, so an un-compressed spelling sails past it.
   if (isIP(host) === 6) {
-    // Strip a zone id (`::1%eth0`) before canonicalizing: WHATWG URL THROWS on one, and the throw used to fall through to "allowed".
     const bare = host.split("%")[0];
     let canon: string | null = null;
     try {
@@ -69,45 +61,41 @@ export async function assertSafeOutboundHost(
     } catch {
       canon = null;
     }
-    // A literal we cannot canonicalize is not a literal we can vouch for.
     if (canon === null) throw refuseError();
     if (isInternalHost(canon)) refuse();
     return;
   }
-  // A canonical dotted-quad is its own answer (isInternalHost already ran).
   if (isIP(host) === 4) return;
   let addresses: { address: string }[];
   try {
     addresses = await dnsLookup(host);
   } catch {
-    return; // unresolvable today - the dial fails too
+    return;
   }
   if (addresses.some((a) => isInternalHost(a.address.toLowerCase()))) refuse();
 }
 
-// True for a host literal inside the deployment's own network.
 function isInternalHost(host: string): boolean {
   if (host === "localhost" || host.endsWith(".localhost")) return true;
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (v4) {
     const [a, b] = [Number(v4[1]), Number(v4[2])];
     return (
-      a === 0 || // "this network"
-      a === 10 || // RFC1918
-      a === 127 || // loopback
-      (a === 100 && b >= 64 && b <= 127) || // CGNAT (100.64/10)
-      (a === 169 && b === 254) || // link-local + the metadata IP
-      (a === 172 && b >= 16 && b <= 31) || // RFC1918
-      (a === 192 && b === 168) // RFC1918
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
     );
   }
   if (host.includes(":")) {
     const n = expandV6(host);
-    if (!n) return true; // unreadable - not one to vouch for
-    if (n.slice(0, 7).every((v) => v === 0) && n[7] <= 1) return true; // :: and ::1
-    if ((n[0] & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
-    if ((n[0] & 0xfe00) === 0xfc00) return true; // ULA fc00::/7
-    // v4-mapped, NAT64, 6to4 and Teredo all carry an IPv4 a translator reaches - judge THAT with the v4 rule.
+    if (!n) return true;
+    if (n.slice(0, 7).every((v) => v === 0) && n[7] <= 1) return true;
+    if ((n[0] & 0xffc0) === 0xfe80) return true;
+    if ((n[0] & 0xfe00) === 0xfc00) return true;
     const v4 = embeddedV4(n);
     return v4 !== null && isInternalHost(v4);
   }
@@ -146,10 +134,10 @@ function embeddedV4(n: number[]): string | null {
   const v4 = (hi: number, lo: number) =>
     `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
   const zeroTo = (k: number) => n.slice(0, k).every((v) => v === 0);
-  if (zeroTo(5) && n[5] === 0xffff) return v4(n[6], n[7]); // ::ffff:a.b.c.d
+  if (zeroTo(5) && n[5] === 0xffff) return v4(n[6], n[7]);
   if (n[0] === 0x64 && n[1] === 0xff9b && (n[2] === 0 || n[2] === 1))
-    return v4(n[6], n[7]); // NAT64 64:ff9b::/96 and 64:ff9b:1::/48
-  if (n[0] === 0x2002) return v4(n[1], n[2]); // 6to4
-  if (n[0] === 0x2001 && n[1] === 0) return v4(n[6] ^ 0xffff, n[7] ^ 0xffff); // Teredo, client address inverted
+    return v4(n[6], n[7]);
+  if (n[0] === 0x2002) return v4(n[1], n[2]);
+  if (n[0] === 0x2001 && n[1] === 0) return v4(n[6] ^ 0xffff, n[7] ^ 0xffff);
   return null;
 }

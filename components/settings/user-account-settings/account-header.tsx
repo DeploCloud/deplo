@@ -8,7 +8,6 @@ import { timeAgo } from "@/lib/utils";
 import type { UserDetailDTO } from "@/lib/data/members/instance-users";
 import type { EditUserSeedUser } from "./account-editor";
 
-// AccountHeader - the avatar, the name and the state badges for one account.
 export function AccountHeader({
   user,
   isOwner,
@@ -34,8 +33,6 @@ export function AccountHeader({
       <div className="min-w-0">
         <h2 className="flex flex-wrap items-center gap-2 text-base leading-none font-semibold tracking-tight lg:text-lg">
           @{user.username}
-          {/* The badges read the SAVED state, never the form: the header says
-              who this account is, the form says what it is about to become. */}
           {isOwner ? (
             <Badge variant="secondary" className="gap-1 px-1.5 py-0">
               <Crown className="size-3" />
@@ -65,7 +62,6 @@ export function AccountHeader({
   );
 }
 
-// AccountMeta - the read-only identity strip and the team chips under it.
 export function AccountMeta({
   createdAt,
   teamCount,
@@ -84,8 +80,6 @@ export function AccountMeta({
         <Meta label="Teams" value={String(teamCount)} />
         <Meta label="Sign-in" value={suspended ? "Blocked" : "Allowed"} />
       </div>
-      {/* The chips need the fetch but the seed already carries the COUNT, so the
-          row that is coming is held open instead of pushing the sections down. */}
       {teams == null && teamCount > 0 && (
         <div className="flex flex-wrap gap-1.5">
           <Skeleton className="h-[22px] w-32 rounded-full" />

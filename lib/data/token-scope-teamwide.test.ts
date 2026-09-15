@@ -117,7 +117,6 @@ test("a point lookup by id reads as NOT FOUND, never as a scope error", async ()
   await scoped(async () => {
     assert.equal(await getServer("srv_whatever"), null);
     assert.equal(await getDatabase("db_whatever"), null);
-    // Never the scope message: that would confirm the id is worth guessing at.
     await assert.rejects(
       () => getConnectionString("db_whatever"),
       (e: Error) => !LIMITED.test(e.message),

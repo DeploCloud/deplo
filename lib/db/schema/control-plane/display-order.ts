@@ -5,7 +5,6 @@ import { databases } from "./databases";
 import { teams } from "./identity";
 import { folders, projects } from "./projects";
 
-// teamAppOrder - team-wide App display order.
 export const teamAppOrder = pgTable(
   "team_app_order",
   {
@@ -20,7 +19,6 @@ export const teamAppOrder = pgTable(
   (t) => [primaryKey({ columns: [t.teamId, t.appId] })],
 );
 
-// teamFolderOrder - team-wide folder display order.
 export const teamFolderOrder = pgTable(
   "team_folder_order",
   {
@@ -35,7 +33,6 @@ export const teamFolderOrder = pgTable(
   (t) => [primaryKey({ columns: [t.teamId, t.folderId] })],
 );
 
-// teamProjectOrder - team-wide Project-container display order (ADR-0008).
 export const teamProjectOrder = pgTable(
   "team_project_order",
   {
@@ -50,7 +47,6 @@ export const teamProjectOrder = pgTable(
   (t) => [primaryKey({ columns: [t.teamId, t.projectId] })],
 );
 
-// teamDatabaseOrder - team-wide database display order for the Storage grid.
 export const teamDatabaseOrder = pgTable(
   "team_database_order",
   {

@@ -55,7 +55,6 @@ let stopsAfter = 1;
 let statusReads = 0;
 let running = true;
 
-// A stack that keeps its data beside its own compose file - every Coolify service template.
 const BIND_COMPOSE = [
   "services:",
   "  web:",
@@ -67,7 +66,6 @@ const BIND_COMPOSE = [
 ].join("\n");
 
 const STORAGES: Record<string, unknown> = {
-  // Coolify records NOTHING for a `./x` bind.
   "svc-bind": { persistent_storages: [], file_storages: [] },
   "app-web": {
     persistent_storages: [
@@ -206,7 +204,6 @@ function fakeAgent(serverId: string) {
     },
     async *exportHostPath(path: string, allowFile = false) {
       say(allowFile ? "export-file" : "export-path", path);
-      // The real agent tars a DIRECTORY and refuses a file unless the caller asks for one.
       if (hostFiles.has(path)) {
         if (!allowFile)
           throw new Error(
@@ -402,7 +399,6 @@ beforeEach(async () => {
     readOnly: false,
     propagation: null,
   });
-  // No Storage row on either side, so the pairing comes off the compose file itself.
   await seedApp(db, {
     id: "prj_bind",
     teamId: TEAM_A,
@@ -439,7 +435,6 @@ test("the plan pairs by the path inside the container", async () => {
   );
 });
 
-// Coolify already knows the volume's real name, so nothing has to be inspected.
 test("planning inspects no container, because it does not have to", async () => {
   await seedPanelHost();
   const runId = await openRun();
@@ -494,7 +489,6 @@ test("the volume crosses, the source is stopped first, and the target is wiped",
   );
 });
 
-// Coolify's stop returns 200 the moment the job is QUEUED, not when it is down.
 test("the stop waits for the container to actually be down", async () => {
   stopsAfter = 3;
   await seedPanelHost();
@@ -530,7 +524,6 @@ test("a bind mount under the panel's data directory crosses too", async () => {
   );
 });
 
-// ADR-0025: the source host is derived; naming one would copy any volume off any host.
 test("the source host is derived, never taken from the caller", async () => {
   const runId = await openRun();
   await assert.rejects(
@@ -615,7 +608,6 @@ test("a `./file` bind carries across as that FILE, not its directory", async () 
   const stackDir = "/data/coolify/services/svc-bind";
   hostPaths.srv_migration_host[`${stackDir}/content`] = tarGzOf(1024, 3);
   hostPaths.srv_migration_host[`${stackDir}/nginx.conf`] = tarGzOf(512, 1);
-  // Docker materialises a missing `./nginx.conf` as a DIRECTORY, and the stack then fails to start.
   hostFiles.add(`${stackDir}/nginx.conf`);
   const runId = await openRun();
 
@@ -632,13 +624,11 @@ test("a `./file` bind carries across as that FILE, not its directory", async () 
     hostPaths[SERVER_1][`${filesDir}/nginx.conf`],
     hostPaths.srv_migration_host[`${stackDir}/nginx.conf`],
   );
-  // Never the stack directory around it: that carried every sibling of the file too.
   assert.equal(
     agentCalls.includes(`${SERVER_1}:import-path:${filesDir}`),
     false,
     agentCalls.join(" | "),
   );
-  // The files dir holds Deplo's own config files too, so it is never emptied.
   assert.equal(
     agentCalls.includes(`${SERVER_1}:wipe-path:${filesDir}`),
     false,

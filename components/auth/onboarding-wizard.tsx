@@ -48,7 +48,6 @@ const COMPLETE_SETUP = /* GraphQL */ `
   }
 `;
 
-/** Set once the account step is behind you, so a reload before that replays it. */
 const INTRO_SEEN = "deplo.onboarding-intro";
 
 const STEPS = [
@@ -56,7 +55,6 @@ const STEPS = [
   { id: "team", label: "Your team" },
 ];
 
-/** The field a GraphQL error blames, when it blames one. */
 function errorField(err: unknown): string | null {
   if (!(err instanceof GraphQLRequestError)) return null;
   const field = err.errors[0]?.extensions?.field;
@@ -85,12 +83,9 @@ export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
           teamImage: team.image,
           key: setupKey,
         });
-        // Hard, not the router: it cached `/` before this account existed.
         window.location.assign("/?welcome=1");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Setup failed");
-        // A password the server refuses was typed one step back; showing it here
-        // leaves the reader on the team name with nothing to fix.
         if (errorField(err) === "password") go("account", "back");
       }
     });

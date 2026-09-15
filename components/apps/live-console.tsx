@@ -39,7 +39,6 @@ type ConsoleInfoResponse = {
   consoleInfo: (ConsoleInfo & { running: boolean }) | null;
 };
 
-// LiveConsole - an App's console, following the app's live running state.
 export function LiveConsole({
   appId,
   title,
@@ -76,7 +75,6 @@ export function LiveConsole({
     };
   }, [running, appId]);
 
-  // Stable identity: a new closure per render would loop the pane re-probe.
   const probeShell = React.useCallback(
     async (containerName: string) => {
       const res = await gqlAction(

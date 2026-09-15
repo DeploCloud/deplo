@@ -10,7 +10,6 @@ import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
 import { readTextCapped } from "@/lib/http/body-cap";
 
-// POST verifies the delivery's HMAC against the receiving App's webhook secret before acting on it.
 export async function POST(request: Request) {
   const raw = await readTextCapped(request);
   if (raw instanceof Response) return raw;
@@ -20,7 +19,6 @@ export async function POST(request: Request) {
   );
   const app = Number.isInteger(appId) ? await findAppByAppId(appId) : null;
   if (!app) {
-    // Logged because "auto-deploy never fires" has no other trace of being acknowledged-and-dropped here.
     console.warn(
       `[github-webhook] ignored: no connected App for appId=${appId}`,
     );
@@ -30,7 +28,6 @@ export async function POST(request: Request) {
   const secret = decryptSecret(app.webhookSecretEnc);
   const signature = request.headers.get("x-hub-signature-256") ?? "";
   if (!secret || !verifySignature(raw, secret, signature)) {
-    // Usually DEPLO_SECRET rotated after the App was created, so the stored secret no longer decrypts.
     console.warn(
       `[github-webhook] 401 invalid signature for app=${app.slug}` +
         (secret
@@ -41,7 +38,6 @@ export async function POST(request: Request) {
   }
 
   const event = request.headers.get("x-github-event");
-  // `app.id` rides along: a delivery may only act on installations of the App whose secret verified it.
   if (event === "pull_request") return handlePullRequestDelivery(raw, app.id);
   if (event !== "push") return new Response("ok", { status: 200 });
 
@@ -54,17 +50,14 @@ export async function POST(request: Request) {
 
   const fullName = payload.repository?.full_name;
   const numericInstall = payload.installation?.id;
-  // Per-app gating (push vs tag, watch paths) is not done here - dispatchPushEvent does it per candidate.
   const pushEvent = parsePushEvent(payload);
   if (!fullName || !pushEvent.refName || !numericInstall) {
-    // Logged so it isn't confused with a missing-config drop.
     console.warn(
       `[github-webhook] push ignored: ref=${payload.ref} repo=${fullName ?? "?"} install=${numericInstall ?? "?"}`,
     );
     return new Response("ok", { status: 200 });
   }
 
-  // The installation MUST belong to the App the signature was verified against.
   const installRows = await getDb()
     .select()
     .from(githubInstallationTable)

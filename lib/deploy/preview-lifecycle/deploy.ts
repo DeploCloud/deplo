@@ -13,8 +13,6 @@ import { forkRefusal, refusalMessage } from "./fork-guard";
 import { PREVIEW_MAX_ACTIVE_DEFAULT, previewSettings } from "./settings";
 import { SLOTLESS, countOpenPreviews, evictToFit } from "./slots";
 
-// Queue a build for an EXISTING preview row (a resync, a manual redeploy, or the first
-// build right after an approval). Reads the row for the facts the deploy needs.
 export async function deployPreviewRow(
   previewId: string,
   opts: {
@@ -32,9 +30,6 @@ export async function deployPreviewRow(
   if (!p) return null;
   const settings = await previewSettings(p.appId);
   const max = settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT;
-  // The whole claim-and-queue under the per-app lock, the same one eviction takes:
-  // a sibling's eviction landing in between let `startDeployment` write `queued` over
-  // `evicted` - twelve stacks under a cap of five.
   return withKeyedLock(`preview-cap:${p.appId}`, async () => {
     const fresh = (
       await getDb()
@@ -46,11 +41,7 @@ export async function deployPreviewRow(
         .where(eq(appPreviewsTable.id, previewId))
         .limit(1)
     )[0];
-    // Closed while it waited for the lock: nothing to build.
     if (!fresh || fresh.state !== "open") return null;
-    // A preview that holds no slot is about to start holding one, so it claims its
-    // place exactly like a new preview would: otherwise reviving an evicted one, or
-    // approving a fork sitting blocked, would silently put the app over its cap.
     if ((SLOTLESS as readonly string[]).includes(fresh.status)) {
       if ((await countOpenPreviews(p.appId)) >= max)
         await evictToFit(p.appId, max, max);
@@ -73,7 +64,6 @@ async function startPreviewDeployment(
 ): Promise<string> {
   const previewId = p.id;
   try {
-    // Every manual path (Redeploy, Approve) lands here too.
     if (p.isFork) {
       const refusal = await forkRefusal(p.appId);
       if (refusal) throw new Error(refusalMessage(refusal));
@@ -96,8 +86,6 @@ async function startPreviewDeployment(
       },
     });
   } catch (e) {
-    // A refusal before the row was even queued (a revoked host grant, a migration
-    // still running) must not leave the list saying "queued" with nothing behind it.
     await getDb()
       .update(appPreviewsTable)
       .set({ status: "error", updatedAt: nowIso() })

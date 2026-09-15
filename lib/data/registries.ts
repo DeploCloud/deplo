@@ -26,7 +26,6 @@ export interface RegistryDTO {
   createdAt: string;
 }
 
-// Default host per registry type; "generic" must supply its own.
 export const REGISTRY_HOSTS: Record<RegistryType, string> = {
   ghcr: "ghcr.io",
   dockerhub: "docker.io",
@@ -34,7 +33,6 @@ export const REGISTRY_HOSTS: Record<RegistryType, string> = {
   generic: "",
 };
 
-// What the docker CLI calls the Hub in a config.json, which is not its host.
 const DOCKER_HUB_AUTH_KEY = "https://index.docker.io/v1/";
 const DOCKER_HUB_ALIASES = new Set([
   "docker.io",
@@ -42,7 +40,6 @@ const DOCKER_HUB_ALIASES = new Set([
   "registry-1.docker.io",
 ]);
 
-// The key the docker CLI matches an image's registry against.
 export function dockerConfigKey(registryUrl: string): string {
   const host = registryUrl
     .trim()
@@ -53,16 +50,12 @@ export function dockerConfigKey(registryUrl: string): string {
     : host;
 }
 
-// One decrypted credential on its way to the agent (never a DTO, never a query).
 export interface RegistryAuthEntry {
   host: string;
   username: string;
   password: string;
 }
 
-// The team's registry credentials, decrypted for the deploy edge.
-// NOT filtered by the images this deploy names: a Dockerfile's `FROM` is invisible
-// here, so a host-match would silently fail exactly the case people hit first.
 export async function loadRegistryAuthsForApp(
   appId: string,
 ): Promise<RegistryAuthEntry[]> {
@@ -96,7 +89,6 @@ export async function loadRegistryAuthsForApp(
   }));
 }
 
-// The non-secret projection, never selects `password_enc`.
 const DTO_COLUMNS = {
   id: registriesTable.id,
   name: registriesTable.name,

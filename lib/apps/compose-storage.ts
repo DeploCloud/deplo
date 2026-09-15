@@ -6,14 +6,12 @@ import {
 } from "../migration/map/volume-discovery";
 import { usesComposeStack } from "../utils";
 
-// ComposeMount is one mount a compose stack declares in its own yaml.
 export interface ComposeMount {
   kind: "named" | "host" | "app";
   source: string;
   mountPath: string;
 }
 
-// composeDeclaredMounts is what an app's own compose file mounts, empty for other sources.
 export function composeDeclaredMounts(app: {
   slug: string;
   source: string;

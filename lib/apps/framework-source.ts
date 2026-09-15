@@ -25,10 +25,8 @@ import {
 } from "./framework-detect";
 import type { GitRepo } from "../types/build";
 
-// A multi-megabyte manifest is generated junk or a bomb; only its dependency names are wanted.
 const MAX_MANIFEST_BYTES = 1_000_000;
 
-// RepoBuildHints - what one read of a repository's build root yields; every field is best-effort.
 export interface RepoBuildHints extends DetectedCommands {
   framework: FrameworkId | null;
   staticOutput: string | null;
@@ -64,7 +62,6 @@ function hintsFor(
   };
 }
 
-// detectRepoFramework - read a GitHub repo's build root through the API: its framework and its own commands.
 export async function detectRepoFramework(
   repo: GitRepo,
   rootDirectory?: string | null,
@@ -143,23 +140,18 @@ async function detectViaConnection(
   return hintsFor(files, manifest, angularJson);
 }
 
-// Unauthenticated GitHub is 60 requests an hour for the whole instance; an installation token reads public repos at 5000.
 async function activeTeamInstallationId(): Promise<string | null> {
-  // Never another team's: its token would also open that team's PRIVATE repos.
   return listGithubInstallations()
     .then((rows) => rows[0]?.id ?? null)
     .catch(() => null);
 }
 
-// An archive is attacker-controlled, so the read of its root is bounded like the favicon walk's is.
 const MAX_ROOT_ENTRIES = 5_000;
 
-// detectTreeFramework - the framework in an already-extracted source tree; one directory read, never a descent.
 export async function detectTreeFramework(
   root: string,
   rootDirectory?: string | null,
 ): Promise<FrameworkId | null> {
-  // resolveBuildDir is the realpath-checked containment the build uses; never resolve the sub-path by hand.
   const buildRoot = await resolveBuildDir({
     root,
     rootDirectory,
@@ -169,7 +161,6 @@ export async function detectTreeFramework(
   const files: string[] = [];
   try {
     const dir = await opendir(buildRoot);
-    // `for await` closes the handle on completion and on `break`, so the cap leaks no descriptor.
     for await (const entry of dir) {
       if (files.length >= MAX_ROOT_ENTRIES) break;
       if (entry.isFile()) files.push(entry.name.toLowerCase());

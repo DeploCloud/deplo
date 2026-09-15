@@ -24,7 +24,6 @@ import { cn } from "@/lib/utils";
 import type { PanelDns } from "@/lib/data/instance-settings/panel-address";
 import type { InstanceSettings } from "@/lib/data/instance-settings/settings-store";
 
-// SOURCE_LABEL: where the address came from, as the diagnostics dump names it.
 export const SOURCE_LABEL: Record<InstanceSettings["panelUrlSource"], string> =
   {
     stored: "Set here",
@@ -32,21 +31,15 @@ export const SOURCE_LABEL: Record<InstanceSettings["panelUrlSource"], string> =
     request: "Guessed from your browser",
   };
 
-// hostPart: an address without its scheme - the field edits the host, the prefix is fixed.
 export const hostPart = (url: string) => url.replace(/^https?:\/\//i, "");
 
-// PanelAddressCard: the address Deplo calls itself by, and where its DNS points.
 export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const router = useRouter();
   const current = settings.storedPanelUrl ?? settings.panelUrl;
-  // The scheme is the HTTPS setting's, not something to type here: it moves with
-  // the switch under Advanced and with nothing else.
   const scheme = current.startsWith("http://") ? "http" : "https";
   const [value, setValue] = React.useState(hostPart(current));
   const [confirming, setConfirming] = React.useState(false);
 
-  // Adopt a fresh server render (a save ends in router.refresh()) as the new
-  // baseline, the supported "adjust state during render" pattern.
   const [seen, setSeen] = React.useState(settings);
   if (seen !== settings) {
     setSeen(settings);
@@ -57,8 +50,6 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const target = host ? `${scheme}://${host}` : "";
   const dirty = target !== current;
 
-  // Read once on open and again after a save, never while typing: the answer is
-  // about the stored address.
   const [dns, setDns] = React.useState<PanelDns | null>(null);
   const checkDns = React.useCallback(async () => {
     const res = await gqlAction<{ panelDns: PanelDns }, PanelDns | null>(
@@ -70,7 +61,6 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   }, []);
 
   React.useEffect(() => {
-    // Opening the page IS the read, the same scoped exemption the https row takes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void checkDns();
   }, [checkDns]);
@@ -129,7 +119,6 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
               }`}
             />
           </div>
-          {/* Default size, not `sm`: it sits on a row with an h-9 Input. */}
           <Button type="submit" disabled={!dirty || !target}>
             Save
           </Button>
@@ -144,8 +133,6 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
         />
       </CardContent>
 
-      {/* Mounted with the card, not with the dialog: the consequences are counted
-          while the address is being typed, so the confirm opens on its numbers. */}
       <PanelAddressDialog
         open={confirming}
         onOpenChange={setConfirming}
@@ -168,7 +155,6 @@ function AddServerHint({ className }: { className?: string }) {
   );
 }
 
-// PanelDnsBlock: the DNS instruction, only when there is a record to create.
 function PanelDnsBlock({
   dns,
   serverIp,
@@ -196,8 +182,6 @@ function PanelDnsBlock({
       </p>
     );
 
-  // Nothing to check: a bare IP needs no record, and without the host's own
-  // address Deplo cannot say which one to point at.
   if (dns.status === "unknown") return serverIp ? null : <AddServerHint />;
 
   const off = dns.status === "misconfigured";
@@ -236,7 +220,6 @@ function PanelDnsBlock({
   );
 }
 
-// PanelFallbackRow: the generated address the panel also answers on.
 function PanelFallbackRow({
   url,
   panelUrl,
@@ -247,8 +230,6 @@ function PanelFallbackRow({
   disabled: boolean;
 }) {
   const [revealed, setRevealed] = React.useState(false);
-  // Nothing to say when the panel is already reached this way: it would be the
-  // same address twice, one of them labelled the fallback.
   if (!url || url === panelUrl) return null;
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border p-3">

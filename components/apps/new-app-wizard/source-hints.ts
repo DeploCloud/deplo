@@ -4,7 +4,6 @@ import type { DeploySource } from "@/lib/types/app";
 
 import type { WizardTemplate } from "./types";
 
-// parseRepo - the owner/repo and the host a pasted Git address points at, or null.
 export function parseRepo(url: string): {
   repo: string;
   provider: "github" | "gitlab" | "bitbucket" | "git";
@@ -30,25 +29,21 @@ export function parseRepo(url: string): {
   return null;
 }
 
-/** The app name an image reference suggests: `ghcr.io/acme/api:v2` ⇒ `api`. */
 export function nameFromImage(ref: string): string {
   const path = ref.trim().split("@")[0];
   const lastSegment = path.split("/").pop() ?? "";
   return lastSegment.split(":")[0] ?? "";
 }
 
-/** The app name an archive suggests: `shop.tar.gz` ⇒ `shop`. */
 export function nameFromArchive(filename: string): string {
   const ext = archiveExt(filename);
   return ext ? filename.slice(0, -ext.length) : filename;
 }
 
-// templateTitle - the card's heading for a template, variant included.
 export function templateTitle(t: WizardTemplate): string {
   return t.variantName ? `${t.name} · ${t.variantName}` : t.name;
 }
 
-// detailsDescription - the blurb the picked source puts under the card title.
 export function detailsDescription(source: DeploySource): string {
   return (
     SOURCE_TABS.find((t) => t.id === source)?.blurb ??

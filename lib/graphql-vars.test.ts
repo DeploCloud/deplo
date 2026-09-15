@@ -17,8 +17,6 @@ test("a variable the document declares passes", () => {
   assertVariablesDeclared(DOC, undefined);
 });
 
-// The bug this exists for: the call site grew a `queued` argument, the document
-// kept the old header, and every team but the first was dropped without a word.
 test("a variable the document does NOT declare throws", () => {
   assert.throws(
     () => assertVariablesDeclared(DOC, { input: {}, keepSources: true }),

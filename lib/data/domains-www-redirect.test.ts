@@ -89,10 +89,7 @@ test("adding a domain with www:toThis registers the counterpart as a redirect", 
     false,
     "a redirecting host is never the canonical one",
   );
-  // Provenance: only a companion Deplo generated may be deleted when the pair is broken.
   assert.equal(www.source, "redirect");
-  // The 301 answers on https://www, which needs a certificate THERE, or the browser
-  // hits a certificate error before it is ever told where to go.
   assert.equal(www.certProvider, "letsencrypt");
   assert.equal(www.port, 3000, "same container port as the host it points at");
   assert.equal(www.status, "valid", "its own DNS is checked at write time");

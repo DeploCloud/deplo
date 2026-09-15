@@ -28,9 +28,9 @@ import {
 import { setPrimaryDomain } from "./domains/primary-domain";
 import { routableRoutes } from "./domains/routes";
 
-const SERVER_IP = "10.0.0.1"; // seedServer's ip - the classify target
-const CLOUDFLARE_IP = "104.16.1.1"; // inside Cloudflare's 104.16.0.0/13
-const ELSEWHERE_IP = "203.0.113.9"; // TEST-NET-3 - an unrelated address
+const SERVER_IP = "10.0.0.1";
+const CLOUDFLARE_IP = "104.16.1.1";
+const ELSEWHERE_IP = "203.0.113.9";
 
 let db: TestDb;
 let pg: PGlite;
@@ -169,7 +169,6 @@ test("verifyDomain: un-proxying a domain never strips the certificate it gained"
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   const d = await asUser1(() => addDomain("prj_1", "grey.example.io", {}));
   assert.equal(d.certProvider, "cloudflare");
-  // The provider stays: dropping a live site back to plain HTTP is never the safe guess.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const checked = await asUser1(() => verifyDomain(d.id));
   assert.equal(checked.status, "valid");
@@ -208,7 +207,6 @@ test("rename onto a proxied host picks up the Cloudflare certificate too", async
   const d = await asUser1(() => addDomain("prj_1", "plain.example.io", {}));
   assert.equal(d.certProvider, "none");
 
-  // The Edit dialog posts the whole config, so a re-sent `none` is not a user choice.
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   await asUser1(() =>
     updateDomain(d.id, { name: "moved-cf.example.io", certProvider: "none" }),
@@ -266,7 +264,6 @@ test("rename to an unresolvable host drops to pending and stops ssl", async () =
 });
 
 test("proxied: a host answered by another proxy is routed, not dropped", async () => {
-  // A CDN's A record is the proxy's, so the DNS check can only ever say misconfigured.
   __setDnsResolve4ForTest(async () => [ELSEWHERE_IP]);
   const d = await asUser1(() =>
     addDomain("prj_1", "cdn.example.io", { proxied: true }),

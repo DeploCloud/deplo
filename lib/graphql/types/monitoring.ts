@@ -64,7 +64,6 @@ const ServerMetricsRef = builder
           'Which sampler produced this frame: "cgroup2" | "docker-stats". Empty ' +
           "when the reading did not come from the telemetry stream.",
       }),
-      // Epoch milliseconds; expose as Float to avoid 32-bit Int overflow.
       ts: t.exposeFloat("ts"),
     }),
   });
@@ -130,7 +129,6 @@ const ContainerMetricsSampleRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       online: t.exposeBoolean("online"),
-      // Epoch milliseconds; Float to avoid 32-bit Int overflow, like ServerMetrics.
       ts: t.exposeFloat("ts"),
       cpu: t.exposeFloat("cpu"),
       memUsed: t.exposeFloat("memUsed"),
@@ -242,7 +240,6 @@ const MonitoringSettingsRef = builder
 builder.queryFields((t) => ({
   serverMetrics: t.field({
     type: ServerMetricsRef,
-    // Every call dials the owning server's agent: an infra action, not a dashboard read.
     authScopes: { capability: "view_metrics" },
     description: "A fresh live metrics snapshot for one server.",
     args: { serverId: t.arg.string({ required: true }) },
@@ -274,7 +271,6 @@ builder.queryFields((t) => ({
     resolve: () => getMonitoringSettings(),
   }),
 
-  // Team-scoped in the data layer: null for an unknown or cross-team id.
   appMetrics: t.field({
     type: ContainerMetricsRef,
     nullable: true,
@@ -316,7 +312,6 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   setSaveMetrics: t.field({
     type: MonitoringSettingsRef,
-    // Instance-wide infra; enforced again in the data layer (defense in depth).
     authScopes: { capability: "manage_monitoring" },
     description:
       "Turn saving server metrics on the control plane on or off. Turning it " +

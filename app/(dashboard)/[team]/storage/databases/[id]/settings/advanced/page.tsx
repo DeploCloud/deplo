@@ -21,14 +21,12 @@ import {
 
 export const metadata = { title: "Advanced" };
 
-// DatabaseAdvancedSettingsPage renders the advanced features card, engine overrides and the Danger Zone.
 export default async function DatabaseAdvancedSettingsPage(
   props: PageProps<"/[team]/storage/databases/[id]/settings/advanced">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);
   if (!db) notFound();
-  // The console page gates on this capability, so don't advertise a door the viewer can't open.
   const [canConsole, canCron] = await Promise.all([
     hasCapability("open_database_console"),
     hasCapability("manage_crons"),

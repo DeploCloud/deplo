@@ -11,7 +11,6 @@ import { getCurrentUser } from "../auth/current-user";
 import { deploHostServer } from "./instance-settings/settings-store";
 import { recordActivity } from "./activity";
 
-// UpdateInfo - the result of checking the upstream repository for a newer release.
 export interface UpdateInfo {
   current: string;
   latest: string | null;
@@ -23,7 +22,6 @@ export interface UpdateInfo {
   error?: string;
 }
 
-// DeploRelease - one published release of Deplo, as the changelog renders it.
 export interface DeploRelease {
   tag: string;
   name: string;
@@ -36,7 +34,6 @@ export interface DeploRelease {
 
 const RELEASES_TAG = "deplo-releases";
 
-// Releases move slowly, and the anonymous GitHub bucket is 60 calls an hour.
 const CACHED = {
   cache: "force-cache",
   next: { revalidate: 3600, tags: [RELEASES_TAG] },
@@ -65,7 +62,6 @@ function normalizeTag(tag: string): string {
   return tag.trim().replace(/^v/i, "");
 }
 
-// An exhausted hourly limit is a wait, not a fault, and "403" alone reads like a permission problem.
 function describeFailure(res: Response): string {
   if (res.headers.get("x-ratelimit-remaining") === "0") {
     const reset = Number(res.headers.get("x-ratelimit-reset"));
@@ -128,19 +124,16 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
   }
 }
 
-// getUpdateInfo - the latest published release against the running version, cached for an hour.
 export async function getUpdateInfo(): Promise<UpdateInfo> {
   return fetchUpdateInfo(CACHED);
 }
 
-// refreshUpdateInfo - `no-store` as well as the tag, so "Check now" cannot answer with the hour-old body.
 export async function refreshUpdateInfo(): Promise<UpdateInfo> {
   await requireInstanceAdmin();
   revalidateTag(RELEASES_TAG, { expire: 0 });
   return fetchUpdateInfo({ cache: "no-store" });
 }
 
-// releaseProse - the human half of a release body, without GitHub's generated "What's Changed".
 export function releaseProse(body: string, url: string): string {
   const cut = body.search(
     /^\s{0,3}#{1,6}\s*what'?s\s+changed\b|^\s*\*\*full\s+changelog\*\*/im,
@@ -208,28 +201,23 @@ export async function listDeploReleases(): Promise<{
   }
 }
 
-// refreshAgentVersion - re-resolves the agent release, bypassing the in-process cache.
 export async function refreshAgentVersion(): Promise<string> {
   await requireInstanceAdmin();
   const { refreshAgentRelease } = await import("../agent/release");
   await refreshAgentRelease();
-  // Through the standard helper so the fallback rule (GitHub unreachable) stays in one place.
   return resolveExpectedAgentVersion();
 }
 
-// DeploUpdateStarted - an update that has been STARTED on the host.
 export interface DeploUpdateStarted {
   version: string;
   logPath: string;
 }
 
-// applyDeploUpdate - the agent re-runs the installer. https://deplo.build/docs/operations/upgrade
 export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
 
-  // The CACHED answer on purpose: the release the operator was looking at when they pressed the button.
   const info = await getUpdateInfo();
   if (!info.updateAvailable || !info.latest)
     throw new Error(
@@ -248,9 +236,7 @@ export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
     await import("../infra/agent-client/host-ops");
   const res = await updateControlPlaneOn(
     server.id,
-    // Inside a container the hostname IS the short container id, which is how the agent finds the panel.
     hostname(),
-    // The agent takes MAJOR.MINOR.PATCH or nothing; anything else lets the installer resolve it.
     /^\d+\.\d+\.\d+$/.test(version) ? version : "",
   );
   if (!res.ok)
@@ -258,7 +244,6 @@ export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
       res.error || "Deplo could not start the update on this host",
     );
 
-  // Recorded here, not after: the updater takes this process down within the minute.
   await recordActivity(
     "server",
     `Started the update of Deplo to v${version}`,

@@ -26,14 +26,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   allowedDevOrigins: devOrigins(),
-  serverExternalPackages: [
-    "pg",
-    "better-auth",
-    "nodemailer",
-    "web-push",
-    // sharp is NOT listed on purpose: Next already has it in its built-in external list.
-  ],
-  // sharp dlopens libvips from a sibling package, and a dlopen is invisible to file tracing.
+  serverExternalPackages: ["pg", "better-auth", "nodemailer", "web-push"],
   outputFileTracingIncludes: {
     "/[team]/templates": [
       "./node_modules/@img/sharp-linuxmusl-x64/**",

@@ -22,16 +22,12 @@ import { POST } from "../../app/api/github/webhook/route";
 import { runWithIdentity } from "../auth/request-context";
 import { listInstallationRepos, listRepoBranches } from "./app";
 
-// A delivery may only act on an installation of the App whose secret signed it: the installation id is just a field in the signed body.
-
 let db: TestDb;
 let pg: PGlite;
 const T0 = "2026-01-01T00:00:00.000Z";
 
-// The ATTACKER's own App, in their own team. They know this secret.
 const ATTACKER_APP_NUMERIC = 111111;
 const ATTACKER_SECRET = "attacker-webhook-secret";
-// The VICTIM's App + installation, in another team.
 const VICTIM_APP_NUMERIC = 222222;
 const VICTIM_SECRET = "victim-webhook-secret";
 const VICTIM_INSTALL_NUMERIC = 77777777;
@@ -40,7 +36,6 @@ const VICTIM_REPO = "victimorg/private-app";
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // A deploy started here must never dial a host.
   __setRunnerForTest(async () => {});
 });
 
@@ -89,7 +84,6 @@ beforeEach(async () => {
   `);
 });
 
-// A push delivery for the victim's repo + installation, signed with `secret` and announced as coming from App `targetAppId`.
 function pushDelivery(secret: string, targetAppId: number): Request {
   const body = JSON.stringify({
     ref: "refs/heads/main",
@@ -115,7 +109,6 @@ const deployments = () => getDb().select().from(deploymentsTable);
 
 test("a delivery signed by another App triggers nothing on this installation", async () => {
   const res = await POST(pushDelivery(ATTACKER_SECRET, ATTACKER_APP_NUMERIC));
-  // Acknowledged like any delivery Deplo cannot act on - a 4xx would confirm the caller guessed the installation id right.
   assert.equal(res.status, 200);
   assert.deepEqual(await deployments(), []);
 });
@@ -128,7 +121,6 @@ test("the App's OWN installation still deploys", async () => {
   assert.equal(rows[0].appId, "prj_victim");
 });
 
-// `githubRepos`/`githubBranches` are `loggedIn`-only (a member picks a repo with no capability), so the team check has to live in the data layer.
 test("listing repos/branches refuses another team's installation id (IDOR)", async () => {
   await runWithIdentity({ userId: "u_attacker", teamId: TEAM_B }, async () => {
     await assert.rejects(
@@ -140,7 +132,6 @@ test("listing repos/branches refuses another team's installation id (IDOR)", asy
       /installation not found/i,
     );
   });
-  // The owning team gets PAST the team check - it fails later on the real GitHub call (an invalid test private key), NOT with "installation not found".
   await runWithIdentity({ userId: "u_victim", teamId: TEAM_A }, async () => {
     await assert.rejects(
       () => listInstallationRepos("ghi_victim"),

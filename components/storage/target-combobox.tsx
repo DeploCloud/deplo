@@ -7,7 +7,6 @@ import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import type { DatabaseType } from "@/lib/types/database";
 
-// BackupTargetOption is one thing a schedule can back up, as the picker needs it.
 export interface BackupTargetOption {
   id: string;
   name: string;
@@ -17,7 +16,6 @@ export interface BackupTargetOption {
   type?: DatabaseType;
 }
 
-// TargetCombobox picks the app or database a schedule backs up, by typing.
 export function TargetCombobox({
   targets,
   value,

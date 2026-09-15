@@ -1,7 +1,5 @@
-// KEY_RE - the variable-name rule, mirroring the server's (`lib/data/env.ts`).
 export const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-// parseEnv turns `.env` text into KEY=VALUE pairs; keys are validated server-side.
 export function parseEnv(text: string): { key: string; value: string }[] {
   const out: { key: string; value: string }[] = [];
   for (const raw of text.split("\n")) {

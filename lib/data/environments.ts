@@ -25,8 +25,6 @@ import { projectInScope } from "./node-scope";
 import { assertContainerNotMigrating } from "./migration-guard";
 import type { Environment, EnvironmentKind } from "../types/team";
 
-// Environment CRUD (ADR-0008 Phase 3): gated on the owning Project's team, no per-environment grants.
-
 const MAX_NAME = 40;
 
 const SEED: {
@@ -50,7 +48,6 @@ const SEED: {
   },
 ];
 
-// defaultEnvironmentRows builds the default environment rows for a new Project (pure builder).
 export function defaultEnvironmentRows(
   projectId: string,
   now: string = nowIso(),
@@ -103,7 +100,6 @@ async function requireOwnedProject(projectId: string): Promise<string> {
     .from(projectsTable)
     .where(eq(projectsTable.id, projectId))
     .limit(1);
-  // Outside an API token's project scope reads exactly like nonexistent - no existence oracle.
   if (
     rows[0]?.teamId !== teamId ||
     !inProjectScope(projectId) ||
@@ -113,7 +109,6 @@ async function requireOwnedProject(projectId: string): Promise<string> {
   return teamId;
 }
 
-// environmentInTeam resolves an Environment to its project, refusing another team's.
 export async function environmentInTeam(
   environmentId: string,
   teamId: string,
@@ -141,7 +136,6 @@ export async function listEnvironmentsForProject(
   projectId: string,
 ): Promise<Environment[]> {
   const teamId = await requireActiveTeamId();
-  // An environment belongs to a project: a caller who cannot reach the project cannot enumerate it.
   if (!inProjectScope(projectId)) return [];
   if (!projectInScope(await currentMemberScope(), projectId)) return [];
   const rows = await getDb()
@@ -158,7 +152,6 @@ export async function listEnvironmentsForProject(
   return rows.map((r) => assembleEnvironment(r.environment));
 }
 
-// TeamEnvironment is an environment labelled with its owning Project.
 export interface TeamEnvironment {
   id: string;
   name: string;
@@ -168,7 +161,6 @@ export interface TeamEnvironment {
   projectName: string;
 }
 
-// listAllEnvironmentsForTeam lists every environment across the team's projects, project then position.
 export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
@@ -215,7 +207,6 @@ async function uniqueEnvSlug(projectId: string, name: string): Promise<string> {
         .where(eq(environmentsTable.projectId, projectId))
     ).map((r) => r.slug),
   );
-  // `pr-<n>` is reserved: it would produce the exact deploy key a preview of the same app owns.
   if (!taken.has(base) && !PREVIEW_SUFFIX_RE.test(base)) return base;
   for (let i = 2; ; i++) {
     const candidate = `${base}-${i}`;
@@ -238,7 +229,6 @@ export async function createEnvironment(
     .select({ position: environmentsTable.position })
     .from(environmentsTable)
     .where(eq(environmentsTable.projectId, projectId));
-  // Every Environment is a Docker network on a shared host (ADR-0028), and that pool is small.
   if (existing.length >= MAX_ENVIRONMENTS_PER_PROJECT)
     throw new Error(
       `A project can have at most ${MAX_ENVIRONMENTS_PER_PROJECT} environments.`,
@@ -283,7 +273,6 @@ export async function renameEnvironment(
     .where(eq(environmentsTable.id, id));
 }
 
-// setEnvironmentBranch sets the git branch this environment builds from ("" = the app default).
 export async function setEnvironmentBranch(
   id: string,
   branch: string,
@@ -305,7 +294,6 @@ export async function setEnvironmentBranch(
     .where(eq(environmentsTable.id, id));
 }
 
-// setDefaultEnvironment makes `id` the project's default (unsets the previous one).
 export async function setDefaultEnvironment(id: string): Promise<void> {
   await requireCapability("manage_environments");
   await assertContainerNotMigrating("environment", id);
@@ -336,7 +324,6 @@ export async function setDefaultEnvironment(id: string): Promise<void> {
   });
 }
 
-// deleteEnvironment removes a non-default environment; never the default or the last one.
 export async function deleteEnvironment(id: string): Promise<void> {
   const { teamId } = await requireCapability("manage_environments");
   await assertContainerNotMigrating("environment", id);
@@ -365,7 +352,6 @@ export async function deleteEnvironment(id: string): Promise<void> {
     throw new Error("A project must keep at least one environment.");
   const others = siblings.filter((e) => e.id !== id);
   const fallback = others.find((e) => e.isDefault) ?? others[0];
-  // Read the movers BEFORE the delete: afterwards nothing says which ones changed network.
   const moved = await getDb()
     .select({ id: appsTable.id })
     .from(appsTable)
@@ -379,14 +365,12 @@ export async function deleteEnvironment(id: string): Promise<void> {
       .update(appsTable)
       .set({ environmentId: fallback.id, updatedAt: nowIso() })
       .where(eq(appsTable.environmentId, id));
-    // Databases follow the apps rather than the FK's `set null`: the team network would strand them.
     await tx
       .update(databasesTable)
       .set({ environmentId: fallback.id })
       .where(eq(databasesTable.environmentId, id));
     await tx.delete(environmentsTable).where(eq(environmentsTable.id, id));
   });
-  // Outside the transaction (each is an agent call); a reparent can clash names, reported not refused.
   for (const clash of await nameClashesOnMove(
     moved.map((a) => a.id),
     { teamId, environmentId: fallback.id },

@@ -13,8 +13,6 @@ import {
   isValidPreset,
 } from "@/lib/apps/avatar-shared";
 
-// Public on purpose: onboarding shows the picker before an account exists.
-
 export const runtime = "nodejs";
 
 const STYLES: Record<AvatarStyle, Style> = {
@@ -25,7 +23,6 @@ const STYLES: Record<AvatarStyle, Style> = {
   initials: new Style(initialsDefinition),
 };
 
-// DiceBear's published option sets, verbatim; `default` is the style untouched. https://www.dicebear.com/styles
 const PRESET_OPTIONS: Record<
   AvatarStyle,
   Record<string, Record<string, unknown>>
@@ -75,12 +72,10 @@ export async function GET(
   )
     return new Response("Not found", { status: 404 });
 
-  // A preset the offer list has and this table has not would render the plain style: 404 instead.
   const options = PRESET_OPTIONS[style][preset];
   if (!options) return new Response("Not found", { status: 404 });
 
   // ponytail: rendered per request (~1ms, no I/O); add a cache if a cold fleet
-  // ever makes it show up in a profile.
   const svg = new Avatar(STYLES[style], {
     seed,
     size: AVATAR_EDGE_PX,
@@ -92,7 +87,6 @@ export async function GET(
       "Content-Security-Policy":
         "default-src 'none'; style-src 'unsafe-inline'",
       "X-Content-Type-Options": "nosniff",
-      // The style, preset and seed ARE the content, so a picture never changes under its URL.
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });

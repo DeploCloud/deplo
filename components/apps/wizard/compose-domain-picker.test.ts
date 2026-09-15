@@ -47,7 +47,6 @@ function render(selected: string[] = []): string {
   );
 }
 
-// `disabled` is read as the ATTRIBUTE: every box's class list carries disabled:cursor-not-allowed.
 function boxOf(html: string, service: string): string {
   const i = html.indexOf(`id="route-${service}"`);
   assert.notEqual(i, -1, `no row for ${service}`);

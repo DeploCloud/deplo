@@ -54,7 +54,6 @@ export const readyRunner = (db: TestDb) => async (depId: string) => {
     .where(eq(deploymentsTable.id, depId));
 };
 
-// A stray queue drain inside the next test's transaction wedges pglite for good.
 export async function settleQueue(h: Harness): Promise<void> {
   for (let i = 0; i < 100; i++) {
     const lane = __laneSnapshotForTest(SERVER_1);
@@ -87,8 +86,6 @@ export function setupPreviews(): Harness {
   beforeEach(async () => {
     await settleQueue(h);
     await h.pg.exec(TRUNCATE_IDENTITY + TRUNCATE_PROJECT_GRAPH);
-    // A real owner in the OTHER team, so the cross-team cases exercise the data layer's own team
-    // filter rather than bouncing off the membership gate first.
     await seedIdentity(h.db, {
       users: [
         { id: USER_1, teamId: TEAM_A, role: "owner" },

@@ -92,7 +92,6 @@ test("an assigned owner (not the founder, not an admin) is rejected", async () =
     ],
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      // seedIdentity defaults owners to instance admin, which bypasses the founder gate.
       { id: USER_2, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
     ],
   });
@@ -153,7 +152,6 @@ test("a teamId that is not the active team fails closed (stale tab)", async () =
 });
 
 test("a bearer token scoped to a team the user left fails closed", async () => {
-  // A stale token is silently rescoped to the user's first team; the delete must refuse that.
   await seedIdentity(db);
 
   await assert.rejects(
@@ -184,8 +182,6 @@ test("on a legacy team with no founder, any owner may delete", async () => {
 });
 
 test("a team with a database, a backup destination, schedules and run history deletes cleanly", async () => {
-  // backups/backup_runs reference backup_destination with ON DELETE RESTRICT, while
-  // the team delete cascades BOTH sides in one statement.
   await seedIdentity(db);
   await addMembership(USER_1, TEAM_B);
   const T0 = "2026-01-01T00:00:00.000Z";

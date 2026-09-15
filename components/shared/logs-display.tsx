@@ -35,7 +35,6 @@ function apply({ size, leading }: LogsDisplay) {
   root.setProperty("--log-lh", String(leading));
 }
 
-// LogsDisplayVars applies the stored size app-wide, mounted once in the shell.
 export function LogsDisplayVars() {
   React.useEffect(() => {
     apply(read());
@@ -51,9 +50,7 @@ export function LogsDisplayMenu({ className }: { className?: string }) {
     apply(next);
     try {
       localStorage.setItem(LOGS_DISPLAY_KEY, JSON.stringify(next));
-    } catch {
-      // A browser with storage blocked still gets the change for this session.
-    }
+    } catch {}
   }
 
   const isDefault =

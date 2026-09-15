@@ -2,7 +2,6 @@ import type { GitRepo } from "../types/build";
 
 const OWNER_REPO = /^[\w.-]+\/[\w.-]+$/;
 
-// `owner/name` for a GitHub repo - the stored `repo.repo` when it already is one, else parsed out of a github.com URL.
 export function githubFullName(
   repo: Pick<GitRepo, "repo" | "url"> | null | undefined,
 ): string | null {

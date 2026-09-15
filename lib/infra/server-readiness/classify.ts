@@ -20,18 +20,12 @@ import {
 import type { ReadinessCheck, ReadinessProbe, ReadinessReport } from "./types";
 import { report } from "./verdict";
 
-/**
- * THE PRINCIPLE that decides which rows exist: the report always contains every check whose
- * INPUTS we actually have. Control-plane facts (the `config` group) never need a dial.
- */
 export function classifyServerReadiness(
   probe: ReadinessProbe,
 ): ReadinessReport {
   const { server } = probe;
   const checks: ReadinessCheck[] = [];
 
-  // The fence, identical to the health prober's: a NON-EMPTY cert pin is the only
-  // proof there is an agent on the other end.
   const provisioning = !server.agent?.certFingerprint;
 
   if (provisioning) {
@@ -86,8 +80,6 @@ export function classifyServerReadiness(
   checks.push(versionCheck(hello.agentVersion));
   checks.push(featuresCheck(hello.capabilities ?? []));
 
-  // A STORAGE-ONLY server has no Docker by design - it holds backups and runs
-  // nothing, so the absence is a `skip`, not a `fail`.
   checks.push(
     hello.dockerAvailable
       ? {
@@ -115,8 +107,6 @@ export function classifyServerReadiness(
           },
   );
 
-  // `traefikRunning` is FORCED false by the agent when Docker is unreachable, so with Docker
-  // down we never actually looked: null ("unknown") keeps the port rows off a fact we lack.
   const traefik: boolean | null = hello.dockerAvailable
     ? hello.traefikRunning
     : null;
@@ -149,10 +139,6 @@ export function classifyServerReadiness(
   return report(probe, checks, { provisioning: false });
 }
 
-/**
- * Control-plane facts. No dial, so these are in EVERY report - including a provisioning one,
- * where "you restricted this server and granted it to nobody" is what explains a dead target.
- */
 function configChecks(probe: ReadinessProbe): ReadinessCheck[] {
   const { server, grantedTeamCount } = probe;
   const access: ReadinessCheck = server.allTeams

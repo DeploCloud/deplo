@@ -7,7 +7,6 @@ const MARK: Partial<Record<AvatarSize, string>> = {
   sm: "size-4",
 };
 
-// GitAccount is the ONE way a git-host login is drawn, never as a member of the team.
 export function GitAccount({
   login,
   provider,
@@ -27,7 +26,6 @@ export function GitAccount({
         provider={provider}
         className={cn("shrink-0", MARK[size] ?? "size-4")}
       />
-      {/* Dotted underline is how this product says "this opens the git host". */}
       <span
         className={cn(
           "truncate",

@@ -49,7 +49,6 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
     appId: t.exposeID("appId", { nullable: true }),
     databaseId: t.exposeID("databaseId", { nullable: true }),
     createdAt: t.exposeString("createdAt"),
-    // Opaque keyset position: not `seq` as an Int, because a GraphQL Int is 32 bits.
     cursor: t.string({ resolve: (a) => `${a.createdAt}|${a.seq}` }),
   }),
 });

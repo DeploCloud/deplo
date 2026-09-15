@@ -5,9 +5,6 @@ import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { prepareUploadRestore } from "@/lib/data/backups/upload-restore";
 import { statusForBackupError } from "@/lib/backups/http-status";
 
-// The upload is used for this request and nothing else: never stored, never logged, never in the Activity trail.
-
-// Long-lived streamed response; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -37,7 +34,6 @@ export async function POST(request: NextRequest) {
       body: request.body,
     });
   } catch (e) {
-    // Everything that can refuse has refused by here: the capability, a restore already running, the file, the key.
     const message = e instanceof Error ? e.message : String(e);
     return Response.json(
       { error: message },
@@ -67,7 +63,6 @@ export async function POST(request: NextRequest) {
               }),
         );
       } catch (e) {
-        // The stream already carries a 200, so a failure this late is a last line, not a status; the data layer settles the status and records it.
         controller.enqueue(
           line({
             ok: false,
@@ -78,9 +73,7 @@ export async function POST(request: NextRequest) {
       }
     },
     cancel() {
-      // Returning into the generator runs its cleanup: agent connection closed, target off "restoring", interruption recorded.
       void events.return(undefined);
-      // A generator abandoned before its first next() runs no finally, so cleanup needs this too.
       void restore.abandon();
     },
   });
@@ -89,7 +82,6 @@ export async function POST(request: NextRequest) {
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      // Disable proxy buffering (nginx) so the log lines arrive as they happen.
       "X-Accel-Buffering": "no",
     },
   });

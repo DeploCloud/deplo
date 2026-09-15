@@ -1,4 +1,3 @@
-// Comfortably longer than the replayed tail (500 lines) so a full replay always aligns; past it we repeat a few lines rather than rescan history.
 const MAX_OVERLAP_CHARS = 128_000;
 
 export function mergeLogBurst(previous: string, burst: string): string {
@@ -14,7 +13,6 @@ function overlapLength(tail: string, burst: string): number {
   const max = Math.min(tail.length, burst.length);
 
   for (let k = max; k > 0; k--) {
-    // The overlap has to END where our text ends, so the burst's k-th character must be our last one.
     if (burst.charCodeAt(k - 1) !== lastChar) continue;
 
     const offset = tail.length - k;

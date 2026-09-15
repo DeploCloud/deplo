@@ -59,7 +59,6 @@ test("the count SURVIVES a restart", async () => {
 
 test("a closed window starts a fresh allowance", async () => {
   const key = "test:expiry";
-  // The limiter floors a window to a second, so the row is aged directly instead of waited out.
   await rateLimit(key, { limit: 1, windowMs: 60_000 });
   assert.equal(
     (await rateLimit(key, { limit: 1, windowMs: 60_000 })).ok,

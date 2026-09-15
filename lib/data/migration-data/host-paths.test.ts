@@ -129,8 +129,6 @@ test("a bind mount that names a FILE copies the file, not what surrounds it", as
   );
 });
 
-// An agent that does not know the flag would create a DIRECTORY of that name and the stack
-// would come back up on it - broken, and reported as copied.
 test("a file the destination agent cannot take is refused, never guessed", async () => {
   state.agentCapabilities = [];
   state.extraWebMounts.push({

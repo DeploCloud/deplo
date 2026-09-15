@@ -16,31 +16,22 @@ import {
   declaredSourceVolumes,
 } from "../../migration/map/volume-discovery";
 
-/** One source service, flattened with everything a data move needs about it. */
 export interface SourceService {
   kind: string;
   id: string;
   name: string;
-  /** The name its containers are labelled with. */
   appName: string;
   serverId: string;
   projectName: string;
   environmentName: string;
-  /** What the panel SAYS it mounts - the fallback for a stopped service, which
-   *  has no container to inspect. */
   declaredVolumes: NamedVolume[];
-  /** Same, for the host directories it bind-mounts. */
   declaredBindMounts: HostMount[];
-  /** The stack's YAML, for the volume names only the file knows. */
   composeFile: string | null;
 }
 
-/** Every service on the source instance, from ONE `project.all` call. */
 export async function sourceServices(
   c: SourceCredential,
 ): Promise<SourceService[]> {
-  // `project.all` gives ids, not rows: an application arrives as {applicationId,
-  // name, applicationStatus} and a database as {postgresId} and nothing else.
   const stubs: {
     kind: string;
     id: string;
@@ -74,9 +65,6 @@ export async function sourceServices(
         .catch(() => null);
       if (!detail) return;
       const appName = detail.appName?.trim() ?? "";
-      // A stack whose YAML lives in a git repo carries none inline, so it declared
-      // nothing and one bad copy left it unrecoverable with its volumes on the
-      // host. Same fallback the config import makes.
       const inline =
         "composeFile" in detail
           ? ((detail as { composeFile?: string | null }).composeFile ?? null)

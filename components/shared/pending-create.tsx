@@ -8,7 +8,6 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { ActionResult } from "@/lib/result";
 
-// PendingCreate - an optimistic placeholder for something being created.
 export type PendingCreate = {
   id: string;
   label: string;
@@ -110,7 +109,6 @@ export function usePendingCreate(): PendingCreateApi {
   return ctx;
 }
 
-// PendingList - the list, falling back to `emptyState` only when nothing is in flight either.
 export function PendingList({
   empty,
   emptyState,
@@ -125,13 +123,11 @@ export function PendingList({
   return (
     <>
       {children}
-      {/* The empty state carries the Add dialog the user just submitted from. */}
       {empty && <div className="hidden">{emptyState}</div>}
     </>
   );
 }
 
-// PendingCards - the placeholders as cards, for the same grid container as the real ones.
 export function PendingCards({
   lines = 2,
   className,
@@ -179,7 +175,6 @@ export function PendingCards({
   );
 }
 
-// PendingRows - the placeholders as table rows, for inside `<TableBody>`.
 export function PendingRows({ columns }: { columns: number }) {
   const { pending } = usePendingCreate();
   return (

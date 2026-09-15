@@ -67,7 +67,6 @@ const IMPACT_QUERY = /* GraphQL */ `
   }
 `;
 
-// DeleteUserDialog - asks the server what deleting an account would destroy.
 export function DeleteUserDialog({
   userId,
   username,
@@ -157,7 +156,6 @@ export function DeleteUserDialog({
           )}
           {impact && !blocked && (
             <>
-              {/* Not optional, so not a checkbox. */}
               {impact.soloTeams.length > 0 && (
                 <div className="rounded-lg border border-destructive/40 bg-destructive-wash p-3">
                   <p className="flex items-center gap-1.5 font-medium text-destructive">
@@ -207,7 +205,6 @@ export function DeleteUserDialog({
                 </div>
               )}
 
-              {/* The opt-ins, hidden when there is nothing to act on. */}
               {impact.createdAppCount > 0 && (
                 <Option
                   checked={deleteCreatedApps}
@@ -280,7 +277,6 @@ export function DeleteUserDialog({
                 </Option>
               )}
 
-              {/* What happens regardless, so nothing lands as a surprise. */}
               <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
                 <p className="mb-1.5 font-medium text-foreground">
                   Always removed with the account

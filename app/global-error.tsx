@@ -8,10 +8,8 @@ export default function GlobalError({
   retry,
 }: {
   error: Error & { digest?: string };
-  // Re-renders the children, Server Components included; see app/(dashboard)/error.tsx.
   retry: () => void;
 }) {
-  // A tab that outlived the build it was loaded from is one reload away from working (lib/stale-build.ts).
   const stale = isStaleBuildError(error);
   useEffect(() => {
     if (stale) reloadOnce();

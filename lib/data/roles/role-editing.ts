@@ -30,13 +30,11 @@ import { ensureTeamRoles } from "./builtin-roles";
 import { type TeamRoleDTO } from "./role-list";
 import { resolveRoleScope, writeRoleScope, type RoleScopeInput } from "./scope";
 
-// createRole - create a custom role for the active team.
 export async function createRole(input: {
   name: string;
   description?: string | null;
   capabilities?: Capability[];
   requireTwoFactor?: boolean;
-  // What the role reaches. Absent or null = the whole team.
   scope?: RoleScopeInput | null;
 }): Promise<TeamRoleDTO> {
   const { teamId, userId, membership } =
@@ -44,8 +42,6 @@ export async function createRole(input: {
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
   const capabilities = withinActor(input.capabilities, membership);
-  // No self-lockout check on create: a brand-new role has no members yet, so
-  // turning the mandate on cannot cut anyone off, the author included.
   const requireTwoFactor = input.requireTwoFactor ?? false;
   const scope = await resolveRoleScope(teamId, userId, input.scope ?? null);
   const db = getDb();
@@ -92,22 +88,18 @@ export async function createRole(input: {
   };
 }
 
-// updateRole - rename and/or re-scope a role. Every member holding it gets the new
-// capability set in the SAME transaction: a role is what its members can do.
 export async function updateRole(input: {
   id: string;
   name: string;
   description?: string | null;
   capabilities?: Capability[];
   requireTwoFactor?: boolean;
-  // What the role REACHES. Absent leaves it as it is; `null` clears it.
   scope?: RoleScopeInput | null;
 }): Promise<void> {
   const { teamId, userId, membership } =
     await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
-  // ABSENT MEANS "LEAVE IT ALONE" on every optional axis.
   const current = await roleInTeam(getDb(), teamId, input.id);
   const capabilities =
     input.capabilities === undefined
@@ -115,8 +107,6 @@ export async function updateRole(input: {
       : withinActor(input.capabilities, membership);
   const requireTwoFactor = input.requireTwoFactor ?? current.requireTwoFactor;
   if (requireTwoFactor) await assertActorCanMandateTwoFactor(userId, input.id);
-  // Resolved BEFORE the transaction: it queries, and a query issued while one is
-  // open hangs under pglite. Also refuses an actor handing out reach they don't have.
   const scope =
     input.scope === undefined
       ? undefined
@@ -138,8 +128,6 @@ export async function updateRole(input: {
         and(eq(teamRolesTable.id, role.id), eq(teamRolesTable.teamId, teamId)),
       );
     if (scope !== undefined) await writeRoleScope(tx, role.id, scope);
-    // Re-read under the lock rather than trusting the pre-transaction read: a
-    // scope-only edit still has to re-sync, since the clamp keys on `scoped`.
     const authored =
       capabilities ??
       (
@@ -148,8 +136,6 @@ export async function updateRole(input: {
           .from(teamRoleCapabilitiesTable)
           .where(eq(teamRoleCapabilitiesTable.roleId, role.id))
       ).map((r) => r.capability as Capability);
-    // Un-scoping hands holders the whole authored set instead of the clamped one,
-    // so it is bounded like every other widening: to what the actor holds.
     if (role.scoped && !scoped) withinActor(authored, membership);
     if (capabilities !== undefined) {
       await tx
@@ -160,8 +146,6 @@ export async function updateRole(input: {
         .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
     }
     await syncMembersOfRole(tx, teamId, role.id, authored, scoped);
-    // Runs AFTER the sync: scoping a role clamps its team-wide capabilities away, so
-    // losing the last administrator is a question a reach change asks too.
     await assertTeamAdminCoverage(tx, teamId);
   });
   await recordActivity(
@@ -174,8 +158,6 @@ export async function updateRole(input: {
   );
 }
 
-// deleteRole - delete a custom role. Refuses while anyone still holds it: reassigning
-// those members is a decision, not something a delete should make silently.
 export async function deleteRole(id: string): Promise<void> {
   const { teamId } = await requireCapability("manage_roles");
   let name = "";
@@ -201,7 +183,6 @@ export async function deleteRole(id: string): Promise<void> {
       throw new Error(
         `${n} member${n === 1 ? "" : "s"} still ${n === 1 ? "has" : "have"} the ${role.name} role. Move ${n === 1 ? "them" : "them"} to another role first.`,
       );
-    // team_role_capabilities cascades on the role FK.
     await tx
       .delete(teamRolesTable)
       .where(

@@ -5,13 +5,11 @@ import { isValidExposePort } from "../../databases/ports";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import type { Report } from "./run-report";
 
-// ServerChoice - how a source server maps onto one of ours. `from: ""` is the panel's own host.
 export interface ServerChoice {
   from: string;
   to: string;
 }
 
-// Source server id (or "") to a Deplo server this team can actually deploy to.
 export async function resolveServers(
   teamId: string,
   choices: ServerChoice[],
@@ -39,25 +37,19 @@ export async function resolveServers(
   return out;
 }
 
-// ServicePlacement - where ONE service was placed: the host it runs on, and the one it compiles on.
 export interface ServicePlacement {
-  // The source service id - the `sourceId` a scan reports.
   serviceId: string;
   serverId: string;
-  // Null (or absent) is Automatic: use a build server if the fleet has one.
   buildServerId?: string | null;
-  // A database's host port, decided in the review.
   exposedPort?: number | null;
 }
 
-// What resolvePlacements settles for one service.
 export interface ResolvedPlacement {
   serverId: string;
   buildServerId: string | null;
   exposedPort?: number | null;
 }
 
-// Source service id to where it lands, for the services the caller placed.
 export async function resolvePlacements(
   teamId: string,
   placements: ServicePlacement[],
@@ -69,8 +61,6 @@ export async function resolvePlacements(
 
   const servers = await listServersForTeam(teamId);
   const canRun = new Set(servers.filter(canHostWorkloads).map((s) => s.id));
-  // Wider than `canRun` on purpose: a build-only host is a legal builder and an
-  // illegal target, which is the whole point of the two columns.
   const canBuild = new Set(
     servers.filter((s) => !s.storageOnly && !s.importOnly).map((s) => s.id),
   );
@@ -100,9 +90,6 @@ export async function resolvePlacements(
             "The build server picked for this app is not one this team can build on - it builds automatically instead.",
         });
     }
-    // A port outside the range createDatabase accepts is refused HERE, where the report
-    // can name the service, instead of down at the create where it would read as "the
-    // database could not be made".
     let exposedPort = p.exposedPort;
     if (typeof exposedPort === "number" && !isValidExposePort(exposedPort)) {
       await report.add({
@@ -119,8 +106,6 @@ export async function resolvePlacements(
   return out;
 }
 
-// The host an app lands on when nobody named one - the same pick `createApp` makes,
-// needed here because the network a name is checked against is per host.
 export async function landingServerId(
   given: string | undefined,
 ): Promise<string> {

@@ -17,7 +17,7 @@ test("the outbound guard refuses every private-address literal", async () => {
     "http://192.168.1.1/x",
     "http://169.254.169.254/latest/meta-data/",
     "http://100.64.0.1/x",
-    "http://0177.0.0.1/x", // octal - WHATWG canonicalises it to 127.0.0.1
+    "http://0177.0.0.1/x",
     "http://[::1]/x",
     "http://[fd00::1]/x",
     "http://[::ffff:127.0.0.1]/x",
@@ -64,8 +64,6 @@ test("a hostname is resolved, so a name pointing inside is refused too", async (
   }
 });
 
-// `2130706433`, `127.1`, `0177.0.0.1`, `2852039166` (= 169.254.169.254) all sail past
-// isInternalHost's dotted-quad regex; getaddrinfo(inet_aton) then dials the real address.
 test("the bare-host guard resolves non-canonical numeric IPs instead of trusting them", async () => {
   const resolved: Record<string, string> = {
     "2130706433": "127.0.0.1",
@@ -112,9 +110,9 @@ test("the bare-host guard canonicalizes non-canonical IPv6 literals too", async 
       "0000:0000:0000:0000:0000:0000:0000:0001",
       "[::1]",
       "::1",
-      "0:0:0:0:0:ffff:7f00:1", // expanded v4-mapped 127.0.0.1
-      "fe80:0:0:0:0:0:0:1", // link-local, expanded
-      "fc00:0:0:0:0:0:0:1", // ULA, expanded
+      "0:0:0:0:0:ffff:7f00:1",
+      "fe80:0:0:0:0:0:0:1",
+      "fc00:0:0:0:0:0:0:1",
     ]) {
       await assert.rejects(
         () => assertSafeOutboundHost(host, "SMTP host"),
@@ -128,8 +126,6 @@ test("the bare-host guard canonicalizes non-canonical IPv6 literals too", async 
   }
 });
 
-// Two holes canonicalization left: a zone id (`::1%eth0`) makes `new URL()` throw, and a
-// throw used to mean "allowed"; NAT64 (`64:ff9b::<v4>`) hides an IPv4 no IPv6 pattern reads.
 test("the bare-host guard refuses a zone-id literal and reads NAT64's embedded IPv4", async () => {
   __setDnsLookupForTest(async (host) => {
     if (host === "smtp.example.com") return [{ address: "93.184.216.34" }];
@@ -140,8 +136,8 @@ test("the bare-host guard refuses a zone-id literal and reads NAT64's embedded I
       "::1%eth0",
       "0:0:0:0:0:0:0:1%eth0",
       "fe80::1%eth0",
-      "64:ff9b::7f00:1", // NAT64 → 127.0.0.1
-      "64:ff9b::a00:5", // NAT64 → 10.0.0.5
+      "64:ff9b::7f00:1",
+      "64:ff9b::a00:5",
     ]) {
       await assert.rejects(
         () => assertSafeOutboundHost(host, "SMTP host"),

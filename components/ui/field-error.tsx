@@ -4,7 +4,6 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-// Collapse eases content open and shut with pure CSS grid rows, so it nests and needs no measuring.
 export function Collapse({
   open,
   className,
@@ -27,10 +26,8 @@ export function Collapse({
   );
 }
 
-// invalidField is what the field above a `FieldError` wears while it is invalid.
 export const invalidField = "rounded-b-none border-destructive/40";
 
-// fieldControl marks the control inside a `Field`: the group draws the focus ring, not the input.
 export const fieldControl = "focus-visible:ring-0 focus-visible:ring-offset-0";
 
 function FieldError({ children }: { children?: string | null }) {
@@ -43,7 +40,6 @@ function FieldError({ children }: { children?: string | null }) {
   );
 }
 
-// Field owns the focus ring on the GROUP - on the input it would close above the error and cut the field in two. Give the control `fieldControl`, plus `invalidField` when invalid.
 export function Field({
   error,
   className,

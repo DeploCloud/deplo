@@ -32,11 +32,9 @@ type BackupRunLite = {
   sizeBytes: number;
   startedAt: string;
   error: string | null;
-  // Deplo recorded a checksum, so a restore can prove the file has not been replaced.
   verified: boolean;
 };
 
-// RestoreRunsDialog lists a backup target's recent runs and restores a chosen one in place.
 export function RestoreRunsDialog({
   open,
   onOpenChange,
@@ -54,7 +52,6 @@ export function RestoreRunsDialog({
   const [runs, setRuns] = React.useState<BackupRunLite[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Reload on each open so the list stays current after a fresh "Run now".
   React.useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -76,7 +73,6 @@ export function RestoreRunsDialog({
     return () => controller.abort();
   }, [open, targetKind, targetId]);
 
-  // Reset on close, so re-opening re-fetches rather than flashing the previous target's runs.
   const handleOpenChange = (v: boolean) => {
     if (!v) {
       setRuns(null);
@@ -167,7 +163,6 @@ function RestoreRunRow({
           <StatusDot status={run.status} />
           {run.status}
         </span>
-        {/* Only for old runs: everything taken since carries a checksum, so the normal case says nothing. */}
         {!run.verified && (
           <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
             <span className="mt-1 block text-[10px] text-muted-foreground">

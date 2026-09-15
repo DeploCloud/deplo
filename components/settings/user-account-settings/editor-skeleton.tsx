@@ -5,12 +5,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ROW_SHELL, sectionShell } from "./section-shell";
 
-// EditorSkeleton - the stand-in shown until the account is loaded.
 export function EditorSkeleton({ withDanger }: { withDanger: boolean }) {
   return (
     <>
-      {/* Each identity cell is a 16px line over a 20px one, which is what the
-          two <p>s in Meta measure. */}
       <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3">
         {[0, 1, 2].map((i) => (
           <div key={i}>
@@ -68,8 +65,6 @@ function SkeletonRow({ button }: { button?: boolean }) {
   );
 }
 
-// A bar inside a box the height of the text line it replaces - without the box
-// every section would come up a few pixels short, which is the jump this removes.
 function TextLine({ box, bar }: { box: string; bar: string }) {
   return (
     <div className={cn("flex items-center", box)}>

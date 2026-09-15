@@ -33,7 +33,6 @@ before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
   process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
-  // Pin the address this instance believes it has: otherwise the guard reads the runner's NICs.
   process.env.DEPLO_SERVER_IP = "192.0.2.200";
 });
 
@@ -72,7 +71,6 @@ async function migrationSource(host = HOST): Promise<string> {
 
 test("a migration source belongs to the team that is migrating, and to no other", async () => {
   const id = await migrationSource();
-  // Servers default to all_teams, which would list the host being left in every team's picker.
   const mine = await listServersForTeam(TEAM_A);
   assert.ok(
     mine.some((s) => s.id === id),

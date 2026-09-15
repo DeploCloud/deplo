@@ -1,10 +1,7 @@
-// https://deplo.build/docs/advanced/resource-limits
-
 import yaml from "../yaml";
 
 import type { ResourceLimits } from "../types/container";
 
-// Per-app resource limits → the `docker compose up` service keys that enforce them.
 export function resourceLimitsToComposeKeys(
   r: ResourceLimits | null | undefined,
 ): Record<string, unknown> {
@@ -28,7 +25,6 @@ export function resourceLimitsToComposeKeys(
   return out;
 }
 
-// The resource-limit keys as a YAML fragment indented `indent` spaces, for the string-built renderCompose path.
 export function renderResourceLimitsYaml(
   r: ResourceLimits | null | undefined,
   indent: number,
@@ -46,7 +42,6 @@ export function renderResourceLimitsYaml(
   );
 }
 
-// Overlay resource-limit keys onto a compose-stack service, existing-wins: its own compose keys are never overridden.
 export function mergeResourceLimits(
   svc: Record<string, unknown>,
   r: ResourceLimits | null | undefined,

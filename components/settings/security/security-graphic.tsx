@@ -4,7 +4,6 @@ export type SecurityLevel = "weak" | "good" | "strong";
 
 const LIT: Record<SecurityLevel, number> = { weak: 1, good: 2, strong: 3 };
 
-// SecurityGraphic - three shield plates, one per factor the account carries.
 export function SecurityGraphic({
   level,
   className,

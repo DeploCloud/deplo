@@ -24,11 +24,9 @@ export default async function AppEnvPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // Team-wide on BOTH axes: a scoped role keeps `manage_env` on its own apps and loses the library.
   const teamWideEnv =
     (await hasCapability("manage_env")) && (await reachesWholeTeam());
 
-  // manage_env must be held ON THIS APP (ADR-0016); the hidden tab is still reachable by direct link.
   if (!(await hasAppCapability(project.id, "manage_env"))) {
     return (
       <EmptyState
@@ -59,7 +57,6 @@ export default async function AppEnvPage(
     teamWideEnv ? listSharedVarTeams() : Promise.resolve([]),
     teamWideEnv ? listEnvManageableApps() : Promise.resolve([]),
   ]);
-  // Same shape the Variables page hands the wizard, so a project reads as it does on the Overview.
   const projects = projectSummaries.map((p) => ({
     id: p.id,
     name: p.name,

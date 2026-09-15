@@ -58,7 +58,6 @@ let pg: PGlite;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // Stub the DNS resolver: nothing resolves, so every added domain is born pending.
   __setDnsResolve4ForTest(async () => []);
 });
 
@@ -156,14 +155,12 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
 test("an app being deleted is locked, unlisted, and finished at boot", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await seedApp(db, { id: "prj_2", status: "active" });
-  // What startAppDelete leaves the instant someone confirms: stamped, teardown running.
   await db
     .update(appsTable)
     .set({ deletingAt: "2026-08-12T00:00:00.000Z" })
     .where(eq(appsTable.id, "prj_1"));
 
   await asUser1(async () => {
-    // Every app-shaped mutation goes through requireAppCapability: rename stands in.
     await assert.rejects(
       () => renameApp("prj_1", "Second thoughts"),
       /being deleted/,
@@ -190,7 +187,7 @@ test("setPrimaryDomain flips exactly one primary per project", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   let domBId = "";
   await asUser1(async () => {
-    await addDomain("prj_1", "a.example.io", {}); // first ⇒ primary
+    await addDomain("prj_1", "a.example.io", {});
     const b = await addDomain("prj_1", "b.example.io", {});
     domBId = b.id;
     await setPrimaryDomain(domBId);
@@ -199,7 +196,6 @@ test("setPrimaryDomain flips exactly one primary per project", async () => {
     assert.equal(primaries.length, 1, "exactly one primary");
     assert.equal(primaries[0]!.id, domBId, "the chosen domain is primary");
   });
-  // The partial-unique (project_id) WHERE is_primary holds at the DB level.
   const dbPrimaries = await db
     .select({ n: count() })
     .from(domainsTable)
@@ -216,7 +212,6 @@ test("two concurrent setPrimaryDomain calls leave exactly one primary", async ()
     const b = await addDomain("prj_1", "b.example.io", {});
     aId = a.id;
     bId = b.id;
-    // pglite serializes on the event loop; the single UPDATE + partial unique is the guarantee.
     await Promise.all([setPrimaryDomain(aId), setPrimaryDomain(bId)]);
   });
   const primaries = await db
@@ -255,7 +250,6 @@ test("reorderApps writes the team_app_order junction; dead ids drop", async () =
 
 test("summarizeForTeam is cookie-free and team-scoped", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, status: "active" });
-  // No runWithIdentity wrapper - proves it never reads a cookie or active team.
   const mine = await summarizeForTeam("prj_1", TEAM_A, USER_1);
   assert.ok(mine, "found for the owning team");
   assert.equal(mine!.id, "prj_1");
@@ -288,7 +282,6 @@ test("env vars + targets round-trip through the relational layer", async () => {
 test("an app env var records its author and defaults to every runtime", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
-    // No targets: an App belongs to exactly ONE Environment, so the var reaches every runtime.
     await upsertEnv({ appId: "prj_1", key: "K", value: "v", type: "plain" });
     const [v] = await listEnv("prj_1");
     assert.deepEqual([...v!.targets].sort(), ["preview", "production"]);
@@ -299,7 +292,6 @@ test("an app env var records its author and defaults to every runtime", async ()
 });
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
-  // A legacy production-only variable must not silently widen to every runtime on a value edit.
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
@@ -392,7 +384,6 @@ test("shared-var link attach/detach toggles the junction", async () => {
 });
 
 test("two concurrent same-name createApp calls both succeed with distinct slugs", async () => {
-  // "upload" skips the post-commit deploy (no agent dial), keeping the test hermetic.
   const input = {
     name: "My App",
     source: "upload" as const,
@@ -501,8 +492,7 @@ test("ensureExtraDomain is idempotent on the SAME project (re-run does not dupli
 });
 
 test("a template's displaced domain gets an address of its own, not silence", async () => {
-  // The web-ui variant takes the generated main host, leaving the S3 API asking for a taken name.
-  const serverIp = "10.0.0.1"; // `beforeEach`'s seedServer(db)
+  const serverIp = "10.0.0.1";
   const main = nipDomain("garage-s3", "bold-otter", serverIp);
   const app = await asUser1(() =>
     createApp({
@@ -571,8 +561,6 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
   assert.notEqual(yName, preferred, "Y regenerated rather than colliding");
   assert.equal(nipEmbeddedIp(yName), IP);
 });
-
-// DNS is a property of the HOSTNAME, not the path, so a path row routes off its verified sibling.
 
 test("a path row on an already-verified hostname inherits its DNS status (and routes)", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });

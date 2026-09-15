@@ -128,7 +128,6 @@ test("a team the user is alone in is deleted with the account, apps and all", as
   assert.equal(impact.soloTeams.length, 1);
   assert.equal(impact.soloTeams[0]!.appCount, 1);
   assert.equal(impact.soloTeams[0]!.otherMemberCount, 0);
-  // Already accounted for by the team line, never double-counted as an opt-in.
   assert.equal(impact.createdAppCount, 0);
 
   const res = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
@@ -200,7 +199,6 @@ test("apps they created in a surviving team are kept unless asked for", async ()
     teamId: TEAM_A,
     createdByUserId: USER_1,
   });
-  // TEAM_B is USER_2's solo team and would go regardless; this case is the shared one.
   await db.delete(teamsTable).where(eq(teamsTable.id, TEAM_B));
 
   const impact = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
@@ -212,7 +210,6 @@ test("apps they created in a surviving team are kept unless asked for", async ()
     deleteUser(USER_2, ALL_OFF),
   );
   assert.equal(await exists(appsTable, "prj_theirs"), true);
-  // Kept, but no longer attributed - the FK is SET NULL, never CASCADE.
   const row = (
     await db
       .select({ createdByUserId: appsTable.createdByUserId })
@@ -252,7 +249,6 @@ test("deleteOwnedWorkspaces takes the folder and the apps inside it", async () =
   await addMembership(USER_2, TEAM_A, "member");
   await seedServer(db);
   await seedFolder("fld_theirs", TEAM_A, USER_2);
-  // Created by someone ELSE but parked in their folder: the folder is the claim.
   await seedApp(db, {
     id: "prj_in_folder",
     teamId: TEAM_A,
@@ -294,13 +290,11 @@ test("an unclaimed folder is kept, and passes to the team's primary owner", asyn
       .from(foldersTable)
       .where(eq(foldersTable.id, "fld_theirs"))
   )[0]!;
-  // A folder is private to its owner: ownerless, its apps vanish from the team.
   assert.equal(folder.ownerUserId, USER_1, "TEAM_A's founder takes it");
 });
 
 test("a folder in a team they founded and leave behind goes to the deleting admin", async () => {
   await seedAdminAndTarget();
-  // TEAM_B survives: founded by USER_2 but shared with USER_1, and not opted in.
   await addMembership(USER_1, TEAM_B, "member");
   await seedFolder("fld_founded", TEAM_B, USER_2);
 
@@ -364,7 +358,6 @@ test("the instance owner's account is off limits", async () => {
 });
 
 test("deleting a fellow admin is fine - the caller is the surviving admin", async () => {
-  // The caller is an active instance admin who cannot delete themselves, so one remains.
   await seedIdentity(db, {
     teams: [
       { id: TEAM_A, slug: "alpha" },
@@ -423,7 +416,6 @@ test("a team left with no member manager is healed, and says so first", async ()
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: USER_2, teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
-      // A viewer holds neither manage_members nor manage_team: TEAM_B is stranded.
       { id: USER_3, teamId: TEAM_B, role: "viewer", isInstanceAdmin: false },
     ],
   });

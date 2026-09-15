@@ -40,9 +40,7 @@ export function VersionCombobox({
     setLoading(true);
     load()
       .then((list) => setItems(Array.isArray(list) ? list : []))
-      .catch(() => {
-        // Leave the list empty; the field still accepts free text.
-      })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [load]);
 
@@ -57,7 +55,6 @@ export function VersionCombobox({
       ),
     [items, q],
   );
-  // Guard against a stale index after the list shrinks.
   const activeIndex = highlight < filtered.length ? highlight : 0;
 
   React.useEffect(() => {

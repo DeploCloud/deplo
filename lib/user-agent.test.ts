@@ -39,7 +39,6 @@ const UA = {
 };
 
 test("headless Chrome is named, not filed under Safari", () => {
-  // `\bChrome\/` does not match "HeadlessChrome/": no word boundary after "Headless".
   assert.equal(
     describeUserAgent(UA.headless).label,
     "Headless Chrome on Linux",
@@ -87,7 +86,6 @@ test("ChromeOS is not reported as Linux either", () => {
 
 test("device kind separates phones from tablets from desktops", () => {
   assert.equal(describeUserAgent(UA.chromeAndroidPhone).device, "mobile");
-  // Android tablets are Android WITHOUT the "Mobile" token - the only signal.
   assert.equal(describeUserAgent(UA.chromeAndroidTablet).device, "tablet");
   assert.equal(describeUserAgent(UA.safariIpad).device, "tablet");
   assert.equal(describeUserAgent(UA.safariIphone).device, "mobile");
@@ -96,7 +94,6 @@ test("device kind separates phones from tablets from desktops", () => {
 });
 
 test("an iPad claiming to be a Mac is still an iPad", () => {
-  // iPadOS 13+ ships a desktop-Safari UA; the "Mobile" token is what remains.
   const ua =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1";
   const info = describeUserAgent(ua);

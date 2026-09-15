@@ -28,7 +28,6 @@ export interface BuildServerChoice {
 const AUTOMATIC = "__auto__";
 const SELF = "__self__";
 
-// BuildServerPanel picks where this app compiles, when that is not where it runs.
 export function BuildServerPanel({
   appId,
   serverId,
@@ -61,7 +60,6 @@ export function BuildServerPanel({
   const compatible = (c: BuildServerChoice) =>
     c.hostArch !== "" && serverArch !== "" && c.hostArch === serverArch;
   const autoWouldUse = others.some((c) => c.buildOnly && compatible(c));
-  // Mirrors how the deploy resolves a fallback (lib/deploy/build-server.ts).
   const fallbackName = others
     .filter((c) => c.buildFallback && compatible(c) && c.id !== value)
     .sort((a, b) => Number(b.isDeploHost) - Number(a.isDeploHost))[0]?.name;

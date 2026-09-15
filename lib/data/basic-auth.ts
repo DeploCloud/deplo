@@ -16,12 +16,8 @@ import { authorOf, loadUserIdentities } from "./user-identity";
 import type { BasicAuthUser } from "../types/domain";
 import type { VarAuthor } from "../types/identity";
 
-// A password is NEVER part of a DTO: the only way back to plaintext is revealBasicAuthPassword.
-
-// BasicAuthUserDTO - a masked DTO for the UI; the password is never sent to the client.
 export interface BasicAuthUserDTO {
   id: string;
-  // Not exposed over GraphQL; it is here so the mutation edge can re-apply that app's routing without a second lookup.
   appId: string;
   username: string;
   createdBy: VarAuthor | null;
@@ -31,7 +27,6 @@ export interface BasicAuthUserDTO {
   updatedAt: string;
 }
 
-// No `:` (htpasswd separator), `,` (Traefik `users=` list), whitespace or quotes (the YAML label).
 const USERNAME_RE = /^[^\s:,"`]+$/;
 
 function toDTO(
@@ -72,11 +67,9 @@ async function withAuthors(u: BasicAuthUser): Promise<BasicAuthUserDTO> {
   return toDTO(u, authors);
 }
 
-// listBasicAuthUsers - a project's basic-auth users, alphabetical by username.
 export async function listBasicAuthUsers(
   appId: string,
 ): Promise<BasicAuthUserDTO[]> {
-  // `manage_basic_auth` can be held on the app alone (ADR-0016), so the question is asked at the app.
   if (!(await hasAppCapability(appId, "manage_basic_auth"))) return [];
   const rows = await getDb()
     .select()
@@ -90,7 +83,6 @@ export async function listBasicAuthUsers(
   return users.map((u) => toDTO(u, authors));
 }
 
-// revealBasicAuthPassword - the plaintext of ONE credential; "" always means a decrypt failure.
 export async function revealBasicAuthPassword(id: string): Promise<string> {
   const [row] = await getDb()
     .select()
@@ -98,7 +90,6 @@ export async function revealBasicAuthPassword(id: string): Promise<string> {
     .where(eq(basicAuthTable.id, id))
     .limit(1);
   if (!row) throw new Error("Not found");
-  // A credential in another team must answer like one that does not exist.
   try {
     await requireAppCapability(row.appId, "manage_basic_auth");
   } catch (e) {
@@ -131,7 +122,6 @@ export async function addBasicAuthUser(
     throw new Error("Username can't contain spaces, ':' or ','");
   if (!password) throw new Error("Password is required");
 
-  // The (project_id, username) unique index is the real guard against a concurrent double-add.
   const dup = await getDb()
     .select({ id: basicAuthTable.id })
     .from(basicAuthTable)
@@ -167,7 +157,6 @@ export async function addBasicAuthUser(
   return withAuthors(assemble(row));
 }
 
-// updateBasicAuthUserPassword - the username is immutable; delete and re-add to rename one.
 export async function updateBasicAuthUserPassword(
   id: string,
   password: string,
@@ -235,7 +224,6 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
   return existing.appId;
 }
 
-// basicAuthUsersValue - the Traefik `basicauth.users` list, freshly hashed on every call.
 export async function basicAuthUsersValue(appId: string): Promise<string> {
   const rows = await getDb()
     .select()
@@ -246,7 +234,6 @@ export async function basicAuthUsersValue(appId: string): Promise<string> {
   const lines = await Promise.all(
     rows.map((r) => {
       const password = decryptSecret(r.passwordEnc);
-      // A credential we cannot decrypt must REMOVE access, never grant it.
       if (password === "")
         throw new Error(
           `Cannot render basic-auth for user "${r.username}": its stored password could not be decrypted. ` +
@@ -258,7 +245,6 @@ export async function basicAuthUsersValue(appId: string): Promise<string> {
   return lines.join(",");
 }
 
-// appHasBasicAuth - cheap existence check for renderers that don't need the hashed value.
 export async function appHasBasicAuth(appId: string): Promise<boolean> {
   const hit = await getDb()
     .select({ id: basicAuthTable.id })

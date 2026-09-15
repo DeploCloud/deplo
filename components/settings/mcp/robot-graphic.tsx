@@ -2,8 +2,6 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 
-/** The connect wizard's illustration: a robot, a cable, and Deplo. */
-
 export function RobotMark({ className }: { className?: string }) {
   return (
     <svg
@@ -56,8 +54,6 @@ export function RobotGraphic({
   className?: string;
 }) {
   const live = state === "connected";
-  // An agent with a hue spends it on the success beat too: green next to orange
-  // reads as a second, unrelated colour.
   const ink =
     accent?.hue !== undefined
       ? ({
@@ -74,8 +70,6 @@ export function RobotGraphic({
       style={ink}
       className={cn("h-32 w-auto", className)}
     >
-      {/* ---- Deplo, on the right. Recessive: it is already there, and the
-              robot arriving is the subject. ---- */}
       <rect
         x="118"
         y="40"
@@ -104,9 +98,6 @@ export function RobotGraphic({
         strokeLinecap="round"
       />
 
-      {/* The port the cable is aiming at. The one element that lights up, and
-          only on `connected` - the single success beat, drawn in the agent's own
-          colour when it has one. */}
       {live && (
         <circle
           cx="116"
@@ -127,9 +118,6 @@ export function RobotGraphic({
         strokeWidth="2.5"
       />
 
-      {/* ---- the cable. Absent until there is something to connect, and in the
-              robot's own ink: it continues the arm, so a second colour here
-              reads as one line painted half-way. ---- */}
       {(state === "reaching" || live) && (
         <path
           d="M74 74 C90 76, 96 72, 112 72"
@@ -142,7 +130,6 @@ export function RobotGraphic({
         />
       )}
 
-      {/* ---- the key, only while permissions are being chosen ---- */}
       {state === "key" && (
         <g
           className="deplo-robot-key stroke-[var(--deplo-robot-ink)]"
@@ -154,7 +141,6 @@ export function RobotGraphic({
         </g>
       )}
 
-      {/* ---- the robot ---- */}
       <line
         x1="44"
         y1="26"
@@ -196,7 +182,6 @@ export function RobotGraphic({
         <circle cx="36" cy="42" r="3.5" />
         <circle cx="52" cy="42" r="3.5" />
       </g>
-      {/* Neck, torso, arm. All one weight so the robot reads as one object. */}
       <line
         x1="44"
         y1="58"

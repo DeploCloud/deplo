@@ -12,11 +12,6 @@ import type { TeamEnvironment } from "@/lib/data/environments";
 import type { AppRef, ProjectRef, TeamRef } from "./types";
 import { SharedVarWizardBody } from "./wizard-body";
 
-/**
- * Create/edit shared variables, as a wizard: the same key/value table the app's
- * own variables are written in, then WHO gets them, then only the details of
- * what you picked.
- */
 export function SharedVarDialog({
   open,
   onOpenChange,
@@ -36,8 +31,6 @@ export function SharedVarDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* selfManaged: the body owns its height and eases between steps instead
-          of padding out to the tallest one. */}
       <DialogContent
         selfManaged
         className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"

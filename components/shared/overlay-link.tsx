@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "@/components/ui/link";
 import { cn } from "@/lib/utils";
 
-// OverlayLink is the whole-card click target, stretched over everything at z-0.
 export function OverlayLink({
   href,
   label,

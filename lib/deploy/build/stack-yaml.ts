@@ -8,7 +8,6 @@ import type { MountPropagation } from "../../types/container";
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const STACK_DIR = join(DATA_DIR, "stacks");
 
-// readStackImageFromYaml reads the `image:` baked into a single-image stack YAML.
 export function readStackImageFromYaml(
   stackYaml: string,
   service: string,
@@ -24,7 +23,6 @@ export function readStackImageFromYaml(
   }
 }
 
-// readStackEnvFromYaml reads the `environment:` map baked into a single-image stack YAML.
 export function readStackEnvFromYaml(
   stackYaml: string,
   service: string,
@@ -47,7 +45,6 @@ export function readStackEnvFromYaml(
   }
 }
 
-// StackVolume is the shape `renderCompose` accepts and `parseStackVolumes` reconstructs.
 export type StackVolume = {
   type?: "named" | "app" | "host";
   name: string;
@@ -58,7 +55,6 @@ export type StackVolume = {
   propagation?: MountPropagation;
 };
 
-// readStackVolumesFromYaml reads back the mounts the container is ACTUALLY running with.
 export function readStackVolumesFromYaml(
   stackYaml: string,
   service: string,
@@ -70,7 +66,6 @@ export function readStackVolumesFromYaml(
   }
 }
 
-// parseStackPorts reads the ports the RUNNING stack publishes.
 export function parseStackPorts(yamlText: string, service: string): string[] {
   try {
     const doc = yaml.load(yamlText) as {
@@ -87,7 +82,6 @@ export function parseStackPorts(yamlText: string, service: string): string[] {
   }
 }
 
-// parseStackHealthCheck reads the health check the RUNNING stack carries.
 export function parseStackHealthCheck(
   yamlText: string,
   service: string,
@@ -105,7 +99,6 @@ export function parseStackHealthCheck(
   }
 }
 
-// parseStackVolumes is the pure parser behind `readStackVolumesFromYaml` (no fs).
 export function parseStackVolumes(
   yamlText: string,
   service: string,

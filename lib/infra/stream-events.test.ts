@@ -41,7 +41,6 @@ async function prime<E>(
 ): Promise<{ first: Promise<IteratorResult<E, void>> }> {
   const first = gen.next();
   await settle();
-  // BOXED, not bare: `await` unwraps a promise-of-a-promise, so returning `first` would block.
   return { first };
 }
 

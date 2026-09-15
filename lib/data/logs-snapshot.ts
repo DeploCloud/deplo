@@ -25,7 +25,6 @@ function drain(
   cleanup: () => void,
 ): Promise<{ text: string; truncated: boolean }> {
   return new Promise((resolve) => {
-    // A StringDecoder, not chunk.toString(): a multi-byte glyph straddling two frames would decode as replacement characters.
     const decoder = new StringDecoder("utf8");
     let out = "";
     let truncated = false;
@@ -39,9 +38,7 @@ function drain(
       clearTimeout(hard);
       try {
         handle.close();
-      } catch {
-        /* already closed */
-      }
+      } catch {}
       cleanup();
       resolve({ text: out, truncated });
     };
@@ -61,13 +58,11 @@ function drain(
       }
       bump();
     });
-    // A container with nothing to say never emits, so the quiet timer is armed before the first chunk.
     bump();
     handle.onExit(finish);
   });
 }
 
-// appLogsSnapshot reads the tail of an app container's logs, gated by view_logs in resolveLogsTarget.
 export async function appLogsSnapshot(
   appId: string,
   opts: { container?: string; lines?: number } = {},
@@ -85,7 +80,6 @@ export async function appLogsSnapshot(
   return { container: resolved.instance.name, text, truncated };
 }
 
-// databaseLogsSnapshot reads the tail of a database container's logs. Same gate, same shape.
 export async function databaseLogsSnapshot(
   databaseId: string,
   opts: { container?: string; lines?: number } = {},
@@ -105,7 +99,6 @@ function clampLines(lines: number | undefined): number {
   return Math.min(Math.max(Math.trunc(lines as number), 1), MAX_LINES);
 }
 
-// The resolver answers with a reason rather than throwing: its other caller is an SSE route mapping reasons to status codes.
 function logsFailure(reason: string): string {
   switch (reason) {
     case "not-found":

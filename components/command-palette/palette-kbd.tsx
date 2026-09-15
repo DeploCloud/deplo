@@ -15,7 +15,6 @@ const readIsMac = () =>
 const notMac = () => false;
 
 export function PaletteKbd({ className }: { className?: string }) {
-  // The server has no user agent: useSyncExternalStore renders both values without a hydration mismatch.
   const mac = React.useSyncExternalStore(noSubscription, readIsMac, notMac);
 
   return (
@@ -30,7 +29,6 @@ export function PaletteKbd({ className }: { className?: string }) {
   );
 }
 
-// SearchTrigger - the sidebar search box (h-9 like the Input it replaced); its visible "Search" text is the accessible name.
 export function SearchTrigger() {
   return (
     <button

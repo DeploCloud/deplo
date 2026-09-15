@@ -94,7 +94,6 @@ async function seedAll(): Promise<void> {
       { id: NOBODY, teamId: TEAM_A, role: "member", isInstanceAdmin: false },
     ],
   });
-  // NOBODY holds nothing. Not even `view` as a row: it is the implied floor.
   await db.delete(membershipCapabilitiesTable);
   await db.insert(membershipCapabilitiesTable).values(
     ALL_CAPABILITIES.map((capability) => ({
@@ -112,7 +111,6 @@ async function seedAll(): Promise<void> {
     createdAt: T0,
     updatedAt: T0,
   });
-  // Owned by the subject: folder privacy would otherwise mask every missing capability check.
   await db.insert(foldersTable).values({
     id: F.folder,
     teamId: TEAM_A,
@@ -265,7 +263,6 @@ const SKIP = new Set([
   "revokeOtherSessions",
   "markNotificationsRead",
   "dismissNotification",
-  // Starting your OWN team is not a capability in anyone else's team.
   "createTeam",
 ]);
 
@@ -344,7 +341,6 @@ async function snapshotWithout(
   );
 }
 
-// Only a write to the actor's OWN preferences belongs here, never one another member can read.
 const OWN_PREFERENCES_ONLY = ["reorderMyTeams"];
 
 test("a member holding no capability can't move a single row", async () => {

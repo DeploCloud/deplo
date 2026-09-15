@@ -16,9 +16,6 @@ import { getServerById } from "../servers/roster";
 import { resolveServerIp } from "../../deploy/domains";
 import type { createApp } from "../apps/create";
 
-// Every occurrence of a re-hosted address, replaced by the one it became. A plain
-// substring swap, because that is how these values are shaped: the host sits inside a
-// URL, a comma-separated list, a connection string.
 function rewriteHosts(value: string, hosts: Map<string, string>): string {
   let out = value;
   for (const [from, to] of [...hosts].sort(
@@ -33,8 +30,6 @@ function rewriteHosts(value: string, hosts: Map<string, string>): string {
   return out;
 }
 
-// A mapped domain as the domain writers take it, so the primary and the extras can
-// never describe the same source domain differently.
 export function importedRoute(d: MappedDomain): ImportedRoute {
   return {
     sourceHost: d.host,
@@ -47,7 +42,6 @@ export function importedRoute(d: MappedDomain): ImportedRoute {
   };
 }
 
-// An extra (non-primary) hostname, with everything the panel knew about it.
 async function addExtraDomain(
   appId: string,
   d: MappedDomain,
@@ -71,9 +65,6 @@ async function addExtraDomain(
   }
 }
 
-// EVERY address the app answered on over there has to be an address it answers on
-// here: a throwaway host, or a real one another team already serves, is re-hosted
-// onto one of Deplo's own with the same routes.
 export async function rehostAppDomains(
   created: Awaited<ReturnType<typeof createApp>>,
   domains: { value: MappedDomain[] },
@@ -82,8 +73,6 @@ export async function rehostAppDomains(
   notes: string[],
 ): Promise<void> {
   const rehosted = new Map<string, string>();
-  // Kept apart from `notes` so the warning about what the app stores about itself can
-  // ride the last of them: as its own note it repeated what the line above had just said.
   const rehostNotes: string[] = [];
   if (domains.value.length === 0)
     notes.push(
@@ -108,8 +97,6 @@ export async function rehostAppDomains(
       );
     const row = landed[0];
     if (row && row.name.toLowerCase() !== primary.host) {
-      // The address changed - because it was a throwaway, or because the real one was
-      // taken.
       await applyImportedRoute(row.id, importedRoute(primary));
       rehosted.set(primary.host, row.name);
       rehostNotes.push(
@@ -118,8 +105,6 @@ export async function rehostAppDomains(
           : `${primary.host} could not be taken, so the app answers on ${row.name} instead.`,
       );
     } else if (row) {
-      // createApp mints the primary domain itself and knows only its NAME, so everything
-      // else about the route has to be applied afterwards.
       const patch: DomainPatch = {};
       if (row.certProvider !== primary.certProvider)
         patch.certProvider = primary.certProvider;
@@ -141,9 +126,6 @@ export async function rehostAppDomains(
   }
 
   const rest = domains.value.filter((d) => d !== primary);
-  // A real hostname is asked for first. One that cannot be taken - another team here
-  // already serves it, or this member may not claim names - is NOT dropped either: it
-  // joins the re-hosting below, for the same reason a throwaway does.
   const refused: MappedDomain[] = [];
   for (const d of rest.filter((d) => !d.generated))
     if (!(await addExtraDomain(created.id, d, notes))) refused.push(d);
@@ -182,8 +164,6 @@ export async function rehostAppDomains(
     }
   }
 
-  // The one place a re-hosted address cannot be fixed from out here: INSIDE the
-  // app's own data. Said on the same line that names the new address.
   if (rehostNotes.length > 0) {
     const landedOn = [...new Set(rehosted.values())].join(", ");
     rehostNotes[rehostNotes.length - 1] +=
@@ -191,9 +171,6 @@ export async function rehostAppDomains(
     notes.push(...rehostNotes);
   }
 
-  // An address that could not come across is a DEAD address, and the app is usually
-  // still carrying it in its own configuration: `NEXTCLOUD_DOMAIN`, `SITE_URL`, a
-  // CORS origin, a callback URL.
   if (rehosted.size > 0) {
     const rewritten = env.map((e) => ({
       key: e.key,
@@ -204,8 +181,6 @@ export async function rehostAppDomains(
       .map((r) => r.key);
     if (touched.length > 0) {
       try {
-        // Secrets included: an address arrives write-only as often as not, and this
-        // is the import correcting a value it wrote itself a moment ago.
         await setAppEnv(created.id, rewritten, undefined, {
           overwriteSecrets: true,
         });

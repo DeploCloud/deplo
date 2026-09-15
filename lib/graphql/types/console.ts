@@ -203,7 +203,6 @@ const ExecResultRef = builder.objectRef<ExecResult>("ExecResult").implement({
 const ShellLabelInputType = builder.inputType("ShellLabelInput", {
   fields: (t) => ({
     appId: t.string({ required: true }),
-    // Optional explicit instance to probe; default = the running/default target.
     containerName: t.string({ required: false }),
   }),
 });
@@ -212,7 +211,6 @@ const ExecConsoleInputType = builder.inputType("ExecConsoleInput", {
   fields: (t) => ({
     appId: t.string({ required: true }),
     command: t.string({ required: true }),
-    // Optional explicit instance to exec into; default = the default target.
     containerName: t.string({ required: false }),
   }),
 });

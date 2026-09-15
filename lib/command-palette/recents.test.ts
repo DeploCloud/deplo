@@ -13,7 +13,6 @@ const row = (id: string, label = id): Recent => ({
   href: `/${id}`,
 });
 
-/** A localStorage that behaves, for the happy path. */
 function withStorage(store: Record<string, string> | null) {
   const g = globalThis as { window?: unknown };
   const before = g.window;
@@ -41,7 +40,6 @@ test("the newest wins, the list is capped, and an id never repeats", () => {
     "five, newest first",
   );
 
-  // Choosing something already in there moves it up rather than doubling it.
   list = nextRecents(list, row("d"));
   assert.deepEqual(
     list.map((r) => r.id),

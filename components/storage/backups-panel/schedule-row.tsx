@@ -25,7 +25,6 @@ import type { BackupTarget, Destination } from "./target";
 import { MenuAction } from "./menu-action";
 import { EditScheduleDialog } from "./edit-schedule-dialog";
 
-// ScheduleRow - one schedule in the table: toggle, run, edit, delete.
 export function ScheduleRow({
   schedule,
   target,
@@ -46,14 +45,10 @@ export function ScheduleRow({
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const { hide, restore } = useOptimisticRow(schedule.id);
   const [editOpen, setEditOpen] = React.useState(false);
-  // Locally in flight: the mutation resolves at the END of the dump, and the
-  // stored `lastStatus` only says `running` after the next refresh.
   const [running, setRunning] = React.useState(false);
   const isRunning = running || schedule.lastStatus === "running";
 
   function run() {
-    // Resolves at the END of the dump, so the toast is the RESULT. What says "it
-    // started" is the placeholder row `onStart` puts in the artifacts table.
     setRunning(true);
     onStart(schedule.destinationId, () =>
       gqlAction(`mutation($id: String!) { runBackup(id: $id) }`, {
@@ -175,8 +170,6 @@ export function ScheduleRow({
             </MenuAction>
           </DropdownMenuContent>
         </DropdownMenu>
-        {/* key on `editOpen` so each open remounts the dialog with fresh state
-            seeded from the current schedule, no reset effect needed. */}
         <EditScheduleDialog
           key={editOpen ? "edit-open" : "edit-closed"}
           schedule={schedule}

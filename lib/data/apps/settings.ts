@@ -32,7 +32,6 @@ import type { UploadArchive } from "../../types/app";
 import type { BuildMethod } from "../../types/build";
 import type { HealthCheck } from "../../types/container";
 
-// updateAppOwned writes a team-owned app's flat columns; an id outside the team throws App not found.
 export async function updateAppOwned(
   id: string,
   teamId: string,
@@ -46,7 +45,6 @@ export async function updateAppOwned(
   if (updated.length === 0) throw new Error("App not found");
 }
 
-// updateAppHealthCheck saves the check (next deploy); a compose stack keeps the `healthcheck:` its author wrote.
 export async function updateAppHealthCheck(
   id: string,
   input: HealthCheck | null,
@@ -77,7 +75,6 @@ export async function updateAppHealthCheck(
   );
 }
 
-// setAppUpload points the app at a fresh archive and clears all nine repo_* columns as one unit.
 export async function setAppUpload(
   id: string,
   upload: UploadArchive,
@@ -125,7 +122,6 @@ export async function renameApp(id: string, name: string): Promise<void> {
   await recordActivity("app", `Renamed app to ${clean}`, user.name, id);
 }
 
-// previewRepoFramework reads a repo before any app row exists; a foreign installation id is dropped, not used.
 export async function previewRepoFramework(input: {
   repo: string;
   url?: string | null;
@@ -162,7 +158,6 @@ export async function previewRepoFramework(input: {
   );
 }
 
-// setAppFramework stores a correction in its own column, never over `apps.framework`, which the deploy re-detects.
 export async function setAppFramework(
   id: string,
   framework: string | null,
@@ -189,7 +184,6 @@ export async function setAppFramework(
   publishAppChanged(id);
 }
 
-// Validated here, not only in the form: the same value arrives from the bearer API and would reach a host's argv.
 export async function setAppComposeUpArgs(
   id: string,
   value: string | null,
@@ -204,7 +198,6 @@ export async function setAppComposeUpArgs(
   const updated = await getDb()
     .update(appsTable)
     .set({
-      // Stored as the deploy edge will send them, so the settings page shows exactly what runs.
       composeUpArgs: raw ? parseComposeUpArgs(raw).join(" ") : null,
       updatedAt: nowIso(),
     })
@@ -222,7 +215,6 @@ export async function setAppComposeUpArgs(
   publishAppChanged(id);
 }
 
-// `configure_apps`, not `rollback_apps`: this is a RETENTION number, i.e. how much disk the app holds.
 export async function setAppRollbackKeep(
   id: string,
   count: number,
@@ -230,7 +222,6 @@ export async function setAppRollbackKeep(
   const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
 
-  // Clamp rather than reject: anything outside the field's own bounds arrived from an API client.
   const keep = Number.isFinite(count)
     ? Math.min(MAX_ROLLBACK_KEEP, Math.max(0, Math.trunc(count)))
     : DEFAULT_ROLLBACK_KEEP;

@@ -39,8 +39,6 @@ import { stopWanted, stopped } from "./stop";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
-// runMigrationTick - one pass over whatever is running. Never throws: one broken
-// migration must not take the timer down with it.
 export async function runMigrationTick(): Promise<void> {
   try {
     await promoteQueuedRuns();
@@ -56,12 +54,7 @@ export async function runMigrationTick(): Promise<void> {
       .where(
         and(
           eq(runsTable.status, "running"),
-          // ONLY runs this runner owns. A run with no stored key was started by
-          // a tab that is driving it itself - picking it up would find no
-          // credential and mark somebody's live migration failed.
           isNotNull(runsTable.apiKeyEnc),
-          // Ours, or nobody's, or a heartbeat that went cold with the process
-          // holding it.
           or(
             isNull(runsTable.runnerOwner),
             eq(runsTable.runnerOwner, owner),
@@ -71,18 +64,12 @@ export async function runMigrationTick(): Promise<void> {
         ),
       )
       .orderBy(asc(runsTable.seq));
-    // Concurrently, and each behind its OWN lease: a run this process is already
-    // driving is skipped rather than waited on, so the tick that follows a
-    // 40-minute copy still starts the migration somebody began five minutes ago.
     await Promise.all(rows.filter((r) => !inflight.has(r.id)).map(drive));
   } catch (e) {
     console.error("[migration] tick failed:", e);
   }
 }
 
-// The turn AFTER: every session whose team has finished and whose next has not
-// started. Driven off the rows alone, so a control plane that died mid-walk
-// picks the queue up on its first tick.
 async function promoteQueuedRuns(): Promise<void> {
   const waiting = await getDb()
     .select()
@@ -99,12 +86,9 @@ async function promoteQueuedRuns(): Promise<void> {
       .from(runsTable)
       .where(eq(runsTable.sessionId, sessionId))
       .orderBy(asc(runsTable.seq));
-    // Its turn has not come: one of this panel's teams is still moving.
     if (siblings.some((s) => s.status === "running")) continue;
     const before = siblings.filter((s) => s.status !== "queued").pop();
     if (before && before.status !== "done") {
-      // The team before it did not land. Carrying on would import the next team
-      // through machines a failure has just been undone on.
       const why = `The team before this one ${before.status === "stopped" ? "was stopped" : "did not finish"}, so the rest of the migration did not start.`;
       await cancelQueuedRuns(sessionId, why);
       if (before.actorUserId)
@@ -124,8 +108,6 @@ async function promoteQueuedRuns(): Promise<void> {
       continue;
     }
     try {
-      // The machines are read team by team, and every lookup that reads one is
-      // team-scoped: they follow the turn.
       await runWithIdentity(
         { userId: next.actorUserId, teamId: next.teamId },
         () => handOverMigrationSources(before?.teamId ?? null),
@@ -148,8 +130,6 @@ async function promoteQueuedRuns(): Promise<void> {
   }
 }
 
-// Take one run, if nobody else has it, and see it through. The claim is marked
-// BEFORE the first `await`, and that ordering is the whole guard.
 async function drive(row: RunRow): Promise<void> {
   if (inflight.has(row.id)) return;
   inflight.add(row.id);
@@ -159,7 +139,6 @@ async function drive(row: RunRow): Promise<void> {
     if (!held) return;
     await advance(row);
   } catch (e) {
-    // The run is somebody else's now: nothing here is a failure of the run.
     if (e instanceof LeaseLost || lostLeases.has(row.id)) {
       lostLeases.delete(row.id);
       held = false;
@@ -173,7 +152,6 @@ async function drive(row: RunRow): Promise<void> {
   }
 }
 
-// startMigrationRunner - start the timer that keeps migrations moving. Called once, at boot.
 export function startMigrationRunner(): void {
   if (timer) return;
   timer = setInterval(() => {
@@ -183,19 +161,12 @@ export function startMigrationRunner(): void {
   void runMigrationTick();
 }
 
-// releaseMigrationRunnerLease - hand the lease back on SIGTERM/SIGINT, so the next
-// control plane picks the migration up on its first tick.
 export async function releaseMigrationRunnerLease(): Promise<void> {
   for (const runId of inflight)
     await releaseLease(leaseFor(runId), owner).catch(() => {});
 }
 
-// Close a run as failed and take it back out. Debris is a CONFIG phase that
-// could not finish: once the data phase has begun, what the run created is the
-// user's new infrastructure.
 async function failRun(row: RunRow, why: string): Promise<void> {
-  // The phase it broke IN. `row` is the snapshot the tick opened with, and the
-  // update below overwrites the column, so it has to be read first.
   const [before] = await getDb()
     .select({ phase: runsTable.phase })
     .from(runsTable)
@@ -209,8 +180,6 @@ async function failRun(row: RunRow, why: string): Promise<void> {
       status: "failed",
       error: why,
       finishedAt: nowIso(),
-      // Nothing to acknowledge: a failed run has no report screen, and left
-      // unseen it reopened the wizard, with the same toast, on every visit.
       reportSeenAt: nowIso(),
       apiKeyEnc: null,
       runnerOwner: null,
@@ -219,13 +188,9 @@ async function failRun(row: RunRow, why: string): Promise<void> {
     .where(and(eq(runsTable.id, row.id), eq(runsTable.status, "running")));
   publishMigrationChanged();
 
-  // The run is over, so everything it created is the team's again: without this
-  // the apps stayed frozen behind a migration that no longer existed.
   await releaseMigrating(row.id);
 
   if (reached === "data") {
-    // A fault outside the per-service loop left the services it never reached
-    // unmarked and deployable on empty storage, under a line claiming otherwise.
     await markRunTargetsUncopied(row.id, why).catch(() => 0);
     await appendRunItem(row.id, panelNameFor(row), {
       path: "Migration",
@@ -237,13 +202,9 @@ async function failRun(row: RunRow, why: string): Promise<void> {
     return;
   }
 
-  // Under the actor, like everything else the runner does - the undo is a stack
-  // of ordinary capability-gated deletes.
   if (!row.actorUserId) return;
   try {
     await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
-      // Not forced: data that did not copy is still over there, and the next
-      // attempt needs the machine readable.
       undoMigration(row.id, { forceSourceRemoval: false }),
     );
   } catch (e) {
@@ -251,16 +212,12 @@ async function failRun(row: RunRow, why: string): Promise<void> {
   }
 }
 
-// Everything one run needs, done under the identity of whoever started it.
 async function advance(row: RunRow): Promise<void> {
   if (!row.actorUserId)
     throw new Error("This run was started before Deplo could resume one.");
   await beat(row.id);
-  // The steps beat between themselves, and one step can be a 900 MB volume
-  // crossing two hosts - minutes in which nothing beat at all.
   const heart = setInterval(() => {
     void beat(row.id).catch(() => {});
-    // And it carries the STOP inwards.
     void stopWanted(row.id)
       .then((yes) => yes && abortRunCopy(row.id))
       .catch(() => {});

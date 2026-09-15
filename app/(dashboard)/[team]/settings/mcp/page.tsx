@@ -22,7 +22,6 @@ const TOOL_SUMMARIES = MCP_TOOLS.map((t) => ({
 }));
 
 export default async function McpSettingsPage() {
-  // The scope picker needs whole-team reach - same gate as the API tokens this page mints.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess
@@ -32,22 +31,15 @@ export default async function McpSettingsPage() {
       />
     );
 
-  const [
-    settings,
-    publicUrl,
-    // Connecting YOUR agent is `manage_mcp`; the team's switch is `manage_team`.
-    canConnect,
-    canManageTeam,
-    agentCount,
-    tree,
-  ] = await Promise.all([
-    getMcpSettings(),
-    instancePublicBaseUrl(),
-    hasCapability("manage_mcp"),
-    hasCapability("manage_team"),
-    countMcpAgents(),
-    listScopeTree(),
-  ]);
+  const [settings, publicUrl, canConnect, canManageTeam, agentCount, tree] =
+    await Promise.all([
+      getMcpSettings(),
+      instancePublicBaseUrl(),
+      hasCapability("manage_mcp"),
+      hasCapability("manage_team"),
+      countMcpAgents(),
+      listScopeTree(),
+    ]);
 
   return (
     <div className="space-y-6">

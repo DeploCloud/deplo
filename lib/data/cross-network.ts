@@ -16,7 +16,6 @@ import type { Neighbour } from "../deploy/cross-network";
 
 const MAX_NEIGHBOURS = 200;
 
-// neighboursForApp lists every DNS name of this team's stacks that could matter to this app.
 export async function neighboursForApp(a: {
   id: string;
   serverId: string;
@@ -52,7 +51,6 @@ export async function neighboursForApp(a: {
         projectsTable,
         eq(environmentsTable.projectId, projectsTable.id),
       )
-      // Same team as well as same host: another team's network is unreachable, and naming one would leak their project.
       .where(
         and(
           eq(appsTable.teamId, a.teamId),
@@ -134,7 +132,6 @@ function placeLabel(project: string | null, env: string | null): string {
   return project && env ? `${project} / ${env}` : "the team's top level";
 }
 
-// redactNeighbours drops where a neighbour lives: a deploy log outlives the request and is read by anyone with view_logs.
 export function redactNeighbours(list: Neighbour[]): Neighbour[] {
   return list.map((n) => ({ ...n, where: "another part of this team" }));
 }

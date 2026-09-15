@@ -31,7 +31,6 @@ function phaseForCommand(text: string): BuildPhaseKey | null {
   return null;
 }
 
-// buildPhases splits a build into its phases - empty unless a boundary was recognized.
 export function buildPhases(opts: {
   logs: readonly LogLine[];
   startedAt: string | null;
@@ -54,11 +53,9 @@ export function buildPhases(opts: {
   for (const line of logs) {
     if (line.level !== "command") continue;
     const key = phaseForCommand(line.text);
-    // The control plane and the agent both log the clone, so same-phase commands are one phase.
     if (!key || key === opened[opened.length - 1].key) continue;
     const at = Date.parse(line.ts);
     if (Number.isNaN(at)) continue;
-    // A reattach re-stamps replayed lines, so a boundary can arrive out of order.
     opened.push({
       key,
       at: Math.min(Math.max(at, opened[opened.length - 1].at), end),

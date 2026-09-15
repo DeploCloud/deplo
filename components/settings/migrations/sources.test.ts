@@ -12,10 +12,6 @@ import {
   SWAP_HALF_MS,
 } from "./sources";
 
-/**
- * The marks and the words. Only what the type checker cannot already prove.
- */
-
 const html = (props: Parameters<typeof MigrationGraphic>[0]) =>
   renderToStaticMarkup(React.createElement(MigrationGraphic, props));
 
@@ -28,28 +24,21 @@ test("every mark is real path data, not a bad paste", () => {
   }
 });
 
-// The bug this feature can actually ship: defaulting the unknown state to a
-// product, so the first screen tells everybody they are migrating from one.
 test("before the scan, nothing is named a product", () => {
   const unknown = copyFor(null).name;
   assert.notEqual(unknown, "Dokploy");
   assert.notEqual(unknown, "Coolify");
   assert.equal(copyFor("coolify").name, "Coolify");
   assert.equal(copyFor("dokploy").name, "Dokploy");
-  // Both platforms are offered by name where the words have to say which.
   assert.match(SOURCE_COPY.unknown.tokenInfo, /Dokploy/);
   assert.match(SOURCE_COPY.unknown.tokenInfo, /Coolify/);
 });
 
-// Before anything has answered, the face shows what it COULD be rather than
-// nothing: both marks, traded by CSS half a cycle apart.
 test("the illustration offers both marks until it knows which panel it is", () => {
   const blank = html({ state: "connect" });
   assert.ok(blank.includes(SOURCE_ART.dokploy.paths[0].d));
   assert.ok(blank.includes(SOURCE_ART.coolify.paths[0].d));
 
-  // Two swapping layers, and the second one runs behind the first - without the
-  // offset they would scale in and out together and the face would just blink.
   const swaps = blank.match(/deplo-migrate-swap/g) ?? [];
   assert.equal(swaps.length, 2);
   assert.match(blank, new RegExp(`animation-delay:\\s*-${SWAP_HALF_MS}ms`));
@@ -67,8 +56,6 @@ test("the mark that lands is the one the scan found", () => {
   assert.ok(dokploy.includes(SOURCE_ART.dokploy.paths[0].d));
 });
 
-// Three layers wanting three shades is what the grey ladder is for; the same
-// white at three alphas is not three greys, it is whatever sits behind it.
 test("a layered mark is drawn in tokens, never a brand colour", () => {
   const coolify = html({ state: "install", kind: "coolify" });
   for (const tone of ["fill-border", "fill-ring", "fill-muted-foreground"])
@@ -77,8 +64,6 @@ test("a layered mark is drawn in tokens, never a brand colour", () => {
   assert.doesNotMatch(coolify, /fill-opacity|fillOpacity/);
 });
 
-// `done` is the pose where the source stops being the subject. `--border` is the
-// token for that, and it has nothing below it to tint with.
 test("a switched-off mark drops its brand colour and its layering", () => {
   const done = html({ state: "done", kind: "coolify" });
   assert.doesNotMatch(done, /#8c52ff/);
@@ -87,13 +72,9 @@ test("a switched-off mark drops its brand colour and its layering", () => {
   assert.ok(done.includes(SOURCE_ART.coolify.paths[0].d));
 });
 
-// The copy used to say a token "reads whatever its owner can see". It does not:
-// a Coolify token is bound to the team it was minted in and a Dokploy key
-// carries one organizationId - which is exactly what hid the other teams.
 test("the token help says a token reads one team", () => {
   for (const kind of [...SOURCE_KINDS, "unknown" as const]) {
     const copy = SOURCE_COPY[kind];
-    // Said in the panel's own word, and said as the limit it is.
     assert.match(
       copy.tokenInfo,
       new RegExp(`(one|second) ${copy.teamLabel}`, "i"),

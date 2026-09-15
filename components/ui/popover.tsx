@@ -32,8 +32,6 @@ const PopoverContent = React.forwardRef<
             "z-50 w-72 animate-in rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-lg fade-in-0 outline-none zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
             className,
           )}
-          // A popover focuses itself open exactly like a dialog does, so it gets the
-          // same treatment: no focus ring on a hint, no tooltip opening by itself.
           onOpenAutoFocus={(event) => {
             onOpenAutoFocus?.(event);
             overlayAutoFocus(event, contentRef.current);

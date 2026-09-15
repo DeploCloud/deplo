@@ -11,7 +11,6 @@ import { FILES_TIMEOUT_MS } from "./deadlines";
 import { toAgentError } from "./errors";
 import type { AgentChannel } from "./mtls-channel";
 
-// filesRpc - an app's config files on the host, under its own files dir.
 export function filesRpc(
   channel: AgentChannel,
 ): Pick<

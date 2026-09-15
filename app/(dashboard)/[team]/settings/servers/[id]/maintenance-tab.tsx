@@ -52,14 +52,12 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
       setConfirm(null);
       const report = res.data?.restartServerWorkloads;
       if (!report) return;
-      // Partial success is the normal outcome, so a summary counting only the wins would hide a stack that is down.
       if (report.failures.length > 0) {
         toast.warning(
           `Restarted ${report.restarted}; ${report.failures.length} failed: ` +
             report.failures.map((f) => `${f.name} (${f.error})`).join(", "),
         );
       } else if (report.restarted === 0) {
-        // "left alone", not "stopped": the skipped bucket also holds workloads with a deploy in flight.
         toast.info(
           report.skipped > 0
             ? `Nothing to restart, ${report.skipped} left alone`
@@ -101,7 +99,6 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
         return;
       }
       setConfirm(null);
-      // Not "restarted": the mutation returns once the restart is SCHEDULED - it ends the process that would report it done.
       toast.success(
         "Deplo is restarting - this page will be briefly unavailable",
       );
@@ -151,7 +148,6 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
               </Button>
             }
           />
-          {/* On a remote host there is no panel to restart, so the button could only ever fail. */}
           {server.isDeploHost ? (
             <ActionRow
               icon={DeploMark}

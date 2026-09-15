@@ -7,7 +7,6 @@ import { TOKEN_PLACEHOLDER, type AgentDef } from "../agents";
 import { AgentMark } from "./agent-picker";
 import { StepShell } from "./step-shell";
 
-// ConnectStep hands over the snippet, already carrying the token, and listens for the first call.
 export function ConnectStep({
   agent,
   web,

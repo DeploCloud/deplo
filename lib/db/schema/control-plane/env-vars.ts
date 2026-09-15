@@ -12,7 +12,6 @@ import { apps } from "./apps";
 import { teams, users } from "./identity";
 import { environments, projects } from "./projects";
 
-// envVars - [EnvVar](../../../types.ts). `value_enc` is a secret; the authorship columns are metadata.
 export const envVars = pgTable(
   "env_vars",
   {
@@ -35,7 +34,6 @@ export const envVars = pgTable(
   (t) => [uniqueIndex("env_vars_app_key_uq").on(t.appId, t.key)],
 );
 
-// appPreviewEnvVars - preview-only overrides; `env_vars_app_key_uq` cannot hold two values for one key.
 export const appPreviewEnvVars = pgTable(
   "app_preview_env_vars",
   {
@@ -58,7 +56,6 @@ export const appPreviewEnvVars = pgTable(
   (t) => [uniqueIndex("app_preview_env_vars_app_key_uq").on(t.appId, t.key)],
 );
 
-// envVarTargets - [EnvVar.targets](../../../types.ts) → junction. `target` ∈ production/preview.
 export const envVarTargets = pgTable(
   "env_var_targets",
   {
@@ -70,20 +67,14 @@ export const envVarTargets = pgTable(
   (t) => [primaryKey({ columns: [t.envVarId, t.target] })],
 );
 
-// sharedEnvVars - [SharedVar](../../../types.ts), one individual shared variable (ADR-0010).
 export const sharedEnvVars = pgTable(
   "shared_env_vars",
   {
     id: text("id").primaryKey(),
-    // NULL = instance-owned (a migrated "All teams" global). Ownership decides who
-    // may EDIT; `shared_env_var_teams` decides who sees and receives (ADR-0027).
     teamId: text("team_id").references(() => teams.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
-    // Reaches MORE than one team (or is instance-owned): injects with no link, at
-    // the lowest precedence. A column, not `count(teams) > 1` - deleting a team
-    // cascades a junction row away and must not silently disarm the variable.
     autoInject: boolean("auto_inject").notNull().default(false),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -100,7 +91,6 @@ export const sharedEnvVars = pgTable(
   ],
 );
 
-// sharedEnvVarTargets - [SharedVar.targets](../../../types.ts) → junction.
 export const sharedEnvVarTargets = pgTable(
   "shared_env_var_targets",
   {
@@ -112,7 +102,6 @@ export const sharedEnvVarTargets = pgTable(
   (t) => [primaryKey({ columns: [t.varId, t.target] })],
 );
 
-// sharedEnvVarEnvironments - sharing mode 1 (environment[]) → junction.
 export const sharedEnvVarEnvironments = pgTable(
   "shared_env_var_environments",
   {
@@ -129,7 +118,6 @@ export const sharedEnvVarEnvironments = pgTable(
   ],
 );
 
-// sharedEnvVarProjects - sharing mode 2 (projects[] whitelist) → junction.
 export const sharedEnvVarProjects = pgTable(
   "shared_env_var_projects",
   {
@@ -146,7 +134,6 @@ export const sharedEnvVarProjects = pgTable(
   ],
 );
 
-// sharedEnvVarTeams - sharing mode 0 (teams[]), the generalisation of the old `team_wide` bool.
 export const sharedEnvVarTeams = pgTable(
   "shared_env_var_teams",
   {
@@ -163,7 +150,6 @@ export const sharedEnvVarTeams = pgTable(
   ],
 );
 
-// sharedEnvVarApps - the explicit per-app link attached from the app UI.
 export const sharedEnvVarApps = pgTable(
   "shared_env_var_apps",
   {

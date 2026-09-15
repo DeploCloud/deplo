@@ -59,7 +59,6 @@ function matchSharing(v: SharedVarDTO, value: string): boolean {
   return v.appIds.length > 0;
 }
 
-// SharedVarsManager - the "Shared" tab: every shared variable of the team, and who it reaches.
 export function SharedVarsManager({
   vars,
   apps,
@@ -189,7 +188,6 @@ export function SharedVarsManager({
 
   return (
     <div className="space-y-4">
-      {/* The action sits in the header: the toolbar needs its full width. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Shared variables</h3>

@@ -18,15 +18,12 @@ import type { DatabaseType } from "@/lib/types/database";
 import { onSubRoute } from "./active-route";
 import { backSection, itemIf, type NavSection } from "./nav-item";
 
-// databaseNav - a database's navigation.
 export function databaseNav(
   id: string,
   f: {
     pathname: string;
     consoleAcknowledged: boolean;
     cronsEnabled: boolean;
-    // The database's own logo and its engine, for the Overview entry's mark. Both
-    // absent until the layout has published them (see AppNavFlags.logo).
     logo?: string | null;
     type?: DatabaseType;
   },
@@ -52,7 +49,6 @@ export function databaseNav(
               }
             : {}),
           tooltip: "Database overview",
-          // Every DB route starts with `base`, so Overview must match exactly.
           exact: true,
         },
         {
@@ -67,8 +63,6 @@ export function databaseNav(
           icon: LineChart,
           tooltip: "Live resource usage",
         },
-        // An ADVANCED surface - a live shell into the container. Hidden until the
-        // user confirms the one-time warning, and kept while the page is open.
         ...itemIf(f.consoleAcknowledged || onConsole, {
           label: "Console",
           href: `${base}/console`,
@@ -108,12 +102,9 @@ export function databaseNav(
   ];
 }
 
-// databaseSettingsNav - a database's SETTINGS sub-menu, the DB twin of appSettingsNav.
 export function databaseSettingsNav(id: string): NavSection[] {
   const base = `/storage/databases/${id}/settings`;
   return [
-    // Back goes UP to the overview as a plain link, not through history, which
-    // would exit the section.
     backSection(
       "Back to database",
       `/storage/databases/${id}`,

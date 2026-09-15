@@ -16,7 +16,6 @@ import { Switch } from "@/components/ui/switch";
 import type { DeploySource } from "@/lib/types/app";
 import type { BuildConfig } from "@/lib/types/build";
 
-// ConfigureStep - the last card for a repository: what Deplo read, and the switch that keeps reading it.
 export function ConfigureStep({
   meta,
   onBack,

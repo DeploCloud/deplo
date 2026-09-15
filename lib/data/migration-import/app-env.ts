@@ -9,25 +9,17 @@ import {
 } from "../../migration/map/env";
 import type { SharedIndex } from "./shared-vars-import";
 
-// The app's variables as Deplo stores them, with every note the mapping owes the
-// report. `linkable` and `dropped` are what the caller turns into shared-variable
-// links once the app exists.
 export function mapAppEnv(
   detail: SourceApplication & SourceCompose,
   home: { shared: SharedIndex; dbHosts: Map<string, string> },
   notes: string[],
 ) {
-  // Build args become ordinary variables: that is how Deplo passes values to a build
-  // (agent >= 1.9.0), rather than as a second channel.
   const envEntries = parseEnvBlob(detail.env);
   const argEntries = parseEnvBlob(
     (detail as SourceApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));
   const rows = [...envEntries, ...argEntries];
 
-  // A value that is EXACTLY one reference to a shared variable of the SAME name is
-  // a link here, not a copy: a link injects (ADR-0012), and it injects under the
-  // shared variable's own key, so that is the only reference shape it can express.
   const refs = (detail.sharedRefs ?? []).filter(
     (r) => !argEntries.some((a) => a.key === r.key),
   );
@@ -39,14 +31,10 @@ export function mapAppEnv(
     const i = rows.findIndex((e) => e.key === r.key);
     if (i !== -1) dropped.set(r.key, rows.splice(i, 1)[0]);
   }
-  // Whatever is still a reference becomes a VALUE. A no-op on a panel that already
-  // answered resolved; the real work on one that resolves at deploy time.
   const refResolved = resolveSharedRefs(
     rows,
     new Map([...home.shared].map(([k, v]) => [k, v.value] as const)),
   );
-  // Typed secret ONLY where the panel itself said so: a secret is immutable and
-  // a fork's preview drops it, so a guess from the name breaks a working app.
   const secretKeys = new Set(detail.secretEnvKeys ?? []);
   const env = rows.map((e) => ({
     ...e,
@@ -80,7 +68,6 @@ export function mapAppEnv(
         ", ",
       )} still read a shared variable {panel} did not answer with the value behind. Put the real values in under Variables.`,
     );
-  // The databases this same import renamed, before the app is created.
   const renamed = renameDatabaseHosts(env, home.dbHosts);
   if (renamed.length > 0)
     notes.push(

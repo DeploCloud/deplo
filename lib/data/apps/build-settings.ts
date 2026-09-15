@@ -20,7 +20,6 @@ import { markPendingChanges } from "../pending-changes";
 import { ON_IMPORT_SOURCE } from "./source-guards";
 import type { BuildConfig } from "../../types/build";
 
-// build.port is only WHICH container port Traefik routes to, so it is not behind the expose-ports grant.
 export async function updateAppBuild(
   id: string,
   build: Partial<BuildConfig>,
@@ -34,7 +33,6 @@ export async function updateAppBuild(
       throw new Error("App not found");
     portBefore = existing.build.port ?? null;
 
-    // The parent `app_build` columns MERGE field by field; a provided `methodSettings` replaces its row wholesale.
     const merged: BuildConfig = {
       ...existing.build,
       ...build,
@@ -57,7 +55,6 @@ export async function updateAppBuild(
     }
   });
 
-  // Domains routing to the OLD port follow the new one, or a green deploy answers 502 from another screen.
   if (portBefore != null && build.port != null && build.port !== portBefore) {
     const moved = await getDb()
       .update(domainsTable)
@@ -76,7 +73,6 @@ export async function updateAppBuild(
   await recordActivity("app", `Updated build settings`, user.name, id);
 }
 
-// clearAppBuildCache arms a one-shot flag: the BuildKit cache is the SERVER's, so an app can only refuse to read it once.
 export async function clearAppBuildCache(id: string): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
@@ -99,7 +95,6 @@ export async function clearAppBuildCache(id: string): Promise<void> {
   );
 }
 
-// setAppBuildServer chooses where the app COMPILES (null is Automatic); a build carries its source and decrypted env.
 export async function setAppBuildServer(
   id: string,
   input: { buildServerId: string | null; buildFallback?: boolean },

@@ -7,11 +7,9 @@ import { resolveDatabaseAttachTarget } from "@/lib/data/database-console";
 import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client/connect";
 
-// Long-lived stream; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Queued-chunk ceiling before a stalled SSE client is cut off.
 const MAX_QUEUED_CHUNKS = 1024;
 
 export async function GET(
@@ -39,7 +37,6 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // Bind the session to the caller + active team; POST/DELETE re-check against these, so the id alone never keeps a demoted caller typing into the engine.
   const teamId = await requireActiveTeamId();
 
   const tty = resolved.instance.tty;
@@ -68,7 +65,6 @@ export async function GET(
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      // Assigned below once the subscription exists; closeStream needs it earlier.
       let unsubscribe: () => void = () => {};
       const closeStream = () => {
         unsubscribe();
@@ -77,7 +73,6 @@ export async function GET(
         } catch {}
       };
       const send = (event: string, data: string) => {
-        // desiredSize is null once the stream errors/closes and goes negative when the client stops reading.
         const size = controller.desiredSize;
         if (size === null) return;
         if (size < -MAX_QUEUED_CHUNKS) {
@@ -89,7 +84,6 @@ export async function GET(
         );
       };
 
-      // NOT named "open": EventSource reserves that event name.
       send("session", session.id);
 
       const decoder = new StringDecoder("utf8");
@@ -107,7 +101,6 @@ export async function GET(
         } catch {}
       };
 
-      // A signal that aborted DURING the pre-start awaits never fires "abort" again; the idle reaper then kills the backing.
       if (request.signal.aborted) {
         closeStream();
         return;
@@ -150,7 +143,6 @@ export async function POST(
   if (!session)
     return Response.json({ error: "No such session" }, { status: 404 });
 
-  // Re-check caller + capability on every write, so the session id alone is never enough.
   if (!(await stillAuthorized(session, user.id)))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
@@ -164,7 +156,6 @@ export async function POST(
   return Response.json({ ok: true });
 }
 
-// Re-authorise an in-flight database attach session against the CALLER, not just the session id.
 async function stillAuthorized(
   session: attach.AttachSession,
   userId: string,
@@ -178,7 +169,6 @@ async function stillAuthorized(
   }
 }
 
-// Clamped so a bad client can't ask for a 10⁶-column pty.
 function clampDim(raw: string | null, fallback: number, max: number): number {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : fallback;
@@ -209,7 +199,6 @@ export async function DELETE(
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? attach.get(sessionId, databaseId) : undefined;
   if (session) {
-    // Detach is a mutation on a live session: gate it exactly like a write.
     if (!(await stillAuthorized(session, user.id)))
       return Response.json({ error: "Forbidden" }, { status: 403 });
     attach.destroy(sessionId);

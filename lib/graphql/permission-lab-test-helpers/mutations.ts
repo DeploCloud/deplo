@@ -1,4 +1,3 @@
-// M holds every write document the persona suites send.
 export const M = {
   redeploy: /* GraphQL */ `
     mutation ($appId: String!) {

@@ -11,13 +11,11 @@ import {
 import { sameSecret } from "./signature";
 import type { GitCredential, GitProviderApi, RepoSummary } from "./types";
 
-// GitLab addresses a project by its URL-encoded full path, so no id lookup.
 const glProject = (fullName: string) =>
   `/api/v4/projects/${encodeURIComponent(assertFullName(fullName))}`;
 
 const glAuth = (c: GitCredential) => ({ "PRIVATE-TOKEN": c.token });
 
-// GitLab puts each commit's message on the commit object; take the newest.
 function lastCommitMessage(
   commits: { message?: string }[] | undefined,
 ): string {
@@ -25,7 +23,6 @@ function lastCommitMessage(
   return (last?.message ?? "").split("\n")[0]?.trim() ?? "";
 }
 
-// gitlab - the GitLab REST adapter.
 export const gitlab: GitProviderApi = {
   async whoami(c) {
     const me = await json<{ username: string; avatar_url?: string }>(
@@ -33,8 +30,6 @@ export const gitlab: GitProviderApi = {
       "/api/v4/user",
       { auth: glAuth(c) },
     );
-    // Best-effort: only a personal access token can read its own metadata, and a
-    // project/group access token 404s here. A missing expiry is not an error.
     const self = await json<{
       expires_at?: string | null;
       scopes?: string[];
@@ -139,8 +134,6 @@ export const gitlab: GitProviderApi = {
 
   verify(secret, headers) {
     const token = headers.get("x-gitlab-token") ?? "";
-    // GitLab always sends the token it was configured with, so an absent header
-    // is a forged (or misconfigured) delivery rather than an unsigned one.
     return sameSecret(token, secret) ? "ok" : "bad";
   },
 
@@ -162,10 +155,7 @@ export const gitlab: GitProviderApi = {
     };
     const repoFullName = p.project?.path_with_namespace ?? "";
     if (!repoFullName || !p.ref) return [];
-    // GitLab has no `deleted` flag: an all-zero `after` sha is the deletion.
     const deleted = /^0+$/.test(p.after ?? "");
-    // The commit objects carry GitHub's added/modified/removed field names, so
-    // the shared parser handles the ref + file-list normalisation.
     return [
       {
         event: parsePushEvent({ ref: p.ref, deleted, commits: p.commits }),

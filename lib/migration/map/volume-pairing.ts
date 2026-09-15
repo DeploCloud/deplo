@@ -3,25 +3,17 @@ import type { HostMount, NamedVolume } from "../model";
 import type { Mapped } from "./source-platform";
 import { isDataHostPath } from "./volume-discovery";
 
-/** A source volume matched to the Deplo volume it should be copied into. */
 export interface VolumePair {
   sourceVolume: string;
   targetVolume: string;
-  /** The container path, when both sides agree on it. */
   mountPath: string;
-  /** Set when the pairing was made on something weaker than an equal path. */
   note: string | null;
 }
 
-/**
- * Match every source bind mount to the Deplo host mount that should receive it.
- */
 export interface PairedHostMount {
   sourcePath: string;
   targetPath: string;
   mountPath: string;
-  /** Deplo's own stack directory receives it, so no host path anyone typed is
-   *  read or written and the host-volumes grant has nothing to gate. */
   stackRelative: boolean;
 }
 
@@ -44,8 +36,6 @@ export function pairHostMounts(
   return out;
 }
 
-/** Does this host volume name carry `alias` as its compose key? Both platforms
- *  prefix the project (`myapp_apidata`, `myapp-apidata`), neither renames the key. */
 function volumeCarriesAlias(volumeName: string, alias: string): boolean {
   if (!alias) return false;
   if (volumeName === alias) return true;
@@ -53,22 +43,15 @@ function volumeCarriesAlias(volumeName: string, alias: string): boolean {
   return tail === `_${alias}` || tail === `-${alias}`;
 }
 
-/** Docker names an anonymous volume with its own 64-hex id. Nobody chose it, so
- *  there is never a volume on the other side that corresponds to it. */
 function isAnonymousVolume(name: string): boolean {
   return /^[0-9a-f]{64}$/.test(name);
 }
 
-/** Paths an image declares that a STANDALONE never writes - the one unpairable
- *  volume on a plain Mongo, and not a loss to go looking for. */
 const EMPTY_BY_DESIGN: Record<string, string> = {
   "/data/configdb":
     "MongoDB only writes it as part of a sharded cluster, so a standalone leaves it empty.",
 };
 
-/**
- * Match every source volume to the Deplo volume that should receive it.
- */
 export function pairVolumes(
   source: NamedVolume[],
   target: NamedVolume[],
@@ -79,10 +62,6 @@ export function pairVolumes(
   const takenTarget = new Set<string>();
   const takenSource = new Set<string>();
 
-  // The compose ALIAS first: the imported file is the source's own, so the key a
-  // service mounts is the same word on both sides. Matching on the container path
-  // alone crosses two services that both mount /data - silently, both ways.
-  // Longest alias first, so `mydata` claims its own volume before `data` can.
   for (const t of [...target].sort(
     (a, b) => (b.alias?.length ?? 0) - (a.alias?.length ?? 0),
   )) {
@@ -135,8 +114,6 @@ export function pairVolumes(
   }
 
   for (const s of source)
-    // An anonymous volume left over is not news: the image asked for it, nobody named
-    // it, and nothing on this side could ever correspond to it.
     if (
       !pairs.some((p) => p.sourceVolume === s.name) &&
       !isAnonymousVolume(s.name)

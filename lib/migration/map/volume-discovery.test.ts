@@ -20,16 +20,13 @@ test("sourceVolumesFrom keeps named volumes and drops bind mounts", () => {
       { Type: "volume", Destination: "/anonymous" },
     ],
   });
-  // A bind and an anonymous mount are left out: neither is something a data move can pair.
   assert.deepEqual(volumes, [
     { name: "app_uploads", mountPath: "/app/uploads" },
   ]);
 });
 
 test("deploVolumeName knows which volumes carry an explicit name", () => {
-  // A volume Deplo manages is rendered with `name:`, so compose uses it verbatim.
   assert.equal(deploVolumeName("web", "uploads", true), "deplo-web-uploads");
-  // One declared in the user's own compose is prefixed by the project instead.
   assert.equal(deploVolumeName("web", "uploads", false), "deplo-web_uploads");
   assert.equal(
     deploDatabaseVolumeName("db-main"),
@@ -69,7 +66,6 @@ test("composeVolumeMounts ignores a compose it cannot read", () => {
   assert.deepEqual(composeVolumeMounts(""), []);
 });
 
-// Dokploy stops a service by scaling its swarm service to 0 replicas: no container to inspect, volume untouched on the host.
 test("declaredSourceVolumes reads a stopped service's volumes from its mounts", () => {
   const out = declaredSourceVolumes({
     kind: "postgres",
@@ -142,7 +138,6 @@ test("composeVolumeHostNames reads the names only the file decides", () => {
   assert.equal(composeVolumeHostNames("services:\n  web:\n   - : :").size, 0);
 });
 
-// The panel creates the project-prefixed volume empty beside the external one the container mounts; copying it reported "holds nothing".
 test("declaredSourceVolumes never prefixes a volume the compose pins", () => {
   const out = declaredSourceVolumes({
     kind: "compose",
@@ -172,7 +167,6 @@ test("declaredSourceVolumes never prefixes a volume the compose pins", () => {
     { name: "test-stack-ab12_data", mountPath: "/var/lib/app" },
     { name: "ext", mountPath: "/data/ext" },
     { name: "chosen-by-hand", mountPath: "/data/pinned" },
-    // `driver_opts` names no volume: compose still creates <project>_dopts.
     { name: "test-stack-ab12_dopts", mountPath: "/data/dopts" },
   ]);
 });
@@ -184,7 +178,6 @@ test("declaredSourceVolumes has nothing to say about a service with no volumes",
   );
 });
 
-// A Postgres 18 container reports TWO volumes: the data one, plus the anonymous one Docker makes for the image's own parent `VOLUME`.
 test("sourceVolumesFrom drops the image's own parent mount", () => {
   const out = sourceVolumesFrom({
     Mounts: [

@@ -1,7 +1,6 @@
 import { realpath, stat } from "node:fs/promises";
 import { sep } from "node:path";
 
-// safeBuildDir confirms `candidate` is `base` or a real descendant, defeating symlink escapes.
 export async function safeBuildDir(
   base: string,
   candidate: string,

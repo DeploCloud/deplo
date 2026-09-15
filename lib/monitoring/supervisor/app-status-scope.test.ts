@@ -21,7 +21,6 @@ import {
 const h = setupSupervisor();
 
 test("an App with a deployment in flight is NOT touched, even from `error`", async () => {
-  // The status allowlist alone is not enough.
   const feed = await streamingServer(h.db);
   await seedApp(h.db, {
     id: "prj_q",
@@ -68,7 +67,6 @@ test("an App with a deployment in flight is NOT touched, even from `error`", asy
 });
 
 test("an App ABSENT from the frame is never written - absence is unknown, not failure", async () => {
-  // A missing container only means the stream has not reported it: writing a status would invent an outage out of silence.
   const feed = await streamingServer(h.db);
   await seedApp(h.db, {
     id: "prj_seen",
@@ -84,7 +82,6 @@ test("an App ABSENT from the frame is never written - absence is unknown, not fa
   });
   const before = await appRow(h.db, "prj_absent");
 
-  // A frame that carries the OTHER App only, so the reconcile provably ran.
   await feed.send(frame([containerStat("prj_seen", "seen-web-1", 5)]));
 
   assert.equal(
@@ -123,7 +120,6 @@ test("an empty frame writes nothing - a host with no containers is not a host of
 });
 
 test("an App mid server-MOVE is skipped - the old host's containers are not evidence", async () => {
-  // A pending move is not representable in `status`: containers on the OLD host and a fresh stack on the NEW one.
   const feed = await streamingServer(h.db);
   await seedEnrolledServer(h.db, SRV_B, "2026-01-01T00:00:01.000Z");
   await seedApp(h.db, {
@@ -150,7 +146,6 @@ test("an App mid server-MOVE is skipped - the old host's containers are not evid
 });
 
 test("a frame is only authority over the Apps ITS OWN host runs", async () => {
-  // A moved App can still have containers on the old host (failed teardown); that telemetry must not claim it is up.
   const feed = await streamingServer(h.db, SRV_A);
   await seedEnrolledServer(h.db, SRV_B, "2026-01-01T00:00:01.000Z");
   await seedApp(h.db, {
@@ -161,7 +156,6 @@ test("a frame is only authority over the Apps ITS OWN host runs", async () => {
   });
   const before = await appRow(h.db, "prj_elsewhere");
 
-  // SRV_A's frame carries a container still labelled for an App that now lives on SRV_B.
   await feed.send(
     frame([containerStat("prj_elsewhere", "elsewhere-web-1", 9)]),
   );
@@ -172,7 +166,6 @@ test("a frame is only authority over the Apps ITS OWN host runs", async () => {
 });
 
 test("a Database id in the frame never touches an App, and is not an error either", async () => {
-  // Databases ride the same `deplo.project` label and match no row in `apps` - true, not assumed.
   const feed = await streamingServer(h.db);
   await seedDatabase(h.db, { id: "db_1", serverId: SRV_A });
   await seedApp(h.db, {

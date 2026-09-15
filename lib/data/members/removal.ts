@@ -15,7 +15,6 @@ import { actorName } from "./activity-actor";
 import { assertAdminCoverage } from "./assignment";
 import { teamFounderUserId } from "./roster";
 
-/** Remove a member from the active team (does not delete their account). */
 export async function removeMember(userId: string): Promise<void> {
   const {
     teamId,
@@ -41,13 +40,9 @@ export async function removeMember(userId: string): Promise<void> {
       .limit(1);
     const m = rows[0];
     if (!m) throw new Error("Member not found");
-    // The ABSOLUTE owner (founder / "crown") can never be removed by anyone,
-    // including instance admins, so the team always keeps its creator.
     if (userId === founderId) {
       throw new Error("The team's primary owner can't be removed.");
     }
-    // An (assigned) owner outranks non-owners: only another owner may remove an
-    // owner. A non-owner manager can remove only non-owners.
     if (m.role === "owner" && !actorIsOwner) {
       throw new Error("Only an owner can remove another owner.");
     }
@@ -58,9 +53,6 @@ export async function removeMember(userId: string): Promise<void> {
       .where(eq(usersTable.id, userId))
       .limit(1);
     username = u[0]?.username ?? "";
-    // Neither hangs off the membership row: a grant names its node, a folder its
-    // owner. Left behind, the grants come back with the person and the folders
-    // stay private to someone who is no longer here.
     await clearNodeGrants(tx, userId, teamId);
     handed = await handOverFolders(
       tx,
@@ -68,7 +60,6 @@ export async function removeMember(userId: string): Promise<void> {
       teamId,
       founderId ?? actingUserId,
     );
-    // membership_capabilities cascades on the membership FK.
     await tx.delete(membershipsTable).where(eq(membershipsTable.id, m.id));
   });
   await recordActivity(

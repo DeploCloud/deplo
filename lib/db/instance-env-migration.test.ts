@@ -17,8 +17,6 @@ import {
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import type { EnvTarget } from "../types/env";
 
-// Migration parity for ADR-0027: instance_env_vars folds into shared_env_vars as instance-owned rows.
-
 const T0 = "2026-01-01T00:00:00.000Z";
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
 
@@ -48,7 +46,6 @@ before(async () => {
   const freeze = (f: string) => Number(f.slice(0, 4)) <= 130;
   for (const f of files.filter(freeze)) await applyFile(f);
 
-  // Raw SQL: instance_env_vars is gone from the live drizzle schema, and shared_env_vars.team_wide with it.
   await pg.exec(`
     insert into users (id, email, username, name, role, is_instance_admin, suspended, avatar_color, created_at, updated_at)
       values ('user_1', 'u@example.io', 'user_1', 'user_1', 'owner', true, false, '#abc', '${T0}', '${T0}');

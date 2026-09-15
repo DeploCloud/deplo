@@ -27,8 +27,6 @@ import {
   setUserTeamAccess,
 } from "./user-access";
 
-// The instance-admin write path for one person's access (ADR-0016).
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -452,8 +450,6 @@ test("an admin can't hand out what they don't hold on the node themselves", asyn
         .membershipCapabilities,
     )
     .values(
-      // Everything the Viewer role grants, so the ACTOR bound on the role itself
-      // passes and the node bound below is what refuses.
       [
         "view",
         "view_logs",
@@ -532,8 +528,6 @@ test("manage_members alone cannot mint an owner, nor edit one", async () => {
         .membershipCapabilities,
     )
     .values(
-      // Everything the Viewer role grants: the Owner role below asks for more, so it
-      // is refused on the capability bound before the rank one is even reached.
       [
         "view",
         "view_logs",

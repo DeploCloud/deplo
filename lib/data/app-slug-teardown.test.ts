@@ -92,7 +92,6 @@ test("a deploy key awaiting teardown keeps its slug taken, previews included", a
       name: "store",
       source: "compose",
       repo: null,
-      // Its own service name: two `web` on one team network would be a clash.
       compose: "services:\n  store:\n    image: nginx:1.27\n",
       deploy: false,
     }),
@@ -102,7 +101,6 @@ test("a deploy key awaiting teardown keeps its slug taken, previews included", a
 
 test("a config file's path stays inside the app's files and is never the env-file", async () => {
   const withMount = (filePath: string) => {
-    // One service name per app: two stacks answering `cfg` would clash.
     const name = `cfg-${Math.random().toString(36).slice(2, 8)}`;
     return asOtherTeam(() =>
       createApp({

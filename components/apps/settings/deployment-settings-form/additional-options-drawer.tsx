@@ -17,7 +17,6 @@ import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { Collapse } from "@/components/shared/collapse";
 import type { DeploymentSettings } from "./use-deployment-settings";
 
-// AdditionalOptionsDrawer: the Deploy Source card's root directory + server rows.
 export function AdditionalOptionsDrawer({
   settings,
   servers,
@@ -62,7 +61,6 @@ export function AdditionalOptionsDrawer({
         docs="servers.overview"
         align={serverMoveWarned ? "start" : "center"}
       >
-        {/* Squared off and flush under the Select, so the warning reads as that control's own. */}
         <div className="w-full">
           <Select value={serverId} onValueChange={setServerId}>
             <SelectTrigger

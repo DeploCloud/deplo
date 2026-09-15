@@ -6,9 +6,6 @@ import {
   updateMyAvatar,
 } from "@/lib/data/account";
 
-// The data layer (assertUser + the password re-check) is the boundary; `loggedIn`
-// is only the GraphQL gate.
-
 builder.mutationFields((t) => ({
   updateProfile: t.field({
     type: "Boolean",

@@ -25,7 +25,6 @@ import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { formatBytes } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
-// GeneralSettingsForm edits an app's name and logo.
 export function GeneralSettingsForm({
   appId,
   name: initialName,
@@ -134,7 +133,6 @@ export function GeneralSettingsForm({
     <>
       <Card>
         <CardContent className="space-y-6 pt-6">
-          {/* Logo */}
           <div className="space-y-3">
             <FieldLabel info="Shown for this app on the dashboard. Set automatically from this app's own favicon - replace it any time">
               Logo
@@ -206,7 +204,6 @@ export function GeneralSettingsForm({
             />
           </div>
 
-          {/* Name */}
           <div className="max-w-md space-y-2 border-t border-border pt-6">
             <Label>App name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -221,7 +218,6 @@ export function GeneralSettingsForm({
         </CardFooter>
       </Card>
 
-      {/* The logo saves on pick, so only the name can be unsaved. */}
       <UnsavedChangesGuard when={nameDirty} />
     </>
   );

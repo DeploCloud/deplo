@@ -19,8 +19,6 @@ import {
 } from "./hello-capabilities";
 import { resolveTarget } from "./mtls-channel";
 
-// compensateKeepPerSlug makes `keep_per_slug` safe to send at an agent that IGNORES
-// it: the scalar fallback would delete the images an app's rollback depth keeps.
 export function compensateKeepPerSlug(
   req: DockerCleanupRequest,
   hello: HelloResponse,
@@ -36,9 +34,6 @@ export function compensateKeepPerSlug(
   };
 }
 
-// dropUnsupportedScopes strips scopes THIS agent does not implement, so an old host
-// still gets the rest. The inventory lists stay: an agent that cannot read them
-// ignores them, and an old one still reads live_slugs for its files scope.
 export function dropUnsupportedScopes(
   req: DockerCleanupRequest,
   hello: HelloResponse,
@@ -47,7 +42,6 @@ export function dropUnsupportedScopes(
   const scopes = req.scopes.flatMap((s) => {
     const cap = CLEANUP_SCOPE_CAPABILITY[s];
     if (!cap || caps.includes(cap)) return [s];
-    // An agent without the anonymous-volume scope still has its buildkit subset.
     if (s === CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES)
       return [CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE];
     return [];
@@ -60,20 +54,14 @@ export function dropUnsupportedScopes(
   return { ...req, scopes };
 }
 
-// runAgentCleanup reclaims Docker disk on `serverId`'s host: dial → Hello →
-// capability pre-flight → DockerCleanup → close.
 export async function runAgentCleanup(
   serverId: string,
   req: DockerCleanupRequest,
 ): Promise<DockerCleanupResponse> {
-  // Resolves only for a provisioned server with un-revoked trust; throws
-  // AgentUnreachableError otherwise.
   const target = await resolveTarget(serverId);
 
   const conn = dial(target);
   try {
-    // The agent must SAY it can clean up before we ask it to. An agent too old to
-    // know the RPC won't advertise the capability.
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(DOCKER_CLEANUP_CAPABILITY)) {
       throw new AgentCleanupUnsupportedError(CLEANUP_UNSUPPORTED_MESSAGE);
@@ -82,8 +70,6 @@ export async function runAgentCleanup(
       dropUnsupportedScopes(compensateKeepPerSlug(req, hello), hello),
     );
   } catch (e) {
-    // An agent one version behind on the RPC can advertise the capability and still
-    // answer UNIMPLEMENTED; mapCleanupUnsupported is idempotent on the throw above.
     throw mapCleanupUnsupported(e);
   } finally {
     conn.close();

@@ -27,8 +27,6 @@ function droppedFrom(resp: StackResult): DroppedEntries {
   };
 }
 
-// dataCopyRpc - moving bytes between hosts: volumes, host paths, files dirs and
-// built images, each an export/import pair relayed through the control plane.
 export function dataCopyRpc(
   channel: AgentChannel,
 ): Pick<
@@ -77,9 +75,6 @@ export function dataCopyRpc(
       wipeFirst: boolean,
       chunks: AsyncIterable<Buffer>,
     ) {
-      // Client-streaming: header frame first (the only message carrying `header`),
-      // then data frames, then end(). ts-proto models the oneof as flat optional
-      // fields. The terminal StackResult arrives via the callback.
       return new Promise<{
         ok: boolean;
         error: string;
@@ -111,8 +106,6 @@ export function dataCopyRpc(
       });
     },
     exportHostPath(path: string, allowFile = false) {
-      // The agent refuses a missing directory rather than creating it, so an empty
-      // archive here means the directory really is empty.
       return (async function* () {
         yield* bytesFrom<VolumeChunk>(
           client.exportHostPath({ path, allowFile }, copyDeadline()),
@@ -193,7 +186,6 @@ export function dataCopyRpc(
       })();
     },
     importImage(imageRef: string, chunks: AsyncIterable<Buffer>) {
-      // No wipe flag: loading a tag replaces it, so there is nothing to empty first.
       return new Promise<{ ok: boolean; error: string; bytesWritten: number }>(
         (resolve, reject) => {
           const call: ClientWritableStream<ImageChunk> = client.importImage(

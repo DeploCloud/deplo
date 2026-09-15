@@ -27,17 +27,12 @@ import {
 } from "./runner-state";
 import { stopped } from "./stop";
 
-// Say, on the resource itself and in the report, that a service's data never
-// came across: an empty volume is indistinguishable from one that worked, and
-// that is the shape data loss takes when nobody is told.
 async function markUncopied(
   row: RunRow,
   services: DataMoveService[],
   why: string,
 ): Promise<void> {
   for (const d of services) {
-    // A retry of a service this run ALREADY copied says nothing about the data:
-    // the bytes are in the volume, and the row must not be blocked over it.
     const landed = await dataAlreadyCopiedInto(row.id, d.targetId);
     const reason = `${d.sourceName}'s data was not copied: ${why}`;
     if (!landed)
@@ -57,12 +52,9 @@ async function markUncopied(
   }
 }
 
-/** Under this, a copy is walking into a disk that cannot hold what it carries. */
 const DISK_FLOOR_BYTES = 5 * 1024 * 1024 * 1024;
 const DISK_FLOOR_RATIO = 0.1;
 
-// The machine about to RECEIVE the bytes, before any of them move: a copy into a
-// disk at 93% used to fail part way with nothing having said why.
 async function noteTightDisks(row: RunRow, serverIds: string[]): Promise<void> {
   const { fetchHostInfo } = await import("../../infra/agent-client/host-ops");
   const { formatBytes } = await import("../../utils");
@@ -98,8 +90,6 @@ export async function runDataPhase(
     kind: c.kind,
     runId: row.id,
   });
-  // Every reason a service will not have its data copied is SAID. These notes
-  // are the whole value of the report.
   for (const d of planned)
     for (const note of d.notes)
       await appendRunItem(row.id, panelNameFor(row), {
@@ -118,8 +108,6 @@ export async function runDataPhase(
   const unreachable = planning.filter((d) => !d.sourceReachable);
   const movable = planning.filter((d) => d.sourceReachable);
   if (unreachable.length > 0) {
-    // Named, and then STEPPED OVER: one machine nobody can reach is not a reason
-    // to leave the services on the machines that answer sitting on empty storage.
     await markUncopied(
       row,
       unreachable,
@@ -137,8 +125,6 @@ export async function runDataPhase(
     .where(eq(runsTable.id, row.id));
 
   let failedHere = unreachable.length;
-  // A machine that stopped answering mid-run takes only ITS OWN services down
-  // with it: the rest of the fleet still has data to move.
   const deadMachines = new Set<string>();
   for (const [i, d] of movable.entries()) {
     if (deadMachines.has(d.sourceServerId)) {
@@ -151,14 +137,10 @@ export async function runDataPhase(
       continue;
     }
     if (await stopped(row.id)) {
-      // Stopped by hand: the undo has already taken everything back out, so
-      // there is nothing left to mark.
       return;
     }
     await beat(row.id);
     await setProgress(row.id, { doneSteps: i, stepLabel: d.sourceName });
-    // The bytes, while they cross. One service is ONE step here, so without this
-    // a 15 GB volume is an hour of a progress line that got read as a dead run.
     let copied = 0;
     let shownAt = 0;
     let res: Awaited<ReturnType<typeof moveMigrationServiceData>>;
@@ -172,8 +154,6 @@ export async function runDataPhase(
         sourceId: d.sourceId,
         onBytes: (chunk) => {
           copied += chunk;
-          // Throttled, because the relay hands us a chunk roughly every megabyte.
-          // Fire-and-forget: the copy does not wait on its own progress line.
           const now = Date.now();
           if (now - shownAt < PROGRESS_MS) return;
           shownAt = now;
@@ -183,22 +163,16 @@ export async function runDataPhase(
         },
       });
     } catch (e) {
-      // The copy was cut by a Stop, not by a fault - or by the lease going to
-      // another control plane, and then this one writes nothing more at all.
       if (isCopyAborted(e)) {
         if (lostLeases.has(row.id)) throw new LeaseLost(row.id);
         await stopped(row.id);
         return;
       }
-      // One service that would not cut over is a line in the report, not the end
-      // of the migration.
       const why = e instanceof Error ? e.message : String(e);
       await markUncopied(row, [d], why);
       failedHere++;
       continue;
     }
-    // A failed VOLUME is a line in the report. A failed MACHINE takes the services
-    // that share it, and nothing else: the rest of the run carries on.
     if (res.sourceGone) {
       failedHere++;
       deadMachines.add(d.sourceServerId);
@@ -214,7 +188,6 @@ export async function runDataPhase(
       outcome: "manual",
       message: `${failedHere} service(s) could not have their data cut over. Each is named above and refuses to deploy until you bring its data across yourself or choose "Deploy anyway" on its page.`,
     });
-  // The people, while the token is still here to read them with.
   try {
     await importRunMembers(row.id, await connectCredential(c));
   } catch (e) {
@@ -235,7 +208,5 @@ export async function runDataPhase(
     .set({ apiKeyEnc: null, runnerOwner: null, phase: "done" })
     .where(eq(runsTable.id, row.id));
   publishMigrationChanged();
-  // The next team of this panel starts on the very next tick, so a queue moves
-  // as fast as a person would.
   void import("./run-loop").then((m) => m.runMigrationTick()).catch(() => {});
 }

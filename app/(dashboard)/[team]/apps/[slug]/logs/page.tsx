@@ -16,7 +16,6 @@ export default async function AppLogsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // Held per app (ADR-0016); without it every stream below answers nothing.
   if (!(await hasAppCapability(project.id, "view_logs"))) {
     return (
       <EmptyState
@@ -28,13 +27,10 @@ export default async function AppLogsPage(
     );
   }
 
-  // Same containers as the console, the app's own one first, so both pickers match.
   const info = await getLogsInfo(project.id);
 
-  // Full-bleed route (components/layout/shell-frame.tsx): the pane fills the frame.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* `docker logs` outlives the process, so a dead or restarting container still streams. */}
       <LiveLogs
         appId={project.id}
         title={{ label: project.name, href: `/apps/${project.slug}` }}

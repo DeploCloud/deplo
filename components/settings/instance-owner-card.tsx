@@ -23,7 +23,6 @@ export type OwnerCandidate = {
   avatarUrl: string | null;
 };
 
-// InstanceOwnerCard - who owns this instance, and the one place ownership changes hands.
 export function InstanceOwnerCard({
   ownerName,
   viewerIsOwner,
@@ -33,7 +32,6 @@ export function InstanceOwnerCard({
   ownerName: string | null;
   viewerIsOwner: boolean;
   viewerTwoFactorEnabled: boolean;
-  // Active instance admins only; empty is a real state.
   candidates: OwnerCandidate[];
 }) {
   const router = useRouter();
@@ -72,7 +70,6 @@ export function InstanceOwnerCard({
             Only the owner can hand the instance over.
           </p>
         ) : candidates.length === 0 ? (
-          // The server would refuse a transfer to a non-admin, so say what to do instead of showing an empty picker.
           <p className="text-sm text-muted-foreground">
             There is no other instance admin to hand it to.{" "}
             <Link
@@ -87,7 +84,6 @@ export function InstanceOwnerCard({
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-56 flex-1 space-y-2">
               <Label htmlFor="instance-successor">Hand it to</Label>
-              {/* Typed, not picked: an instance with many admins is a list to scroll. */}
               <Combobox<OwnerCandidate>
                 id="instance-successor"
                 items={candidates}

@@ -15,7 +15,6 @@ const giAuth = (c: GitCredential) => ({ Authorization: `token ${c.token}` });
 const giRepo = (fullName: string) =>
   `/api/v1/repos/${assertFullName(fullName)}`;
 
-// gitea - the Gitea / Forgejo REST adapter.
 export const gitea: GitProviderApi = {
   async whoami(c) {
     const me = await json<{ login: string; avatar_url?: string }>(
@@ -26,8 +25,8 @@ export const gitea: GitProviderApi = {
     return {
       login: me.login,
       avatarUrl: me.avatar_url ?? "",
-      expiresAt: null, // Gitea tokens do not expire.
-      scopes: null, // and it does not report what they cover.
+      expiresAt: null,
+      scopes: null,
     };
   },
 
@@ -117,8 +116,6 @@ export const gitea: GitProviderApi = {
   },
 
   verify(secret, headers, rawBody) {
-    // Gitea signs with its own header; newer versions also send GitHub's. Either
-    // is accepted so the same connection keeps working across an upgrade.
     const own = headers.get("x-gitea-signature");
     if (own) return sameSecret(own, hmacHex(secret, rawBody)) ? "ok" : "bad";
     const gh = headers.get("x-hub-signature-256");
@@ -143,8 +140,6 @@ export const gitea: GitProviderApi = {
     };
     const repoFullName = p.repository?.full_name ?? "";
     if (!repoFullName || !p.ref) return [];
-    // Gitea's push payload is GitHub-shaped down to the field names, so the
-    // GitHub parser is the parser.
     return [
       {
         event: parsePushEvent(p),

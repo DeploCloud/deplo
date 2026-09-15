@@ -74,7 +74,6 @@ export function RedeployButton({
         onClick={redeploy}
         disabled={pending}
       >
-        {/* The house spinner, not a spinning rocket. */}
         {pending ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (

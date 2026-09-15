@@ -32,10 +32,8 @@ import { titleClass } from "@/components/shared/page-header";
 
 const MIN_RAIL_SIZE = 4;
 const RAIL_LIMIT = 12;
-// The A-to-Z grid opens on this many: the whole catalogue is 380+ cards.
 const GRID_LIMIT = 12;
 
-// slug → what its logo needs; absent when the logo asked for neither.
 type Accents = Record<string, LogoAccent>;
 
 interface Category {
@@ -54,7 +52,6 @@ export function TemplateStore({
   initialCategory,
 }: {
   templates: StoreTemplate[];
-  // A promise because reading it decodes every logo, and cards painted uncoloured first read as broken.
   accents: Promise<Accents>;
   canDeploy: boolean;
   placement?: OverviewPlacement | null;
@@ -77,12 +74,10 @@ export function TemplateStore({
     [placement],
   );
 
-  // The filter lives in the URL so coming back from a template's page restores it; debounced, or every keystroke is a history entry.
   const categoryRef = React.useRef(category);
   React.useEffect(() => {
     categoryRef.current = category;
   }, [category]);
-  // Guarded on a real keystroke: on mount `q` already matches the URL, and rewriting it costs a server render on every visit.
   const typed = React.useRef(false);
   React.useEffect(() => {
     if (!typed.current) return;
@@ -101,7 +96,6 @@ export function TemplateStore({
     [href, q, router],
   );
 
-  // Derived from the entries rather than fetched, so a chip can never offer an empty filter.
   const categories = React.useMemo<Category[]>(() => {
     const seen = new Map<string, Category>();
     for (const t of templates) {
@@ -195,7 +189,6 @@ function TemplateRefreshButton() {
   );
 }
 
-// Split out purely to be the `<Suspense>` child, so the search field stays usable while the accents stream.
 function StoreResults({
   templates,
   accents: pending,
@@ -239,7 +232,6 @@ function StoreResults({
   );
 
   const browsing = !query && !category;
-  // A card keeps the drill-in it was opened from, so the wizard two pages later still creates the App in that folder.
   const scope = templatesHref(placement).split("?")[1] ?? "";
   const cardHref = (slug: string) =>
     scope ? `/templates/${slug}?${scope}` : `/templates/${slug}`;

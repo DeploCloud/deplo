@@ -1,14 +1,11 @@
 import type { TokenTeam } from "@/lib/data/tokens/reach";
 
-// `revokeToken` deletes the credential everywhere, so the sentence never promises a survivor.
 interface RevokeCopyInput {
-  // Every team the credential reaches, named. Empty when it is not scoped.
   teams: TokenTeam[];
   activeTeamId: string;
   scoped: boolean;
 }
 
-// joinNames - "Acme", "Acme and Beta", "Acme, Beta and Gamma".
 export function joinNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;

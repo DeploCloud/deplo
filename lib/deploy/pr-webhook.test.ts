@@ -77,7 +77,6 @@ test("a payload with no pull request is refused rather than guessed at", () => {
 });
 
 test("a head in another repository is a fork, whatever GitHub's fork flag says", () => {
-  // An unrelated repo in the same org reports `fork: false` and is every bit as untrusted.
   const ev = parsePullRequestEvent(
     payload({
       head: { ref: "patch", sha: "d3", repo: { full_name: "mallory/blog" } },
@@ -198,7 +197,6 @@ test("the label filter: a pull request must carry one of the app's labels", () =
   )!;
   assert.deepEqual(previewIntent(c, one), { kind: "deploy" });
 
-  // GitHub labels are case-insensitive and so is the filter.
   const shouty = parsePullRequestEvent(
     payload({ labels: [{ name: "PREVIEW" }] }),
   )!;
@@ -250,7 +248,6 @@ test("build drafts is opt-in, and only changes the draft answer", () => {
 test("auto-deploy off records a new commit without building it", () => {
   const c = cfg({ autoDeploy: false });
   const push = parsePullRequestEvent(payload({}, "synchronize"))!;
-  // Never `ignore`: a fork's approval has to be re-asked for the commit nobody reviewed.
   assert.deepEqual(previewIntent(c, push), { kind: "sync" });
   for (const action of ["opened", "reopened", "ready_for_review"]) {
     const ev = parsePullRequestEvent(payload({}, action))!;

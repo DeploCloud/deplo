@@ -65,10 +65,8 @@ import { sourceServices, type SourceService } from "./source-services";
 
 export interface MoveInput extends ConnectInput {
   runId: string;
-  /** The source service to cut over. Its volumes are DERIVED, never passed in. */
   sourceKind: string;
   sourceId: string;
-  /** Bytes as they cross, for a caller that shows progress while this runs. */
   onBytes?: OnBytes;
 }
 
@@ -76,20 +74,15 @@ export interface DataMoveResult {
   moved: number;
   failed: number;
   notes: string[];
-  /** The source machine stopped answering PART WAY THROUGH - a gRPC UNAVAILABLE,
-   *  which is a connection that died, not a volume that could not be read. */
   sourceGone: boolean;
 }
 
-/** The copy each run currently has in flight, so a Stop can reach into it. */
 const inFlightCopies = new Map<string, AbortController>();
 
-/** Cut the copy this run has open, if it has one. Safe to call when it has not. */
 export function abortRunCopy(runId: string): void {
   inFlightCopies.get(runId)?.abort();
 }
 
-/** Write down the stop the copy just performed, because it was DELIBERATE. */
 async function recordStoppedForCopy(
   landed: Landed,
   teamId: string,
@@ -104,8 +97,6 @@ async function recordStoppedForCopy(
           eq(databasesTable.teamId, teamId),
         ),
       );
-    // The status badge holds an open subscription; without this it keeps the
-    // snapshot it opened with until the page is reloaded.
     publishDatabaseChanged(landed.targetId);
     return;
   }
@@ -117,11 +108,6 @@ async function recordStoppedForCopy(
     );
 }
 
-/**
- * The one shape every pre-copy refusal takes: say it in the run report, mark the
- * target so a deploy refuses to start on data that never arrived, and answer the
- * caller. Nothing has been stopped or written when one of these fires.
- */
 function refusalFor(base: {
   runId: string;
   teamId: string;
@@ -164,10 +150,6 @@ function refusalFor(base: {
   };
 }
 
-/**
- * Cut one service's data over: stop it on the source panel, then copy every
- * paired volume into the app or database that was imported from it.
- */
 export async function moveMigrationServiceData(
   input: MoveInput,
 ): Promise<DataMoveResult> {
@@ -180,8 +162,6 @@ async function runMoveMigrationServiceData(
   const { teamId } = await assertImportGate();
   const c = await credentialFor(input);
   const panel = sourceClient(c).displayName;
-  // The run log resolves `{panel}` in `Report.add`; what this RETURNS goes to a
-  // screen instead (the recopy dialog), so it has to be resolved here too.
   const saidHere = (text: string) => withPanel(text, panel);
   if (!(await ownRun(input.runId, teamId)))
     throw new Error("That import run does not belong to this team.");
@@ -190,8 +170,6 @@ async function runMoveMigrationServiceData(
     (s) => s.kind === input.sourceKind && s.id === input.sourceId,
   );
   if (!svc) {
-    // The listing drops a service whose detail call failed, which is not the same
-    // fact as "it is gone" - a panel restarting answers that way for a moment.
     const stumbled = await sourceClient(c)
       .getService(input.sourceKind, input.sourceId)
       .catch(() => null);
@@ -210,9 +188,6 @@ async function runMoveMigrationServiceData(
       `This import did not create anything for ${svc.name}, so there is nothing here to copy its data into. Import its configuration first.`,
     );
 
-  // The target's own gate. A database has no node dimension, so it stays team-wide
-  // and answers NOT FOUND to a narrowed principal rather than confirming the id
-  // exists - the rule `requireBackupCapability` states for the same reason.
   if (landed.targetKind === "app") {
     await requireAppCapability(landed.targetId, "restore_backups");
   } else {
@@ -220,7 +195,6 @@ async function runMoveMigrationServiceData(
     await requireCapability("restore_backups");
   }
 
-  // Which Deplo server holds the source volumes.
   const sourceServerId = await resolveSourceServer(c, teamId, svc.serverId);
 
   const state = await sourceClient(c).serviceRuntime(svc);
@@ -240,14 +214,10 @@ async function runMoveMigrationServiceData(
     saidHere,
   });
 
-  // A bind mount's bytes sit in a plain host directory, so copying one reads and
-  // writes an arbitrary path on two machines.
   const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
   const bindOwners = binds.length
     ? await hostPathOwners(landed.targetServerId, landed.targetId, teamId)
     : [];
-  // One nothing here mounts. Silent, this read as a stack that came across whole,
-  // with an empty directory inside it.
   for (const m of state.hostMounts)
     if (
       isDataHostPath(m.hostPath) &&
@@ -258,9 +228,6 @@ async function runMoveMigrationServiceData(
         `${m.hostPath} is mounted at ${m.mountPath} on {panel}, but nothing of ${landed.targetName} mounts that path here - what is in it was not copied.`,
       );
   notes.push(...unfilledStackBinds(landed, binds));
-  // A `./x` bind is Deplo's own stack directory on both sides, so there is no host
-  // path anybody typed to gate - and only off a machine that hosts nothing else
-  // (a migration source, ADR-0025), since a fleet host's paths are other tenants'.
   const sourceHostsNothing = Boolean(
     (await getServerById(sourceServerId))?.importOnly,
   );
@@ -269,14 +236,10 @@ async function runMoveMigrationServiceData(
     ((await isInstanceAdmin()) && (await canMountHostVolumes()));
 
   if (paired.value.length === 0 && binds.length === 0) {
-    // Nothing to copy means nothing is stopped either: a cutover that would move
-    // no bytes has no business taking the source down.
     await appendRunItem(input.runId, panel, {
       path,
       sourceKind: input.sourceKind,
       sourceName: svc.name,
-      // "Deplo could not find out" is a decision for a person, not a clean skip -
-      // see ServiceRuntime.undetermined.
       outcome: state.undetermined ? "manual" : "skipped",
       targetKind: landed.targetKind,
       targetId: landed.targetId,
@@ -293,12 +256,7 @@ async function runMoveMigrationServiceData(
     };
   }
 
-  // Everything below this point either stops something or writes something, and
-  // `stopService` a few lines down is the point of no return. The machine that
-  // holds the bytes has to answer FIRST - see `sourceAgentReachable`.
   if (!(await sourceAgentReachable(sourceServerId))) {
-    // Nothing was stopped and nothing was copied, and every other service on
-    // this machine is about to hit the same wall - so it counts as gone.
     return refuse({
       message: UNREACHABLE_SOURCE_AGENT,
       reason: `Deplo could not reach the machine ${svc.name}'s data is on, so it was never copied`,
@@ -307,10 +265,6 @@ async function runMoveMigrationServiceData(
     });
   }
 
-  // ...and it has to HOLD the bytes. Deplo knows the exact volume names here, so
-  // asking costs one RPC and answers the question the stop below cannot be taken
-  // back from: a service stopped on the source panel whose volumes live on a
-  // different machine is the old platform down AND an empty app here.
   if (state.running && (binds.length === 0 || !mayCopyHostPaths)) {
     const wanted = paired.value.map((p) => p.sourceVolume);
     const present = await volumesOnHost(sourceServerId, wanted);
@@ -324,9 +278,6 @@ async function runMoveMigrationServiceData(
     }
   }
 
-  // A database is provisioned in the BACKGROUND by the import (`createDatabase`
-  // floats it), so at this point its first container may still be running `initdb`
-  // into the very volume about to be replaced.
   if (landed.targetKind === "database") {
     const settled = await waitForProvision(landed.targetId, teamId);
     if (!settled)
@@ -336,14 +287,7 @@ async function runMoveMigrationServiceData(
       });
   }
 
-  // The point of no return, and what makes the copy trustworthy - EXCEPT for a
-  // service the panel will not stop because it was never deployed, which answers
-  // 500 to its own stop. Nothing is running, so nothing is moving under the
-  // copy; the run has no business ending over it.
   let stoppedThere = false;
-  // The way back up over there, for a service Deplo stopped and then copied
-  // nothing from: "stopped on the old panel, empty on the new one" is the outcome
-  // this whole step exists to prevent.
   const startAgainThere = async (): Promise<string> => {
     try {
       await sourceClient(c).startService(input.sourceKind, input.sourceId);
@@ -367,8 +311,6 @@ async function runMoveMigrationServiceData(
   } catch (e) {
     const why = e instanceof Error ? e.message : `${panel} refused`;
     if (state.running) {
-      // The panel TOOK the stop and only its status lagged: Deplo did stop it, so
-      // it is written down (a cancel starts it again) and started again now.
       let undone = "";
       if (e instanceof StopAcceptedError) {
         await recordSourceStopped(
@@ -387,20 +329,13 @@ async function runMoveMigrationServiceData(
       `{panel} would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was read as it is.`,
     );
   }
-  // Only a stop that HAPPENED is written down: backing out of a takeover starts
-  // these again, and starting something the operator had stopped themselves
-  // would be this feature undoing their decision.
   if (stoppedThere)
     await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
 
-  // Stop the destination too: untarring into a volume a container is writing to is
-  // the same mistake in the other direction.
   try {
     await stopStackOn(landed.targetServerId, landed.targetSlug);
     await recordStoppedForCopy(landed, teamId);
-  } catch {
-    /* nothing of ours is running there yet */
-  }
+  } catch {}
 
   const tally = newCopyTally();
   const source = await connectAgent(sourceServerId);
@@ -435,10 +370,6 @@ async function runMoveMigrationServiceData(
     if (dest !== source) dest.close();
   }
 
-  // A database is brought back up and CHECKED - the claim anyone cares about is
-  // "the engine reads them", not "the bytes are in the volume". Brought up on both
-  // sides even when NOTHING was copied: the copy stopped it, and an empty service
-  // is no reason to leave somebody's database down.
   if (
     stoppedThere &&
     state.running &&
@@ -447,9 +378,6 @@ async function runMoveMigrationServiceData(
   )
     notes.push(await startAgainThere());
 
-  // ...but never on a volume that is known to hold NOTHING of the source's: a
-  // running source whose data is elsewhere would come up as a fresh engine that
-  // apps then write into, and the recopy later wipes those writes.
   if (
     landed.targetKind === "database" &&
     tally.failed === 0 &&
@@ -472,22 +400,15 @@ async function runMoveMigrationServiceData(
     });
     if (!verdict.ok) {
       tally.failed++;
-      // Only a copy that MOVED bytes can have lost any. A database that will not
-      // come back up on the volume Deplo just made is a start problem, and saying
-      // "its data did not come across" would send people looking for data.
       if (tally.moved > 0) tally.lost.push(verdict.message);
     }
   }
 
-  // The verdict on the whole service, written where a deploy will read it.
   const marker = { kind: landed.targetKind, id: landed.targetId } as const;
   if (tally.lost.length > 0)
     await markDataCopyFailed(marker, tally.lost.join(" | "));
   else if (tally.failed === 0) await clearDataCopyError(marker);
 
-  // The app half is left stopped on purpose, and the report has to say which verb
-  // starts it again - a user staring at a stopped app wondering whether the move
-  // broke it is a failure of the report, not of the move.
   if (tally.moved > 0 && landed.targetKind === "app")
     notes.push(
       `${landed.targetName} is stopped on both sides. Press Deploy when the traffic should follow the data.`,
@@ -523,8 +444,6 @@ async function runMoveMigrationServiceData(
     landed.targetKind === "database" ? landed.targetId : null,
   );
 
-  // What the caller and the summary read: data that should have arrived and did
-  // not counts, whether the copy threw or the volume was simply not there.
   return {
     moved: tally.moved,
     failed: tally.failed + tally.notCopied,

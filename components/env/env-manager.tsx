@@ -78,7 +78,6 @@ export function EnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
 
-  // The vars this app opted into (ADR-0012) plus the ones injected with no opt-in (ADR-0027).
   const appliedShared = React.useMemo(
     () => sharedVars.filter((v) => v.linked || v.autoInject),
     [sharedVars],
@@ -243,7 +242,6 @@ export function EnvManager({
                           className="gap-1 text-[10px] font-normal whitespace-nowrap"
                         >
                           <Share2 className="size-3" />
-                          {/* Another team's variable says whose it is. */}
                           {row.linked &&
                           detailsById.get(row.id)?.editable !== false
                             ? "Shared"
@@ -274,7 +272,6 @@ export function EnvManager({
                       <TimeAgo at={row.updatedAt} />
                     </TableCell>
                     <TableCell>
-                      {/* A shared row carries no creator. */}
                       <EnvAuthorCell author={row.updatedBy ?? null} />
                     </TableCell>
                     <TableCell className="text-right">
@@ -345,7 +342,6 @@ export function EnvManager({
   );
 }
 
-// SharedRowActions - the opt-in / opt-out actions for a shared row on one app's table.
 function SharedRowActions({
   row,
   appId,
@@ -360,7 +356,6 @@ function SharedRowActions({
   onRestored: () => void;
 }) {
   const router = useRouter();
-  // Unlinking does not take it out of the container: it keeps arriving with no link (ADR-0027).
   const keepsArriving = row.autoInject;
 
   function removeFromApp() {
@@ -418,7 +413,6 @@ function SharedRowActions({
   );
 }
 
-// LooksLikeSecretBadge - a plain variable whose name reads like a credential.
 function LooksLikeSecretBadge() {
   return (
     <SimpleTooltip content="This name usually holds a credential. Edit it and turn on Secret: the value is then write-only and nothing shows it again.">

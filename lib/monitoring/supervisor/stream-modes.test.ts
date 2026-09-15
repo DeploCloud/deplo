@@ -56,8 +56,7 @@ test("a server with an enrolled agent runs in STREAM mode and its frames land in
 });
 
 test("a server whose agent predates the stream demotes to POLL alone - the fleet keeps streaming", async () => {
-  // PER SERVER on purpose: a fleet updates one host at a time, so one old agent must not take its neighbours down.
-  await disableSaving(h.db); // the poll fallback then has nothing to dial
+  await disableSaving(h.db);
   await seedEnrolledServer(h.db, SRV_A, "2026-01-01T00:00:00.000Z");
   await seedEnrolledServer(h.db, SRV_B, "2026-01-01T00:00:01.000Z");
 

@@ -18,13 +18,8 @@ import { anyBackupCapableServer, downloadTargetFor } from "./target-lookup";
 import { requireBackupCapability } from "./target-access";
 import type { BackupRun } from "../../types/backup";
 
-// downloadBackupArtifact - stream one backup artifact out, decrypted, for the
-// download route. The caller MUST call `close()` once the response is finished -
-// the agent connection stays open behind it.
 export async function downloadBackupArtifact(runId: string): Promise<{
   filename: string;
-  // The exact bytes the stream will produce, or null when the run never recorded
-  // it: advertising it would leave the browser waiting for bytes never coming.
   sizeBytes: number | null;
   chunks: AsyncGenerator<Buffer, void, unknown>;
   close: () => void;
@@ -47,8 +42,6 @@ export async function downloadBackupArtifact(runId: string): Promise<{
       "This backup did not complete successfully and cannot be downloaded",
     );
   await requireBackupCapability(run, "restore_backups");
-  // An app archive carries the app's variables DECRYPTED (its snapshot), so
-  // handing the bytes over is a reveal, and takes that capability too.
   if (run.targetKind === "app" && run.appId)
     await requireAppCapability(run.appId, "reveal_secrets");
 
@@ -59,8 +52,6 @@ export async function downloadBackupArtifact(runId: string): Promise<{
   const target = await downloadTargetFor(run, teamId);
   const label = target.label;
 
-  // The destination decides WHICH agent fetches it: its own host for a store, the
-  // workload's for a bucket.
   const via =
     destinationServerId(creds.destination, target.serverId ?? "") ||
     (await anyBackupCapableServer());
@@ -75,7 +66,6 @@ export async function downloadBackupArtifact(runId: string): Promise<{
     run.sha256 ?? "",
   );
 
-  // Recorded when the stream OPENS, not when it finishes, and worded for that instant.
   await recordActivity(
     "backup",
     `Started downloading a backup of ${label}`,
@@ -92,7 +82,6 @@ export async function downloadBackupArtifact(runId: string): Promise<{
   };
 }
 
-// downloadFilename - the name the browser saves the artifact under.
 function downloadFilename(label: string, run: BackupRun): string {
   const slug =
     label

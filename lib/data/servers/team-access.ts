@@ -16,7 +16,6 @@ import { getServerById, requireAdminServer } from "./roster";
 import type { Server } from "../../types/server";
 import type { Team } from "../../types/team";
 
-// getServerTeamIds lists the team ids a non-`all_teams` server is restricted to.
 export async function getServerTeamIds(serverId: string): Promise<string[]> {
   const rows = await getDb()
     .select({ teamId: serverTeamsTable.teamId })
@@ -25,7 +24,6 @@ export async function getServerTeamIds(serverId: string): Promise<string[]> {
   return rows.map((r) => r.teamId);
 }
 
-// getServerTeams lists the teams a server is granted to, with names.
 export async function getServerTeams(serverId: string): Promise<Team[]> {
   const rows = await getDb()
     .select({
@@ -50,7 +48,6 @@ export async function getServerTeams(serverId: string): Promise<Team[]> {
   }));
 }
 
-// listAllServerTeamIds returns every server's granted team ids in one query.
 export async function listAllServerTeamIds(): Promise<Map<string, string[]>> {
   const rows = await getDb()
     .select({
@@ -101,9 +98,6 @@ async function teamNames(
   return rows.map((r) => r.name);
 }
 
-// assertServerAccessibleTx re-asserts INSIDE a write transaction that a server is
-// still targetable by a team, SHARE-locking the row so it serializes against a
-// concurrent setServerTeams restrict (which takes the row's UPDATE lock).
 export async function assertServerAccessibleTx(
   tx: DbTx,
   serverId: string,
@@ -131,11 +125,9 @@ export async function assertServerAccessibleTx(
 
 export interface SetServerTeamsInput {
   allTeams: boolean;
-  // The granted teams when `allTeams` is false (ignored when it is true).
   teamIds: string[];
 }
 
-// setServerTeams sets a server's team access. Widening to `all_teams` never blocks.
 export async function setServerTeams(
   id: string,
   input: SetServerTeamsInput,
@@ -147,9 +139,6 @@ export async function setServerTeams(
   const selected = new Set(teamIds);
 
   await getDb().transaction(async (tx) => {
-    // FOR UPDATE so a concurrent create that SHARE-locks it
-    // (assertServerAccessibleTx) serializes against this restrict: the workload
-    // check below then sees every workload committed before we won the lock.
     const locked = await tx
       .select({ id: serversTable.id })
       .from(serversTable)
@@ -158,7 +147,6 @@ export async function setServerTeams(
     if (!locked[0]) throw new Error("Server not found");
 
     if (!allTeams) {
-      // The chosen teams must exist (clean message instead of a raw FK error).
       if (teamIds.length > 0) {
         const known = await tx
           .select({ id: teamsTable.id })
@@ -167,7 +155,6 @@ export async function setServerTeams(
         if (known.length !== teamIds.length)
           throw new Error("One or more selected teams no longer exist.");
       }
-      // A backup destination on its disk counts: its runs keep writing here.
       const using = await teamsWithWorkloadsOnServer(id, tx);
       const storing = (
         await tx

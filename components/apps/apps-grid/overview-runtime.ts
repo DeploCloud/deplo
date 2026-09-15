@@ -96,7 +96,6 @@ export function useOverviewAppStates(
           );
         }
       } catch {
-        // Keep the last valid answer during a temporary GraphQL failure.
       } finally {
         inFlight = false;
         request = undefined;

@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Both the route's loading.tsx and the store's `<Suspense>` render these: a different shape makes the page jump on arrival.
 export function StoreChipsSkeleton() {
   return (
     <div className="flex gap-2 overflow-hidden">

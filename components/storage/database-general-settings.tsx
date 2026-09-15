@@ -27,11 +27,9 @@ import { formatBytes } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-// DatabaseGeneralSettings - name and logo, one card, like an App's General.
 export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
   const [name, setName] = React.useState(db.name);
-  // Null ⇒ no uploaded logo, so the UI shows the ENGINE's real brand mark.
   const [logo, setLogo] = React.useState<string | null>(db.logo);
   const [picked, setPicked] = React.useState<File | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
@@ -76,7 +74,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
     });
   }
 
-  // A format a canvas cannot handle skips the crop and is stored exactly as uploaded.
   async function pickLogo(file: File) {
     if (
       !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
@@ -111,7 +108,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
     <>
       <Card>
         <CardContent className="space-y-6 pt-6">
-          {/* Logo */}
           <div className="space-y-3">
             <FieldLabel
               info={`Shown for this database on the dashboard. Defaults to the ${engine} logo - upload an image to use your own`}
@@ -174,7 +170,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
             />
           </div>
 
-          {/* Name */}
           <div className="max-w-md space-y-2 border-t border-border pt-6">
             <Label htmlFor="db-name">Database name</Label>
             <Input
@@ -202,7 +197,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
         </CardFooter>
       </Card>
 
-      {/* The logo saves on pick; only the name can be left unsaved. */}
       <UnsavedChangesGuard when={nameDirty} />
     </>
   );

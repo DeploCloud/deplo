@@ -32,7 +32,6 @@ import {
 import { allTeamIds } from "./server-teams";
 import type { GitProviderId } from "../types/git";
 
-// Warn this far ahead of a certificate expiring.
 const CERT_WARN_DAYS = 21;
 
 export async function runMaintenanceSweep(): Promise<void> {
@@ -41,21 +40,18 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("domain dns", sweepDomainDns);
   await settle("git tokens", checkGitConnections);
   await settle("github app access", checkGithubAppAccess);
-  // Closed rate-limit windows already read as absent; this only sweeps the dead rows.
   await settle("rate limits", sweepRateLimits);
   await settle("migration marks", sweepFinishedMigrationMarks);
   await settle("oauth clients", sweepAbandonedOauthClients);
   await settle("expired challenges", sweepExpiredVerifications);
 }
 
-// Better Auth never comes back for an unfinished challenge and ships no pruning of its own.
 async function sweepExpiredVerifications(): Promise<void> {
   await getDb()
     .delete(verification)
     .where(lt(verification.expiresAt, new Date()));
 }
 
-// RFC 7591 registration has to stay open, so anyone who can reach the instance creates rows here.
 async function sweepAbandonedOauthClients(): Promise<void> {
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   await getDb()
@@ -88,7 +84,6 @@ async function checkDeploUpdate(): Promise<void> {
   if (teams.length === 0) return;
   await dispatchToTeams(teams, {
     key: "deplo_update_available",
-    // The VERSION is the dedupe state, so a fresh release re-fires instead of waiting out the nag.
     dedupe: { id: "deplo-update", state: info.latest },
     title: `Deplo ${info.latest} is available`,
     body: `This instance is on ${info.current}.`,
@@ -96,12 +91,10 @@ async function checkDeploUpdate(): Promise<void> {
   });
 }
 
-// Let's Encrypt renews itself at 30 days, so anything inside three weeks is a manual certificate.
 async function checkCustomCertificates(): Promise<void> {
   const rows = await getDb()
     .select({ id: serversTable.id, name: serversTable.name })
     .from(serversTable)
-    // A migration source has no Traefik stack of ours to read: only ever a miss.
     .where(
       and(
         isNotNull(serversTable.agentCertPem),
@@ -118,7 +111,6 @@ async function checkCustomCertificates(): Promise<void> {
         conn.close();
       }
     } catch {
-      // An unreachable host is already the subject of its own alert.
       continue;
     }
     for (const cert of describeStackCertificates(yaml)) {
@@ -154,7 +146,6 @@ async function checkGitConnections(): Promise<void> {
       .set(patch)
       .where(eq(gitConnectionsTable.id, row.id));
 
-    // A token can be perfectly valid and still be missing a scope, so this runs either way.
     raiseMissingAccess(
       row.teamId,
       `gitconn:${row.id}`,
@@ -178,7 +169,6 @@ async function checkGitConnections(): Promise<void> {
     dispatchAlert({
       teamId: row.teamId,
       key: "git_connection_failing",
-      // The state is what changed, so expiring to revoked re-fires instead of being swallowed.
       dedupe: {
         id: `gitconn:${row.id}`,
         state: patch.health === "failing" ? "failing" : "expiring",
@@ -196,7 +186,6 @@ async function checkGitConnections(): Promise<void> {
   }
 }
 
-// The pull-request half is only raised for a team that uses previews somewhere.
 async function checkGithubAppAccess(): Promise<void> {
   const db = getDb();
   const apps = await db
@@ -216,7 +205,6 @@ async function checkGithubAppAccess(): Promise<void> {
     ).map((r) => r.teamId),
   );
   for (const app of apps) {
-    // Null is an unreachable GitHub, not a stripped App: say nothing.
     const access = await readAppAccess(app.id);
     if (!access) continue;
     raiseMissingAccess(
@@ -241,7 +229,6 @@ function raiseMissingAccess(
   dispatchAlert({
     teamId,
     key: "git_access_missing",
-    // The state is WHAT is missing, so a second permission disappearing re-fires.
     dedupe: {
       id: dedupeId,
       state: missing

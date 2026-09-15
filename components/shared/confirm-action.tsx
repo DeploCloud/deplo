@@ -67,7 +67,6 @@ export function ConfirmAction({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Routinely rendered INSIDE another dialog's <form> (a row's delete action, the `extra` slot).
     e.stopPropagation();
     handleConfirm();
   }
@@ -111,7 +110,6 @@ export function ConfirmAction({
           {extra}
           {confirmText && (
             <div className="space-y-2">
-              {/* Copy sits on the name: the next move is pasting it into the box below. */}
               <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
                 <Label
                   htmlFor={confirmInputId}
@@ -154,7 +152,6 @@ export function ConfirmAction({
               aria-busy={pending}
               aria-label={pending ? confirmLabel : undefined}
             >
-              {/* The label stays mounted while pending, so the button keeps its width. */}
               <span className="grid place-items-center">
                 <span
                   className={cn(
@@ -176,7 +173,6 @@ export function ConfirmAction({
   );
 }
 
-// ConsequenceNote - what a destructive action costs, in one concrete sentence.
 export function ConsequenceNote({ children }: { children: React.ReactNode }) {
   return (
     <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-wash p-3 text-sm text-destructive">

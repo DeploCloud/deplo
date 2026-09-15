@@ -17,7 +17,6 @@ import {
 
 const OPTIONAL = ALL_CAPABILITIES.filter((c) => c !== "view");
 
-// PermissionPicker - the permission list shared by the role and API-token editors.
 export function PermissionPicker({
   capabilities,
   onChange,
@@ -31,12 +30,10 @@ export function PermissionPicker({
   disabled?: boolean;
   hint?: string;
   scroll?: boolean;
-  // Capabilities the current scope makes meaningless: still ticked, only rendered as inert.
   muted?: { caps: Capability[]; reason: string };
 }) {
   const [query, setQuery] = React.useState("");
   const enabled = React.useMemo(() => new Set(capabilities), [capabilities]);
-  // Keyed on the CONTENTS: the caller rebuilds the array every render.
   const mutedKey = muted?.caps.join(",") ?? "";
   const silenced = React.useMemo(
     () => new Set(mutedKey ? (mutedKey.split(",") as Capability[]) : []),
@@ -137,7 +134,6 @@ export function PermissionPicker({
         <div
           className={cn(
             "space-y-3",
-            // A dvh ceiling, so a short window cannot push the dialog past its 85dvh cap.
             scroll &&
               "focus-safe-scroll max-h-[min(24rem,40dvh)] overflow-y-auto",
           )}
@@ -236,7 +232,6 @@ export function PermissionPicker({
               </section>
             );
           })}
-          {/* view - the floor, last and category-less: same row, permanently ticked. */}
           {viewShown && (
             <div className="overflow-hidden rounded-lg border border-border">
               <div className="flex items-start gap-3 px-3 py-2.5">

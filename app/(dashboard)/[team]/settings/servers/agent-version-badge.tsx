@@ -5,7 +5,6 @@ import { Package } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-// AgentVersionBadge is a plain fact, never a verdict: "Update agent" lives in the server's actions (`agentUpdateAvailable`).
 export function AgentVersionBadge({ version }: { version: string | null }) {
   if (!version) {
     return (

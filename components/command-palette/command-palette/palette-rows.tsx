@@ -10,7 +10,6 @@ import { DatabaseLogo } from "@/components/storage/database-logo";
 import type { Entry, EntryOwner } from "@/lib/command-palette/entries";
 import type { Hit } from "./search-hits";
 
-// groupBy - rows in the order they arrived, gathered under their group heading.
 export function groupBy<T extends { group: string }>(
   rows: T[],
 ): [string, T[]][] {
@@ -23,7 +22,6 @@ export function groupBy<T extends { group: string }>(
   return [...out];
 }
 
-// EntryRow - one in-bundle entry: a page, a setting, a command.
 export function EntryRow({
   entry,
   onChoose,
@@ -95,7 +93,6 @@ function BadgedMark({
   );
 }
 
-// HitRow - one search hit: an app, a database, a member, a domain.
 export function HitRow({
   hit,
   onChoose,

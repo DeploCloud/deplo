@@ -18,9 +18,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MenuAction } from "./menu-action";
 
-// BackUpMenu - every way to put data in or take it back, under one button. The
-// trigger is never disabled: a member who cannot act still gets to see what
-// exists and which permission to ask for.
 export function BackUpMenu({
   canManage,
   canRestore,
@@ -80,8 +77,6 @@ export function BackUpMenu({
           </DropdownMenuItem>
         </MenuAction>
         <DropdownMenuSeparator />
-        {/* Deliberately reachable even when there is no destination at all: this
-            is the one restore that needs nothing this instance remembers. */}
         <MenuAction
           disabled={!canRestore}
           tooltip={

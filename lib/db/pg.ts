@@ -21,7 +21,6 @@ export function isPostgresEnabled(): boolean {
   return Boolean(databaseUrl());
 }
 
-// isTestEnv is true when running under `node --test` (NODE_TEST_CONTEXT).
 export function isTestEnv(): boolean {
   return Boolean(process.env.NODE_TEST_CONTEXT);
 }

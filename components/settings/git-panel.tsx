@@ -55,7 +55,6 @@ import type { GitProviderChoice } from "@/lib/types/git";
 
 type AppAccess = Record<string, GithubAppAccessDTO>;
 
-// GitPanel - the Git settings page: hosts grid, empty state.
 export function GitPanel({
   githubApps,
   connections,
@@ -153,7 +152,6 @@ export function GitPanel({
         </div>
       )}
 
-      {/* Mounted only while open, so fields seed from their initial state. */}
       {connectProvider && (
         <ConnectGitProviderDialog
           provider={connectProvider}
@@ -250,8 +248,6 @@ function ConnectMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          {/* Every host wears the same mark it wears on its card below. */}
-          {/* The two GitHub owners live at different addresses, so it is picked here. */}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <GitProviderMark provider="github" className="size-5" />
@@ -319,7 +315,6 @@ function HostCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            {/* Rendered here so no host ends up without a way back to its settings. */}
             <DropdownMenuItem asChild>
               <a href={href} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="size-4" />
@@ -358,7 +353,6 @@ function GithubAppCard({
         </DropdownMenuItem>
       }
     >
-      {/* A missing entry means GitHub could not be asked - no badge. */}
       {access && access.missing.length > 0 && (
         <GitAccessNotice
           className="mt-3"
@@ -409,7 +403,6 @@ function ConnectionCard({
       }
       menu={
         <>
-          {/* Only a provider with an API can be asked whether its token works. */}
           {conn.hasApi && (
             <DropdownMenuItem onSelect={onTest} disabled={testing}>
               {testing ? (
@@ -466,7 +459,6 @@ function ConnectionCard({
               Token expires {conn.tokenExpiresAt.slice(0, 10)}
             </Badge>
           )}
-          {/* An address inside the network is an instance-admin exception. */}
           {conn.allowPrivateEndpoint && (
             <Badge variant="muted">On your own network</Badge>
           )}

@@ -6,7 +6,6 @@ import { stopApp, startApp, rebuildApp } from "@/lib/data/apps/lifecycle";
 import { transferAppToTeam } from "@/lib/data/app-transfer";
 import { reloadApp as reapplyRouting } from "@/lib/data/deployments/stack-actions";
 
-// Redeploy is its own mutation: it is a different permission (`deploy_apps`).
 const BulkAppActionEnum = builder.enumType("BulkAppAction", {
   description:
     "A lifecycle action run over every app in a folder or project: start, " +
@@ -72,9 +71,6 @@ builder.mutationFields((t) => ({
   }),
   transferAppToTeam: t.field({
     type: "Boolean",
-    // `deploy` is the introspectable floor; the data layer additionally demands
-    // `manage_env` here (the app carries its encrypted variables across a
-    // tenancy boundary) and `deploy` in the DESTINATION team.
     authScopes: { capability: "move_apps" },
     description:
       "Hand this app over to another team the viewer belongs to. The app keeps " +

@@ -63,7 +63,6 @@ const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
 
 test("mintRegistrationLink refuses an owner role for an existing-teams assignment", async () => {
   await seedIdentity(db);
-  // The server mirrors the UI's member/viewer-only restriction: an injected owner would be unremovable.
   await assert.rejects(
     () =>
       asOwner(() =>
@@ -80,7 +79,6 @@ test("mintRegistrationLink refuses an owner role for an existing-teams assignmen
 
 const HOUR_MS = 3_600_000;
 
-// pglite's transaction handle differs from the production `DbTx` only in the driver HKT.
 const asDbTx = (tx: unknown): DbTx => tx as DbTx;
 
 const linkRow = (id: string, rawToken: string, hoursFromNow: number) => ({
@@ -133,7 +131,6 @@ test("mintRegistrationLink keeps the token readable back, and the hash still mat
   );
   const token = decryptSecret(row!.tokenEnc!);
   assert.notEqual(token, "", "and it decrypts");
-  // The HASH is what /register looks the link up by: a token that hashes elsewhere is a different link.
   assert.equal(sha256Hex(token), row!.tokenHash);
 });
 
@@ -147,12 +144,10 @@ test("revealRegistrationLink refuses a link that can no longer be used", async (
     },
     { ...linkRow("reg_revoked", "revoked-token", 12), status: "revoked" },
     linkRow("reg_expired", "expired-token", -1),
-    // Pending and alive, but minted before token_enc existed (migration 0048).
     linkRow("reg_legacy", "legacy-token", 12),
   ]);
 
   await asOwner(async () => {
-    // Each check runs BEFORE the token is decrypted, so none of them leaks a URL.
     await assert.rejects(
       () => revealRegistrationLink("reg_used"),
       /already used by @bob/,
@@ -250,7 +245,6 @@ test("registration-link expiry is enforced on read and at consume", async () => 
   assert.equal((await getRegistrationLinkInfo(fresh)).valid, true);
   assert.equal((await getRegistrationLinkInfo(stale)).valid, false);
 
-  // An expired row keeps status='pending', so the conditional consume UPDATE is what refuses it.
   await assert.rejects(
     () =>
       db.transaction((tx) =>
@@ -430,7 +424,6 @@ test("listMembers counts each member's tokens and agents reaching the team, noth
     assert.equal(byId.get(USER_1)!.tokenCount, 2);
     assert.equal(byId.get(USER_1)!.agentCount, 1);
     assert.equal(byId.get("m1")!.tokenCount, 0);
-    // The DTO carries counts only: no id, prefix or name of a credential.
     const dump = JSON.stringify(byId.get(USER_1));
     assert.ok(!dump.includes("deplo_"), dump);
     assert.ok(!dump.includes("tok_"), dump);
@@ -638,7 +631,6 @@ test("updateUserAdmin can promote a non-admin even when they aren't yet in the a
   assert.equal(promoted.isInstanceAdmin, true);
 });
 
-// The picker is bounded by the actor's own reach: it must never list every account on the instance.
 test("searchUsers offers colleagues, and a stranger only by exact username", async () => {
   await seedIdentity(db, {
     teams: [
@@ -647,7 +639,6 @@ test("searchUsers offers colleagues, and a stranger only by exact username", asy
       { id: "team_c", slug: "gamma" },
     ],
     users: [
-      // NOT an instance admin: an admin keeps the full roster on purpose.
       { id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
       {
         id: "u_colleague",

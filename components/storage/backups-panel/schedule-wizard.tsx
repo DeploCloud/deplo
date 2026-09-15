@@ -66,7 +66,6 @@ const STEP_COPY: Record<
   },
 };
 
-// ScheduleBackup - schedule a backup of THIS app or database, in two steps.
 export function ScheduleBackup({
   target,
   destinations,
@@ -77,14 +76,12 @@ export function ScheduleBackup({
   target: BackupTarget;
   destinations: Destination[];
   canTestDestinations: boolean;
-  /** Opened from the Back up menu, which carries the gate; no trigger here. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [step, setStep] = React.useState<StepId>("destination");
-  // The name follows the frequency until the user types their own.
   const [nameTouched, setNameTouched] = React.useState(false);
   const [fields, setFields] = React.useState<ScheduleFields>(() => ({
     name: suggestScheduleName(DEFAULT_SCHEDULE),
@@ -102,12 +99,9 @@ export function ScheduleBackup({
 
   function close() {
     onOpenChange(false);
-    // Deferred so the close animation does not play over a form that has
-    // already snapped back to step one.
     setTimeout(() => setStep("destination"), 200);
   }
 
-  /** Enter runs whatever the current step's primary button does. */
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (pending || !complete[step]) return;
@@ -116,8 +110,6 @@ export function ScheduleBackup({
   }
 
   function submit() {
-    // Closes on the click and writes behind it; a refusal reopens the wizard
-    // with the destination and schedule still filled in.
     onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction(
@@ -151,8 +143,6 @@ export function ScheduleBackup({
       open={open}
       onOpenChange={(o) => (o ? onOpenChange(true) : close())}
     >
-      {/* `selfManaged`: the step box below animates its own height and has to be
-          free to overflow, so a combobox menu can hang past its field. */}
       <DialogContent selfManaged className="sm:max-w-lg">
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Schedule a backup</DialogTitle>

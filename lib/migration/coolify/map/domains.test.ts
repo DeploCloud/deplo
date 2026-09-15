@@ -15,14 +15,11 @@ test("parseCoolifyFqdns reads the list, its ports and its paths", () => {
       ["old.acme.com", null, "/v1", false, "none"],
     ],
   );
-  // Deplo strips no prefix of its own, because Coolify adds no middleware to undo.
   assert.equal(d[2].stripPath, false);
-  // Every one of them SAID which scheme it was, so there is nothing to warn about.
   assert.deepEqual(notes, []);
 });
 
 test("an address that names no scheme is not promoted to https", () => {
-  // Four one-click services arrived on letsencrypt this way, off :80, and every http link anyone had written answered 404.
   const { value: d, notes } = parseCoolifyFqdns("uptimekuma6.acme.com");
   assert.deepEqual(
     d.map((x) => [x.host, x.https, x.certificateType]),
@@ -65,7 +62,6 @@ test("parseCoolifyFqdns names the same host once", () => {
 });
 
 test("two variables for one host are merged, whichever order they arrive in", () => {
-  // Coolify keeps SERVICE_FQDN_X and SERVICE_FQDN_X_<PORT> for the same address; taking the first left linkding's domain portless and Traefik answered 502.
   const withPort = { url: "linkding.acme.com:9090", service: null, port: 9090 };
   const without = { url: "linkding.acme.com", service: null, port: null };
 
@@ -99,7 +95,6 @@ test("a scheme on either spelling is believed for the merged host", () => {
       value.map((d) => [d.host, d.port, d.https, d.certificateType]),
       [["app.acme.com", 8443, true, "letsencrypt"]],
     );
-    // One of them DID say https, so there is nothing to warn about.
     assert.deepEqual(notes, []);
   }
 });

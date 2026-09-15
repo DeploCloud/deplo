@@ -2,11 +2,6 @@ import "server-only";
 
 import type { ResourceLimits } from "../../types/container";
 
-/**
- * The camelCase drizzle properties of the flat `resource_*` columns - declared
- * identically on `apps` AND `databases`, so both row shapes share this mapping
- * (`backup-rows.ts` is the databases twin).
- */
 export interface ResourceLimitsRowColumns {
   resourceMemLimitMb: number | null;
   resourceMemReservationMb: number | null;
@@ -22,7 +17,6 @@ export interface ResourceLimitsRowColumns {
   resourceOomScoreAdj: number | null;
 }
 
-/** Fold the flat `resource_*` columns into a {@link ResourceLimits}, or null when every column is NULL. */
 export function assembleResources(
   row: ResourceLimitsRowColumns,
 ): ResourceLimits | null {
@@ -43,7 +37,6 @@ export function assembleResources(
   return Object.values(r).some((v) => v != null) ? r : null;
 }
 
-/** The flat `resource_*` columns for a {@link ResourceLimits} (null ⇒ every column NULL). */
 export function resourceLimitsToRow(
   r: ResourceLimits | null,
 ): ResourceLimitsRowColumns {

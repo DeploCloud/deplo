@@ -9,8 +9,6 @@ import {
 } from "./health-check-model";
 import type { HealthCheck } from "../types/container";
 
-/** The form's data model: strings in, a check (or nothing) out. */
-
 const SAVED: HealthCheck = {
   type: "http",
   path: "/healthz",
@@ -87,8 +85,6 @@ test("switching to a command drops the http fields, and back again", () => {
   );
 });
 
-/* ---- what will not save --------------------------------------------- */
-
 test("a command check needs a command", () => {
   assert.match(
     healthCheckProblem({ ...SAVED, type: "command", command: null }) ?? "",
@@ -103,8 +99,6 @@ test("a path has to be a path", () => {
   );
 });
 
-// A timeout at or above the interval means one check is still running when the
-// next is due, and the container never settles either way.
 test("the timeout has to be shorter than the interval", () => {
   assert.match(
     healthCheckProblem({ ...SAVED, intervalS: 5, timeoutS: 5 }) ?? "",

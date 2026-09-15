@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 
 const ALL_TIME = "All time";
 
-// `Date` -> `YYYY-MM-DD`, read in UTC to match how the feed buckets months.
 function toDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -33,7 +32,6 @@ function summary(params: ActivityParams): string {
   return ALL_TIME;
 }
 
-// When the events happened: the preset windows, plus a calendar for the one nobody presets.
 export function DateRangeFilter({
   params,
   onChange,
@@ -98,7 +96,6 @@ export function DateRangeFilter({
           defaultMonth={selected?.from}
           selected={selected}
           disabled={{ after: new Date() }}
-          // Picking a day always leaves the presets: both lit would lie about which one is in force.
           onSelect={(next) =>
             onChange({
               range: "",

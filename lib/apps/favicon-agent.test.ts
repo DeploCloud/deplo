@@ -183,7 +183,6 @@ function fakeReader(opts: {
       used.push(`readFile:${path}`);
       const bytes = opts.files[path];
       if (!bytes) throw new Error("not found");
-      // The agent hands back a UTF-8 string plus the real byte size; they disagree when the bytes are not UTF-8.
       return {
         text: opts.withholdText ? null : bytes.toString("utf8"),
         size: bytes.length,
@@ -219,7 +218,6 @@ test("read: an SVG comes back over the text RPC, no tar", async () => {
 });
 
 test("read: an SVG that is not valid UTF-8 falls through to the tar, byte-exact", async () => {
-  // latin1 `è`: a UTF-8 round trip would rewrite it, so the length check must reject the text.
   const svg = Buffer.concat([
     Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><!-- caff'),
     Buffer.from([0xe8]),
@@ -343,7 +341,6 @@ test("served: takes the icon the page declares, over the /favicon.ico fallback",
   assert.equal(found?.mime, "image/png");
   assert.deepEqual(found?.bytes, PNG_BYTES);
   assert.deepEqual(conn.asked, ["/", "/assets/icon-192.png"]);
-  // The app is asked on its own hostname, which host authorization requires before it answers at all.
   assert.deepEqual(new Set(conn.hosts), new Set(["app.example.com"]));
 });
 

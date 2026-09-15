@@ -135,8 +135,6 @@ test("certProviderForDns: an explicit provider is never overruled", () => {
 });
 
 test("certProviderForDns: un-proxying a domain does NOT strip its certificate", () => {
-  // One-way by design: `cloudflare` is also the expert choice for a grey-clouded domain
-  // (DNS-01 via Cloudflare's API), so a status flip must not drop the origin to plain HTTP.
   assert.equal(certProviderForDns("valid", "cloudflare"), "cloudflare");
   assert.equal(certProviderForDns("misconfigured", "cloudflare"), "cloudflare");
 });

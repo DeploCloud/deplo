@@ -10,17 +10,12 @@ import {
 } from "../../db/schema/control-plane/deployments";
 import { nowIso } from "../../ids";
 
-// Destroy a preview's stack on its host and stamp `torn_down_at` on success. A
-// preview's volumes were created by, and only by, that preview; nobody asked to keep
-// their contents and nothing would ever point at them again.
 export async function teardownPreviewStack(p: {
   id: string;
   deployKey: string;
   tornDownAt: string | null;
 }): Promise<boolean> {
   if (p.tornDownAt) return true;
-  // Never built ⇒ nothing on any host. Asking the agent to `down -v` a stack with
-  // no file reports a failure, and the reaper would repeat it every hour.
   const built = await getDb()
     .select({ id: deploymentsTable.id })
     .from(deploymentsTable)
@@ -43,7 +38,6 @@ export async function teardownPreviewStack(p: {
   return ok;
 }
 
-// Nothing queued for a preview that is going down should ever start building.
 export async function cancelQueuedPreviewDeploys(
   previewId: string,
 ): Promise<void> {
@@ -58,9 +52,6 @@ export async function cancelQueuedPreviewDeploys(
     );
 }
 
-// Take a preview's stack down while its pull request stays open, keeping its key and
-// host so Redeploy brings the same URL back. Stamped FIRST, then torn down: an
-// unreachable host leaves `torn_down_at` NULL, which is what the reaper retries on.
 export async function stopPreview(
   p: { id: string; deployKey: string; tornDownAt: string | null },
   status: "evicted" | "blocked",

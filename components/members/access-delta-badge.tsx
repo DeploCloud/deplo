@@ -3,7 +3,6 @@ import { ShieldMinus, ShieldPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-// AccessDeltaBadge marks a member whose access differs from their role: amber for less, blue for more.
 export function AccessDeltaBadge({
   delta,
   roleName,

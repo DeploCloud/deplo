@@ -10,7 +10,6 @@ import { databaseDisplayStatus } from "@/lib/databases/display-status";
 import { sinceShort } from "@/lib/utils";
 import type { DatabaseStatus } from "@/lib/types/database";
 
-// DatabaseRelabelNotice: running with no container visible means it predates the deplo.* labels, which Redeploy stamps.
 export function DatabaseRelabelNotice({
   id,
   status,
@@ -38,7 +37,6 @@ export function DatabaseRelabelNotice({
   );
 }
 
-// DatabaseHealthStat answers what the header badge cannot: the engine's healthcheck and its restarts.
 export function DatabaseHealthStat({
   id,
   status,
@@ -64,7 +62,6 @@ export function DatabaseHealthStat({
             : "No healthcheck";
 
   const restarts = container?.restartCount ?? 0;
-  // 0 means never started OR an agent older than the field - either way, no uptime to claim.
   const startedAt = container?.startedAtUnix ?? 0;
 
   return (

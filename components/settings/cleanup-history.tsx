@@ -24,7 +24,6 @@ const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
   failed: "Failed",
 };
 
-// CleanupHistory - the last sweeps, newest first, at most 3 per server.
 export function CleanupHistory({
   runs,
   hideServer,
@@ -105,7 +104,6 @@ export function CleanupHistory({
                     >
                       {timeAgo(run.startedAt)}
                     </TableCell>
-                    {/* The agent's own message, verbatim. */}
                     <TableCell className="max-w-xs">
                       {run.error ? (
                         <span
@@ -145,7 +143,6 @@ function Elapsed({ startedAt }: { startedAt: string }) {
 }
 
 function summarize(run: CleanupRunDTO): string {
-  // A run in flight has no items yet, so "Nothing to reclaim" would be wrong.
   if (run.status === "running") return "Reclaiming disk on the host";
   const swept = run.items.filter((i) => !i.skipped && !i.error);
   const objects = swept.reduce((n, i) => n + i.itemsRemoved, 0);

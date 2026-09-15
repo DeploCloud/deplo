@@ -6,15 +6,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CardSelection } from "@/components/shared/use-card-selection";
 
-// MARQUEE_BOX - the rubber-band box: an outline, so it never tints what it sweeps over.
 export const MARQUEE_BOX =
   "pointer-events-none absolute z-20 hidden rounded-xl border-2 border-primary";
 
-// SELECTED_RING - the multi-selection highlight, shared by every selectable card.
 export const SELECTED_RING =
   "ring-2 ring-primary ring-offset-2 ring-offset-background";
 
-// SelectionCanvas - the coordinate space the marquee is drawn in and hit-tested against.
 export function SelectionCanvas({
   canvasRef,
   marqueeRef,
@@ -29,7 +26,6 @@ export function SelectionCanvas({
       ref={canvasRef}
       className={cn("relative min-h-[60vh] select-none", className)}
     >
-      {/* Positioned imperatively by the selection hook during a drag; hidden when idle. */}
       <div ref={marqueeRef} className={MARQUEE_BOX} />
       {children}
     </div>
@@ -38,7 +34,6 @@ export function SelectionCanvas({
 
 type Modifiers = { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean };
 
-// selectableProps - the marquee's hit-test target plus modifier-click, spread on a card wrapper or a table row.
 export function selectableProps(
   id: string,
   onSelect: (e: Modifiers) => boolean,
@@ -49,7 +44,6 @@ export function selectableProps(
   return {
     "data-card-id": id,
     onClickCapture(e) {
-      // A menu this row opened is portalled out of its DOM but not its React tree (lib/portal-event-scope.ts).
       if (!e.currentTarget.contains(e.target as Node)) return;
       if (!(e.metaKey || e.ctrlKey || e.shiftKey)) return;
       if ((e.target as HTMLElement).closest?.("[data-card-actions]")) return;
@@ -60,7 +54,6 @@ export function selectableProps(
   };
 }
 
-// SelectableCard - a card wrapper carrying selectableProps and the highlight.
 export function SelectableCard({
   id,
   selected,
@@ -85,7 +78,6 @@ export function SelectableCard({
   );
 }
 
-// SelectionBar - the bulk-actions bar, floating at the bottom whenever something is selected.
 export function SelectionBar({
   count,
   onSelectAll,
@@ -100,7 +92,6 @@ export function SelectionBar({
   if (count === 0) return null;
   return (
     <div
-      // Not canvas: a press on the bar's own chrome must not clear the selection it acts on.
       data-selection-bar=""
       className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4"
     >
@@ -128,7 +119,6 @@ export function SelectionBar({
   );
 }
 
-// useSelectionShortcuts - page-scoped shortcuts: ⌘/Ctrl+A selects all, Esc clears, Delete removes.
 export function useSelectionShortcuts({
   count,
   selectAll,

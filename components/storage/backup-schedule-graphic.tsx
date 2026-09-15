@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The scheduled backups empty-state illustration: a loop closing around an archive, over and over. */
 export function BackupScheduleGraphic({ className }: { className?: string }) {
   return (
     <svg

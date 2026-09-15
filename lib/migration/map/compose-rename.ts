@@ -3,7 +3,6 @@ import { isMap, isScalar, isSeq, Scalar, type YAMLMap } from "../../yaml";
 import { renameHostTokens } from "./env";
 import { readComposeDoc, serviceLikeMaps, stringScalar } from "./compose-yaml";
 
-/** The `environment:` block in either of its two shapes. */
 function rewriteEnvNode(node: unknown, renames: Map<string, string>): void {
   if (isMap(node)) {
     for (const item of node.items) {
@@ -28,19 +27,10 @@ function rewriteEnvNode(node: unknown, renames: Map<string, string>): void {
   }
 }
 
-/**
- * Rename every service whose DNS name a neighbour on the destination network
- * already answers to, and carry the references with it. An Environment is one
- * network (ADR-0028), and two stacks both calling their database `db` is ordinary.
- */
 export function renameClashingServices(
   source: string,
-  /** Lowercase names a neighbour answers to on the destination network. */
   taken: Set<string>,
-  /** Qualify a renamed service with the app's own name, or `null` for `<name>-2`. */
   prefix: string | null,
-  /** Every name on the network, when `taken` was narrowed to what clashes: the
-   *  free name is picked against this, so a third `db` skips the `db-2` too. */
   avoid: Set<string> = taken,
 ): { compose: string; renames: Map<string, string>; changes: string[] } {
   const renames = new Map<string, string>();
@@ -63,7 +53,6 @@ export function renameClashingServices(
     services.items.map((i) => String((i.key as Scalar).value).toLowerCase()),
   );
   const changes: string[] = [];
-  /** A free name for `name`: qualified by this app, or numbered like a slug. */
   const freeName = (name: string): string => {
     const stem = base === null ? name : `${base}-${name}`;
     let next = base === null ? `${stem}-2` : stem;
@@ -91,8 +80,6 @@ export function renameClashingServices(
     );
   }
 
-  // `hostname:` is registered in Docker's DNS exactly like a service name, so a
-  // stack that renamed no service can still be claiming a taken one.
   for (const { map: holder } of serviceLikeMaps(root)) {
     const host = stringScalar(holder, "hostname");
     if (!host) continue;

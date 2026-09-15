@@ -26,13 +26,11 @@ const TextEditor = dynamic(
   },
 );
 
-// FullComposeDialog - shows the full Deplo-generated compose stack that runs on the host.
 export function FullComposeDialog({ appId }: { appId: string }) {
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [yaml, setYaml] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  // Re-fetch on every open: the render follows the saved compose and the current domains.
   function onOpenChange(next: boolean) {
     setOpen(next);
     if (!next) return;

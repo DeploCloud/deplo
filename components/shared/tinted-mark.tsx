@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-// TintedMark - a glyph tinted with the thing's own accent colour.
 export function TintedMark({
   icon: Icon,
   color,

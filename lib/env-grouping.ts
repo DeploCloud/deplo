@@ -1,31 +1,24 @@
-/** The section key of every App that belongs to no Project. */
 export const TOP_LEVEL = "__top_level__";
 
-// Not the Project facet's "No project" on purpose: a section header names what is inside, not a filter.
-// What that section is CALLED: those apps stand on their own, outside every project.
 export const TOP_LEVEL_NAME = "Standalone";
 
-/** The least an App must carry to be grouped: who it is, and where it lives. */
 export interface GroupableApp {
   id: string;
   name: string;
   projectId: string | null;
 }
 
-/** A Project as the grouping needs it - enough to name and paint its section. */
 export interface GroupProject {
   id: string;
   name: string;
   color?: string | null;
 }
 
-/** One App's card inside a section: the app, and the rows that survived. */
 export interface AppBucket<R extends { app: GroupableApp }> {
   app: R["app"];
   rows: R[];
 }
 
-/** One collapsible Project section. */
 export interface ProjectBucket<R extends { app: GroupableApp }> {
   id: string;
   name: string;
@@ -34,7 +27,6 @@ export interface ProjectBucket<R extends { app: GroupableApp }> {
   rowCount: number;
 }
 
-// Fold rows into Project → App buckets, in `projects` order, with Standalone last.
 export function groupRowsByProject<R extends { app: GroupableApp }>(
   rows: readonly R[],
   projects: readonly GroupProject[],
@@ -54,7 +46,6 @@ export function groupRowsByProject<R extends { app: GroupableApp }>(
         : undefined;
       section = {
         id: sectionId,
-        // A project the caller never passed still gets a section: dropping its apps would hide their variables.
         name:
           sectionId === TOP_LEVEL
             ? TOP_LEVEL_NAME
@@ -66,7 +57,6 @@ export function groupRowsByProject<R extends { app: GroupableApp }>(
       sections.set(sectionId, section);
       out.push(section);
     }
-    // An App belongs to at most one Project, so its id is unique across sections.
     let bucket = appBuckets.get(row.app.id);
     if (!bucket) {
       bucket = { app: row.app, rows: [] };

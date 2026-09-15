@@ -34,7 +34,6 @@ import type {
   DeploymentSettingsProps,
 } from "./use-deployment-settings";
 
-// DeploySourceCard: how the app is deployed, which server runs it, and its Save.
 export function DeploySourceCard({
   settings,
   appId,
@@ -85,8 +84,6 @@ export function DeploySourceCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* The page sub-nav's own tab strip, inside the card: no panels, the
-            conditional inputs below render off the `source` state. */}
         <Tabs
           value={source}
           onValueChange={(v) => setSource(v as DeploySource)}
@@ -104,12 +101,8 @@ export function DeploySourceCard({
           </UnderlineTabsList>
         </Tabs>
 
-        {/* The tabs swap whole blocks, so the card's height jumps. */}
         <AnimatedHeight className="space-y-4" scroll={false}>
           {usesGithubApp && (
-            // Always render the picker - it owns the account switcher (with a
-            // Manage-connected-apps affordance) and its own connect empty state,
-            // so the layout stays put whether or not an App is connected yet.
             <GithubRepoPicker
               installations={installations}
               manageHref="/settings/git"
@@ -146,8 +139,6 @@ export function DeploySourceCard({
             />
           )}
 
-          {/* Both describe the SAVED source, so they step aside while another tab
-              is open, or while the picker holds an edit Save has yet to re-check. */}
           {usesGithubApp &&
             !sourceDirty &&
             repoAccess &&
@@ -172,9 +163,6 @@ export function DeploySourceCard({
             />
           )}
 
-          {/* The one case auto-registration cannot cover: a token without the
-              webhook scope. None of these hosts reports its own scopes, so the
-              checklist waits for a real refusal rather than nagging. */}
           {usesGitUrl && webhook?.applicable && !webhook.installed && (
             <div className="rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
               <p className="text-xs font-medium">
@@ -257,9 +245,6 @@ export function DeploySourceCard({
             </div>
           )}
 
-          {/* Always here, because the Server picker is: every source runs
-              somewhere, while the root directory only applies to a repo Deplo
-              compiles. */}
           <AdditionalOptionsDrawer
             settings={settings}
             servers={servers}

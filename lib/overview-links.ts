@@ -1,12 +1,9 @@
-// Client-reachable (the Overview cards, wizards and command palette import it): nothing server-only here.
-// OverviewPlacement - the drill-in an action was started from (ADR-0009: never both).
 export interface OverviewPlacement {
   folderId?: string | null;
   projectId?: string | null;
   environmentId?: string | null;
 }
 
-// folderHref builds the Overview URL that opens a folder, preserving the list/grid view.
 export function folderHref(id: string, view: "grid" | "list" = "grid"): string {
   const params = new URLSearchParams();
   params.set("folder", id);
@@ -14,7 +11,6 @@ export function folderHref(id: string, view: "grid" | "list" = "grid"): string {
   return `/?${params.toString()}`;
 }
 
-// projectHref builds the Overview URL that opens a project, preserving the list/grid view.
 export function projectHref(
   id: string,
   view: "grid" | "list" = "grid",
@@ -25,7 +21,6 @@ export function projectHref(
   return `/?${params.toString()}`;
 }
 
-// placementHref is the Overview URL a placement came from, where "back" should land.
 export function placementHref(
   p: OverviewPlacement | null | undefined,
   view: "grid" | "list" = "grid",
@@ -53,7 +48,6 @@ function placementParams(
   return params;
 }
 
-// newAppHref links to the new-app wizard, carrying the drill-in it was opened from.
 export function newAppHref(
   p?: OverviewPlacement | null,
   opts?: {
@@ -72,7 +66,6 @@ export function newAppHref(
   return qs ? `/new?${qs}` : "/new";
 }
 
-// templateHref links to a template's page, carrying the drill-in and which variant to show.
 export function templateHref(
   slug: string,
   p?: OverviewPlacement | null,
@@ -84,13 +77,11 @@ export function templateHref(
   return qs ? `/templates/${slug}?${qs}` : `/templates/${slug}`;
 }
 
-// templatesHref links to the template catalogue, carrying the drill-in it was opened from.
 export function templatesHref(p?: OverviewPlacement | null): string {
   const qs = placementParams(p).toString();
   return qs ? `/templates?${qs}` : "/templates";
 }
 
-// placementFromSearchParams reads a placement back out of a page's searchParams.
 export function placementFromSearchParams(sp: {
   folder?: string | string[];
   project?: string | string[];

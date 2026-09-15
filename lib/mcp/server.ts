@@ -13,15 +13,11 @@ import type { McpToolDef } from "./tools/tool-def";
 import { runGraphql } from "./execute";
 import { safeMessage } from "../graphql/mask-error";
 
-// The authoritative refusal is in `lib/data/*`: a tool that slips this filter is still refused there.
-
 export interface McpPrincipal {
   gql: GraphQLContext;
   settings: McpSettings;
   capabilities: Set<Capability>;
-  // Carried by the TOKEN, never inherited from the person.
   instanceAdmin: boolean;
-  // MUST THROW for a team this connection may not act in.
   forTeam: (team: string) => Promise<GraphQLContext>;
 }
 
@@ -111,9 +107,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       {
         title: tool.title,
         description: tool.description,
-        // passthrough: unknown keys must reach the handler to be refused by name, not by a client's own validator.
         inputSchema: tool.input.extend({ team: TEAM_ARG }).passthrough(),
-        // `destructiveHint` and `openWorldHint` default to TRUE upstream, so they have to stay explicit.
         annotations: {
           ...(tool.readOnly ? { readOnlyHint: true } : {}),
           ...(tool.idempotent ? { idempotentHint: true } : {}),
@@ -122,10 +116,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         },
       },
       async (args) => {
-        // No confirmation step: a gate here would be a second permission system beside the token's Capabilities.
         try {
-          // zod drops an unknown key silently, so `container` for `service` read back as "no container was given";
-          // `_`-prefixed keys are a client's protocol metadata, never the model's doing.
           const accepted = new Set([...Object.keys(tool.input.shape), "team"]);
           const unknown = Object.keys(args).filter(
             (k) => !accepted.has(k) && !k.startsWith("_"),
@@ -137,13 +128,11 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
                 : `${tool.name} takes no argument "${unknown[0]}". It takes: ${[...accepted].join(", ")}.`,
             );
 
-          // `team` is taken out BEFORE the arguments become GraphQL variables, and resolved into a principal.
           const { team, ...rest } = args as Record<string, unknown> & {
             team?: string;
           };
           const ctx = team ? await principal.forTeam(team) : principal.gql;
 
-          // `handler.fetch` runs OUTSIDE the scope the route opened, and a tool bypassing GraphQL misses `runGraphql`'s.
           if (tool.run) {
             const go = () => tool.run!(rest, ctx);
             return text(
@@ -156,7 +145,6 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
             : (rest as Record<string, unknown>);
           const { data, error } = await runGraphql(tool.query, variables, ctx);
           if (error) return failure(error);
-          // The cast is safe: a paginated tool's own zod schema declares limit/offset (pinned by tools.test.ts).
           return text(
             tool.paginate
               ? paginate(

@@ -11,7 +11,6 @@ import { StepShell } from "../step-shell";
 import { needsYou } from "../steps";
 import type { RunReport } from "./session";
 
-// ReportBody - what came across and what did not, read on the last step and in a takeover's Review.
 export function ReportBody({
   report,
   teams = null,
@@ -74,7 +73,6 @@ export function ReportBody({
   );
 }
 
-// ReportCard - Review's finished state on a takeover: what landed, before the step that takes the ports.
 export function ReportCard({
   report,
   teams,

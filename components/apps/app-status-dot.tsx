@@ -33,13 +33,11 @@ function useDisplayStatus(fallback: AppStatus): {
   };
 }
 
-// AppStatusDot - the app header's live power indicator.
 export function AppStatusDot({ status }: { status: AppStatus }) {
   const { status: shown, detail } = useDisplayStatus(status);
   return <StatusIndicator status={shown} detail={detail} badge={false} />;
 }
 
-// AppStatusBadge - the same live status as the dot, as a labelled badge.
 export function AppStatusBadge({ status }: { status: AppStatus }) {
   const { status: shown, detail } = useDisplayStatus(status);
   return <StatusIndicator status={shown} detail={detail} badge />;

@@ -15,7 +15,6 @@ import { requireAppCapability } from "./node-access";
 import { appOwnVolumeNames } from "./project-backup-descriptor";
 import { teardownOrQueue } from "./teardown-queue";
 
-/** What a refused start says, everywhere it is refused. */
 export function assertDataCopyIntact(
   name: string,
   dataCopyError: string,
@@ -28,10 +27,8 @@ export function assertDataCopyIntact(
   );
 }
 
-/** Which of the two tables a marker lives on. */
 export type DataCopyTarget = { kind: "app" | "database"; id: string };
 
-// markDataCopyFailed records why a copy did not land; it never throws.
 export async function markDataCopyFailed(
   target: DataCopyTarget,
   message: string,
@@ -54,12 +51,9 @@ export async function markDataCopyFailed(
         .update(databasesTable)
         .set({ dataCopyError: text })
         .where(eq(databasesTable.id, target.id));
-  } catch {
-    // Swallowed: a marker that could not be written must not fail the whole import.
-  }
+  } catch {}
 }
 
-// dataAlreadyCopiedInto reports whether this run already put bytes into that row.
 export async function dataAlreadyCopiedInto(
   runId: string,
   targetId: string,
@@ -79,7 +73,6 @@ export async function dataAlreadyCopiedInto(
   return rows.length > 0;
 }
 
-// clearDataCopyError clears the marker because the data IS here now; never throws.
 export async function clearDataCopyError(
   target: DataCopyTarget,
 ): Promise<void> {
@@ -94,12 +87,9 @@ export async function clearDataCopyError(
         .update(databasesTable)
         .set({ dataCopyError: "" })
         .where(eq(databasesTable.id, target.id));
-  } catch {
-    // Swallowed: a marker that could not be written must not fail the whole import.
-  }
+  } catch {}
 }
 
-// acceptDataCopyLoss is "Deploy anyway": start without the data that did not arrive.
 export async function acceptDataCopyLoss(
   target: DataCopyTarget,
 ): Promise<void> {
@@ -107,7 +97,6 @@ export async function acceptDataCopyLoss(
   if (target.kind === "app") {
     const { membership } = await requireAppCapability(target.id, "deploy_apps");
     const app = await loadAppGraph(target.id);
-    // A held MOVE: accepting the loss also ends the move.
     const heldMove =
       app?.teamId === membership.teamId ? app.migrateFromServerId : null;
     const [row] = await getDb()
@@ -157,7 +146,6 @@ export async function acceptDataCopyLoss(
     "database",
     `Started ${row.name} without the data a migration could not copy`,
     user.name,
-    // A database id in the `app_id` slot violates that column's FK.
     null,
     teamId,
     null,

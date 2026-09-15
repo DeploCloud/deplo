@@ -7,7 +7,6 @@ import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { RobotGraphic } from "../robot-graphic";
 import type { AgentDef } from "../agents";
 
-// DoneStep is centred over the window: the two-column layout is for a step with something to do.
 export function DoneStep({
   agent,
   connected,

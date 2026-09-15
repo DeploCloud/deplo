@@ -18,7 +18,6 @@ function keyFileSlug(name: string): string {
   );
 }
 
-// downloadRecoveryKey - fetch the key and save it as a file.
 export async function downloadRecoveryKey(id: string): Promise<boolean> {
   try {
     const data = await gql<{
@@ -35,7 +34,6 @@ export async function downloadRecoveryKey(id: string): Promise<boolean> {
       { id },
     );
     const key = data.destinationRecoveryKey;
-    // The age key-file format: comments, then the secret key on its own line.
     const body =
       `# Deplo backups - recovery key for the destination "${key.name}"\n` +
       `# Keep this somewhere outside Deplo. Without it, the backups at this\n` +
@@ -67,7 +65,6 @@ export async function downloadRecoveryKey(id: string): Promise<boolean> {
   }
 }
 
-// RecoveryKeyNudge - these backups are encrypted and nobody has taken the key yet.
 export function RecoveryKeyNudge({
   destinationId,
   title = "Save your recovery key",
@@ -82,7 +79,6 @@ export function RecoveryKeyNudge({
   className?: string;
 }) {
   const [pending, startTransition] = React.useTransition();
-  // Local, not a re-read: `router.refresh()` does not repaint the app's Backups tab.
   const [saved, setSaved] = React.useState(false);
   if (saved) return null;
   return (
@@ -112,7 +108,6 @@ export function RecoveryKeyNudge({
   );
 }
 
-// offerRecoveryKey - offer the key right after a destination is created; the card's nudge is the fallback.
 export function offerRecoveryKey(id: string, name: string): void {
   toast.warning(`Save the recovery key for ${name}`, {
     description:

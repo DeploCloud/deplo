@@ -4,7 +4,6 @@ import * as React from "react";
 import { useLiveRunning } from "./app-live-status";
 import { setAppNav } from "./app-nav-store";
 
-// AppNavSync - publishes the active app's nav facts into the sidebar store.
 export function AppNavSync({
   slug,
   logo,
@@ -25,7 +24,6 @@ export function AppNavSync({
   capabilities: string[];
 }) {
   const running = useLiveRunning(serverRunning);
-  // The array identity changes on every RSC payload; its contents don't.
   const caps = capabilities.join(",");
 
   React.useEffect(() => {
@@ -50,7 +48,6 @@ export function AppNavSync({
     consoleEnabled,
   ]);
 
-  // Separate from the publish effect so a live `running` change does not blink the sub-menu.
   React.useEffect(() => {
     return () => setAppNav(null);
   }, []);

@@ -6,7 +6,6 @@ import { useInitialCaretAtEnd } from "@/components/ui/use-initial-caret-at-end";
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
   ({ className, type, ...props }, ref) => {
-    // Opened focused on a prefilled field, the caret belongs AFTER the value.
     const caretRef = useInitialCaretAtEnd<HTMLInputElement>(ref);
     return (
       <input

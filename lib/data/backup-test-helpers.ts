@@ -22,12 +22,10 @@ import { SERVER_1 } from "./app-graph-test-helpers";
 
 const T0 = "2026-01-01T00:00:00.000Z";
 
-// TRUNCATE_BACKUPS clears every backups-cut-set table; call it in `beforeEach` before seeding.
 export const TRUNCATE_BACKUPS = `truncate table
   pending_teardowns, backup_runs, backups, databases, backup_destination
   restart identity cascade;`;
 
-// settleProvisioning drains every floated `provisionDatabase`; call it before truncating or closing.
 export async function settleProvisioning(db: TestDb): Promise<void> {
   for (let i = 0; i < 400; i++) {
     const rows = await db
@@ -36,8 +34,6 @@ export async function settleProvisioning(db: TestDb): Promise<void> {
     if (!rows.some((r) => r.status === "provisioning")) break;
     await new Promise((r) => setTimeout(r, 5));
   }
-  // The status flip is not the last thing provisioning does (the readiness alert is
-  // dispatched after it, and floats too), so give the tail a turn to land.
   await new Promise((r) => setTimeout(r, 100));
 }
 
@@ -55,7 +51,6 @@ export interface SeedDatabaseOpts {
   mounts?: Database["mounts"];
 }
 
-// seedDatabase seeds one database row; its `connection_string_enc` is a real encrypted value.
 export async function seedDatabase(
   db: TestDb,
   opts: SeedDatabaseOpts,
@@ -72,8 +67,6 @@ export async function seedDatabase(
     logo: null,
     type,
     version: "16",
-    // Mirror what createDatabase / the 0014 backfill produce: the engine login `app`
-    // and the logical DB == the service name (`db-<name>`).
     username: opts.username ?? (type === "redis" ? "default" : "app"),
     dbName: opts.dbName ?? `db-${name}`,
     status: opts.status ?? "running",
@@ -123,7 +116,6 @@ export interface SeedDestinationOpts {
   };
 }
 
-// seedDestination seeds one backup destination.
 export async function seedDestination(
   db: TestDb,
   opts: SeedDestinationOpts,
@@ -184,7 +176,6 @@ export async function seedDestination(
   return row.id;
 }
 
-// seedS3 is a back-compat alias for tests that only want "a destination that exists".
 export const seedS3 = seedDestination;
 
 const AGE_RECIPIENT =
@@ -205,7 +196,6 @@ export interface SeedBackupOpts {
   retentionCount?: number;
 }
 
-// seedBackup seeds one backup schedule.
 export async function seedBackup(
   db: TestDb,
   opts: SeedBackupOpts,
@@ -250,7 +240,6 @@ export interface SeedRunOpts {
   finishedAt?: string | null;
 }
 
-// seedRun seeds one backup run; `seq` is DB-assigned in insert order.
 export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
   const targetKind = opts.targetKind ?? "database";
   const row: BackupRun = {
@@ -261,8 +250,6 @@ export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
     databaseId: targetKind === "database" ? (opts.databaseId ?? null) : null,
     appId: targetKind === "app" ? (opts.appId ?? null) : null,
     destinationId: opts.destinationId,
-    // Survives the ON DELETE SET NULL on the two columns above, which is what lets
-    // retention and the orphan sweep still find a deleted target's files.
     targetId:
       (targetKind === "database" ? opts.databaseId : opts.appId) ??
       opts.targetId ??

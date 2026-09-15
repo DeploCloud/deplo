@@ -12,7 +12,6 @@ import type { CoolifyExtras } from "./extras";
 import { coolifyGitUrl } from "./git-source";
 import { coolifyNotes } from "./platform-notes";
 
-/** `"8080:80,9000:9000/udp"` -> the published-port rows the shared mapper reports. */
 export function coolifyPorts(
   mappings: string | null | undefined,
 ): SourcePort[] {
@@ -41,7 +40,6 @@ const BUILD_PACK: Record<string, SourceBuildType> = {
   dockerfile: "dockerfile",
 };
 
-/** The first port of `ports_exposes` - what a domain with no port routes to. */
 function firstExposed(ports: string | null | undefined): number | null {
   for (const raw of (ports ?? "").split(",")) {
     const n = Number(raw.trim());
@@ -50,11 +48,6 @@ function firstExposed(ports: string | null | undefined): number | null {
   return null;
 }
 
-/**
- * One Coolify application -> the shared application shape. A repository behind a
- * connected source keeps that provider with no credential, so the app ASKS for a
- * GitHub App instead of failing the clone on git's "could not read Username".
- */
 export function coolifyApplication(
   row: CoolifyApplication,
   extras: CoolifyExtras = {},
@@ -102,23 +95,15 @@ export function coolifyApplication(
     installCommand: row.install_command ?? null,
     buildCommand: row.build_command ?? null,
     dockerImage: image,
-    // The PATH, not the file: `dockerfile` is the inline text somebody typed into
-    // the panel, and taking it for a path built every monorepo from ./Dockerfile.
     dockerfile: row.dockerfile_location?.trim().replace(/^\/+/, "") || null,
-    // The build path below already carries `base_directory`: the context is
-    // relative to it, and naming it twice built from `apps/web/apps/web`.
     dockerContextPath: null,
     dockerBuildStage: row.dockerfile_target_build ?? null,
-    // A publish directory only means "serve these files" when the app IS static;
-    // a stale one on a nixpacks app wrapped a server in nginx.
     publishDirectory:
       row.build_pack === "static" || row.settings?.is_static
         ? (row.publish_directory ?? null)
         : null,
     isStaticSpa: row.settings?.is_spa ?? null,
     customGitUrl: git.url,
-    // A bare `owner/repo` is Coolify keeping the host on a connected SOURCE -
-    // which is also the only shape here that may have been a private clone.
     gitNeedsCredential: Boolean(
       row.git_repository?.trim() &&
       !/^\w+:\/\//.test(row.git_repository.trim()),
@@ -133,8 +118,6 @@ export function coolifyApplication(
     cpuLimit: row.limits_cpus ?? null,
     serverId: extras.serverId ?? "",
     environmentId: extras.environmentId ?? null,
-    // The port it LISTENS on, so a domain that carries none still routes
-    // somewhere - `ports_exposes` is the only column that says.
     routingPort: coolifyFallbackPort(row),
     domains: domains.value,
     mounts: extras.mounts ?? [],
@@ -151,10 +134,6 @@ export function coolifyApplication(
   };
 }
 
-/**
- * Coolify's twelve health-check columns -> Deplo's eight. What does not fit is a
- * report line (`coolifyNotes`), never a silent difference.
- */
 export function coolifyHealthCheck(
   row: CoolifyApplication,
 ): HealthCheck | null {
@@ -168,8 +147,6 @@ export function coolifyHealthCheck(
       Number(row.health_check_port) > 0 ? Number(row.health_check_port) : null,
     command: row.health_check_command?.trim() || null,
     intervalS: interval,
-    // Coolify lets these be equal; Deplo refuses it, because a check still running
-    // when the next is due never settles either way.
     timeoutS: timeout < interval ? timeout : Math.max(1, interval - 1),
     retries: row.health_check_retries ?? HEALTH_CHECK_DEFAULTS.retries,
     startPeriodS:
@@ -177,7 +154,6 @@ export function coolifyHealthCheck(
   };
 }
 
-/** The port a domain with no port of its own should reach. */
 export function coolifyFallbackPort(row: CoolifyApplication): number | null {
   return firstExposed(row.ports_exposes);
 }

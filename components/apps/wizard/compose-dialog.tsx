@@ -20,7 +20,6 @@ import {
   type LintDiagnostic,
 } from "@/lib/deploy/compose-lint/lint";
 
-// ComposeDialog - the compose stack written full-size, so the wizard card keeps its height.
 export function ComposeDialog({
   open,
   onOpenChange,
@@ -37,7 +36,6 @@ export function ComposeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl">
-        {/* The body mounts with the dialog, so a cancelled edit leaves nothing behind. */}
         <ComposeBody
           value={value}
           title={title}

@@ -35,16 +35,13 @@ test("mapDatabase keeps the original password so imported env vars still match",
   assert.equal(value?.username, "app");
   assert.equal(value?.dbName, "app");
   assert.equal(value?.version, "16");
-  // The data volume is copied byte for byte, so the source image is pinned: glibc and musl sort text differently.
   assert.equal(value?.customImage, "postgres:16");
 });
 
 test("mapDatabase pins the source image whatever shape the ref has", () => {
   const cases: [string, string, string][] = [
     ["postgres:18", "postgres:18", "18"],
-    // a suffixed tag used to be re-suffixed into `postgres:16-alpine-alpine`
     ["postgres:16-alpine", "postgres:16-alpine", "16-alpine"],
-    // no tag at all used to produce version "" and fail createDatabase; the ref stays verbatim and the report warns
     ["postgres", "postgres", "latest"],
     ["ghcr.io/org/pg:1", "ghcr.io/org/pg:1", "1"],
   ];
@@ -73,7 +70,6 @@ test("mapDatabase keeps a non-canonical image and says so", () => {
   assert.equal(value?.customImage, "pgvector/pgvector:pg16");
   assert.equal(value?.version, "pg16");
   assert.match(notes.join(" "), /plain postgres/);
-  // A canonical image is pinned too, but silently - there is nothing to warn about.
   assert.equal(
     mapDatabase("postgres", db()).notes.join(" ").includes("plain postgres"),
     false,
@@ -97,14 +93,11 @@ test("mapDatabase carries the external port and reports what a database cannot t
     }),
   );
   assert.equal(value?.exposedPort, 5432);
-  // The start command comes across (Deplo stores one too) instead of becoming a note asking someone to retype it.
   assert.equal(value?.command, "postgres -c max_connections=200");
   assert.doesNotMatch(notes.join(" "), /start command/);
-  // A BIND has nowhere to go on a Deplo database, so it is named, not dropped in silence.
   assert.match(notes.join(" "), /bind-mounts/);
 });
 
-// Dokploy leaves `filePath` null on a database's file mount just as it does on an application's.
 test("mapDatabase imports the engine's config files", () => {
   const { value, notes } = mapDatabase(
     "postgres",
@@ -134,7 +127,6 @@ test("mapDatabase imports the engine's config files", () => {
   );
 });
 
-// Dokploy models a database's DATA volume as a mount row: warning about it fired on EVERY database, over the one thing the Data step copies.
 test("mapDatabase does not call the data volume an extra file mount", () => {
   const { notes } = mapDatabase(
     "postgres",
@@ -157,7 +149,6 @@ test("mapDatabase does not call the data volume an extra file mount", () => {
   );
 });
 
-// mysql/mariadb carry two credentials and Deplo models one, used for BOTH the connection string and its root-only operations.
 test("mapDatabase imports mysql as root, because that is who Deplo acts as", () => {
   const { value, notes } = mapDatabase(
     "mysql",
@@ -173,7 +164,6 @@ test("mapDatabase imports mysql as root, because that is who Deplo acts as", () 
   assert.match(notes.join(" "), /Connects as root/);
 });
 
-// A panel that answers with ONE password for both used to get the changed login without the sentence that explains it.
 test("mapDatabase says it connects as root even when both passwords match", () => {
   const { value, notes } = mapDatabase(
     "mysql",
@@ -199,7 +189,6 @@ test("mapDatabase says nothing about root when root is already the user", () => 
   assert.equal(notes.join(" ").includes("Connects as root"), false);
 });
 
-// Coolify keeps redis's password ONLY in the resource's variables, so counting it as left behind said the opposite of what happened.
 test("mapDatabase does not count a carried credential as a lost variable", () => {
   const { notes } = mapDatabase(
     "redis",
@@ -250,7 +239,6 @@ test("deploEngineFor answers for both platforms' spellings", () => {
   assert.equal(deploEngineFor("mongo"), "mongodb");
   assert.equal(deploEngineFor("mongodb"), "mongodb");
   assert.equal(deploEngineFor("clickhouse"), "clickhouse");
-  // No twin: the report has to say so rather than guess one.
   assert.equal(deploEngineFor("keydb"), null);
   assert.equal(deploEngineFor("dragonfly"), null);
   assert.equal(deploEngineFor("libsql"), null);

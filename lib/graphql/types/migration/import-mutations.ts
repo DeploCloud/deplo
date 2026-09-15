@@ -14,8 +14,6 @@ import {
 builder.mutationFields((t) => ({
   identifyMigrationSource: t.field({
     type: SourceIdentityRef,
-    // Reading the panel touches no team, so the instance's admins may from any
-    // page of theirs; landing in a team keeps its own gate.
     authScopes: {
       $any: { instanceAdmin: true, capability: "create_projects" },
     },
@@ -108,9 +106,6 @@ builder.mutationFields((t) => ({
           serviceId: p.serviceId,
           serverId: p.serverId,
           buildServerId: p.buildServerId ?? null,
-          // NOT `?? null` like the line above it: for a port, absent and null are
-          // two different instructions (keep the source's, publish nothing), so
-          // an omitted field has to stay undefined all the way down.
           exposedPort: p.exposedPort,
         })),
       }),

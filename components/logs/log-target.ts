@@ -1,28 +1,21 @@
 import type { AppStatus } from "@/lib/types/app";
 import type { DatabaseStatus, DatabaseType } from "@/lib/types/database";
 
-// LogTarget - one thing whose logs can be watched: an App or a database.
 export interface LogTarget {
-  // `app:<slug>` or `db:<id>`: the URL, the cookie, the combobox key and the React key are all this string.
   key: string;
   kind: "app" | "database";
   name: string;
-  // The App's slug, or the database's engine: the second thing typing matches.
   detail: string;
   status: AppStatus | DatabaseStatus;
   logo: string | null;
-  // Databases only: picks the engine's brand mark when there is no logo.
   type?: DatabaseType;
-  // All three are tolerated pointing at nothing: a folder the caller holds no grant on never comes back.
   projectId?: string | null;
   environmentId?: string | null;
   folderId?: string | null;
 }
 
-// LOG_TARGET_COOKIE - the last target, client-written and validated against the readable list on every read.
 export const LOG_TARGET_COOKIE = "deplo_logs_target";
 
-// A cookie is attacker-writable text: anything longer than this is not a key we wrote.
 const MAX_KEY_LENGTH = 256;
 
 export function appTargetKey(slug: string): string {
@@ -33,7 +26,6 @@ export function databaseTargetKey(id: string): string {
   return `db:${id}`;
 }
 
-// logTargetHref - where a target is watched; each kind gets its own query param.
 export function logTargetHref(key: string): string {
   const sep = key.indexOf(":");
   if (sep === -1) return "/logs";
@@ -44,7 +36,6 @@ export function logTargetHref(key: string): string {
   return param ? `/logs?${param}=${encodeURIComponent(ref)}` : "/logs";
 }
 
-// logTargetOverviewHref - the target's own Overview, where "Open <name>" in the picker goes.
 export function logTargetOverviewHref(key: string): string {
   const sep = key.indexOf(":");
   if (sep === -1) return "/";
@@ -56,10 +47,8 @@ export function logTargetOverviewHref(key: string): string {
   return "/";
 }
 
-// LOG_CHOOSER_HREF - the chooser, forced: ignores the remembered target without forgetting it.
 export const LOG_CHOOSER_HREF = "/logs?pick=1";
 
-// resolveLogTarget - the order is the contract: `pick` beats the URL, the URL beats the cookie.
 export function resolveLogTarget(
   targets: LogTarget[],
   from: {
@@ -91,16 +80,13 @@ function byKey(targets: LogTarget[], key: string): LogTarget | null {
   return targets.find((t) => t.key === key) ?? null;
 }
 
-// LogTreeRow - one row of the Logs picker: a heading, or something to open.
 export interface LogTreeRow {
   key: string;
   depth: number;
   kind: "project" | "environment" | "folder" | "section" | "target";
   name: string;
   color?: string | null;
-  // Set on exactly the rows that can be picked.
   target?: LogTarget;
-  // Lowercased: this row's own words, every ancestor's, and, on a heading, every descendant's.
   haystack: string;
 }
 
@@ -112,7 +98,6 @@ interface TreeFolder {
   color?: string | null;
 }
 
-// buildLogTree - the readable targets, arranged the way the Overview arranges them.
 export function buildLogTree(
   targets: LogTarget[],
   ctx: {
@@ -278,14 +263,12 @@ function group(
       kind: head.kind,
       name: head.name,
       color: head.color,
-      // Every descendant's words, so a heading survives a query only one app three levels down answers to.
       haystack: `${inside} ${rows.map((r) => r.haystack).join(" ")}`,
     },
     ...rows,
   ];
 }
 
-// logTreeMatches - case-insensitive and space-separated, so "api prod" narrows as expected.
 export function logTreeMatches(row: LogTreeRow, query: string): boolean {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   return terms.every((t) => row.haystack.includes(t));

@@ -29,7 +29,6 @@ type AppVolumeInsert = typeof appVolumes.$inferInsert;
 type AppPortInsert = typeof appPorts.$inferInsert;
 type AppMountInsert = typeof appMounts.$inferInsert;
 
-/** Every child row of one app, as the row-batch-loader hands them to {@link assembleApp}. */
 export interface AppChildRows {
   build: AppBuildRow | null;
   methodSettings: AppBuildMethodSettingsRow | null;
@@ -42,12 +41,8 @@ function byPosition<T extends { position: number }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => a.position - b.position);
 }
 
-/** Fold an app's flat row + its child rows into an {@link App}. */
 export function assembleApp(row: AppRow, children: AppChildRows): App {
   if (!children.build)
-    // Every project has a 1-to-1 build row (NOT NULL FK), so a missing one is a
-    // data-integrity bug, not a tri-state - surface it loudly rather than emit a
-    // half-built object the renderer would choke on.
     throw new Error(`project ${row.id} is missing its app_build row`);
 
   const volumes = byPosition(children.volumes).map(volumeRowToMount);
@@ -74,12 +69,8 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     buildServerId: row.buildServerId ?? null,
     buildFallback: row.buildFallback ?? true,
     logo: row.logo,
-    // Only the two the plate CSS knows: anything else reads as no plate.
     logoTone:
       row.logoTone === "dark" || row.logoTone === "light" ? row.logoTone : null,
-    // Read back defensively: an id this binary's catalog doesn't know (a row
-    // written by a newer Deplo) reads as "no framework" rather than leaking an
-    // unrenderable value into the UI.
     framework: isFrameworkId(row.framework ?? "")
       ? (row.framework as App["framework"])
       : null,
@@ -101,20 +92,13 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     previewEnabled: row.previewEnabled,
     cronEnabled: row.cronEnabled,
     consoleEnabled: row.consoleEnabled,
-    // The hook's on/off state travels with the app; its TOKEN never does - that
-    // column is read only by lib/data/deploy-hook.ts, behind its own gate.
     deployHookEnabled: row.deployHookEnabled,
-    // Empty string and NULL both mean "the untouched bring-up command".
     composeUpArgs: row.composeUpArgs?.trim() ? row.composeUpArgs : null,
     rollbackKeep: row.rollbackKeep,
     resources: assembleResources(row),
     healthCheck: assembleHealthCheck(row),
     latestDeploymentId: row.latestDeploymentId,
-    // Deliberately absent from `appToRow`: the stamp is written by the delete
-    // path alone, never carried along by an ordinary save of the app.
     deletingAt: row.deletingAt ?? null,
-    // Like `deletingAt`, absent from `appToRow`: stamped by the writers in
-    // lib/data/pending-changes.ts and cleared by a deploy, never by a save.
     pendingChangesAt: row.pendingChangesAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -124,9 +108,6 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
 function assembleRepo(row: AppRow): App["repo"] {
   if (row.repoProvider == null) return null;
   const watchPaths = parseWatchPaths(row.repoWatchPaths);
-  // Conditional spread (like installationId): a repo with default deploy options
-  // assembles to exactly {provider,url,repo,branch}, so it round-trips unchanged
-  // and never looks "dirty". The UIs apply their own display defaults.
   return {
     provider: row.repoProvider as NonNullable<App["repo"]>["provider"],
     url: row.repoUrl ?? "",
@@ -144,7 +125,6 @@ function assembleRepo(row: AppRow): App["repo"] {
   };
 }
 
-/** Split the stored newline/comma-separated watch-path globs into a clean list. */
 export function parseWatchPaths(raw: string | null | undefined): string[] {
   if (!raw) return [];
   return raw
@@ -174,9 +154,6 @@ function portRowToPublished(p: AppPortRow): PublishedPort {
 }
 
 function volumeRowToMount(v: AppVolumeRow): VolumeMount {
-  // A NULL `service` means "the stack's default service" and is the only value a
-  // single-container app ever has, so the key is spread in only when set - the
-  // object then round-trips to the same shape a volume-less app emits.
   const service = v.service ? { service: v.service } : {};
   if (v.type === "host") {
     return {
@@ -187,8 +164,6 @@ function volumeRowToMount(v: AppVolumeRow): VolumeMount {
       ...service,
       mountPath: v.mountPath,
       readOnly: v.readOnly,
-      // Spread in only when set, for the same round-trip reason as `service`:
-      // NULL is docker's rprivate default and must stay an ABSENT key.
       ...(v.propagation
         ? { propagation: v.propagation as MountPropagation }
         : {}),
@@ -205,8 +180,6 @@ function volumeRowToMount(v: AppVolumeRow): VolumeMount {
       readOnly: v.readOnly,
     };
   }
-  // type NULL/absent ⇒ "named" (the back-compat default; do not store "named"
-  // explicitly so the object round-trips to the same shape normalizeVolumes emits).
   return {
     id: v.volumeId,
     name: v.name,
@@ -216,7 +189,6 @@ function volumeRowToMount(v: AppVolumeRow): VolumeMount {
   };
 }
 
-/** The flat `apps` row for a {@link App} (children handled separately). */
 export function appToRow(p: App): AppInsert {
   return {
     id: p.id,
@@ -258,16 +230,11 @@ export function appToRow(p: App): AppInsert {
     productionUrl: p.productionUrl ?? null,
     status: p.status,
     autoDeploy: p.autoDeploy,
-    // A new app's hook is ENABLED but not yet minted: `deploy_hook_token_enc`
-    // stays NULL until someone opens the hook (lib/data/deploy-hook.ts).
     deployHookEnabled: p.deployHookEnabled ?? true,
     composeUpArgs: p.composeUpArgs ?? null,
     rollbackKeep: p.rollbackKeep ?? DEFAULT_ROLLBACK_KEEP,
     ...resourceLimitsToRow(p.resources),
     ...healthCheckToRow(p.healthCheck),
-    // `latest_deployment_id` is a forward FK to a deployment that may not exist
-    // yet at project-insert time; the caller (createApp) sets it in a second
-    // pass after deployments land, or leaves it null.
     latestDeploymentId: null,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -282,18 +249,13 @@ export function volumesToRows(
     appId,
     position,
     volumeId: v.id,
-    // Store the discriminant only when explicit ("named" stays NULL so it
-    // round-trips to the absent-key default).
     type: v.type === "host" || v.type === "app" ? v.type : null,
     name: v.name,
-    // Compose-stack target service; NULL ⇒ the stack's default service (and
-    // always NULL for a single-container app).
     service: v.service?.trim() || null,
     projectPath: v.type === "app" ? v.projectPath : null,
     hostPath: v.type === "host" ? v.hostPath : null,
     mountPath: v.mountPath,
     readOnly: Boolean(v.readOnly),
-    // Host binds only - docker rejects a propagation option on a managed volume.
     propagation: v.type === "host" ? (v.propagation ?? null) : null,
   }));
 }

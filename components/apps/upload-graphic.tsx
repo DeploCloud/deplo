@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-// UploadGraphic - the archive drop area's picture, animated on hover and on drag-over alike.
 export function UploadGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -12,7 +11,6 @@ export function UploadGraphic({ className }: { className?: string }) {
     >
       <g className="stroke-border" strokeWidth="3" strokeLinecap="round">
         <path d="M22 82v14a8 8 0 0 0 8 8h60a8 8 0 0 0 8-8V82" />
-        {/* Translated, not rotated: a CSS rotate on an SVG child depends on transform-box. */}
         <path
           d="M22 82 38 72"
           className="transition-transform duration-300 ease-out group-hover:-translate-x-[3px] group-hover:-translate-y-[3px] group-data-[active]:-translate-x-[3px] group-data-[active]:-translate-y-[3px] motion-reduce:transition-none"

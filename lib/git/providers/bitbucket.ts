@@ -15,7 +15,6 @@ const bbAuth = (c: GitCredential) => ({
 const bbRepo = (fullName: string) =>
   `/2.0/repositories/${assertFullName(fullName)}`;
 
-// bitbucket - the Bitbucket Cloud REST adapter.
 export const bitbucket: GitProviderApi = {
   async whoami(c) {
     const me = await json<{
@@ -31,8 +30,6 @@ export const bitbucket: GitProviderApi = {
         scopes: null,
       };
     }
-    // A token scoped to repositories only cannot read /2.0/user. Prove it works
-    // by listing a single repository instead of rejecting a perfectly good token.
     await call(c, "/2.0/repositories?role=member&pagelen=1", {
       auth: bbAuth(c),
     });
@@ -117,8 +114,6 @@ export const bitbucket: GitProviderApi = {
       `${bbRepo(fullName)}/src/${encodeURIComponent(ref)}/?pagelen=100`,
       { auth: bbAuth(c) },
     );
-    // Only the root listing: Bitbucket has no cheap recursive tree, and the root
-    // markers are all framework/favicon detection reads.
     return (res.values ?? [])
       .filter((e) => e.type === "commit_file")
       .map((e) => e.path);
@@ -134,8 +129,6 @@ export const bitbucket: GitProviderApi = {
 
   verify(secret, headers, rawBody) {
     const sig = headers.get("x-hub-signature");
-    // Bitbucket signs whenever a secret is set on its side, and Deplo registers
-    // every hook with one - so a delivery without a signature is not Bitbucket's.
     if (!sig) return "bad";
     return sameSecret(sig, `sha256=${hmacHex(secret, rawBody)}`) ? "ok" : "bad";
   },
@@ -159,16 +152,11 @@ export const bitbucket: GitProviderApi = {
     const repoFullName = p.repository?.full_name ?? "";
     if (!repoFullName) return [];
     const author = p.actor?.nickname || p.actor?.display_name || "bitbucket";
-    // One delivery can move several refs (pushing two branches at once), so every
-    // change is its own event rather than only the first.
     return (p.push?.changes ?? []).map((ch) => ({
       event: {
         isTag: ch.new?.type === "tag",
         refName: ch.new?.name ?? ch.old?.name ?? "",
         deleted: !ch.new,
-        // Bitbucket does not send a file list. An empty one makes the watch-path
-        // and skip-unchanged filters fail open, which is the documented contract
-        // for a delivery that carries no paths.
         changedPaths: [],
       },
       repoFullName,

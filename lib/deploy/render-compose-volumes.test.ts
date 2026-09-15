@@ -94,8 +94,6 @@ test("parseStackVolumes: empty / missing-service stacks yield []", () => {
 });
 
 test("renderCompose emits Docker Compose's `services:` top-level key, never `apps:`", () => {
-  // Compose's schema allows only `services:`; a top-level `apps:` makes the agent's
-  // `docker compose up` reject the stack ("additional properties 'apps' not allowed").
   const yaml = renderCompose(base);
   assert.match(yaml, /^services:$/m);
   assert.doesNotMatch(yaml, /^apps:/m);
@@ -138,8 +136,6 @@ test("host bind read-only flag emits :ro", () => {
 });
 
 test("host bind propagation renders as an option, alongside :ro", () => {
-  // Without it docker's rprivate default hands the container a snapshot of the submounts
-  // present at startup, so a share mounted under the folder later never appears.
   const follows = renderCompose({
     ...base,
     volumes: [
@@ -172,8 +168,6 @@ test("host bind propagation renders as an option, alongside :ro", () => {
 });
 
 test("propagation round-trips through parseStackVolumes, :ro included", () => {
-  // The reroute path re-renders from what it reads back: reading the option field as one
-  // word (`flag === "ro"`) dropped BOTH flags, silently re-rendering rw and rprivate.
   const volumes = [
     {
       type: "host" as const,

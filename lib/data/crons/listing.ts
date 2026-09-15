@@ -32,7 +32,6 @@ export async function jobsFor(where: SQL): Promise<CronJobDTO[]> {
   return rows.map((r) => toJobDTO(r, keys.get(r.id) ?? [], running.has(r.id)));
 }
 
-/** Which of these jobs have a run in flight right now. */
 export async function inFlightJobIds(jobIds: string[]): Promise<Set<string>> {
   if (jobIds.length === 0) return new Set();
   const rows = await getDb()
@@ -47,7 +46,6 @@ export async function inFlightJobIds(jobIds: string[]): Promise<Set<string>> {
   return new Set(rows.map((r) => r.jobId));
 }
 
-/** One job with the same shape a list read gives it. */
 export async function oneJob(id: string): Promise<CronJobDTO | null> {
   const rows = await getDb()
     .select()
@@ -62,7 +60,6 @@ export async function oneJob(id: string): Promise<CronJobDTO | null> {
   return toJobDTO(rows[0], keys.get(id) ?? [], running.has(id));
 }
 
-/** An app's cron jobs, plus the switch and the services a job can target. */
 export const listAppCronJobs = cache(
   async (appId: string): Promise<CronJobsView> => {
     const { app } = await gateApp(appId);
@@ -81,7 +78,6 @@ export const listAppCronJobs = cache(
   },
 );
 
-/** A database's cron jobs. One container, so no service list. */
 export const listDatabaseCronJobs = cache(
   async (databaseId: string): Promise<CronJobsView> => {
     const { database } = await gateDatabase(databaseId);
@@ -96,7 +92,6 @@ export const listDatabaseCronJobs = cache(
   },
 );
 
-/** A cron job as a search result renders it: name it, and open its page. */
 export interface TeamCronJob {
   id: string;
   teamId: string;
@@ -104,22 +99,14 @@ export interface TeamCronJob {
   schedule: string;
   enabled: boolean;
   targetKind: CronTargetKind;
-  /** The App's SLUG or the Database's ID - the whole deep link, either way. */
   targetRef: string;
   targetName: string;
 }
 
-/**
- * Every cron job in the active team the caller may actually manage. Visibility
- * comes from the PARENT, never from the job row: the two lists below already
- * apply team scope, token scope and the per-folder gates.
- */
 export async function listTeamCronJobs(): Promise<TeamCronJob[]> {
   const teamId = await requireActiveTeamId();
   const [apps, databases, caps] = await Promise.all([
     listApps(),
-    // A narrowed token can't reach databases, and so can't reach their jobs -
-    // but that must not cost it the App jobs it CAN see.
     listDatabases().catch(() => []),
     currentCapabilities(),
   ]);
@@ -128,7 +115,6 @@ export async function listTeamCronJobs(): Promise<TeamCronJob[]> {
       .filter((a) => a.capabilities?.includes("manage_crons"))
       .map((a) => [a.id, { ref: a.slug, name: a.name }] as const),
   );
-  // `gateDatabase` requires both.
   const dbOk =
     caps.includes("manage_crons") && caps.includes("open_database_console");
   const byDb = new Map(
@@ -138,8 +124,6 @@ export async function listTeamCronJobs(): Promise<TeamCronJob[]> {
   );
   if (byApp.size === 0 && byDb.size === 0) return [];
 
-  // A slim projection on purpose: `jobsFor` adds envKeys, the in-flight run and a
-  // parsed nextRunAt - three queries a search result never renders.
   const rows = await getDb()
     .select({
       id: cronJobsTable.id,

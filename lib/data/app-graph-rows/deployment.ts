@@ -9,7 +9,6 @@ import type {
 export type DeploymentRow = typeof deployments.$inferSelect;
 export type DeploymentLogRow = typeof deploymentLogs.$inferSelect;
 
-/** Reassemble a {@link Deployment} from its row (fully flat). */
 export function assembleDeployment(row: DeploymentRow): Deployment {
   return {
     id: row.id,
@@ -35,13 +34,11 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
     rollbackOf: row.rollbackOf,
     creator: row.creator,
     creatorUserId: row.creatorUserId ?? null,
-    // A DECORATION the list batch-resolves from `creatorUserId`, never a column.
     creatorUser: null,
     creatorProvider: row.creatorProvider ?? null,
   };
 }
 
-/** A {@link Deployment} → its insert row. `seq` is DB-generated (omitted). */
 export function deploymentToRow(
   d: Deployment,
 ): typeof deployments.$inferInsert {
@@ -71,12 +68,10 @@ export function deploymentToRow(
   };
 }
 
-/** A {@link LogLine} from its row (the `id`/`deployment_id` are reproduction-only). */
 export function assembleLogLine(row: DeploymentLogRow): LogLine {
   return { ts: row.ts, level: row.level, text: row.text };
 }
 
-/** A {@link LogLine} → its insert row for a deployment. `id` is DB-generated. */
 export function logLineToRow(
   deploymentId: string,
   line: LogLine,

@@ -13,11 +13,8 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import type { PlanService, ServerChoice } from "../types";
 
-// Radix refuses an empty item value, so Automatic needs a token. The placement
-// stores null; this never leaves these controls.
 const AUTOMATIC = "__automatic__";
 
-// RunSelect picks the host a workload runs on.
 export function RunSelect({
   id,
   servers,
@@ -32,9 +29,7 @@ export function RunSelect({
   value: string | undefined;
   onChange: (serverId: string) => void;
   placeholder?: string;
-  // Rows want `h-8`; a toolbar beside an Input wants `h-9`.
   className?: string;
-  // A column caption used to name these; without a header each says it itself.
   label?: string;
 }) {
   return (
@@ -60,7 +55,6 @@ export function RunSelect({
   );
 }
 
-// BuildSelect picks the host an app compiles on, Automatic included.
 export function BuildSelect({
   id,
   servers,
@@ -111,7 +105,6 @@ export function BuildSelect({
   );
 }
 
-// NothingToBuild is why an app has no build picker: the dash is the control, the tooltip the why.
 export function NothingToBuild({ service }: { service: PlanService }) {
   return (
     <SimpleTooltip

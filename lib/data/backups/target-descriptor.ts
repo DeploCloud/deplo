@@ -21,7 +21,6 @@ import type {
 import type { BackupTargetKind } from "../../types/backup";
 import type { Database, DatabaseType } from "../../types/database";
 
-// dumpUserFor - the user the dump tool authenticates as, NOT always the connection string's display user.
 export function dumpUserFor(db: Database): string {
   switch (db.type) {
     case "mysql":
@@ -35,7 +34,6 @@ export function dumpUserFor(db: Database): string {
   }
 }
 
-// databaseDescriptor - the wire DatabaseDescriptor for a managed database.
 export function databaseDescriptor(db: Database): DatabaseDescriptor {
   return {
     container: db.host,
@@ -48,7 +46,6 @@ export function databaseDescriptor(db: Database): DatabaseDescriptor {
   };
 }
 
-// toWireProjectDescriptor - map the structural project descriptor to the wire protobuf shape.
 export function toWireProjectDescriptor(
   d: ProjectBackupDescriptor,
   network: string,
@@ -57,36 +54,25 @@ export function toWireProjectDescriptor(
     slug: d.slug,
     volumeNames: d.volumeNames,
     includeFiles: d.includeFiles,
-    // The stack file was read off the HOST, so it can still name the network the
-    // app had before it moved - or one the cleanup has reclaimed since. The agent
-    // writes this YAML verbatim, so the retarget has to happen here.
     composeYaml: retargetStackNetwork(d.composeYaml, network),
     envSnapshot: d.envSnapshot,
     mounts: d.mounts,
-    // The app's network TODAY, not the snapshot's: a restore ends in a Reroute, and
-    // the app may have moved Environment since the backup was taken.
     network,
   };
 }
 
-// ResolvedTarget - the resolved target of a run: which server owns it + the wire descriptor.
 export interface ResolvedTarget {
   serverId: string;
   kind: BackupTargetKind;
-  // The target's own id (databaseId or appId) - keys the object folder.
   targetId: string;
   databaseId: string | null;
   appId: string | null;
   dbType: DatabaseType | null;
   database?: DatabaseDescriptor;
   project?: ProjectDescriptor;
-  // A human label for the activity log.
   label: string;
 }
 
-// resolveTarget - a backup target resolved to its owning server + the wire descriptor.
-// For a project this reads the rendered stack off the agent, so it may throw
-// AgentUnreachableError.
 export async function resolveTarget(
   teamId: string,
   kind: BackupTargetKind,

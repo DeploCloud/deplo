@@ -17,8 +17,6 @@ import { DeploMark } from "@/components/logo";
 
 import { backSection, type NavSection } from "./nav-item";
 
-// SETTINGS_NAV - the settings navigation; the first item is a "back to dashboard"
-// escape hatch.
 export const SETTINGS_NAV: NavSection[] = [
   backSection("Back to dashboard", "/", "Return to the dashboard", true),
   {
@@ -48,8 +46,6 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/notifications",
         icon: Bell,
         tooltip: "Alerts & delivery channels",
-        // Without it the page is a dead end: every switch, every Test button and
-        // Save are refused server-side (same reasoning as Registries below).
         requires: "manage_notifications",
       },
       {
@@ -70,8 +66,6 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/mcp",
         icon: Bot,
         tooltip: "Connect your AI agents to this team over MCP",
-        // Connecting your own agent, or flipping the team's switch: either is
-        // work to do here.
         requiresAny: ["manage_mcp", "manage_team"],
       },
     ],
@@ -114,8 +108,6 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/migrations",
         icon: Cable,
         tooltip: "Bring another panel's teams over, each into a team here",
-        // One panel is several teams, each landing in a team of the operator's
-        // choosing: an instance-wide act, not one team's.
         requiresAdmin: true,
       },
       {
@@ -123,8 +115,6 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/servers",
         icon: Server,
         tooltip: "Connected servers & Docker hosts",
-        // The management view lists EVERY server across teams, so this is gated
-        // to instance admins rather than a per-team capability.
         requiresAdmin: true,
       },
       {

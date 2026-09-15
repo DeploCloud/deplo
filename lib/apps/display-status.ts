@@ -1,10 +1,8 @@
 import type { AppStatus } from "@/lib/types/app";
 
-// DisplayStatus is the status the UI renders, which is not the status we store.
 export type DisplayStatus =
   AppStatus | "restarting" | "unhealthy" | "down" | "not_deployed";
 
-// RuntimeSnapshot is the slice of AppRuntime the fold needs.
 export interface RuntimeSnapshot {
   total: number;
   running: number;

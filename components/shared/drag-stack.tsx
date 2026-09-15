@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-// DragStack is the lifted card that follows the cursor during a drag.
 export function DragStack({
   count,
   className,

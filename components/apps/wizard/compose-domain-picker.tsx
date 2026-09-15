@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { ComposeRouteCandidate } from "@/lib/deploy/compose-lint/routing";
 
-// ComposeDomainPicker - the primary is always routed; a database is offered but never pre-selected.
 export function ComposeDomainPicker({
   candidates,
   selected,

@@ -21,8 +21,6 @@ import {
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import type { EnvTarget } from "../types/env";
 
-// Migration parity for ADR-0010, amended by ADR-0012 (shared vars are opt-in per app).
-
 const T0 = "2026-01-01T00:00:00.000Z";
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
 
@@ -49,7 +47,6 @@ before(async () => {
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
-  // 0043 adds a `users` column seedIdentity's live-drizzle insert names, so it must precede the seed.
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 27 ||
     f.startsWith("0043_") ||
@@ -65,7 +62,6 @@ before(async () => {
 
   for (const f of pre27) await applyFile(f);
 
-  // 0121 also alters instance_settings, which does not exist yet, so borrow just these two ALTERs.
   await pg.exec(`
     alter table teams add column if not exists image text;
     alter table memberships add column if not exists switcher_position integer;
@@ -74,7 +70,6 @@ before(async () => {
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
-  // Raw SQL, not seedServer: drizzle names every live column, and the schema is frozen at 0026 here.
   await pg.exec(`
     insert into servers (
       id, name, host, type, status, ip, docker_version, traefik_enabled,
@@ -213,12 +208,10 @@ test("app_p production: linked (old group) vars inject, link overrides app-own; 
     OWN: "enc:own",
     DUP: "enc:sgdup",
     SG: "enc:sg",
-    // Not here (ADR-0012): TG and EE are opt-in now.
   });
 });
 
 test("app_top production: nothing injects (the team-wide global became opt-in)", async () => {
-  // The old team-global no longer auto-applies (ADR-0012).
   assert.deepEqual(await resolved("app_top", "production"), {});
 });
 

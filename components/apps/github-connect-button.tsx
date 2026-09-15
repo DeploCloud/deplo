@@ -24,13 +24,11 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { GitHubIcon, GitProviderMark } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
 
-// useGithubConnect - starts GitHub's App Manifest flow from the browser.
 export function useGithubConnect() {
   const [pending, startTransition] = React.useTransition();
 
   const connect = React.useCallback(
     (org?: string) => {
-      // Call sites pass this to onClick/onSelect, so the argument is often an Event.
       const owner = typeof org === "string" && org.trim() ? org.trim() : null;
       startTransition(async () => {
         const res = await gqlAction<
@@ -78,7 +76,6 @@ export function useGithubConnect() {
   return { connect, pending };
 }
 
-// useGithubOwnerConnect - the owner choice every connect surface shares.
 export function useGithubOwnerConnect() {
   const { connect, pending } = useGithubConnect();
   const [orgOpen, setOrgOpen] = React.useState(false);
@@ -106,7 +103,6 @@ export function useGithubOwnerConnect() {
   return { items, dialog, pending, connect };
 }
 
-// GitHub has no API to list the orgs of someone not connected yet, so it is typed.
 function GithubOrgDialog({
   onClose,
   onConnect,

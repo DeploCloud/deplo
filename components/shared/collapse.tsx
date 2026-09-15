@@ -4,7 +4,6 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-// Collapse is a drawer that eases open and shut instead of snapping.
 export function Collapse({
   open,
   className,
@@ -22,7 +21,6 @@ export function Collapse({
         open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
       )}
     >
-      {/* `overflow-hidden` is what lets the row shrink below its content. */}
       <div className="overflow-hidden">
         <div className={className}>{children}</div>
       </div>

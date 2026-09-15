@@ -11,8 +11,6 @@ import {
   type TakeoverStatus,
 } from "@/lib/data/takeover";
 
-// The host-side work is the installer's; these fields are only what a person decides.
-
 const TakeoverStateEnum = builder.enumType("TakeoverState", {
   description:
     "pending = the migration is not finished. ready = the operator asked for the machine and the installer is moving the ports. failed = the cutover rolled back; `error` says why and it can be asked for again. done = the ports are Deplo's. removing / removed = the old platform is coming off the disk. cancelled = the operator backed out and Deplo is uninstalling itself.",

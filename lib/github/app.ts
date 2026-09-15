@@ -37,7 +37,6 @@ function appJwt(app: GithubApp): string {
   if (!pem) throw new Error("GitHub App private key is unavailable");
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  // iat backdated 30s for clock skew; exp 9 min (< GitHub's 10 min ceiling).
   const payload = b64url(
     JSON.stringify({ iat: now - 30, exp: now + 9 * 60, iss: app.appId }),
   );
@@ -51,7 +50,7 @@ function appJwt(app: GithubApp): string {
 
 interface CachedToken {
   token: string;
-  expiresAt: number; // epoch ms
+  expiresAt: number;
 }
 const tokenCache = new Map<string, CachedToken>();
 
@@ -82,7 +81,6 @@ export interface InstallationAccount {
   avatarUrl: string;
 }
 
-// The post-install setup redirect never says which App was installed, so try each App's JWT.
 export async function resolveInstallationAccount(
   numericInstallationId: number,
 ): Promise<{ app: GithubApp; account: InstallationAccount } | null> {
@@ -122,7 +120,6 @@ export async function resolveInstallationAccount(
   return null;
 }
 
-// The connected App registered under a given numeric GitHub App id.
 export async function findAppByAppId(appId: number): Promise<GithubApp | null> {
   const rows = await getDb()
     .select()
@@ -149,7 +146,6 @@ async function githubFetch(
   });
 }
 
-// A valid installation access token for a Deplo installation id, minted and cached when needed.
 export async function getInstallationToken(
   installationId: string,
 ): Promise<string> {
@@ -194,7 +190,6 @@ export interface GithubRepoSummary {
 async function assertInstallationInActiveTeam(
   installationId: string,
 ): Promise<void> {
-  // A narrowed API token must not enumerate the team's whole git inventory: this is a team-level browse, and a token creating an app passes its repo URL directly.
   await requireTeamWide("the team's git repositories");
   const teamId = await requireActiveTeamId();
   const row = (
@@ -255,7 +250,6 @@ export async function listInstallationRepos(
 
 const OWNER_REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 
-// Branch names for a repo accessible to the installation.
 export async function listRepoBranches(
   installationId: string,
   fullName: string,
@@ -271,7 +265,6 @@ export async function listRepoBranches(
   return json.map((b) => b.name);
 }
 
-// Host is pinned to api.github.com (no SSRF surface); a null token reads public repos under GitHub's IP rate limit.
 async function githubGet(
   path: string,
   token: string | null,
@@ -288,7 +281,6 @@ async function githubGet(
   });
 }
 
-// Tip commit of a branch on a PUBLIC repo, or null when GitHub will not say; best-effort - the caller re-checks after the clone.
 export async function publicBranchHead(
   fullName: string,
   branch: string,
@@ -308,7 +300,6 @@ export async function publicBranchHead(
   }
 }
 
-// Whether a repository is visible to an installation - a null id checks as the anonymous caller a credential-less clone gets.
 export async function checkRepoVisible(
   installationId: string | null,
   fullName: string,
@@ -322,16 +313,12 @@ export async function checkRepoVisible(
   if (!res.ok) throw new Error(`GitHub repo check failed (${res.status})`);
 }
 
-// A single blob entry from a repo's recursive git tree.
 export interface RepoTreeBlob {
-  // Repo-root-relative POSIX path.
   path: string;
   size: number;
-  // The blob's git object SHA, for fetchRepoBlob.
   sha: string;
 }
 
-// The recursive git tree at a ref (a branch name, or "HEAD" for the default branch), flattened to blob entries.
 export async function listRepoTree(
   fullName: string,
   ref: string,
@@ -354,7 +341,6 @@ export async function listRepoTree(
     .map((e) => ({ path: e.path, size: e.size ?? 0, sha: e.sha }));
 }
 
-// Fetch a single git blob's raw bytes by SHA, or null on any failure; never throws.
 export async function fetchRepoBlob(
   fullName: string,
   sha: string,
@@ -380,7 +366,6 @@ export async function fetchRepoBlob(
   return Buffer.from(json.content, "base64");
 }
 
-// Clone URL with a fresh short-lived installation token embedded when one is given; unchanged for public / plain Git sources.
 export async function installationCloneUrl(
   repoUrl: string,
   installationId: string | null,
@@ -399,15 +384,10 @@ export async function installationCloneUrl(
   return `https://x-access-token:${token}@github.com/${path}.git`;
 }
 
-// Read live from GitHub, never stored: the operator changes it on github.com and a cached answer goes stale.
 export interface GithubAppAccess {
-  // What GitHub reports, diffed against `PROVIDER_ACCESS.github`.
   missingCore: AccessRequirement[];
-  // Only reported for a repo that uses pull request previews.
   missingPreviews: AccessRequirement[];
-  // Nothing missing on either half - the gate the Pull requests page reads.
   previewReady: boolean;
-  // Deep link to THIS App's permissions page (not its public page).
   settingsUrl: string;
   ownerLogin: string;
 }
@@ -419,7 +399,6 @@ interface CachedAccess {
 const accessCache = new Map<string, CachedAccess>();
 const ACCESS_TTL_MS = 60_000;
 
-// The App's declared events + permissions, cached a minute so a per-app RSC render doesn't round-trip each time.
 export async function readAppAccess(
   appDbId: string,
 ): Promise<GithubAppAccess | null> {
@@ -452,7 +431,6 @@ export async function readAppAccess(
     const permissions = json.permissions ?? {};
     const ownerLogin = json.owner?.login ?? "";
     const slug = json.slug ?? app.slug;
-    // The App's PUBLIC page has no permissions UI - the owner's settings page is the only place to change them.
     const settingsUrl =
       json.owner?.type === "Organization" && ownerLogin
         ? `https://github.com/organizations/${ownerLogin}/settings/apps/${slug}/permissions`
@@ -485,9 +463,7 @@ export interface GithubPullRequestSummary {
   headRef: string;
   baseRef: string;
   headSha: string;
-  // `owner/name` of the head repo; null when the fork was deleted.
   headRepo: string | null;
-  // The head repo's clone URL - a fork's ref does not exist on the base repo.
   headCloneUrl: string | null;
   fromFork: boolean;
   draft: boolean;
@@ -509,7 +485,6 @@ function toPullRequestSummary(
     headSha: p.head?.sha ?? "",
     headRepo,
     headCloneUrl: p.head?.repo?.clone_url ?? null,
-    // NOT `head.repo.fork`: an unrelated repo in the same organisation reports `fork: false` and is just as untrusted.
     fromFork: !headRepo || headRepo !== baseRepo,
     draft: Boolean(p.draft),
     authorLogin: p.user?.login ?? "",
@@ -535,7 +510,6 @@ interface RawPullRequest {
   base?: { ref?: string };
 }
 
-// Open pull requests on a repo, most recently updated first.
 export async function listOpenPullRequests(
   installationId: string,
   fullName: string,
@@ -552,7 +526,6 @@ export async function listOpenPullRequests(
   return json.map((p) => toPullRequestSummary(p, fullName));
 }
 
-// One pull request's current state - the reaper's missed-`closed` safety net; an unreachable GitHub means "don't know" (null), never "closed".
 export async function getPullRequestState(
   installationId: string,
   fullName: string,
@@ -564,7 +537,7 @@ export async function getPullRequestState(
     const res = await githubFetch(`/repos/${fullName}/pulls/${number}`, {
       token,
     });
-    if (res.status === 404) return "closed"; // deleted repo/PR, nothing to keep alive
+    if (res.status === 404) return "closed";
     if (!res.ok) return null;
     const json = (await res.json()) as RawPullRequest;
     return json.state === "closed" ? "closed" : "open";
@@ -573,13 +546,10 @@ export async function getPullRequestState(
   }
 }
 
-// A GitHub answer worth asking again in a moment: the network, a 5xx, a 429.
 export class TransientGithubError extends Error {}
 
-// Deplo's ONE sticky comment on a pull request: a definitive refusal answers null, a transient failure throws TransientGithubError so the caller may retry.
 export async function upsertPullRequestComment(opts: {
   installationId: string;
-  // `owner/name` of the BASE repo.
   fullName: string;
   prNumber: number;
   commentId: number | null;
@@ -600,7 +570,6 @@ export async function upsertPullRequestComment(opts: {
         },
       );
       if (res.ok) return opts.commentId;
-      // Anything other than "it's gone" keeps the id rather than posting a duplicate.
       if (res.status === 429 || res.status >= 500)
         throw new TransientGithubError(`GitHub answered ${res.status}`);
       if (res.status !== 404 && res.status !== 410) return opts.commentId;
@@ -617,7 +586,6 @@ export async function upsertPullRequestComment(opts: {
     if (!created.ok) {
       if (created.status === 429 || created.status >= 500)
         throw new TransientGithubError(`GitHub answered ${created.status}`);
-      // A 403 here is the App missing `pull_requests: write`, which the Pull requests page already surfaces.
       console.warn(
         `[deplo-pr-comment] could not comment on ${fullName}#${prNumber} (${created.status})`,
       );
@@ -627,7 +595,6 @@ export async function upsertPullRequestComment(opts: {
     return json.id ?? null;
   } catch (e) {
     if (e instanceof TransientGithubError) throw e;
-    // A failed fetch is the network, which is the transient case by definition.
     if (e instanceof TypeError) throw new TransientGithubError(e.message);
     console.warn(
       `[deplo-pr-comment] ${fullName}#${prNumber}: ${e instanceof Error ? e.message : String(e)}`,

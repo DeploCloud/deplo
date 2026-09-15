@@ -62,7 +62,6 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-// Every read is `cache`d per request, so each assertion needs its own context.
 const read = () =>
   runWithIdentity({ userId: ADMIN, teamId: TEAM_A }, takeoverStatus);
 
@@ -85,9 +84,6 @@ async function seedPending(platform = "dokploy"): Promise<void> {
   await asUser(ADMIN, ensureTakeoverFromEnv);
 }
 
-// Before the cutover Deplo's proxy waits on loopback, so the configured https address
-// is exactly the one that does not answer; the request comes in through the old panel's
-// proxy, and that is where a remote machine can enrol.
 test("until the cutover, what Deplo hands out names the address it was reached on", async (t) => {
   const { instancePublicBaseUrl } =
     await import("./instance-settings/settings-store");

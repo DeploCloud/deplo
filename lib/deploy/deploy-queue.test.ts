@@ -7,7 +7,6 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { and, eq } from "drizzle-orm";
 
-// Set before the build module graph loads: build.ts reads DEPLO_DATA_DIR at module load.
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-queue-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";

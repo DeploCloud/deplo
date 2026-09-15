@@ -23,8 +23,6 @@ import {
   waitFor,
 } from "./supervisor-test-helpers";
 
-// The gap these pin: `apps.status` is INTENT (the last thing the control plane was ASKED to do), and it went stale silently.
-
 const h = setupSupervisor();
 
 test("a frame reporting a RUNNING container clears a stale `error` - the reboot incident", async () => {
@@ -47,7 +45,6 @@ test("a frame reporting a RUNNING container clears a stale `error` - the reboot 
     startMetricsStreams();
     await waitFor(() => __streamModes()[SRV_A] === "stream", "srv_a to stream");
 
-    // ONE frame is enough: the reconcile clock is seeded to 0 on connect, so a host that came back corrects immediately.
     await feed.send(frame([containerStat("prj_1", "app-one-web-1", 7)]));
 
     const after = await appRow(h.db, "prj_1");
@@ -71,8 +68,6 @@ test("a frame reporting a RUNNING container clears a stale `error` - the reboot 
 });
 
 test("only `error` is ever promoted - active/idle/stopping/queued/building are left exactly as stored", async () => {
-  // The write-war guard's allowlist is exactly ONE value wide: `stopping` is written before an up-to-60s
-  // `docker stop`, so frames in that window still say "running" and promoting would bounce the user's Stop.
   const untouchable = [
     "active",
     "idle",
@@ -125,7 +120,6 @@ test("only `error` is ever promoted - active/idle/stopping/queued/building are l
 });
 
 test("a crash-looping container is NOT promoted - `restarting` vetoes the whole App", async () => {
-  // Promoting a restart loop only hands it to `displayStatus` to re-demote, flipping the badge through a state that was never true.
   const feed = await streamingServer(h.db);
   await seedApp(h.db, {
     id: "prj_loop",
@@ -208,7 +202,6 @@ test("telemetrySaysRunning: what counts as proof an App is up", () => {
     "a partially-up stack is still up",
   );
 
-  // An agent too old to send `state` leaves it "" (proto3 default), so the legacy boolean stays the fallback.
   assert.equal(telemetrySaysRunning([c({ state: "", running: true })]), true);
   assert.equal(telemetrySaysRunning([c({ state: "", running: false })]), false);
 });

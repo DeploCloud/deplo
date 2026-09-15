@@ -12,7 +12,6 @@ export interface RecognizedFramework {
   staticOutput: string | null;
 }
 
-// RepoCommands - the repo's own build command, plus the framework's start.
 export interface RepoCommands {
   buildCommand: string | null;
   startCommand: string | null;
@@ -88,7 +87,6 @@ export function useRepoFramework(input: RepoFrameworkInput): {
             setAnswer({ query, read: data.detectRepoFramework ?? null });
           }
         })
-        // Recording the empty answer on failure is what stops the skeleton.
         .catch(() => {
           if (!controller.signal.aborted) setAnswer({ query, read: null });
         });

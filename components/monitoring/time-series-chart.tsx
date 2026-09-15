@@ -11,25 +11,18 @@ import {
 } from "@/lib/monitoring/chart-geometry";
 
 export interface ChartSeriesDef {
-  // Key into each point's `values` record.
   key: string;
   label: string;
-  // A `--chart-*` token. Marks only, never text.
   color: string;
-  // Fade a gradient wash under the line (single-series charts only).
   fill?: boolean;
 }
 
 export interface ChartPoint {
-  // Sample timestamp (ms epoch).
   ts: number;
   values: Record<string, number>;
 }
 
-// ChartUnit - drives the y domain, tick generation and value formatting.
 export type ChartUnit = "percent" | "bytesPerSec" | "count";
-
-// Two samples further apart than GAP_MS are NOT connected: drawing through fabricates data.
 
 const M_TOP = 10;
 const M_RIGHT = 12;
@@ -47,18 +40,14 @@ function niceStep(rough: number): number {
 function linearTicks(max: number, target: number): number[] {
   const step = niceStep(max / target);
   const n = Math.max(1, Math.ceil(max / step - 1e-9));
-  // Multiply instead of accumulating so float dust never reaches the labels.
   return Array.from({ length: n + 1 }, (_, i) =>
     Number((i * step).toFixed(10)),
   );
 }
 
 function yTicksFor(unit: ChartUnit, dataMax: number): number[] {
-  // Percent pins to 0-100 but GROWS past it: CPU is a percentage of ONE core, so 299% is real
-  // and clamping drew it as a flat line on the ceiling while the tooltip said otherwise.
   if (unit === "percent")
     return dataMax <= 100 ? [0, 25, 50, 75, 100] : linearTicks(dataMax, 4);
-  // Idle network still gets a real axis (1 kB/s) instead of a degenerate 0-0.
   if (unit === "bytesPerSec") return linearTicks(Math.max(dataMax, 1000), 4);
   return linearTicks(Math.max(dataMax, 1), 4);
 }
@@ -75,7 +64,6 @@ function fmtValue(v: number, unit: ChartUnit): string {
   return v.toFixed(2);
 }
 
-// Steps that land on clean wall-clock times.
 const TIME_STEPS_S = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
 
 function timeTicks(
@@ -127,7 +115,6 @@ function segmentsFor(
   return segs;
 }
 
-// TimeSeriesChart - live panel: unit-formatted axes, gap-aware lines, crosshair tooltip on pointer AND arrow keys.
 export function TimeSeriesChart({
   series,
   points,
@@ -147,7 +134,6 @@ export function TimeSeriesChart({
   const [width, setWidth] = React.useState(0);
   const [hoverTs, setHoverTs] = React.useState<number | null>(null);
   const [hidden, setHidden] = React.useState<Set<string>>(() => new Set());
-  // One id per instance, so two charts on the same page never collide on a shared def id.
   const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const clipId = `tschart-clip-${uid}`;
   const hatchId = `tschart-gap-${uid}`;
@@ -170,13 +156,11 @@ export function TimeSeriesChart({
   const t1 = last?.ts ?? 0;
   const t0 = t1 - windowMs;
 
-  // One sample earlier than the window, so the line enters from the left edge instead of mid-plot.
   const firstIdx = points.findIndex((p) => p.ts >= t0);
   const drawPoints =
     firstIdx >= 0 ? points.slice(Math.max(0, firstIdx - 1)) : [];
   const hoverPoints = firstIdx >= 0 ? points.slice(firstIdx) : [];
 
-  // Stretches with no measurements (agent busy deploying, offline, or the tab throttled).
   const gaps = visibleGapSpans(
     drawPoints.map((p) => p.ts),
     GAP_MS,
@@ -196,7 +180,6 @@ export function TimeSeriesChart({
   const yTicks = yTicksFor(unit, dataMax);
   const yMax = yTicks[yTicks.length - 1];
   const yLabels = yTicks.map((t) => fmtAxis(t, unit));
-  // Left gutter sized to the widest tick label (10px font ≈ 6.2px/char).
   const mLeft = Math.max(
     34,
     Math.round(Math.max(...yLabels.map((l) => l.length)) * 6.2 + 14),
@@ -210,8 +193,6 @@ export function TimeSeriesChart({
 
   const xt = timeTicks(t0, t1, Math.max(3, Math.floor(plotW / 90)));
 
-  // Snap the stored hover time to the nearest visible sample - storing a time
-  // (not an index) keeps the crosshair still while new samples stream in.
   let hoverPoint: ChartPoint | null = null;
   if (hoverTs != null && hoverPoints.length) {
     hoverPoint = hoverPoints[0];
@@ -252,7 +233,6 @@ export function TimeSeriesChart({
       if (next.has(key)) next.delete(key);
       else {
         next.add(key);
-        // Never hide the last visible series - an all-empty plot helps nobody.
         if (next.size >= series.length) return prev;
       }
       return next;
@@ -287,7 +267,6 @@ export function TimeSeriesChart({
             <clipPath id={clipId}>
               <rect x={mLeft} y={M_TOP} width={plotW} height={plotH} />
             </clipPath>
-            {/* A vertical gradient, not a flat wash, so the grid shows through at the baseline. */}
             {series
               .filter((s) => s.fill)
               .map((s) => (
@@ -305,7 +284,6 @@ export function TimeSeriesChart({
                 </linearGradient>
               ))}
 
-            {/* Diagonal hatch for "No data" spans - recessive in both themes. */}
             <pattern
               id={hatchId}
               patternUnits="userSpaceOnUse"
@@ -329,7 +307,6 @@ export function TimeSeriesChart({
             </pattern>
           </defs>
 
-          {/* Horizontal grid + unit-formatted y ticks */}
           {yTicks.map((t, i) => {
             const y = yOf(t);
             return (
@@ -356,7 +333,6 @@ export function TimeSeriesChart({
             );
           })}
 
-          {/* Vertical grid + wall-clock x ticks */}
           {xt.ticks.map((t) => {
             const x = xOf(t);
             return (
@@ -382,7 +358,6 @@ export function TimeSeriesChart({
             );
           })}
 
-          {/* An explicit hatched band: an invisible hole reads as a glitch, not as a break. */}
           {gaps.length > 0 && (
             <g clipPath={`url(#${clipId})`}>
               {gaps.map(([a, b], i) => {
@@ -414,7 +389,6 @@ export function TimeSeriesChart({
             </g>
           )}
 
-          {/* Series marks: gradient area wash, 2px gap-aware lines, isolated dots */}
           <g clipPath={`url(#${clipId})`}>
             {visibleSeries.map((s) => {
               const segs = segmentsFor(drawPoints, s.key, xOf, yOf);
@@ -442,7 +416,6 @@ export function TimeSeriesChart({
                         strokeLinejoin="round"
                       />
                     ) : (
-                      // An isolated sample (gaps on both sides) still shows.
                       <circle
                         key={`p${i}`}
                         cx={seg[0].x}
@@ -457,7 +430,6 @@ export function TimeSeriesChart({
             })}
           </g>
 
-          {/* Live edge: latest value of each series, ringed in the surface */}
           {last &&
             visibleSeries.map((s) => {
               const v = last.values[s.key];
@@ -475,7 +447,6 @@ export function TimeSeriesChart({
               );
             })}
 
-          {/* In a no-data span the crosshair does not snap: there is nothing to read. */}
           {hoverInGap && hoverTs != null && (
             <line
               x1={xOf(hoverTs)}
@@ -488,7 +459,6 @@ export function TimeSeriesChart({
             />
           )}
 
-          {/* Crosshair snapped to the hovered sample, with per-series dots */}
           {hoverPoint && !hoverInGap && (
             <g>
               <line
@@ -526,7 +496,6 @@ export function TimeSeriesChart({
         </div>
       )}
 
-      {/* No-data tooltip: the pointer is over a span with no measurements. */}
       {hoverInGap && hoverTs != null && width > 0 && (
         <div
           className="pointer-events-none absolute z-10 rounded-md border bg-popover px-2.5 py-2 text-xs shadow-md"
@@ -549,7 +518,6 @@ export function TimeSeriesChart({
         </div>
       )}
 
-      {/* Tooltip: timestamp header, then every visible series at that X */}
       {hoverPoint && !hoverInGap && width > 0 && (
         <div
           className="pointer-events-none absolute z-10 min-w-36 rounded-md border bg-popover px-2.5 py-2 text-xs shadow-md"
@@ -589,7 +557,6 @@ export function TimeSeriesChart({
         </div>
       )}
 
-      {/* Legend with live values - only for 2+ series; click toggles a series */}
       {series.length > 1 && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2">
           {series.map((s) => {

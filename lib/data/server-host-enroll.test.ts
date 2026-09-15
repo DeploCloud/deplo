@@ -115,7 +115,6 @@ test("does nothing without the installer's environment", async () => {
   await ensureDeploHostServer();
   assert.equal((await listAllServers()).length, 0);
 
-  // A row we cannot dial is worse than no row: the agent cert SANs pin its address.
   process.env.DEPLO_HOST_BOOTSTRAP_TOKEN = TOKEN;
   delete process.env.DEPLO_SERVER_IP;
   await ensureDeploHostServer();

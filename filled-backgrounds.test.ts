@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-// See "Fills are opaque" in AGENTS.md.
 const OVERLAY = new Set(["black", "background", "popover"]);
 const ALPHA_BG = /\bbg-([a-z-]+)\/(\[?[0-9.]+%?\]?)/g;
 

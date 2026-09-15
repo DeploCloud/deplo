@@ -33,30 +33,21 @@ import {
 import { checkDomainDns } from "./dns-check";
 import { composeServiceNames, normalizePath } from "./route-config";
 
-// ensureAutoDomain: ensure a project has a registered primary domain and return its hostname.
 export async function ensureAutoDomain(
   appId: string,
   opts: {
     slug: string;
     ip: string;
     preferred?: string;
-    /** The container port this host routes to. Always written so no auto domain is ever portless. */
     defaultPort: number;
-    /** Compose default expose service (null/absent for single-image). */
     defaultApp?: string | null;
-    /** TLS choice the domain is born with. Absent ⇒ `none`; createApp passes
-     * `letsencrypt` only when the blueprint itself expects HTTPS. */
     certProvider?: CertProvider;
-    /** The path this host routes here. An import brings apps that share ONE
-     * hostname on different paths, which the stored uniqueness allows. */
     preferredPath?: string;
   },
 ): Promise<string> {
   const existing = await loadDomainsForApp(appId);
   const primary = existing.find((d) => d.primary) ?? existing[0];
   if (primary) {
-    // Self-heal an auto-generated nip.io domain that still encodes a stale or
-    // loopback IP, so a corrected IP takes effect without deleting the domain.
     if (
       primary.source === "auto" &&
       isIpv4(opts.ip) &&
@@ -78,16 +69,12 @@ export async function ensureAutoDomain(
   }
 
   const preferred = normalizePreferredHost(opts.preferred) || undefined;
-  // A garbage value is dropped and a fresh nip.io host generated instead of
-  // being persisted.
   const preferredOk =
     !!preferred &&
     (nipEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
   const preferredPath = normalizePath(opts.preferredPath);
   let name: string;
   if (preferredOk && !(await domainNameExists(preferred!, preferredPath))) {
-    // The same refusals a typed hostname gets: not the panel's own address, and
-    // not a name another team routes or holds as its preview zone.
     assertNotPanelHost(preferred!);
     const owner = (
       await getDb()
@@ -102,16 +89,11 @@ export async function ensureAutoDomain(
   } else {
     name = await uniqueAutoDomainName(opts.slug, opts.ip);
   }
-  // The path only comes across with the host it belongs to.
   const pathPrefix = name === preferred ? preferredPath : "";
-  // Our own generated nip.io hosts point at the server IP by construction, so
-  // they are born routable ("valid").
   const status =
     nipEmbeddedIp(name) != null
       ? ("valid" as const)
       : await checkDomainDns(name, opts.ip);
-  // An absent stored provider reads as letsencrypt at the deploy edge (pre-field
-  // back-compat), so the born-without-a-cert default is written explicitly.
   const certProvider = certProviderForDns(status, opts.certProvider ?? "none");
   const domain: Domain = {
     id: newId("dom"),
@@ -132,8 +114,6 @@ export async function ensureAutoDomain(
   return name;
 }
 
-// ensureExtraDomain: register a secondary (non-primary) domain, e.g. the extra
-// hostnames a multi-domain template exposes.
 export async function ensureExtraDomain(
   appId: string,
   rawName: string,
@@ -142,17 +122,12 @@ export async function ensureExtraDomain(
     service?: string | null;
     slug: string;
     ip: string;
-    /** TLS choice - same rule as {@link ensureAutoDomain}: absent ⇒ `none`. */
     certProvider?: CertProvider;
-    /** The path this host routes here. Two rows may share one hostname on
-     * different paths, the only way a stack with ONE base URL can be routed. */
     pathPrefix?: string;
   },
 ): Promise<void> {
   const pathPrefix = normalizePath(route.pathPrefix);
   const asked = normalizePreferredHost(rawName);
-  // The two refusals `addDomain` makes, made here too - but a template typo must
-  // cost the address, not the whole create, so this skips rather than throws.
   const service = route.service ?? "";
   const project = service ? await loadAppGraph(appId) : null;
   if (project && usesComposeStack(project)) {
@@ -164,8 +139,6 @@ export async function ensureExtraDomain(
       return;
   }
   const existing = await loadDomainsForApp(appId);
-  // No host asked for: a PATH means "the app's own address, there"; anything
-  // else gets a generated host rather than no address at all.
   const wanted =
     asked && DOMAIN_RE.test(asked)
       ? asked
@@ -180,9 +153,6 @@ export async function ensureExtraDomain(
     )
   )
     return;
-  // Honor the asked-for host when it is free AT THIS PATH - the app's own
-  // primary holding it on `/` must not push its `/api` sibling onto an invented
-  // address. Taken regenerates a unique one rather than skip.
   const name =
     wanted &&
     !isPanelHost(wanted) &&
@@ -192,8 +162,6 @@ export async function ensureExtraDomain(
           route.service ? `${route.slug}-${route.service}` : route.slug,
           route.ip,
         );
-  // Same explicit-store rule as the primary: absent reads as letsencrypt at the
-  // deploy edge, so the born-without-a-cert default is written.
   const certProvider = route.certProvider ?? "none";
   const domain: Domain = {
     id: newId("dom"),

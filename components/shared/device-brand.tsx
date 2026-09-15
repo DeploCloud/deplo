@@ -3,10 +3,8 @@ import { Globe, Laptop, Terminal } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-// DeviceBrand - the marks behind a signed-in device, keyed by the strings `describeUserAgent` returns.
 export interface DeviceBrand {
   label: string;
-  // A literal, not a token: a brand colour is not themeable.
   bg: string;
   fg: string;
   path?: string;
@@ -14,7 +12,6 @@ export interface DeviceBrand {
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-// OS_BRAND - single-path marks from simple-icons (CC0), except Windows, which is devicon (MIT).
 export const OS_BRAND: Record<string, DeviceBrand> = {
   macOS: {
     label: "macOS",
@@ -184,7 +181,6 @@ function BrandTile({
   );
 }
 
-// DeviceMark - the browser's mark with the operating system's on its corner; either half may be missing.
 export function DeviceMark({
   os,
   browser,

@@ -3,7 +3,6 @@
 import * as React from "react";
 import { RevealChip } from "@/components/shared/reveal-chip";
 
-// EnvValueCell - one env-var row's value as a click-to-reveal chip; a secret is masked.
 export function EnvValueCell({
   value,
   masked,

@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import type { AppRef } from "./types";
 import { PickerSearch } from "./picker-search";
 
-// AppsSection - details for the "Specific apps" scope: a searchable grid of app cards.
 export function AppsSection({
   apps,
   selected,
@@ -18,8 +17,6 @@ export function AppsSection({
   onChange: (next: string[]) => void;
 }) {
   const [q, setQ] = React.useState("");
-  // The domain is on the card, so it's also worth searching: "the app on
-  // shop.acme.com" is how you remember an app you named `web`.
   const shown = React.useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return apps;

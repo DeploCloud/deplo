@@ -1,8 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-// One width per placeholder row's message. The actor line above it is a fixed
-// width, because a name is always about as long as the next one.
 const ROWS = ["w-64", "w-80", "w-56", "w-72", "w-48", "w-64", "w-40"];
 
 export function ActivitySkeleton() {
@@ -37,8 +35,6 @@ export function ActivitySkeleton() {
         {ROWS.map((width, i) => (
           <li key={i} className="relative flex items-start gap-3">
             <Skeleton className="relative z-10 size-8 shrink-0 rounded-full ring-4 ring-background" />
-            {/* The actor line rides the marker's centre, exactly as a real row's
-                does, so the feed does not jump when it lands. */}
             <div className="min-w-0 flex-1">
               <div className="flex min-h-8 items-center">
                 <Skeleton className="h-4 w-40" />

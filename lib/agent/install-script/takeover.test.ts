@@ -25,7 +25,6 @@ takeover_apply_ports 8080 8443
 });
 
 test("the removal is followed by a Docker restart, and only then is the takeover over", async () => {
-  // `docker swarm leave` leaves every network with a dead embedded DNS (measured) and only the daemon restart fixes it, so `removed` comes after.
   const out = await bash(`set -euo pipefail
 exec 9>/dev/null
 C_B=; C_OFF=; C_ACC=; PUBLIC_URL=https://x
@@ -42,7 +41,6 @@ takeover_unit_remove() { echo unit_remove; }
 ${await shellFn("install.sh", "takeover_after_cutover")}
 takeover_after_cutover
 `);
-  // The "Next" block it prints for the transcript is not part of the order.
   const calls = out
     .split("\n")
     .filter((l) => l.trim() !== "" && !/^( Next|   [12]  )/.test(l));

@@ -21,7 +21,6 @@ test("mapSource builds an https clone URL for every git flavour", () => {
     cloneTarget(
       app({
         sourceType: "gitlab",
-        // Dokploy clones `<host>/<gitlabPathNamespace>.git`: the field is the FULL project path, repository included.
         gitlabPathNamespace: "acme/team/api",
         gitlabRepository: "api",
         gitlabBranch: "develop",
@@ -137,7 +136,6 @@ test("mapSource takes a docker image and refuses one Deplo would interpolate", (
     kind: "docker-image",
     image: "ghcr.io/acme/api:1.2",
   });
-  // A registry of its own and no credential: the panel may have pulled with a `docker login` nothing here can see.
   assert.match(ok.notes.join(" "), /Pulled from ghcr\.io/);
 
   const hub = mapSource(
@@ -162,7 +160,6 @@ test("mapSource reports a private registry, whose password never leaves Dokploy"
   );
   assert.match(notes.join(" "), /private registry/);
 
-  // Credentials typed onto the application rather than picked from a registry used to come across looking like a public image.
   assert.match(
     mapSource(
       app({
@@ -183,7 +180,6 @@ test("mapSource flags an image that only exists on the source machine", () => {
       dockerImage: "localhost:5000/database-fdo:1.0",
     }),
   );
-  // Still imported, but unpullable from here: "pull access denied" three days later points at the image, not at the migration.
   assert.deepEqual(value, {
     kind: "docker-image",
     image: "localhost:5000/database-fdo:1.0",
@@ -226,12 +222,10 @@ test("a repository behind a connection still says a credential is needed", () =>
     repository: "private",
     branch: "main",
   } as Parameters<typeof mapSource>[0]);
-  // GitHub clones through an App, not a connection, so it is the App the line asks for.
   assert.ok(
     viaProvider.notes.some((n) => /Link a GitHub App/.test(n)),
     viaProvider.notes.join(" | "),
   );
-  // The panel saying so itself (Coolify keeps a bare `owner/repo` behind a source) counts the same.
   const declared = mapSource({
     applicationId: "a2",
     sourceType: "gitea",
@@ -247,7 +241,6 @@ test("a repository behind a connection still says a credential is needed", () =>
 });
 
 test("a repository behind a source keeps that provider, with no credential", () => {
-  // Coolify hands over `owner/repo` and the source, never the credential: read as plain git it died on git's "could not read Username".
   const gh = mapSource({
     applicationId: "a1",
     sourceType: "github",
@@ -267,7 +260,6 @@ test("a repository behind a source keeps that provider, with no credential", () 
     submodules: false,
   });
 
-  // A self-hosted host is taken from the address the panel handed over, never rebuilt from parts onto gitea.com.
   const self = cloneTarget({
     applicationId: "a2",
     sourceType: "gitea",
@@ -285,7 +277,6 @@ test("a stack says which registries it pulls from", () => {
   const notes = composeRegistryNotes(compose);
   assert.equal(notes.length, 1);
   assert.match(notes[0]!, /pulls from ghcr\.io\./);
-  // Docker Hub needs no login to say so, and a stack with only those says nothing.
   assert.deepEqual(
     composeRegistryNotes(`services:\n  web:\n    image: nginx:alpine\n`),
     [],

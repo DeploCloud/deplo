@@ -127,7 +127,6 @@ export const ORGANIZATION: McpToolDef[] = [
         environmentId: a.environmentId ?? "",
         isEnvironment: Boolean(a.environmentId),
         isProject: Boolean(a.projectId),
-        // No target at all means the top level, which is a folder move to null.
         isFolder: !a.projectId && !a.environmentId,
       };
     },

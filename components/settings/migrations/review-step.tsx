@@ -46,21 +46,12 @@ const SUGGEST_PORT = /* GraphQL */ `
   }
 `;
 
-/* ------------------------------------------------------------------ */
-/* Host ports                                                         */
-/* ------------------------------------------------------------------ */
-
-/** Every database in the plan that publishes a port, whatever anyone has ticked. */
 function databasesWithPorts(plan: Plan) {
   return plan.projects
     .flatMap(importableOf)
     .filter((s) => s.targetKind === "database" && s.exposedPort != null);
 }
 
-/**
- * Which databases would land on a host port something else already holds, and a
- * free port to offer instead.
- */
 function usePortConflicts({
   plan,
   placements,
@@ -71,26 +62,22 @@ function usePortConflicts({
 }: {
   plan: Plan;
   placements: Record<string, Placement>;
-  /** The real setter: a suggestion lands after an await, so it must merge, not overwrite. */
   setPlacements: React.Dispatch<
     React.SetStateAction<Record<string, Placement>>
   >;
   chosen: Set<string>;
   servers: ServerChoice[];
-  /** False without the publish-ports grant: nothing can be published, so nothing is asked. */
   enabled: boolean;
 }) {
   const [checks, setChecks] = React.useState<Record<string, PortCheck>>({});
 
   const dbs = React.useMemo(() => databasesWithPorts(plan), [plan]);
 
-  /** The Deplo server that IS the source machine a service runs on, if we have one. */
   const homeHost = React.useMemo(
     () => new Map(plan.servers.map((m) => [m.sourceId, m.deploServerId])),
     [plan],
   );
 
-  /** What a database will publish, after whatever the review has decided so far. */
   const chosenPort = React.useCallback(
     (sourceId: string, sourcePort: number | null) => {
       const p = placements[sourceId]?.exposedPort;
@@ -99,8 +86,6 @@ function usePortConflicts({
     [placements],
   );
 
-  // The question to ask each server: the ports its databases came with, plus the ones
-  // the review has since chosen, so a typed port is checked too.
   const askKey = React.useMemo(() => {
     const byServer = new Map<string, Set<number>>();
     for (const s of dbs) {
@@ -125,8 +110,6 @@ function usePortConflicts({
     const ask: [string, number[]][] = JSON.parse(askKey);
     if (ask.length === 0) return;
     let cancelled = false;
-    // Debounced: the run-server picker and the port field both feed this, and a
-    // probe per keystroke is a gRPC round-trip per keystroke.
     const t = setTimeout(async () => {
       const answers = await Promise.all(
         ask.map(async ([serverId, ports]) => {
@@ -155,24 +138,19 @@ function usePortConflicts({
     };
   }, [askKey, enabled, dbs.length]);
 
-  /** A port taken on the host this database lands on, by something that is not it. */
   const clashes = React.useCallback(
     (sourceId: string, sourceServerId: string, port: number | null) => {
       if (port == null) return false;
       const serverId = placements[sourceId]?.serverId;
       if (!serverId) return false;
-      // The container holding it is the one we are importing; it lets go.
       if (homeHost.get(sourceServerId) === serverId) return false;
       const check = checks[serverId];
       if (check?.checked && check.inUse.includes(port)) return true;
-      // Nothing on the host can see a database that does not exist yet, so two
-      // arrivals wanting one port are only ever caught by comparing them.
       return dbs.some(
         (o) =>
           o.sourceId !== sourceId &&
           placements[o.sourceId]?.serverId === serverId &&
           chosenPort(o.sourceId, o.exposedPort) === port &&
-          // Ordered, so exactly ONE of the pair is the one to move.
           o.sourceId < sourceId,
       );
     },
@@ -182,8 +160,6 @@ function usePortConflicts({
   const conflicts = React.useMemo(() => {
     const out: Record<string, PortConflict> = {};
     for (const s of dbs) {
-      // Only what is actually coming over: a port on a database somebody unticked
-      // is a question about something that is not going to happen.
       if (!chosen.has(s.sourceId)) continue;
       if (s.exposedPort == null) continue;
       if (!clashes(s.sourceId, s.sourceServerId, s.exposedPort)) continue;
@@ -202,12 +178,7 @@ function usePortConflicts({
     return out;
   }, [dbs, chosen, clashes, placements, servers, chosenPort]);
 
-  // A free port, offered rather than demanded: whoever has no opinion about which
-  // port a migrated database answers on presses Import and gets a working one.
   React.useEffect(() => {
-    // Only a row nobody has touched: once a port has been chosen - by this effect
-    // or by the person - it stands, even if it is still taken. Which is also what
-    // stops this from looping, since the pick immediately fails this test.
     const open = dbs
       .filter(
         (s) =>
@@ -226,8 +197,6 @@ function usePortConflicts({
           { generateAvailableDbPort: number },
           number
         >(SUGGEST_PORT, { serverId }, (d) => d.generateAvailableDbPort);
-        // Two databases suggested in one pass must not be handed the same port:
-        // the server answers from what is live, and neither of them is.
         if (
           res.ok &&
           res.data != null &&
@@ -237,9 +206,6 @@ function usePortConflicts({
         }
       }
       if (cancelled || picked.length === 0) return;
-      // Merged into whatever is current, not into the copy this effect started
-      // with: the picks arrive after a round-trip, and a server changed in the
-      // meantime must not be undone by them.
       setPlacements((cur) => {
         const next = { ...cur };
         for (const [id, port] of picked)
@@ -253,7 +219,6 @@ function usePortConflicts({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conflicts]);
 
-  /** Servers whose agent could not answer, by name, for the one line that says so. */
   const unreachable = React.useMemo(
     () =>
       Object.entries(checks)
@@ -262,7 +227,6 @@ function usePortConflicts({
     [checks, servers],
   );
 
-  /** Something still points at a port that is taken - the import waits. */
   const blocked = React.useMemo(
     () => Object.values(conflicts).some((c) => c.invalid),
     [conflicts],
@@ -272,36 +236,22 @@ function usePortConflicts({
     conflicts,
     unreachable,
     blocked,
-    /** How many databases would publish a port, of the ones being imported. */
     count: dbs.filter((s) => chosen.has(s.sourceId)).length,
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 2 - review                                                    */
-/* ------------------------------------------------------------------ */
-
-/**
- * One team of the list: what its token read, the Deplo team it lands in - one
- * that exists, or one made for it at Start - and that team's fleet, which is
- * what its services may be placed on.
- */
 export interface ReviewGroup {
   key: string;
   team: { name: string; avatarUrl: string | null };
   landsIn: { name: string; avatarUrl: string | null; isNew: boolean };
-  /** Where it lands, editable right here rather than a step back. */
   target: TeamTarget;
-  /** The picture a new team is created with. Null is its initials. */
   image: string | null;
   plan: Plan;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
-  /** The panel is being read again under a landing team that just changed. */
   rescanning?: boolean;
 }
 
-/** Every team's projects as one plan, which is what the port check reads. */
 function mergedPlan(groups: ReviewGroup[]): Plan {
   return {
     ...groups[0].plan,
@@ -309,7 +259,6 @@ function mergedPlan(groups: ReviewGroup[]): Plan {
   };
 }
 
-/** Every landing team's hosts, once each - for the port check's names. */
 function everyServer(groups: ReviewGroup[]): ServerChoice[] {
   const seen = new Map<string, ServerChoice>();
   for (const g of groups) for (const s of g.servers) seen.set(s.id, s);
@@ -331,9 +280,7 @@ export function ReviewStep({
   onStart,
   starting,
 }: {
-  /** Which panel the plan was read from. */
   kind: SourceKind | null;
-  /** One per team of the list, each with its own list and its own landing team. */
   groups: ReviewGroup[];
   chosen: Set<string>;
   setChosen: (v: Set<string>) => void;
@@ -342,13 +289,11 @@ export function ReviewStep({
     React.SetStateAction<Record<string, Placement>>
   >;
   canExposePorts: boolean;
-  /** The teams a source team may land in, besides one named after it. */
   targetTeams: TargetTeam[];
   onRetarget: (key: string, target: TeamTarget) => void;
   onSetImage: (key: string, image: string | null) => void;
   onBack: () => void;
   onStart: () => void;
-  /** A start is already in flight from this tab. */
   starting: boolean;
 }) {
   const all = React.useMemo(() => mergedPlan(groups), [groups]);
@@ -362,14 +307,10 @@ export function ReviewStep({
     enabled: canExposePorts,
   });
   const pickable = all.projects.flatMap((p) => importableOf(p));
-  // The confirm names them, in a tooltip. A search box above the tree filters
-  // what you SEE and not what is ticked, so a count alone let somebody stop
-  // three services while looking at one.
   const chosenNames = pickable
     .filter((s) => chosen.has(s.sourceId))
     .map((s) => s.name);
   const panel = copyFor(kind).name;
-  /** Has this team anything ticked under it? A team that has not is not a turn. */
   const picked = (g: ReviewGroup) =>
     g.plan.projects
       .flatMap((p) => importableOf(p))
@@ -383,9 +324,6 @@ export function ReviewStep({
       docs={stepDocs(kind, "changes")}
       lead="Pick what to bring and where it lands. Nothing is deployed yet."
     >
-      {/* Said once, at the top, instead of on every database it applies to: it
-          is one fact about the person importing, not a property of each row,
-          and repeating it N times is how a screen stops being read. */}
       {!canExposePorts && ports.count > 0 && (
         <PortsNotice>
           You can&rsquo;t publish ports, so{" "}
@@ -403,8 +341,6 @@ export function ReviewStep({
       )}
 
       {servers.length === 0 ? (
-        // Without a host there is nothing to place anything on, so this replaces
-        // the tree rather than sitting beside it.
         <EmptyState
           icon={ServerIcon}
           title="No server to deploy to"
@@ -417,13 +353,7 @@ export function ReviewStep({
           description={`That ${panel} has no projects, or the token cannot see them.`}
         />
       ) : (
-        // Everything the review decides goes inert the moment Start is pressed:
-        // the teams are being made and the panel read again, so a tick, a host
-        // or a port changed now is a change nothing honours.
         <fieldset disabled={starting} className="contents">
-          {/* One section per team, each under the name it has over there and the
-              team it lands in here - so two lists never read as one, and where a
-              team lands is in sight while its list is ticked. */}
           <div className="space-y-4">
             {groups.map((g) => {
               return (
@@ -442,13 +372,9 @@ export function ReviewStep({
                     </span>
                     <span className="text-muted-foreground">on {panel}</span>
                     <ArrowRight className="size-3.5 text-muted-foreground" />
-                    {/* Named on both sides of the arrow. Not "on Deplo": this IS
-                      Deplo, and the half that needs saying is the other one. */}
                     <span className="max-w-56 truncate font-medium">
                       {g.landsIn.name}
                     </span>
-                    {/* A team being MADE gets its picture chosen here; one that
-                      already exists keeps its own. */}
                     {g.target.kind === "new" && (
                       <TeamImagePicker
                         name={g.team.name}
@@ -458,14 +384,9 @@ export function ReviewStep({
                       />
                     )}
                     <span className="ml-auto flex items-center gap-2">
-                      {/* The panel is being read again under the new landing:
-                        "already here" is an answer about a team. */}
                       {g.rescanning && (
                         <Loader2 className="size-4 animate-spin text-muted-foreground" />
                       )}
-                      {/* Locked the moment Start is pressed: the teams are being
-                        made and the panel is being read again, and a landing
-                        changed now would be a landing nothing honours. */}
                       <TargetSelect
                         value={g.target}
                         teams={targetTeams}
@@ -475,8 +396,6 @@ export function ReviewStep({
                       />
                     </span>
                   </div>
-                  {/* Nothing under it is ticked, so this team is not a turn: said
-                    here, because the button counts the ones that will run. */}
                   {!picked(g) && g.plan.projects.length > 0 && (
                     <p className="text-sm text-warning">
                       Nothing is ticked here, so this team is skipped.
@@ -506,10 +425,6 @@ export function ReviewStep({
         </fieldset>
       )}
 
-      {/**
-       * The one consequence worth stopping on, in its own small card right under the
-       * lists - and NOT behind a confirm dialog.
-       */}
       {chosenNames.length > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
@@ -526,8 +441,6 @@ export function ReviewStep({
       )}
 
       <div className="flex justify-between">
-        {/* The rail already refuses every step but Review while a start is in
-            flight; this button set the step itself, straight past that gate. */}
         <Button variant="outline" onClick={onBack} disabled={starting}>
           Back
         </Button>
@@ -541,8 +454,6 @@ export function ReviewStep({
           }
         >
           {starting && <Loader2 className="size-4 animate-spin" />}
-          {/* The teams that will actually RUN. Counting the sections instead
-              promised two and brought one over, silently. */}
           {running > 1 ? `Migrate ${running} teams` : "Start migration"}
         </Button>
       </div>
@@ -550,7 +461,6 @@ export function ReviewStep({
   );
 }
 
-/** One line about ports, in the warning colour the rest of this screen uses. */
 function PortsNotice({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed text-warning">

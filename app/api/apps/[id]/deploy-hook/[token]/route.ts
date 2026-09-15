@@ -5,12 +5,9 @@ import { redeploy } from "@/lib/data/deployments/stack-actions";
 import { runWithIdentity } from "@/lib/auth/request-context";
 import { owningTeamId } from "@/lib/data/deploy-hook";
 
-// REST, not GraphQL: a webhook sender posts to a URL it is given and cannot compose a query.
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// A bare 405 renders as the browser's own error page, which reads as Deplo being broken.
 export async function GET() {
   return Response.json(
     {
@@ -27,15 +24,11 @@ export async function GET() {
 
 export async function POST(
   request: Request,
-  // Spelled out rather than `RouteContext<"…">`: that generated type exists only after a build.
   ctx: { params: Promise<{ id: string; token: string }> },
 ) {
-  // Bearer first: until the caller proves team membership, the URL token must not reveal whether an app exists.
   const header = request.headers.get("authorization") ?? "";
-  // The scheme is case-INSENSITIVE (RFC 9110 §11.1).
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   const { id: hookAppId } = await ctx.params;
-  // A token's scope can span teams, so name the one this call is about.
   let principal = null;
   let refusal = "";
   try {
@@ -57,8 +50,6 @@ export async function POST(
 
   const { token } = await ctx.params;
   const appId = hookAppId;
-  // Runs as the token, so an app its project scope excludes answers as one that isn't there.
-  // Checked BEFORE the "hook is off" branch, or the 403 stays an existence oracle.
   const notFound = await runWithIdentity(principal, async () => {
     if (!(await appInTeam(appId, principal.teamId))) return true;
     return false;
@@ -76,14 +67,12 @@ export async function POST(
         },
         { status: 403 },
       );
-    // A wrong token and an unknown app answer identically: no probing another team's app ids.
     return Response.json({ error: "Deploy hook not found" }, { status: 404 });
   }
   if (hook.teamId !== principal.teamId)
     return Response.json({ error: "Deploy hook not found" }, { status: 404 });
 
   try {
-    // Inside runWithIdentity `redeploy` applies every gate; duplicating a capability check here is a bug.
     const deployment = await runWithIdentity(principal, () => redeploy(appId));
     return Response.json({
       deploymentId: deployment.id,
@@ -92,7 +81,6 @@ export async function POST(
       url: deployment.url || null,
     });
   } catch (e) {
-    // `redeploy` throws actionable refusals: no `deploy_apps`, no folder access, two-factor required.
     return Response.json({ error: (e as Error).message }, { status: 403 });
   }
 }

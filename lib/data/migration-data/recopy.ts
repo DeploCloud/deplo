@@ -18,10 +18,8 @@ import {
 import { requireAppCapability } from "../node-access";
 import { appendRunItem } from "../migration-import/run-report";
 
-/** Where a blocked workload's data still is, so it can be fetched again. */
 export interface RecopySource {
   runId: string;
-  /** The panel's address, as the run recorded it. Its key is NOT kept. */
   sourceUrl: string;
   platform: string;
   sourceKind: string;
@@ -29,11 +27,6 @@ export interface RecopySource {
   sourceName: string;
 }
 
-/**
- * The service this app or database was imported from. The report is the record:
- * the run's key is wiped the moment it ends, so copying the data again asks for it
- * once more and everything else it needs is here rather than typed by hand.
- */
 export async function recopySourceFor(
   kind: "app" | "database",
   id: string,
@@ -78,12 +71,6 @@ export async function recopySourceFor(
   };
 }
 
-/**
- * Every service this run landed on whose data is NOT here yet, marked so: the
- * data phase ended before it reached them (a fault outside the per-service loop,
- * a Stop), and unmarked they came up on empty storage with nothing refusing.
- * Returns how many were marked now.
- */
 export async function markRunTargetsUncopied(
   runId: string,
   why: string,

@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/roles-and-permissions
-
 import { cache } from "@/lib/request-cache";
 import { and, eq } from "drizzle-orm";
 
@@ -43,16 +41,12 @@ import { CAPABILITY_META } from "../membership-shared";
 import { assertNotMigrating } from "./migration-guard";
 import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 
-// A node capability set REPLACES the team role's inside that node, and may exceed it (ADR-0016).
-
-// The three things a capability set can be attached to.
 export type NodeRef =
   | { kind: "app"; id: string }
   | { kind: "folder"; id: string }
   | { kind: "environment"; id: string }
   | { kind: "project"; id: string };
 
-// An app as the resolver needs it - the columns that place it.
 export interface AppPlacement {
   id: string;
   folderId: string | null;
@@ -65,8 +59,6 @@ interface GrantIndex {
   userId: string;
   base: Capability[];
   superUser: boolean;
-  // Instance admin only, unlike `superUser` (which also counts `manage_team`): the role
-  // scope below limits a member of the team, and an instance admin is not one.
   instanceAdmin: boolean;
   roleScope: NodeScope | null;
   folders: Map<
@@ -85,7 +77,6 @@ interface GrantIndex {
   appGrants: Map<string, Capability[]>;
 }
 
-// Add the always-implied `view` capability, returning the set in canonical order.
 export function withView(caps: Capability[]): Capability[] {
   const set = new Set<Capability>(caps);
   set.add("view");
@@ -109,7 +100,6 @@ const buildIndex = cache(async function buildIndex(
   teamId: string,
   admin: boolean,
 ): Promise<GrantIndex | null> {
-  // THE gate, first and always: membership existence carries the 2FA policy, and nothing below survives it.
   const membership = await membershipFor(userId, teamId);
   const base = membership?.capabilities ?? [];
   if (!admin && base.length === 0) return null;
@@ -241,7 +231,6 @@ const buildIndex = cache(async function buildIndex(
   };
 });
 
-// Whether the PERSON holds `manage_team` - not `membershipFor`, whose set is token-clamped.
 export async function holdsManageTeam(
   userId: string,
   teamId: string,
@@ -266,7 +255,6 @@ export async function holdsManageTeam(
 
 async function teamOf(node: NodeRef): Promise<string | null> {
   const db = getDb();
-  // An Environment carries no `team_id` of its own - the team comes through its Project (ADR-0009).
   if (node.kind === "environment") {
     const rows = await db
       .select({ teamId: projectsTable.teamId })
@@ -320,7 +308,7 @@ function ladder(
     rungs.push({
       kind: "app",
       id: node.id,
-      owner: false, // an App has no owner column
+      owner: false,
       grants: index.appGrants.get(node.id) ?? [],
     });
   }
@@ -331,13 +319,12 @@ function ladder(
     rungs.push({
       kind: "environment",
       id: environmentId,
-      owner: false, // an Environment has no owner column
+      owner: false,
       grants: index.environmentGrants.get(environmentId) ?? [],
     });
     projectId = index.environmentProjects.get(environmentId) ?? projectId;
   }
 
-  // Filing an app into a folder CLEARS its `project_id`, so the folder's own wins.
   const start = node.kind === "folder" ? node.id : (node.folderId ?? null);
   const seen = new Set<string>();
   let cursor: string | null = start;
@@ -423,17 +410,14 @@ function resolveFrom(
   const clamp = (caps: Capability[]) =>
     withView(clampCapabilitiesToToken(caps, index.userId, index.teamId));
 
-  // REACH first: outside the role's scope nothing exists - the same empty answer an unshown folder gives.
   if (!reachesNode(index, node) && !hasOwnGrant(index, node)) return [];
 
-  // An instance admin who isn't a member still administers every node, with everything.
   if (index.superUser) {
     return clamp(index.base.length === 0 ? [...ALL_CAPABILITIES] : index.base);
   }
 
   const rungs = ladder(index, node);
 
-  // Folder privacy: a folder is invisible unless you own one in the chain or hold a grant on one.
   const folders = rungs.filter((r) => r.kind === "folder");
   if (
     folders.length > 0 &&
@@ -441,14 +425,12 @@ function resolveFrom(
       (r) =>
         r.owner ||
         r.grants.length > 0 ||
-        // Not `folderInScope`: a null scope means unrestricted, which must NOT dissolve folder privacy.
         Boolean(index.roleScope?.folderIds.includes(r.id)),
     )
   ) {
     return [];
   }
 
-  // Most-specific-wins: an owned rung resolves to the base set, the first rung with grants replaces it.
   for (const rung of rungs) {
     if (rung.owner) return clamp(index.base);
     if (rung.grants.length > 0) return clamp(rung.grants);
@@ -456,7 +438,6 @@ function resolveFrom(
   return clamp(index.base);
 }
 
-// The `is_instance_admin` flag as stored, for hydrating SOMEONE ELSE's access.
 async function storedInstanceAdmin(userId: string): Promise<boolean> {
   const rows = await getDb()
     .select({ isInstanceAdmin: usersTable.isInstanceAdmin })
@@ -473,7 +454,6 @@ async function resolveOne(
   activeTeamId: string,
 ): Promise<Capability[]> {
   const teamId = await teamOf(node);
-  // A node belonging to ANOTHER team does not exist for this request.
   if (!teamId || teamId !== activeTeamId) return [];
   const index = await buildIndex(userId, teamId, admin);
   if (!index) return [];
@@ -497,7 +477,6 @@ async function resolveOne(
   });
 }
 
-// The CURRENT caller's effective capabilities on a node; `[]` means no access.
 export async function nodeCapabilities(node: NodeRef): Promise<Capability[]> {
   const user = await getCurrentUser();
   if (!user) return [];
@@ -506,9 +485,6 @@ export async function nodeCapabilities(node: NodeRef): Promise<Capability[]> {
   return resolveOne(user.id, node, await isInstanceAdmin(), activeTeamId);
 }
 
-// ANY user's effective capabilities on a node - for hydrating someone else's access.
-// Kept separate from nodeCapabilities on purpose: a `null` userId meaning "skip the
-// check" is how the hole would come back.
 export async function nodeCapabilitiesFor(
   userId: string,
   teamId: string,
@@ -517,7 +493,6 @@ export async function nodeCapabilitiesFor(
   return resolveOne(userId, node, await storedInstanceAdmin(userId), teamId);
 }
 
-// The caller's capabilities on MANY apps of one team at once - ask this instead of looping.
 export async function appCapabilitiesForTeam(
   teamId: string,
   apps: AppPlacement[],
@@ -533,7 +508,6 @@ export async function appCapabilitiesForTeam(
   return out;
 }
 
-// Gate a mutation on a Folder or Project node; "not found" never leaks existence.
 export async function requireNodeCapability(
   node: NodeRef,
   cap: Capability,
@@ -549,13 +523,11 @@ export async function requireNodeCapability(
   }
 }
 
-// THE gate for anything under an App: membership + 2FA, the active team, token scope, then `cap`.
 export async function requireAppCapability(
   appId: string,
   cap: Capability,
 ): Promise<ActiveMembership> {
   const gate = await appGate(appId);
-  // Absent, not ours, out of token scope or in an unseen folder all answer the same - never an id oracle.
   if (!gate || gate.caps.length === 0) throw new Error("App not found");
   if (gate.deleting) throw new Error("This app is being deleted");
   assertNotMigrating("app", gate.name, gate.migrationRunId);
@@ -569,19 +541,16 @@ export async function requireAppCapability(
   return gate.ctx;
 }
 
-// Everything the caller may do to ONE app; `[]` means no access, never read-only.
 export const appCapabilities = cache(async function appCapabilities(
   appId: string,
 ): Promise<Capability[]> {
   try {
     return (await appGate(appId))?.caps ?? [];
   } catch {
-    // Not a member / 2FA unmet - the same answer as an app that isn't there.
     return [];
   }
 });
 
-// The soft twin of `requireAppCapability`, for READS that answer nothing instead of throwing.
 export async function hasAppCapability(
   appId: string,
   cap: Capability,

@@ -9,7 +9,6 @@ export interface ServerHealth {
   message: string | null;
 }
 
-// HEALTH_MESSAGES - the closed set of reasons; status_message is persisted, raw errors are not safe to store.
 export const HEALTH_MESSAGES = {
   untrusted:
     "The agent's certificate is not the one we trust for this server. Reissue the install command to re-provision it.",
@@ -35,7 +34,6 @@ function isCertValidityError(err: AgentUnreachableError): boolean {
   return CERT_VALIDITY_RE.test(err.message);
 }
 
-// classifyServerHealth - classify one Hello outcome; a TRUST failure is error, never offline.
 export function classifyServerHealth(
   hello: HelloResponse | null,
   err: unknown,
@@ -63,18 +61,14 @@ export function classifyServerHealth(
   return { status: "online", message: null };
 }
 
-// isRetryableProbeFailure - whether a failed probe is worth retrying once before demoting the server.
 export function isRetryableProbeFailure(err: unknown): boolean {
   return err instanceof AgentUnreachableError && !err.trust;
 }
 
-// unreachableMessage - what a FEATURE says when its host did not answer; never the raw transport error.
-// https://deplo.build/docs/concepts/servers-and-the-agent
 export function unreachableMessage(err: unknown): string | null {
   if (!(err instanceof AgentUnreachableError)) return null;
   if (err.trust) return HEALTH_MESSAGES.untrusted;
   if (isCertValidityError(err)) return HEALTH_MESSAGES.certExpired;
-  // No gRPC code means our own throw site ("not provisioned"), already safe copy.
   if (typeof err.code !== "number") return err.message;
   return err.code === GrpcStatus.DEADLINE_EXCEEDED
     ? "This server did not answer in time - it may be overloaded, or unreachable."

@@ -43,7 +43,6 @@ export interface UpdateSourceInput {
   dockerImage: string | null;
   serverId?: string;
 
-  // Compose YAML to persist (source === "compose"). Kept when switching away.
   compose?: string | null;
 }
 
@@ -62,8 +61,6 @@ export async function updateAppSource(
     ),
   );
 
-  // The app's placement decides which network its names live on, so it is read BEFORE the transaction:
-  // this query runs on its own connection.
   const [current] = await getDb()
     .select({
       name: appsTable.name,
@@ -82,7 +79,6 @@ export async function updateAppSource(
     current && input.serverId && input.serverId !== current.serverId,
   );
   if (current && moving) {
-    // Data an import could not copy is not there to move.
     if (current.dataCopyError && !current.migrateFromServerId)
       throw new Error(
         `${current.name}'s data did not come across from its migration - copy it again, or choose "Deploy anyway" on its page, before moving it.`,
@@ -100,8 +96,6 @@ export async function updateAppSource(
     }
   }
 
-  // A preview's teardown resolves the host from the app row: once it names the new machine, the
-  // stacks on the old one could never be reached again.
   if (current && moving && !current.previewServerId) {
     await stopPreviewsForServerChange(id, input.serverId!);
   }
@@ -112,14 +106,12 @@ export async function updateAppSource(
   } = { moved: false, stray: null, strayServerId: null };
   const before: { repo: GitRepo | null } = { repo: null };
 
-  // Check the names and write under ONE lock: the names live inside a compose file, with no unique constraint underneath.
   await withNetworkLock(
     {
       teamId: membership.teamId,
       environmentId: current?.environmentId ?? null,
     },
     async () => {
-      // Asked when the compose changes OR when the SERVER does - a Docker network lives on one machine.
       if (current && (input.compose != null || input.serverId != null)) {
         const compose = input.compose ?? current.compose ?? "";
         await assertNoNameClash({
@@ -147,7 +139,6 @@ export async function updateAppSource(
           const picked = serversById.get(input.serverId);
           if (!picked) throw new Error("Server not found");
 
-          // A move answers the same question a creation does: a specialised host runs nothing.
           if (!canHostWorkloads(picked))
             throw new Error(
               picked.importOnly
@@ -160,8 +151,6 @@ export async function updateAppSource(
         }
         const isMove = serverId !== oldServerId;
 
-        // The marker names the host that still HOLDS the data; the deploy on the new host copies from it.
-        // Moving back onto the source calls the move off; the host in between is a stray, torn down below.
         const pending = p.migrateFromServerId ?? null;
         let migrateFromServerId = pending;
         if (isMove) {
@@ -176,7 +165,6 @@ export async function updateAppSource(
 
         const newIp = resolveServerIp(serversById.get(serverId));
 
-        // Auto nip.io domains encode the old IP, so a move re-hosts them or Traefik keeps pointing at the old host.
         if (newIp !== oldIp) {
           const appDomains = await loadDomainsForApp(p.id, tx);
           for (const dom of appDomains) {
@@ -189,7 +177,6 @@ export async function updateAppSource(
           }
         }
 
-        // A MOVE carries "build on this app's own server", or the setting silently becomes the machine just left.
         const buildServerId =
           isMove && p.buildServerId === oldServerId
             ? serverId
@@ -229,7 +216,6 @@ export async function updateAppSource(
   );
   await recordActivity("app", `Updated deploy source`, user.name, id);
 
-  // Webhooks AFTER the commit: both calls talk to a third party, and neither may fail the save.
   const movedOff =
     before.repo?.connectionId &&
     (before.repo.connectionId !== repo?.connectionId ||
@@ -237,7 +223,6 @@ export async function updateAppSource(
   if (movedOff) await dropAppWebhook(before.repo).catch(() => {});
   await syncAppWebhook(repo).catch(() => {});
 
-  // The half-built stack on the host a re-targeted move passed through; an unreachable host lands in the retry queue.
   if (after.stray && after.strayServerId)
     await teardownOrQueue({
       serverId: after.strayServerId,
@@ -248,7 +233,6 @@ export async function updateAppSource(
       reclaimVolumes: appOwnVolumeNames(after.stray),
     }).catch(() => {});
 
-  // A MOVE takes effect on a deploy. Upload is the exception: its own "Save & Deploy" consumes the same marker.
   if (after.moved && input.source !== "upload") {
     try {
       await startDeployment(id, {

@@ -23,7 +23,6 @@ export type PreviewCommentState =
   | { kind: "evicted"; max: number }
   | { kind: "refused"; reason: string };
 
-// previewCommentBody - the comment body for one state. Markdown, no emoji, no ellipsis.
 export function previewCommentBody(input: {
   state: PreviewCommentState;
   url: string;
@@ -75,10 +74,8 @@ export function previewCommentBody(input: {
   return parts.join("\n") + "\n";
 }
 
-// COMMENT_RETRY_DELAYS_MS - the pauses between attempts at GitHub.
 export const COMMENT_RETRY_DELAYS_MS = [2_000, 6_000, 15_000];
 
-// retryTransient - run `fn` again after each delay while it fails with a transient error.
 export async function retryTransient<T>(
   fn: () => Promise<T>,
   delays: readonly number[],
@@ -98,12 +95,10 @@ export async function retryTransient<T>(
 
 let disabledForTest = false;
 
-// __disablePreviewCommentsForTest - a stray fire-and-forget query hangs the next test's pglite.
 export function __disablePreviewCommentsForTest(): void {
   disabledForTest = true;
 }
 
-// syncPreviewComment - push the current state of a preview onto its pull request.
 export async function syncPreviewComment(
   previewId: string,
   state: PreviewCommentState,
@@ -155,7 +150,6 @@ export async function syncPreviewComment(
         }),
       COMMENT_RETRY_DELAYS_MS,
     );
-    // Compare-and-set: two rapid `synchronize` deliveries must not both post.
     if (commentId && commentId !== p.commentId) {
       await getDb()
         .update(appPreviewsTable)

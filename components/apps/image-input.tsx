@@ -98,7 +98,6 @@ export function ImageInput({
       setLoading(true);
       try {
         if (tagPart !== null) {
-          // Server-side filter so an old version surfaces, not only the newest tags.
           const filterParam = tagPart
             ? `&filter=${encodeURIComponent(tagPart)}`
             : "";
@@ -116,7 +115,6 @@ export function ImageInput({
             })),
           );
         } else {
-          // Only Docker Hub returns search results; other registries no-op.
           const res = await fetch(
             `/api/registry/images?action=search&q=${encodeURIComponent(namePart)}`,
             { signal: controller.signal },
@@ -129,7 +127,6 @@ export function ImageInput({
         }
         setHighlight(0);
       } catch {
-        // aborted or failed - leave existing suggestions
       } finally {
         setLoading(false);
       }
@@ -159,9 +156,7 @@ export function ImageInput({
         const json = await res.json();
         setExistence((json.status as Existence) ?? "unknown");
         onPortRef.current?.(typeof json.port === "number" ? json.port : null);
-      } catch {
-        // aborted or failed - leave the previous status
-      }
+      } catch {}
     }
     validate();
     return () => controller.abort();
@@ -182,7 +177,6 @@ export function ImageInput({
 
   function choose(s: Suggestion) {
     if (s.kind === "name") {
-      // Pick a name → prime a tag completion by appending ":".
       onChange(`${s.value}:`);
       setOpen(true);
     } else {

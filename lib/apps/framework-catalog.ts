@@ -1,6 +1,5 @@
 import type { BuildMethod } from "../types/build";
 
-// FrameworkId - stable ids: they are persisted on the app row and key the brand marks.
 export type FrameworkId =
   | "nextjs"
   | "nuxt"
@@ -37,7 +36,6 @@ export interface FrameworkDefinition {
   staticOutput?: string;
 }
 
-// FRAMEWORKS - every framework in detection priority order; the first match wins, so most-specific comes first.
 export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "nextjs",
@@ -103,7 +101,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     name: "Gatsby",
     dependencies: ["gatsby"],
     files: ["gatsby-config.js", "gatsby-config.mjs", "gatsby-config.ts"],
-    // `gatsby serve` binds 9000, not the 8000 of `gatsby develop`.
     defaultPort: 9000,
     staticOutput: "public",
   },
@@ -149,7 +146,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "solid",
     name: "SolidStart",
-    // SolidStart (a server), not a bare solid-js SPA: that one is Vite's entry and Vite's port.
     dependencies: ["@solidjs/start", "solid-start"],
     files: [],
     defaultPort: 3000,
@@ -173,7 +169,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "preact",
     name: "Preact",
-    // Bare `preact` is safe to name: every current Preact scaffold is a Vite project.
     dependencies: ["preact"],
     files: [],
     defaultPort: 4173,
@@ -188,7 +183,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "cra",
     name: "Create React App",
-    // `react-scripts`, never a bare `react`: every React meta-framework above depends on react.
     dependencies: ["react-scripts"],
     files: [],
     defaultPort: 3000,
@@ -198,7 +192,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     name: "Vite",
     dependencies: ["vite"],
     files: ["vite.config.js", "vite.config.mjs", "vite.config.ts"],
-    // `vite preview` binds 4173 and ignores PORT.
     defaultPort: 4173,
   },
   {
@@ -242,19 +235,16 @@ const BY_ID = new Map<string, FrameworkDefinition>(
   FRAMEWORKS.map((f) => [f.id, f]),
 );
 
-// frameworkById - the definition for a stored id, or null when the id is unknown.
 export function frameworkById(
   id: string | null | undefined,
 ): FrameworkDefinition | null {
   return id ? (BY_ID.get(id) ?? null) : null;
 }
 
-// isFrameworkId - narrow an untrusted string to a catalog id.
 export function isFrameworkId(value: string): value is FrameworkId {
   return BY_ID.has(value);
 }
 
-// effectiveFramework - the user's correction when they made one, otherwise what the last deploy read.
 export function effectiveFramework(app: {
   framework: string | null;
   frameworkOverride: string | null;
@@ -262,7 +252,6 @@ export function effectiveFramework(app: {
   return app.frameworkOverride ?? app.framework;
 }
 
-// supportsFrameworkDetection - whether recognition applies at all; a Dockerfile already spells the build out.
 export function supportsFrameworkDetection(method: BuildMethod): boolean {
   return method === "nixpacks" || method === "railpack";
 }

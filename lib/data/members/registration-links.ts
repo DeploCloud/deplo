@@ -23,14 +23,10 @@ import { instancePublicBaseUrl } from "../instance-settings/settings-store";
 import { actorName } from "./activity-actor";
 import type { Capability, RegistrationLink, Role } from "../../types/identity";
 
-// Expiry is automatic: every read path and the consume `UPDATE` filter on
-// `expires_at >= now()`, so a stale link dies with no sweep job to run.
 const REGISTRATION_TTL_HOURS = 24;
 
-/** How a registration link decides the registrant's team(s). */
 export type RegistrationMode = "own_team" | "existing_teams";
 
-/** One pre-assigned team (+ role/capabilities) on an `existing_teams` link. */
 export interface RegistrationTeamAssignment {
   teamId: string;
   role: Role;
@@ -41,28 +37,22 @@ export interface RegistrationLinkDTO {
   id: string;
   status: RegistrationLink["status"];
   mode: RegistrationMode;
-  /** For `existing_teams`: the names of the (still-existing) assigned teams. */
   teamNames: string[];
   createdBy: string;
   usedByUsername: string | null;
   expiresAt: string;
   createdAt: string;
-  /** The link can still be read back with {@link revealRegistrationLink}. */
   canReveal: boolean;
-  /** The real URL with the token blanked - the token itself is NEVER in this string. */
   linkMasked: string;
 }
 
 export interface MintRegistrationResult {
-  /** Absolute /register/<token> URL, always returned for copying/sharing. */
   link: string;
-  /** The row, so a caller that has to find this link again can point at it. */
   id: string;
 }
 
 const MAX_REGISTRATION_TEAMS = 50;
 
-/** Mint a single-use registration link; its mode and teams cannot be changed by the registrant. */
 export async function mintRegistrationLink(input: {
   mode: RegistrationMode;
   teamAssignments?: RegistrationTeamAssignment[];
@@ -78,8 +68,6 @@ export async function mintRegistrationLink(input: {
   const baseRow = {
     id: linkId,
     tokenHash: sha256Hex(rawToken),
-    // Kept beside the hash so the admin can copy the link again for the 24 hours
-    // it lives - see `revealRegistrationLink`. The hash stays the lookup key.
     tokenEnc: encryptSecret(rawToken),
     status: "pending",
     createdBy,
@@ -90,8 +78,6 @@ export async function mintRegistrationLink(input: {
   } as const;
 
   if (input.mode === "existing_teams") {
-    // De-dupe by team (the unique index forbids two rows for one team on a link)
-    // and validate every team still exists before writing anything.
     const byTeam = new Map<string, RegistrationTeamAssignment>();
     for (const a of input.teamAssignments ?? []) byTeam.set(a.teamId, a);
     const assignments = [...byTeam.values()];
@@ -99,15 +85,12 @@ export async function mintRegistrationLink(input: {
       throw new Error("Select at least one team for the new user");
     if (assignments.length > MAX_REGISTRATION_TEAMS)
       throw new Error("Too many teams selected");
-    // A new user joins existing teams as member/viewer ONLY, never as an owner.
     for (const a of assignments) {
       if (a.role !== "member" && a.role !== "viewer")
         throw new Error(
           "A new user can only join a team as a member or viewer",
         );
     }
-    // The minting admin may only place a new user into teams THEY belong to - an
-    // instance admin is NOT implicitly a member of every team.
     const me = await getCurrentUser();
     if (!me) throw new Error("Not authenticated");
     const myTeamRows = await getDb()
@@ -156,7 +139,6 @@ export async function mintRegistrationLink(input: {
   return { link: `${base}/register/${rawToken}`, id: linkId };
 }
 
-/** Put one more team on a link that has not been used yet. */
 export async function addTeamToRegistrationLink(
   linkId: string,
   teamId: string,
@@ -190,7 +172,6 @@ export async function addTeamToRegistrationLink(
       ),
     )
     .limit(1);
-  // Used, revoked or expired: the caller mints a fresh one instead.
   if (!link) return false;
   const linkTeamId = newId("rlt");
   const added = await getDb()
@@ -207,7 +188,6 @@ export async function addTeamToRegistrationLink(
   return true;
 }
 
-/** Pending + recent registration links for the Settings → Users tab. */
 export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
   await requireInstanceAdmin();
   const rows = await getDb()
@@ -219,13 +199,11 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
       usedByUsername: registrationLinksTable.usedByUsername,
       expiresAt: registrationLinksTable.expiresAt,
       createdAt: registrationLinksTable.createdAt,
-      // Presence only - the ciphertext never leaves this function.
       tokenEnc: registrationLinksTable.tokenEnc,
     })
     .from(registrationLinksTable)
     .orderBy(desc(registrationLinksTable.createdAt));
 
-  // Batch-load assigned team names for the existing_teams links in one query.
   const linkIds = rows.map((l) => l.id);
   const namesByLink = new Map<string, string[]>();
   if (linkIds.length > 0) {
@@ -265,8 +243,6 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
   }));
 }
 
-// "" when there is no request to read it from (the scheduler, a test): DISPLAY
-// only here, while a mint that needs a real URL still lets the failure through.
 async function publicBaseUrl(): Promise<string> {
   try {
     return await instancePublicBaseUrl();
@@ -275,7 +251,6 @@ async function publicBaseUrl(): Promise<string> {
   }
 }
 
-/** Read a pending registration link back in full, so the admin who minted it can hand it over again. */
 export async function revealRegistrationLink(id: string): Promise<string> {
   await requireInstanceAdmin();
   const [row] = await getDb()
@@ -297,8 +272,6 @@ export async function revealRegistrationLink(id: string): Promise<string> {
       "This link was created before links could be shown again. Revoke it and mint a new one.",
     );
   const rawToken = decryptSecret(row.tokenEnc);
-  // Fails closed to "" (a rotated DEPLO_SECRET), and a half-URL is worse than a
-  // clear error - the admin can always mint a fresh link.
   if (rawToken === "")
     throw new Error(
       "This link could not be decrypted. Revoke it and mint a new one.",
@@ -306,7 +279,6 @@ export async function revealRegistrationLink(id: string): Promise<string> {
   return `${await instancePublicBaseUrl()}/register/${rawToken}`;
 }
 
-/** Revoke a pending registration link. */
 export async function revokeRegistrationLink(id: string): Promise<void> {
   await requireInstanceAdmin();
   const updated = await getDb()
@@ -319,8 +291,6 @@ export async function revokeRegistrationLink(id: string): Promise<void> {
       ),
     )
     .returning({ id: registrationLinksTable.id });
-  // Match the prior behavior: a non-pending link is a no-op, but a missing id
-  // is an error.
   if (updated.length === 0) {
     const exists = await getDb()
       .select({ id: registrationLinksTable.id })
@@ -331,7 +301,6 @@ export async function revokeRegistrationLink(id: string): Promise<void> {
   }
 }
 
-/** Revoke every pending registration link at once. Returns how many rows it killed. */
 export async function revokeAllRegistrationLinks(): Promise<number> {
   await requireInstanceAdmin();
   const revoked = await getDb()

@@ -66,7 +66,6 @@ test("sharedRefsIn reads both panels' syntax, at all four levels", () => {
   ]);
 });
 
-// Dokploy also writes `${{ <service>.<field> }}`, which is NOT a shared variable: `envNeedsInterpolation` owns those.
 test("sharedRefsIn does not claim a service reference", () => {
   const entries = parseEnvBlob("A=${{ mydb.databaseName }}");
   assert.deepEqual(sharedRefsIn(entries), []);
@@ -99,7 +98,6 @@ test("envNeedsInterpolation flags Dokploy's own template syntax", () => {
   assert.deepEqual(envNeedsInterpolation(entries), ["A"]);
 });
 
-// The number one cause of "my app does not start after the migration": the database answers to a new name, the strings spell the old.
 test("renameDatabaseHosts rewrites a host token and names the keys", () => {
   const env = [
     {

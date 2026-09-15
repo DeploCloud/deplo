@@ -30,7 +30,6 @@ import {
 } from "@/components/storage/database-exposure";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-// DatabaseNetworkingCard shows how clients reach this database and publishes the port.
 export function DatabaseNetworkingCard({
   db,
   serverHost,
@@ -44,14 +43,12 @@ export function DatabaseNetworkingCard({
   serverHost: string;
   canExposePorts: boolean;
   canConfigure: boolean;
-  // Which apps the internal address answers for: an Environment owns its network.
   environmentLabel?: string | null;
   environments?: { id: string; label: string }[];
   serverName: string;
 }) {
   const exposure = useDatabaseExposure(db);
   const internal = `${db.host}:${db.port}`;
-  // The SAVED state, not the switch: an address copied before the save lands does not answer.
   const published =
     db.exposedPublicly && db.exposedPort && serverHost
       ? `${serverHost}:${db.exposedPort}`
@@ -131,7 +128,6 @@ export function DatabaseNetworkingCard({
             />
           )}
 
-          {/* The port is a bare 0.0.0.0 bind: no proxy, no certificate, only the engine password. */}
           {exposure.exposed && (
             <p className="flex items-start gap-2 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-2.5 text-xs">
               <TriangleAlert className="mt-px size-3.5 shrink-0 text-[var(--warning)]" />

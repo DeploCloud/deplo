@@ -30,7 +30,6 @@ import { RepoSearchGraphic } from "@/components/apps/repo-search-graphic";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
-// RepoSummary is one repository as every provider listing returns it.
 export interface RepoSummary {
   fullName: string;
   name: string;
@@ -45,7 +44,6 @@ export interface RepoSelection {
   branch: string;
 }
 
-// RepoSourceKind names which credential lists the repositories.
 export type RepoSourceKind = "github" | "connection";
 
 type RepoVisibility = "all" | "public" | "private";
@@ -71,7 +69,6 @@ const REPO_SKELETON_WIDTHS = [
   "w-1/2",
 ];
 
-// RepoBrowser picks a repository and a branch from a credential that can list them.
 export function RepoBrowser({
   kind,
   sourceId,
@@ -300,7 +297,6 @@ export function RepoBrowser({
               id={branchFieldId}
               className="h-8 w-auto max-w-full min-w-44 bg-background"
             >
-              {/* flex! is load-bearing: the trigger [&>span]:line-clamp-1 outranks a plain flex. */}
               <span className="flex! min-w-0 items-center gap-2">
                 <GitBranch className="size-4 shrink-0 text-muted-foreground" />
                 <SelectValue />
@@ -391,7 +387,6 @@ export function RepoBrowser({
             className="w-full shrink-0 sm:w-[11rem]"
             aria-label="Sort repositories"
           >
-            {/* flex! is load-bearing: the trigger [&>span]:line-clamp-1 outranks a plain flex. */}
             <span className="flex! min-w-0 items-center gap-2">
               <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
               <SelectValue />
@@ -421,7 +416,6 @@ export function RepoBrowser({
           ))
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 p-4 text-center">
-            {/* Only for a search that found nothing. */}
             {repos.length > 0 && <RepoSearchGraphic className="size-20" />}
             <p className="text-sm text-muted-foreground">
               {repos.length === 0

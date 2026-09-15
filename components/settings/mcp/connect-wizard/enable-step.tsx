@@ -4,7 +4,6 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepShell } from "./step-shell";
 
-// EnableStep flips the team's MCP switch, the one step a plain member cannot act on.
 export function EnableStep({
   canManageTeam,
   pending,

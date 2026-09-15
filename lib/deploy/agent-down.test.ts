@@ -16,8 +16,6 @@ test("the two agent-down errors are unrelated classes, so one instanceof is not 
   assert.equal(unavailable instanceof AgentUnreachableError, false);
 });
 
-// Restates the un-exported predicate in build/build-attempt.ts, pinning the contract it
-// must satisfy: every way a host can be down answers true.
 function agentIsDown(e: unknown): boolean {
   return (
     e instanceof AgentUnavailableError || e instanceof AgentUnreachableError
@@ -42,7 +40,6 @@ test("an ordinary build failure is NOT treated as the host being down", () => {
   assert.equal(agentIsDown(null), false);
 });
 
-// A deploy log is readable at the view_logs floor, so no dial address may reach it.
 function agentDownReason(e: unknown): string {
   if (e instanceof AgentUnavailableError) return e.message;
   if (e instanceof AgentUnreachableError && e.trust) {

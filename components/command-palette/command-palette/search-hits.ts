@@ -18,14 +18,12 @@ import {
 } from "@/lib/overview-links";
 import type { DatabaseType } from "@/lib/types/database";
 
-// HitTeam - the team a search hit belongs to, as a row shows it.
 export interface HitTeam {
   id: string;
   name: string;
   avatarUrl: string | null;
 }
 
-// SearchData - the shape the palette's search query answers with.
 export interface SearchData {
   search: {
     apps: {
@@ -80,7 +78,6 @@ export interface SearchData {
   };
 }
 
-// Hit - a search hit, flattened into what a row needs.
 export interface Hit {
   id: string;
   label: string;
@@ -96,7 +93,6 @@ export interface Hit {
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-// toHits - flattens one search answer into the palette's rows.
 export function toHits(data: SearchData): Hit[] {
   const s = data.search;
   return [

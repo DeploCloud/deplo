@@ -1,7 +1,3 @@
-/**
- * The machine of the list already sitting at a typed address, if any: a panel
- * behind a proxy is usually one of the hosts it lists under another name.
- */
 export function twinAt<
   M extends { sourceId: string; ipAddress: string | null },
 >(machines: M[], sourceId: string, address: string): M | null {

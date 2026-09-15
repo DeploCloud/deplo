@@ -13,9 +13,7 @@ const StorageFileRef = builder
       "yet is a normal answer rather than an error.",
     fields: (t) => ({
       path: t.exposeString("path"),
-      // "text" | "new" | "folder" | "binary" | "too-large".
       state: t.exposeString("state"),
-      // The body; always "" for anything but "text".
       text: t.exposeString("text"),
     }),
   });

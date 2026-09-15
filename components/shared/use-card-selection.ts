@@ -21,7 +21,6 @@ export interface CardSelection {
   setSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
-// useCardSelection - marquee, ctrl/cmd-click and shift-click selection for a card grid.
 export function useCardSelection(orderedIds: string[]): CardSelection {
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
   const canvasRef = React.useRef<HTMLDivElement | null>(null);

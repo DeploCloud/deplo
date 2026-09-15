@@ -21,7 +21,6 @@ import { detailsDescription, templateTitle } from "./source-hints";
 import { TemplateAlerts } from "./template-alerts";
 import type { WizardTemplate } from "./types";
 
-// DetailsStep - the card that answers "what exactly are we deploying", one shape per source.
 export function DetailsStep({
   isTemplate,
   template,

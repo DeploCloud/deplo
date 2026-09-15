@@ -9,7 +9,6 @@ import type { DatabaseBackupSummary } from "@/lib/data/backups/run-listing";
 import type { ContainerMetrics } from "@/lib/data/container-metrics";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-// StatCard - one tile of the overview's bottom row.
 export function StatCard({
   icon: Icon,
   label,
@@ -42,7 +41,6 @@ export function StatCard({
   );
 }
 
-// DataStat - `bytes === null` means the agent cannot answer yet: a dash, never a zero that reads as an empty database.
 export function DataStat({
   db,
   metrics,
@@ -54,7 +52,6 @@ export function DataStat({
   bytes: number | null | undefined;
   href: string;
 }) {
-  // Docker reports the HOST's RAM as the limit when nothing caps the container, so the denominator is the stored cap.
   const capMb = db.resources?.memoryMb ?? null;
   const ram =
     metrics?.online && metrics.memUsed > 0

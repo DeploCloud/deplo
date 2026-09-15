@@ -12,17 +12,14 @@ import type { AlertMessage } from "./channels";
 
 const SETTINGS_ID = "default";
 
-// Mirrors `CHANNEL_TIMEOUT_MS` by hand: importing it would close a `dispatch` → `channels` cycle.
 const PUSH_TIMEOUT_MS = 5_000;
 
-// What a browser hands back from `pushManager.subscribe()`.
 export interface PushSubscriptionInput {
   endpoint: string;
   p256dh: string;
   auth: string;
 }
 
-// The instance's VAPID public key, minting the pair if this is the first time.
 export async function ensureVapidKeys(): Promise<string> {
   const db = getDb();
   const existing = await db
@@ -35,7 +32,6 @@ export async function ensureVapidKeys(): Promise<string> {
   const webpush = await import("web-push");
   const keys = webpush.generateVAPIDKeys();
   const now = nowIso();
-  // Guarded by `IS NULL` so two boots that race settle on one keypair.
   await db
     .insert(instanceSettings)
     .values({
@@ -62,7 +58,6 @@ export async function ensureVapidKeys(): Promise<string> {
   return settled[0]?.publicKey ?? keys.publicKey;
 }
 
-// Record a browser's subscription for this user in this team. Idempotent.
 export async function savePushSubscription(
   teamId: string,
   userId: string,
@@ -85,12 +80,10 @@ export async function savePushSubscription(
         pushSubscriptions.userId,
         pushSubscriptions.endpoint,
       ],
-      // A browser can rotate its keys for the same endpoint.
       set: { p256dh: sub.p256dh, auth: sub.auth },
     });
 }
 
-// Forget one browser. Scoped to the caller's own row, never anyone else's.
 export async function deletePushSubscription(
   teamId: string,
   userId: string,
@@ -107,7 +100,6 @@ export async function deletePushSubscription(
     );
 }
 
-// Push to a team's browsers, or one user's when testing; one browser refusing silences nothing.
 export async function sendWebPushTo(
   teamId: string,
   userId: string | null,
@@ -125,7 +117,6 @@ export async function sendWebPushTo(
           )
         : eq(pushSubscriptions.teamId, teamId),
     );
-  // A test goes to ONE person's devices and has to say when there are none; the fan-out stays silent.
   if (subs.length === 0) {
     if (userId)
       throw new Error(
@@ -150,7 +141,6 @@ export async function sendWebPushTo(
     throw new Error("Browser push is not set up on this instance");
 
   const webpush = await import("web-push");
-  // mailto: is what the push services want; a panel URL is not a valid VAPID subject.
   webpush.setVapidDetails("mailto:alerts@deplo.build", publicKey, privateKey);
 
   const payload = JSON.stringify({
@@ -161,12 +151,10 @@ export async function sendWebPushTo(
   const gone: string[] = [];
   const results = await Promise.allSettled(
     subs.map(async (s) => {
-      // Re-validated at the dial: a saved endpoint's host can rebind to an internal address.
       await assertSafeOutboundUrl(s.endpoint, "Push endpoint");
       return webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
         payload,
-        // web-push has no AbortSignal and no default deadline; its socket timeout is what bounds this.
         { timeout: PUSH_TIMEOUT_MS },
       );
     }),
@@ -175,7 +163,6 @@ export async function sendWebPushTo(
     if (r.status !== "rejected") return;
     const status = (r.reason as { statusCode?: number } | undefined)
       ?.statusCode;
-    // 404/410: the browser is gone for good. Anything else may be transient.
     if (status === 404 || status === 410) gone.push(subs[i].endpoint);
   });
   if (gone.length > 0)
@@ -188,7 +175,6 @@ export async function sendWebPushTo(
         ),
       );
 
-  // A test send with a single subscription should say that it failed, but only that.
   const firstError = results.find((r) => r.status === "rejected");
   if (subs.length === 1 && firstError && firstError.status === "rejected") {
     console.error("[deplo] web push failed:", firstError.reason);

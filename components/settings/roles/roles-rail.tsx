@@ -35,7 +35,6 @@ const ROLE_ICON: Record<string, LucideIcon> = {
   viewer: Eye,
 };
 
-// RolesRail - the team's roles as the left rail: pick one to edit, or start a new one.
 export function RolesRail({
   roles,
   canManage,
@@ -44,7 +43,6 @@ export function RolesRail({
   canManage: boolean;
 }) {
   const router = useRouter();
-  // Which entry is open comes from the URL, not a prop, so the rail lives in the layout.
   const pathname = useFlatPathname();
   const activeId = pathname.startsWith("/settings/roles/")
     ? pathname.slice("/settings/roles/".length).split("/")[0]

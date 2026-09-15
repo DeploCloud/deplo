@@ -9,7 +9,6 @@ import {
 } from "../../db/schema/control-plane/apps";
 import { composeHasInlineEnvValues } from "../compose-lint/document";
 
-// Why a pull request did NOT get a preview. Surfaced verbatim to the user.
 export type PreviewRefusal =
   | { kind: "previews-off" }
   | { kind: "not-github" }
@@ -19,7 +18,6 @@ export type PreviewRefusal =
   | { kind: "awaiting-approval" }
   | { kind: "evicted"; max: number };
 
-// The reason, as one sentence a non-expert can act on.
 export function refusalMessage(r: PreviewRefusal): string {
   switch (r.kind) {
     case "previews-off":
@@ -39,8 +37,6 @@ export function refusalMessage(r: PreviewRefusal): string {
   }
 }
 
-// Whether the app's stack reaches past its containers: a compose the host grant
-// had to allow, or a Bind of a server folder in Storage.
 export async function appReachesHost(appId: string): Promise<boolean> {
   const [app] = await getDb()
     .select({ hostReachBy: appsTable.hostReachBy })
@@ -58,9 +54,6 @@ export async function appReachesHost(appId: string): Promise<boolean> {
   return binds.length > 0;
 }
 
-// Why a FORK of this app may not be previewed right now, or null: a stranger's code
-// must not run with the app's host reach, nor with values the compose file hands
-// every container inline (ADR-0017 §7).
 export async function forkRefusal(
   appId: string,
 ): Promise<PreviewRefusal | null> {

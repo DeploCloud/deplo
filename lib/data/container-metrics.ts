@@ -12,54 +12,44 @@ import {
 } from "../monitoring/container-history";
 import { metricsStreamUnsupported } from "../monitoring/stream-modes";
 
-// ContainerInstanceMetrics - one container's live usage in the breakdown table.
 export interface ContainerInstanceMetrics {
   name: string;
   running: boolean;
-  cpu: number; // percent, across all cores
-  memUsed: number; // bytes
-  memLimit: number; // bytes
+  cpu: number;
+  memUsed: number;
+  memLimit: number;
   memPct: number;
-  netRx: number; // cumulative bytes
+  netRx: number;
   netTx: number;
-  blockRead: number; // cumulative bytes
+  blockRead: number;
   blockWrite: number;
   pids: number;
-  // Raw docker state (running | exited | restarting | ...); empty from an agent too old.
   state: string;
-  // healthy | unhealthy | starting; empty when there is NO healthcheck, which is not healthy.
   health: string;
   restartCount: number;
-  // Containers sharing a namespace report the SAME counters, so count them once. 0 = old agent.
   netNsId: number;
-  // network_mode: host - net is 0 here, because those bytes are the machine's.
   netNsHost: boolean;
 }
 
-// ContainerMetricsSample - the aggregate stored in the ring buffer and charted.
 export interface ContainerMetricsSample {
   id: string;
   online: boolean;
-  // epoch ms (control-plane clock at measurement).
   ts: number;
-  cpu: number; // percent of ONE core, summed across running containers
-  memUsed: number; // bytes, summed
-  memLimit: number; // the HOST's RAM - the machine is the ceiling, counted once
-  memPct: number; // memUsed/memLimit*100
-  netRx: number; // cumulative bytes, one counter per network namespace
+  cpu: number;
+  memUsed: number;
+  memLimit: number;
+  memPct: number;
+  netRx: number;
   netTx: number;
-  blockRead: number; // cumulative bytes, summed
+  blockRead: number;
   blockWrite: number;
-  pids: number; // summed
+  pids: number;
   running: number;
   containers: number;
-  // The owning machine's core count, so cpu also reads as "3.0 of 8 cores". 0 before the first frame.
   hostCores: number;
 }
 
-// ContainerMetrics - the live DTO: a sample plus the agent flag and the breakdown.
 export interface ContainerMetrics extends ContainerMetricsSample {
-  // True only when the agent is too old for ContainerStats - distinct from offline.
   unsupported: boolean;
   instances: ContainerInstanceMetrics[];
 }
@@ -111,13 +101,11 @@ function toInstance(s: PbContainerStat): ContainerInstanceMetrics {
   };
 }
 
-// HostCapacity - what the OWNING MACHINE can give a stack, from the same telemetry frame.
 export interface HostCapacity {
   memTotal: number;
   cpuCores: number;
 }
 
-// aggregateContainerStats - fold the agent's per-container stats into the app-total DTO.
 export function aggregateContainerStats(
   id: string,
   stats: PbContainerStat[],
@@ -127,12 +115,10 @@ export function aggregateContainerStats(
   return aggregate(id, stats, ts, host);
 }
 
-// One counter per network namespace: a sidecar sharing one reads the very same bytes.
 function netContributors(running: PbContainerStat[]): PbContainerStat[] {
   const byNs = new Map<string, PbContainerStat>();
   for (const s of running) {
     if (s.netNsHost) continue;
-    // No namespace id (an agent too old) proves nothing shared, so each counts for itself.
     const key = s.netNsId ? `ns:${s.netNsId}` : `c:${s.containerId || s.name}`;
     if (!byNs.has(key)) byNs.set(key, s);
   }
@@ -149,7 +135,6 @@ function aggregate(
   const sum = (f: (s: PbContainerStat) => number) =>
     running.reduce((a, s) => a + f(s), 0);
   const memUsed = sum((s) => s.memUsed);
-  // The machine is the ceiling: the agent reports an uncapped container's limit as the whole host.
   const memLimit = Math.min(
     sum((s) => s.memLimit),
     host.memTotal > 0 ? host.memTotal : Number.POSITIVE_INFINITY,
@@ -178,35 +163,29 @@ function aggregate(
   };
 }
 
-// toContainerSample - the fold the stream supervisor reuses, so the two paths cannot drift.
 export function toContainerSample(m: ContainerMetrics): ContainerMetricsSample {
   return toSample(m);
 }
 
 function toSample(m: ContainerMetrics): ContainerMetricsSample {
-  // Drops instances (live-only) and unsupported (never true for a recorded sample).
   const { unsupported, instances, ...sample } = m;
   void unsupported;
   void instances;
   return sample;
 }
 
-// getAppMetrics - live metrics for one app (team-scoped). Null for an unknown or cross-team app.
 export async function getAppMetrics(
   appId: string,
 ): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
-  // A node grant REPLACES the team role inside the app (ADR-0016), in both directions.
   if (!(await hasAppCapability(appId, "view_metrics"))) return null;
   const app = await loadTeamApp(appId, teamId);
   if (!app) return null;
   return fromBuffer(app.id, app.serverId ?? null);
 }
 
-// An honest "no data", never a fabricated zero.
 function fromBuffer(id: string, serverId: string | null): ContainerMetrics {
   const s = latestContainerSample(id);
-  // Nothing buffered AND no stream: not "no data yet" but an agent too old to report.
   if (!s) {
     const stale = Boolean(serverId) && metricsStreamUnsupported(serverId!);
     return unavailable(id, Date.now(), stale);
@@ -214,7 +193,6 @@ function fromBuffer(id: string, serverId: string | null): ContainerMetrics {
   return { ...s, unsupported: false, instances: latestContainerInstances(id) };
 }
 
-// getAppMetricsHistory - the buffered window for one app (team-scoped).
 export async function getAppMetricsHistory(
   appId: string,
 ): Promise<ContainerMetricsSample[]> {
@@ -225,7 +203,6 @@ export async function getAppMetricsHistory(
   return getContainerHistory(app.id);
 }
 
-// getDatabaseMetrics - live metrics for one database (team-scoped), a buffer read like getAppMetrics.
 export async function getDatabaseMetrics(
   databaseId: string,
 ): Promise<ContainerMetrics | null> {
@@ -236,7 +213,6 @@ export async function getDatabaseMetrics(
   return fromBuffer(db.id, db.serverId ?? null);
 }
 
-// getDatabaseMetricsHistory - the buffered window for one database (team-scoped).
 export async function getDatabaseMetricsHistory(
   databaseId: string,
 ): Promise<ContainerMetricsSample[]> {

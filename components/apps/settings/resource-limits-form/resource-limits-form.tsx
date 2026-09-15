@@ -30,8 +30,6 @@ import { HeadlineLimits } from "./headline-limits";
 import { SizeTiles, type HostInfo } from "./host-capacity";
 import { useLiveUsage, type UsageSample } from "./use-live-usage";
 
-// https://deplo.build/docs/advanced/resource-limits
-
 export function ResourceLimitsForm({
   kind,
   id,
@@ -45,15 +43,12 @@ export function ResourceLimitsForm({
 }: {
   kind: "app" | "database";
   id: string;
-  // App only: where the deploy the toast starts is followed to.
   slug?: string;
   resources: ResourceLimits | null;
   isComposeStack?: boolean;
   host: HostInfo | null;
-  // The buffered window; null when the viewer cannot see metrics.
   usage: UsageSample[] | null;
   canRedeploy: boolean;
-  // A negative OOM priority reaches other tenants, so it needs the grant.
   canProtectFromOom: boolean;
 }) {
   const router = useRouter();

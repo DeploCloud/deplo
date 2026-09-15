@@ -22,22 +22,13 @@ import { copiedInRun, pathsOverlap, runTwinFor } from "./host-path-clashes";
 import type { Landed } from "./landed-targets";
 import type { SourceService } from "./source-services";
 
-/** What the two copy passes counted, read by the caller once both have run. */
 export interface CopyTally {
   moved: number;
   failed: number;
   empty: number;
-  /** Of `empty`, the ones that do not EXIST over there. See VolumeCopyResult.missing. */
   missing: number;
-  /** Of `missing`, the ones belonging to a service that IS running over there, which
-   *  is data that should have come across. Kept apart from `failed` because that one
-   *  also decides whether a database is started again. */
   notCopied: number;
-  /** See DataMoveResult.sourceGone: the difference between "this volume did not come
-   *  across" and "stop the whole migration". */
   sourceGone: boolean;
-  /** What did NOT arrive, kept apart from the notes (which also carry advice) so it
-   *  can be written onto the app or database itself at the end. */
   lost: string[];
 }
 
@@ -53,7 +44,6 @@ export function newCopyTally(): CopyTally {
   };
 }
 
-/** Everything both passes need about the service being cut over. */
 export interface CopyContext {
   credential: SourceCredential;
   runId: string;
@@ -61,7 +51,6 @@ export interface CopyContext {
   path: string;
   svc: SourceService;
   landed: Landed;
-  /** Whether the source is still up on the panel. */
   running: boolean;
   sourceServerId: string;
   source: AgentConnection;
@@ -98,12 +87,8 @@ async function recordEmpty(
   copied: VolumeCopyResult,
   leftAsIs: string,
 ): Promise<void> {
-  // An empty source is not a copy and must never read as one.
   ctx.tally.empty++;
   if (copied.missing) ctx.tally.missing++;
-  // A RUNNING service whose volume is not where Deplo looked has its data
-  // somewhere else. Left as a `skipped` line, the app came up on empty storage
-  // with nothing anywhere refusing to let it.
   if (copied.missing && ctx.running) {
     ctx.tally.notCopied++;
     ctx.tally.lost.push(
@@ -113,9 +98,6 @@ async function recordEmpty(
   await record(
     ctx,
     sourceName,
-    // Data that did not come across is a FAILURE, never a line the summary folds
-    // into "skipped": a run that ends `failed: 0` over a volume nobody copied
-    // reads as a clean migration.
     copied.missing && ctx.running ? "failed" : "skipped",
     copied.missing
       ? missingVolumeMessage(sourceName, ctx.svc.name, ctx.running)
@@ -138,8 +120,6 @@ async function recordFailure(
   mountPath: string,
   e: unknown,
 ): Promise<void> {
-  // Cancelled, not broken: leave every remaining volume alone and let the stop
-  // that asked for it do the undoing.
   if (isCopyAborted(e)) throw e;
   ctx.tally.failed++;
   if (isHostGone(e)) ctx.tally.sourceGone = true;
@@ -149,18 +129,12 @@ async function recordFailure(
   await record(ctx, sourceName, "failed", message);
 }
 
-/**
- * A gRPC UNAVAILABLE (14): the connection to the host died, however it died -
- * refused, reset mid-stream, or never established. Anything else is about the
- * volume, not the machine.
- */
 function isHostGone(e: unknown): boolean {
   const code = (e as { code?: unknown } | null)?.code;
   if (code === 14) return true;
   return e instanceof Error && /\b14 UNAVAILABLE\b/.test(e.message);
 }
 
-/** Copy every paired volume into the imported resource, one report line each. */
 export async function copyPairedVolumes(
   ctx: CopyContext,
   pairs: VolumePair[],
@@ -198,7 +172,6 @@ export async function copyPairedVolumes(
   }
 }
 
-/** Copy every paired host directory, refusing the ones a copy would wipe for someone else. */
 export async function copyBindMounts(
   ctx: CopyContext,
   binds: PairedHostMount[],
@@ -215,9 +188,6 @@ export async function copyBindMounts(
       );
       continue;
     }
-    // Same machine, same path: the directory the app will read IS the one the old
-    // platform wrote. Copying it over itself would be a wipe followed by a restore
-    // of what was just wiped - all risk, no movement.
     if (
       ctx.sourceServerId === ctx.landed.targetServerId &&
       bind.sourcePath === bind.targetPath
@@ -230,15 +200,11 @@ export async function copyBindMounts(
       );
       continue;
     }
-    // Another app on this machine mounts that path. The copy wipes before it
-    // writes, so going ahead would erase a stranger's data and report a clean run.
     const clash = bindOwners.find((o) => pathsOverlap(o.path, bind.targetPath));
     if (
       clash &&
       (await runTwinFor(ctx.credential, ctx.runId, ctx.svc, clash.appId))
     ) {
-      // The same directory on the same source machine, mounted by two services of
-      // this run: whichever comes first fills it, the other keeps it.
       if (await copiedInRun(ctx.runId, bind.targetPath)) {
         await record(
           ctx,
@@ -257,8 +223,6 @@ export async function copyBindMounts(
       continue;
     }
     try {
-      // A bind that names a FILE is carried as that one file - see
-      // copyHostPathBetween, which asks the agent rather than guessing.
       const copied = await copyHostPathBetween(
         ctx.source,
         ctx.dest,

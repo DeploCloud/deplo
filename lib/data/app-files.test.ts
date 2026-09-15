@@ -27,13 +27,13 @@ test("a path with nothing behind it reads as a new file, not a failure", () => {
     new Error(
       "read config.toml: open /data/stacks/files/shop/config.toml: no such file or directory",
     ),
-    { code: 5 }, // grpc NOT_FOUND
+    { code: 5 },
   );
   assert.equal(storageFileStateForError(notFound), "new");
 });
 
 test("a directory at the entry's path is reported as a folder", () => {
-  const notAFile = Object.assign(new Error("not a file"), { code: 3 }); // INVALID_ARGUMENT
+  const notAFile = Object.assign(new Error("not a file"), { code: 3 });
   assert.equal(storageFileStateForError(notAFile), "folder");
 });
 
@@ -69,7 +69,6 @@ test("a read that failed says what happened, without leaking the dial target", (
   assert.ok(!shown.message.includes("9443"));
   assert.ok(!shown.message.includes("ab12cd34"));
   assert.equal(shown.cause, raw, "the original stays available server-side");
-  // A plain Error (no infrastructure code) is what the GraphQL mask forwards.
   assert.equal((shown as { code?: unknown }).code, undefined);
 
   const other = storageFileReadError(new Error("boom"));

@@ -20,13 +20,9 @@ import type { AuthenticationResponseJSON } from "@simplewebauthn/browser";
 export interface LoginResult {
   ok: boolean;
   error?: string;
-  /** The account has 2FA: no session was created, a TOTP code is still required. */
   requiresTwoFactor?: boolean;
 }
 
-// emailForIdentifier resolves a sign-in identifier. A username nobody has falls through
-// unchanged, so a wrong one is refused by the credential check like any other - never by
-// a different answer, which would make this an account-existence oracle.
 export async function emailForIdentifier(identifier: string): Promise<string> {
   const value = identifier.toLowerCase().trim();
   if (!value || value.includes("@")) return value;
@@ -41,8 +37,6 @@ export async function emailForIdentifier(identifier: string): Promise<string> {
   );
 }
 
-// login signs in with email or username + password (Better Auth, ADR-0014). The caller
-// must then send a code to `verifyTwoFactorCode`.
 export async function login(
   identifier: string,
   password: string,
@@ -54,13 +48,7 @@ export async function login(
       headers: await authHeaders(),
       asResponse: false,
     });
-    // Before the two-factor branch below: by this point Better Auth has written
-    // either the session cookie or the challenge cookie, and on the IP
-    // address both need declassifying for the browser to keep them.
     await keepAuthCookiesUsableOverHttp();
-    // Suspension is enforced only NOW, after the password verified, so "this account
-    // has been suspended" is revealed only to someone who proved the credential, never
-    // as a pre-auth existence oracle.
     const account = (
       await getDb()
         .select({ id: usersTable.id, suspended: usersTable.suspended })
@@ -72,23 +60,17 @@ export async function login(
       await revokeAllSessions(account.id).catch(() => {});
       return { ok: false, error: "This account has been suspended" };
     }
-    // The credential was just proven, so this is the one moment the plaintext and the
-    // identity are both in hand - the only place a hash written at an older, weaker
-    // cost can be replaced without asking anyone to reset anything.
     void upgradePasswordHash(normalized, password);
     if (res && "twoFactorRedirect" in res && res.twoFactorRedirect)
       return { ok: false, requiresTwoFactor: true };
     return { ok: true };
   } catch (e) {
-    // ONLY a genuine credential rejection becomes "Invalid email or password".
     if (isCredentialRejection(e))
       return { ok: false, error: "Invalid email or password" };
     throw e;
   }
 }
 
-// Re-hash a just-proven password when the stored one was made with a weaker setting
-// than hashPassword now uses. What it must never do is make a correct password look wrong.
 async function upgradePasswordHash(
   normalizedEmail: string,
   password: string,
@@ -110,9 +92,6 @@ async function upgradePasswordHash(
     const fresh = await hashPassword(password);
     await getDb()
       .update(accountTable)
-      // The old hash is part of the WHERE: between the read above and this write the user
-      // may have changed their password in another tab, and overwriting THAT with a
-      // re-hash of the old one would silently restore a credential they had just
       .set({ password: fresh, updatedAt: new Date() })
       .where(
         and(
@@ -120,12 +99,9 @@ async function upgradePasswordHash(
           eq(accountTable.password, row.password),
         ),
       );
-  } catch {
-    // A failed re-hash must never make a correct password look wrong.
-  }
+  } catch {}
 }
 
-// Better Auth's own codes for "those credentials are wrong", and nothing else.
 function isCredentialRejection(e: unknown): boolean {
   const code = (e as { body?: { code?: string } } | null)?.body?.code;
   return (
@@ -136,8 +112,6 @@ function isCredentialRejection(e: unknown): boolean {
   );
 }
 
-// verifyTwoFactorCode finishes a login that stopped at `requiresTwoFactor`, with a TOTP
-// code or one of the account's single-use backup codes.
 export async function verifyTwoFactorCode(
   code: string,
   kind: "totp" | "backup",
@@ -151,16 +125,12 @@ export async function verifyTwoFactorCode(
     await keepAuthCookiesUsableOverHttp();
     return { ok: true };
   } catch (e) {
-    // The plugin's own message is the useful one ("Invalid code", or the lockout
-    // notice after too many failures), so surface it rather than a generic.
     const message = e instanceof Error ? e.message : "";
     return { ok: false, error: message || "That code is not valid" };
   }
 }
 
-// passkeyChallenge is what the browser hands to `navigator.credentials.get` to sign in.
 export async function passkeyChallenge(): Promise<unknown> {
-  // Refused up front on an instance that cannot have passkeys at all.
   if (!passkeyRelyingParty())
     throw new Error(
       "Passkeys need this panel to be reachable at its own https address.",
@@ -170,7 +140,6 @@ export async function passkeyChallenge(): Promise<unknown> {
   });
 }
 
-// verifyPasskeyLogin finishes a passkey sign-in with what the authenticator produced.
 export async function verifyPasskeyLogin(
   response: unknown,
 ): Promise<LoginResult> {
@@ -181,12 +150,8 @@ export async function verifyPasskeyLogin(
       headers: await authHeaders(),
     });
     userId = res.user.id;
-    // The session exists and its cookie is written; this is what says HOW.
     await markSessionAuthMethod(res.session.id, res.user.id, "passkey");
   } catch (e) {
-    // The plugin's own copy is the useful one here ("Passkey not found",
-    // "Authentication failed", or the user-verification refusal Deplo adds) - but ONLY
-    // its copy.
     const fromAuth = Boolean(
       (e as { body?: { code?: string } } | null)?.body?.code,
     );
@@ -205,28 +170,20 @@ export async function verifyPasskeyLogin(
   return { ok: true };
 }
 
-// startSessionFor signs a freshly created account in and makes a team active. A brand-new
-// account can never have 2FA, so there is no challenge branch to handle here.
 export async function startSessionFor(
   email: string,
   password: string,
   teamId?: string,
 ): Promise<void> {
   await requireAuth().api.signInEmail({
-    // Normalized the same way the account was stored, so a registrant who typed
-    // a capitalised address still matches their own brand-new row.
     body: { email: email.toLowerCase().trim(), password },
     headers: await authHeaders(),
     asResponse: false,
   });
   await keepAuthCookiesUsableOverHttp();
-  // Omitted when the caller is only re-issuing a session (e.g. after a password
-  // change), where the existing `deplo_team` cookie must survive untouched.
   if (teamId) await setActiveTeamCookie(teamId);
 }
 
-// logout deletes the session ROW (so the token is dead everywhere, not merely forgotten
-// by this browser) and clears both cookies. Best-effort on the Better Auth side.
 export async function logout() {
   const auth = getAuth();
   if (auth)

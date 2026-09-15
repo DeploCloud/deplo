@@ -5,7 +5,6 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { DocsLink } from "@/components/ui/docs-link";
 import type { DocsTopic } from "@/lib/docs";
 
-// SettingsServer: a server whose id/name/type feed the Deploy Source server picker.
 export interface SettingsServer {
   id: string;
   name: string;
@@ -13,7 +12,6 @@ export interface SettingsServer {
   isDeploHost: boolean;
 }
 
-// SettingsSection heads an app-settings page with the section's icon and a hairline.
 export function SettingsSection({
   icon: Icon,
   title,
@@ -40,9 +38,7 @@ export function SettingsSection({
   );
 }
 
-// DirtyHint is the "unsaved changes" cue on a card footer, beside its Save button.
 export function DirtyHint({ dirty }: { dirty: boolean }) {
-  // The span always renders so it stays a stable ARIA live region.
   return (
     <span role="status" aria-live="polite" className="flex items-center">
       {dirty && (

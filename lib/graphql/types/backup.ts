@@ -100,7 +100,6 @@ export const BackupRunRef = builder
           "False for runs taken before integrity checking shipped.",
         resolve: (r) => Boolean(r.sha256),
       }),
-      // Float, not Int - a backup artifact can exceed 2^31 bytes (>2 GB).
       sizeBytes: t.exposeFloat("sizeBytes"),
       status: t.field({
         type: BackupRunStatusEnum,
@@ -315,7 +314,6 @@ builder.mutationFields((t) => ({
   }),
   deleteBackupArtifacts: t.field({
     type: "Int",
-    // The real gate varies by target kind (delete_apps / delete_databases) and lives in the data layer.
     authScopes: { loggedIn: true },
     description:
       "Delete ALL of a target's backup artifacts (across every destination it " +

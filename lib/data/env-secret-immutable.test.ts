@@ -28,8 +28,6 @@ import { saveSharedVar } from "./shared-vars/authoring";
 import { listSharedVars } from "./shared-vars/team-view";
 import { listPreviewEnvVars, setPreviewEnvVar } from "./previews";
 
-// A secret var is write-only AND immutable on every env layer; plain -> secret stays open.
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -74,7 +72,7 @@ test("upsertEnv refuses to edit a secret, and the value survives the refusal", a
   await seedSecret();
   for (const attempt of [
     { value: MASK, type: "plain" as const },
-    { value: MASK, type: "secret" as const }, // a targets-only save: the UI posts the mask back unchanged
+    { value: MASK, type: "secret" as const },
     { value: "rotated", type: "secret" as const },
   ]) {
     await assert.rejects(
@@ -200,7 +198,6 @@ test("saveSharedVar refuses a value, key or type change on a secret", async () =
 });
 
 test("but a secret can still be RE-SHARED - that never exposes it", async () => {
-  // Changing who receives a secret neither reads it back nor exposes it.
   const id = await sharedSecret();
   await as1(() =>
     saveSharedVar({
@@ -222,7 +219,6 @@ test("but a secret can still be RE-SHARED - that never exposes it", async () => 
 });
 
 test("an INSTANCE-owned secret refuses the same edit", async () => {
-  // team_id NULL: the "All teams" globals, editable only by an instance admin.
   const now = new Date().toISOString();
   await pg.exec(`
     insert into shared_env_vars
@@ -231,7 +227,6 @@ test("an INSTANCE-owned secret refuses the same edit", async () => {
     insert into shared_env_var_teams (var_id, team_id)
       values ('svar_ig', '${TEAM_A}');
   `);
-  // USER_1 is the instance admin here, so the refusal is the SECRET freeze, not the ownership gate.
   await assert.rejects(
     () =>
       as1(() =>
@@ -251,7 +246,6 @@ test("an INSTANCE-owned secret refuses the same edit", async () => {
 
 test("setPreviewEnvVar refuses to overwrite a secret override", async () => {
   await as1(() => setPreviewEnvVar(APP, "PREVIEW_KEY", "p", "secret"));
-  // A blind upsert defaulting to plain would downgrade the row and strip the filter that keeps a secret out of a FORK preview.
   await assert.rejects(
     () => as1(() => setPreviewEnvVar(APP, "PREVIEW_KEY", "leaked")),
     /cannot be edited/i,

@@ -5,7 +5,6 @@ function Skeleton({
   shimmer = false,
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & {
-  /** Sweep a soft highlight across the block instead of a flat opacity pulse. */
   shimmer?: boolean;
 }) {
   return (

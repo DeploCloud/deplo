@@ -17,9 +17,6 @@ import {
 import { getCurrentUser } from "../auth/current-user";
 import { recordActivity } from "./activity";
 
-// A grant hangs off the node it names and a folder off its owner, so neither goes with
-// the membership row: every door that removes a person from a team has to call both.
-// clearNodeGrants drops every node grant this user holds inside one team.
 export async function clearNodeGrants(
   tx: DbTx,
   userId: string,
@@ -63,9 +60,6 @@ export async function clearNodeGrants(
     );
 }
 
-// handOverFolders hands a leaver's folders in a team to newOwnerId, returning how many.
-// A folder is private to its owner: left with a leaver it is visible to nobody, and the
-// apps inside it vanish from the team.
 export async function handOverFolders(
   tx: DbTx,
   userId: string,
@@ -85,7 +79,6 @@ export async function handOverFolders(
   return moved.length;
 }
 
-// recordFoldersHanded notes that a leaver's folders now belong to the team's primary owner.
 export async function recordFoldersHanded(
   userId: string,
   teamId: string,

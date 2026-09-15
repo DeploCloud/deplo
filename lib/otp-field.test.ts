@@ -31,12 +31,10 @@ test("typing over a filled box replaces that digit, it does not insert", () => {
 test("non-digits are dropped, not accepted and not thrown", () => {
   assert.equal(typeDigit("12", 2, "a", L).value, "12");
   assert.equal(typeDigit("12", 2, "", L).value, "12");
-  // An IME or a repeat can deliver more than one character; the last wins.
   assert.equal(typeDigit("12", 2, "x7", L).value, "127");
 });
 
 test("a box past the first empty one is not reachable", () => {
-  // Clicking box 5 of an empty field types into box 1 instead of leaving a gap.
   const { value, caret } = typeDigit("", 4, "7", L);
   assert.equal(value, "7", "no leading gap is created");
   assert.equal(caret, 1);
@@ -125,12 +123,10 @@ test("the model works at other lengths", () => {
 });
 
 test("an autofilled code fills the field instead of leaving one digit", () => {
-  // Autofill delivers the whole code as ONE input event, with no paste event to catch it.
   assert.equal(typeOrFill("", 0, "123456", true, L).value, "123456");
 });
 
 test("replacing a digit is still a keystroke, not a fill", () => {
-  // An occupied box reports "old+new" on a normal keypress, which is not an autofill.
   assert.equal(typeOrFill("1", 0, "19", false, L).value, "9");
   assert.equal(typeOrFill("123", 1, "27", false, L).value, "173");
 });

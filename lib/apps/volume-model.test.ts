@@ -246,7 +246,6 @@ test("every reserved system path is refused, as itself and as a parent", () => {
   assert.equal(volumeProblem(vol({ mountPath: "/etcetera" })), null);
 });
 
-// One config FILE inside a system directory is how every image has ever been configured.
 test("a File may sit inside a system directory, but never replace one", () => {
   const file = (mountPath: string) =>
     volumeProblem(vol({ type: "app", projectPath: "nginx.conf", mountPath }));
@@ -472,7 +471,6 @@ test("the readout previews the DERIVED volume name when the name is blank", () =
 });
 
 test("the readout says a propagated submount stays writable under :ro", () => {
-  // Verified against docker: a filesystem arriving through the propagation carries its own mount options.
   const both = volumeReadout(
     vol({
       type: "host",
@@ -566,7 +564,6 @@ test("switching kind PRESERVES each kind's own source", () => {
 });
 
 test("re-picking the current kind is not an edit", () => {
-  // A stored row has `type` absent; writing "named" over it would arm the unsaved-changes guard.
   const stored = vol({ name: "uploads" });
   assert.equal(switchKind(stored, "named"), stored);
   const explicit = vol({ type: "host", hostPath: "/srv/x" });
@@ -595,7 +592,6 @@ test("containerWorkdir is /app for anything Deplo builds", () => {
 });
 
 test("containerWorkdir follows a root directory, exactly like the Dockerfile", () => {
-  // Mirrors lib/deploy/dockerfile.ts: WORKDIR /app/<root>.
   assert.equal(containerWorkdir("github", "apps/web"), "/app/apps/web");
   assert.equal(containerWorkdir("github", "./apps/web/"), "/app/apps/web");
 });
@@ -662,7 +658,6 @@ test("a path in Files normalises to one form, whatever the user typed", () => {
   assert.equal(normalizeFilesPath("conf/"), "conf");
   assert.equal(normalizeFilesPath(""), "");
   assert.equal(normalizeFilesPath(undefined), "");
-  // The same string the server's validateVolumes stores, so editor and row never disagree.
   assert.equal(
     normalizeFilesPath("./config.toml"),
     normalizeFilesPath("config.toml"),

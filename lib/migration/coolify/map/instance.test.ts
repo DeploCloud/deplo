@@ -85,6 +85,5 @@ test("a member's role comes off the membership row Coolify sends with them", () 
       .role,
     "admin",
   );
-  // Nothing there is still nothing invented.
   assert.equal(coolifyMember({ id: 4, email: "b@acme.test" }).role, null);
 });

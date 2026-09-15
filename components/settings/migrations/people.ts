@@ -1,6 +1,5 @@
 import type { Invite } from "./types";
 
-/** What became of one person on ONE team of the panel. */
 export type PersonLanding = {
   team: string;
   teamAvatarUrl: string | null;
@@ -9,11 +8,6 @@ export type PersonLanding = {
   message: string | null;
 };
 
-/**
- * One person, however many teams of the panel they were on. The control plane
- * mints ONE link per address for the whole migration, so the teams are what
- * differ, not the link.
- */
 export type MergedPerson = {
   email: string;
   name: string;
@@ -28,16 +22,10 @@ type SourceGroup = {
   people: Invite[];
 };
 
-/** Whether any team of theirs handed back a link to send. */
 export function hasLink(p: MergedPerson): boolean {
   return p.landings.some((l) => l.link);
 }
 
-/**
- * One card per address. Grouped on the address and never on the link: whoever
- * was already a member has no link, and two of them would collapse into one.
- * Whoever has something to send comes first - the rest is a report, not a task.
- */
 export function mergePeople(groups: SourceGroup[]): MergedPerson[] {
   const by = new Map<string, MergedPerson>();
   for (const g of groups)
@@ -51,7 +39,6 @@ export function mergePeople(groups: SourceGroup[]): MergedPerson[] {
         hasAccount: m.hasAccount,
         landings: [],
       };
-      // A run that knows their name or their picture wins over one that does not.
       person.name ||= m.name;
       person.avatarUrl ??= m.avatarUrl;
       person.sourceRole ||= m.sourceRole;
@@ -71,7 +58,6 @@ export function mergePeople(groups: SourceGroup[]): MergedPerson[] {
   );
 }
 
-/** The teams that actually hold somebody, in the order their runs landed. */
 export function teamsOf(people: MergedPerson[]): string[] {
   return [...new Set(people.flatMap((p) => p.landings.map((l) => l.team)))];
 }
@@ -93,10 +79,6 @@ export function filterPeople(
   );
 }
 
-/**
- * One block per distinct link. Normally one; a second appears when the first was
- * spent or revoked between two teams and the run had to mint a fresh one.
- */
 export function linkGroups(
   p: MergedPerson,
 ): { link: string; teams: string[] }[] {
@@ -106,9 +88,6 @@ export function linkGroups(
   return [...by].map(([link, teams]) => ({ link: prefilled(link, p), teams }));
 }
 
-/** The registration form opens on what the panel already knew about them, so
- *  nobody retypes their own name. Query only - the link's authority is its
- *  token, and both fields stay editable. */
 function prefilled(link: string, p: MergedPerson): string {
   const q = new URLSearchParams();
   if (p.name.trim()) q.set("name", p.name.trim());
@@ -117,11 +96,6 @@ function prefilled(link: string, p: MergedPerson): string {
   return query ? `${link}?${query}` : link;
 }
 
-/**
- * The lines for the teams no link covers, teams saying the same thing on one
- * line. With nothing else on the card the line drops the team names: the step
- * is about that team and naming it twice reads as two facts.
- */
 export function notesFor(
   p: MergedPerson,
 ): { teams: string[]; message: string }[] {
@@ -138,7 +112,6 @@ export function notesFor(
   }));
 }
 
-/** The links to send, one line per link, for a paste into a mail client. */
 export function linksTsv(people: MergedPerson[]): string {
   return people
     .flatMap((p) => linkGroups(p).map((g) => `${p.email}\t${g.link}`))
@@ -149,7 +122,6 @@ function csvCell(v: string): string {
   return /[",\n\r]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
 }
 
-/** Everyone shown, link or not - a migration report, not just a mailing list. */
 export function linksCsv(people: MergedPerson[]): string {
   const rows = people.flatMap((p) => {
     const groups = linkGroups(p);

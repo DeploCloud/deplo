@@ -2,10 +2,8 @@
 
 import { cn } from "@/lib/utils";
 
-// Thumb size, in px: the track is inset by half of it so the cap segment ends exactly under the thumb.
 const THUMB = 16;
 
-// Meter is the cap against the whole machine, draggable, with what is used drawn over it.
 export function Meter({
   cap,
   used,
@@ -21,7 +19,6 @@ export function Meter({
   step: number;
   label: string;
   valueText: string;
-  // 0 means "no limit".
   onChange: (value: number) => void;
 }) {
   const pct = (n: number) => `${Math.min(100, (n / full) * 100)}%`;

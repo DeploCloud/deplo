@@ -10,7 +10,6 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { useServerHealth } from "./server-health-provider";
 
-// CheckStatusButton re-probes ONE server's agent on demand, forcing past the ambient window; a short server-side floor still applies, so a mashed button cannot fan out dials.
 export function CheckStatusButton({
   serverId,
   serverName,
@@ -37,7 +36,6 @@ export function CheckStatusButton({
   );
 }
 
-// RefreshFleetButton re-probes every agent AND re-resolves the latest agent release.
 export function RefreshFleetButton() {
   const router = useRouter();
   const { checkAll, sweeping } = useServerHealth();
@@ -56,7 +54,6 @@ export function RefreshFleetButton() {
         toast.error(res.error);
         return;
       }
-      // Re-run the server-side reads so each server's "Update agent" points at the freshly resolved version.
       router.refresh();
     });
   }

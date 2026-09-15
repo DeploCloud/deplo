@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 
 export type StepDirection = "forward" | "back";
 
-// Matches the .animate-step-out-* duration.
 const OUT_MS = 160;
 
 function prefersReducedMotion(): boolean {
@@ -19,7 +18,6 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-// useStepSwap - step state plus the two-phase swap between cards.
 export function useStepSwap<T extends string>(initial: T) {
   const [step, setStep] = React.useState<T>(initial);
   const [direction, setDirection] = React.useState<StepDirection>("forward");
@@ -46,7 +44,6 @@ export function useStepSwap<T extends string>(initial: T) {
   return { step, direction, leaving, go };
 }
 
-// WizardStage - the animated stage every step is drawn on.
 export function WizardStage({
   step,
   direction,
@@ -78,7 +75,6 @@ export function WizardStage({
   );
 }
 
-// WizardCard - one step's card; the parent owns the width, only the height moves.
 export function WizardCard({
   title,
   icon,
@@ -141,7 +137,6 @@ export function WizardCard({
               onClick={onNext}
               disabled={nextDisabled || pending}
             >
-              {/* Stays mounted while pending so the button keeps its width. */}
               <span className="grid place-items-center">
                 <span
                   className={cn(

@@ -60,7 +60,6 @@ function rowToTeam(t: {
   };
 }
 
-// getTeamIdentity - id, name and slug of the active team; nothing here is a setting, so no gate.
 export async function getTeamIdentity(): Promise<
   Pick<Team, "id" | "name" | "slug" | "avatarUrl">
 > {
@@ -77,8 +76,6 @@ export async function getTeamIdentity(): Promise<
     .limit(1);
   const t = rows[0];
   if (!t) throw new Error("No team");
-  // avatarUrl rides this ungated read because the topbar switcher's TRIGGER renders it,
-  // and `getTeam`, the full row, is a team-wide read a limited member is refused.
   return {
     id: t.id,
     name: t.name,
@@ -87,7 +84,6 @@ export async function getTeamIdentity(): Promise<
   };
 }
 
-// myTeamSlugOwning - the owning team's slug, only when the viewer is a member of it (ADR-0029).
 export async function myTeamSlugOwning(
   what: "app" | "database",
   key: string,
@@ -113,7 +109,6 @@ export async function myTeamSlugOwning(
   );
 }
 
-// teamSlugById - takes the id because alert dispatch runs with no active team; a slug is not a secret.
 export async function teamSlugById(teamId: string): Promise<string | null> {
   const rows = await getDb()
     .select({ slug: teamsTable.slug })
@@ -123,7 +118,6 @@ export async function teamSlugById(teamId: string): Promise<string | null> {
   return rows[0]?.slug ?? null;
 }
 
-// getTeam - the active team, settings included. A team-wide read.
 export async function getTeam(): Promise<Team> {
   await requireTeamWide("team settings");
   const teamId = await requireActiveTeamId();
@@ -144,13 +138,11 @@ const TEAM_SETTINGS_CAPS = [
   "delete_team",
 ];
 
-// listMyTeams - every team the current user belongs to (the team switcher).
 export async function listMyTeams(): Promise<
   (Team & { role: string; memberCount: number; canManage: boolean })[]
 > {
   const user = await assertUser();
   const db = getDb();
-  // A bearer token reaches only the teams its scope names AND where its owner may use tokens.
   const token = currentIdentity()?.token;
   const allowed = token
     ? await teamsWhereUserHolds(user.id, "manage_tokens")
@@ -176,7 +168,6 @@ export async function listMyTeams(): Promise<
     mine.map((m) => [m.teamId, m.switcherPosition]),
   );
 
-  // Cosmetic, like every UI capability check: it never decides what the settings page allows.
   const manageable = await db
     .select({ teamId: membershipsTable.teamId })
     .from(membershipCapabilitiesTable)
@@ -198,27 +189,23 @@ export async function listMyTeams(): Promise<
     .groupBy(membershipsTable.teamId);
   const countByTeam = new Map(counts.map((c) => [c.teamId, Number(c.n)]));
 
-  return (
-    teams
-      .map((t) => ({
-        ...t,
-        role: roleByTeam.get(t.id) ?? "member",
-        memberCount: countByTeam.get(t.id) ?? 0,
-        canManage: canManageTeam.has(t.id),
-      }))
-      // NULLS LAST: a team never dragged keeps the order `teamsForUser` returned it in.
-      .sort((a, b) => {
-        const pa = positionByTeam.get(a.id);
-        const pb = positionByTeam.get(b.id);
-        if (pa == null && pb == null) return 0;
-        if (pa == null) return 1;
-        if (pb == null) return -1;
-        return pa - pb;
-      })
-  );
+  return teams
+    .map((t) => ({
+      ...t,
+      role: roleByTeam.get(t.id) ?? "member",
+      memberCount: countByTeam.get(t.id) ?? 0,
+      canManage: canManageTeam.has(t.id),
+    }))
+    .sort((a, b) => {
+      const pa = positionByTeam.get(a.id);
+      const pb = positionByTeam.get(b.id);
+      if (pa == null && pb == null) return 0;
+      if (pa == null) return 1;
+      if (pb == null) return -1;
+      return pa - pb;
+    });
 }
 
-// listAllTeamsForAdmin - every team in the instance, for the registration-link picker.
 export async function listAllTeamsForAdmin(): Promise<Team[]> {
   await requireInstanceAdmin();
   const rows = await getDb()
@@ -235,7 +222,6 @@ export async function updateTeam(input: {
   const { teamId, userId } = await requireCapability("manage_team");
   const name = input.name?.trim();
   if (name !== undefined && !name) throw new Error("Team name is required");
-  // Self-lockout guard: the policy would refuse the actor's very next request, read live.
   if (input.requireTwoFactor) {
     const me = (
       await getDb()
@@ -268,7 +254,6 @@ export async function updateTeam(input: {
       policyChanged: requireTwoFactor !== t.requireTwoFactor,
     };
   });
-  // Outside the transaction, per the recordActivity rule (own connection).
   if (updated.policyChanged)
     await recordActivity(
       "security",
@@ -283,7 +268,6 @@ export async function updateTeam(input: {
   return updated.team;
 }
 
-// updateTeamAvatar - set or clear the team's picture, on the same gate that renames it.
 export async function updateTeamAvatar(image: string | null): Promise<Team> {
   const { teamId } = await requireCapability("manage_team");
   const next = image?.trim() || null;
@@ -310,7 +294,6 @@ export async function updateTeamAvatar(image: string | null): Promise<Team> {
       teamId,
     );
 
-  // Nothing changed ⇒ the row is still what it was; read it rather than lying.
   if (rows[0]) return rowToTeam(rows[0]);
   const current = await getDb()
     .select()
@@ -321,7 +304,6 @@ export async function updateTeamAvatar(image: string | null): Promise<Team> {
   return rowToTeam(current[0]);
 }
 
-// reorderMyTeams - a personal session only: an API token has no switcher to rewrite.
 export async function reorderMyTeams(orderedIds: string[]): Promise<void> {
   const user = await assertUser();
   requirePersonalSession("your team order");
@@ -352,7 +334,6 @@ export async function reorderMyTeams(orderedIds: string[]): Promise<void> {
   });
 }
 
-// membersWithoutTwoFactor - how many members have no second factor yet, before the policy goes on.
 export async function membersWithoutTwoFactor(): Promise<{
   without: number;
   total: number;
@@ -369,7 +350,6 @@ export async function membersWithoutTwoFactor(): Promise<{
   };
 }
 
-// createTeam - the current user becomes its owner, and the new team is made active.
 export async function createTeam(input: {
   name: string;
   image?: string | null;
@@ -420,7 +400,6 @@ export async function createTeam(input: {
         capability: c,
       })),
     );
-    // Instance-wide means a team born now joins their reach set too (ADR-0027).
     const instanceVars = await tx
       .select({ id: sharedEnvVars.id })
       .from(sharedEnvVars)
@@ -442,7 +421,6 @@ export async function createTeam(input: {
   return team;
 }
 
-// switchTeam - validates membership inside `setActiveTeam`.
 export async function switchTeam(teamId: string): Promise<void> {
   await setActiveTeam(teamId);
 }

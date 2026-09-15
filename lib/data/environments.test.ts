@@ -21,8 +21,6 @@ import {
 import { deleteEnvironment } from "./environments";
 import { seedDatabase } from "./backup-test-helpers";
 
-// ADR-0009: an environment is a sub-folder, so deleting one re-parents its apps.
-
 let db: TestDb;
 let pg: PGlite;
 const T0 = "2026-01-01T00:00:00.000Z";
@@ -82,7 +80,6 @@ async function seedProjectWith(defaultId: string | null): Promise<void> {
 const homeOf = async (appId: string) =>
   (await db.select().from(appsTable).where(eq(appsTable.id, appId)))[0]!;
 
-// The database follows its apps rather than the FK's set null, which would strand it.
 test("deleting an environment re-parents its databases too", async () => {
   await seedProjectWith("environ_prod");
   const dbId = await seedDatabase(db, { id: "db_moved", teamId: TEAM_A });

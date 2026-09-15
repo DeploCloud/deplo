@@ -34,7 +34,6 @@ export function DestinationCard({
   canManage,
 }: {
   dest: DestinationCardView;
-  // `manage_backup_destinations`: gates testing, the recovery key and removal.
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -43,7 +42,6 @@ export function DestinationCard({
     canManage,
   });
   const isServer = dest.kind === "server";
-  // The KEYPAIR decides whether there is a key to save, not the kind: a recent bucket has one too.
   const encrypted = dest.encrypted;
 
   return (
@@ -60,7 +58,6 @@ export function DestinationCard({
                 )}
               </div>
               <div className="min-w-0">
-                {/* The name owns the title line: three-up there is no room for it and two chips. */}
                 <p className="truncate font-medium">{dest.name}</p>
                 <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                   <span className="truncate">
@@ -76,7 +73,6 @@ export function DestinationCard({
                       Beta
                     </Badge>
                   )}
-                  {/* A property of the destination, so it sits with its name, not as a detail row that reads as a setting. */}
                   {encrypted && (
                     <SimpleTooltip content="Backups here are encrypted before they leave the server. Only this destination's recovery key can open them.">
                       <Badge
@@ -97,7 +93,6 @@ export function DestinationCard({
             </div>
           </div>
 
-          {/* The proportion only: every figure behind it is a row below. */}
           {isServer && <DestinationBar dest={dest} />}
 
           <dl className="grid gap-1 text-xs">
@@ -152,7 +147,6 @@ export function DestinationCard({
             <Row label="Added">{timeAgo(dest.createdAt)}</Row>
           </dl>
 
-          {/* No "encrypt now" button: existing artifacts cannot be re-encrypted, only a new destination is. */}
           {!encrypted && (
             <div className="flex w-full items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left">
               <ShieldOff className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
@@ -169,7 +163,6 @@ export function DestinationCard({
             </div>
           )}
 
-          {/* A key kept only inside Deplo dies with the instance the backups exist to survive; stays until downloaded. */}
           {encrypted && canManage && !dest.recoveryKeySavedAt && (
             <RecoveryKeyNudge
               destinationId={dest.id}
@@ -177,7 +170,6 @@ export function DestinationCard({
             />
           )}
 
-          {/* Why the badge is red, on the card: a failing destination used to say "Error" and stop there. */}
           {dest.lastTestError && canManage && (
             <button
               type="button"

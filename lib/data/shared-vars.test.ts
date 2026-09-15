@@ -126,7 +126,6 @@ async function mkVar(input: {
     value: input.value ?? "v",
     type: input.type ?? "plain",
     targets: input.targets ?? [...ALL],
-    // The Teams scope, as one team: what `team_wide` used to mean (ADR-0027).
     teamIds: input.teamWide ? [TEAM_A] : [],
     environmentIds: input.environmentIds ?? [],
     projectIds: input.projectIds ?? [],
@@ -179,9 +178,6 @@ test("saveSharedVar rejects a var with no sharing mode", async () => {
 });
 
 test("a link-only var (the migrated shared-group shape) can still be saved", async () => {
-  // Migration 0027 explodes every legacy shared GROUP var into per-app LINKS and NO
-  // modes; if the >= 1-mode rule rejected that shape, every migrated group variable
-  // would be permanently unsavable.
   const id = await asUser1(() => mkVar({ key: "FROMGROUP", teamWide: true }));
   await asUser1(() => setSharedVarAppLink(id, "app_p", true));
   await asUser1(() =>
@@ -365,9 +361,6 @@ test("authorship: create stamps both columns, an edit only touches updatedBy", a
   const [edited] = await asUser1(() => listSharedVars());
   assert.equal(edited!.createdBy?.id, USER_1);
   assert.equal(edited!.updatedBy?.id, "user_3");
-  // `avatarUrl` is DERIVED server-side from the address so the email never leaves the
-  // data layer; asserted apart, since what this guards is that the email is not in the
-  // DTO at all.
   const { avatarUrl, ...identity } = edited!.updatedBy!;
   assert.deepEqual(identity, {
     id: "user_3",
@@ -571,9 +564,6 @@ test("deleteSharedVar removes it (and its scope + link rows cascade)", async () 
   assert.deepEqual(await loadSharedVarsForApp("app_p"), []);
 });
 
-// Exactly the payload components/env/shared-var-edit-dialog.tsx sends: `appIds` /
-// `targets` ABSENT, which is what keeps a value edit from changing what the variable
-// reaches (`appIds: []` REPLACES the link set with nothing).
 async function editValueLikeDialog(
   dto: {
     id: string;
@@ -624,8 +614,6 @@ test("a value-only edit leaves the per-app links, the modes and the targets alon
 
 test("a value-only edit of a LINK-ONLY variable still saves (links count as reach)", async () => {
   await asUser1(async () => {
-    // The shape migration 0027 gives every var exploded out of a legacy group: links, no
-    // modes. The reach check must read the STORED links.
     await mkVar({ key: "LINKONLY", value: "v1", appIds: ["app_p"] });
     const before = await dtoOf("LINKONLY");
     await editValueLikeDialog(before, { value: "v2" });

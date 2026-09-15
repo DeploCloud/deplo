@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The command palette's no-results illustration: a query typed into a panel whose floor has given way, its rows lying below. */
 export function PaletteEmptyGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -26,7 +25,6 @@ export function PaletteEmptyGraphic({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {/* The panel, its floor open: this is where the rows went. */}
         <path d="M42 48 H32 A6 6 0 0 1 26 42 V14 A6 6 0 0 1 32 8 H88 A6 6 0 0 1 94 14 V42 A6 6 0 0 1 88 48 H64" />
         <path d="M26 26 H94" />
       </g>

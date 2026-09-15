@@ -106,7 +106,6 @@ test("a member without restore_backups is refused", async () => {
           body: bodyOf(appArtifact()),
         }),
       ),
-    // `manage_backups` is not enough: a restore overwrites live data and has its own capability.
     /permission|not allowed/i,
   );
 });
@@ -257,7 +256,6 @@ test("a refusal releases the lock, so the next attempt is judged on its own", as
 });
 
 test("an app with no stack on its host refuses an uploaded archive", () => {
-  // With no recorded digest the agent falls back to the ARCHIVE's compose: the escalation this closes.
   assert.match(
     uploadRestoreRefusal({ kind: "app", project: { composeYaml: "" } }) ?? "",
     /never been deployed/,

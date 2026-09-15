@@ -28,7 +28,6 @@ import { newAppHref } from "@/lib/overview-links";
 import type { DatabaseType } from "@/lib/types/database";
 import type { Capability } from "@/lib/types/identity";
 
-// The resource a page belongs to, when it is not a page of Deplo itself.
 export type EntryOwner =
   | {
       kind: "app";
@@ -39,7 +38,6 @@ export type EntryOwner =
   | { kind: "database"; name: string; logo: string | null; type: DatabaseType };
 
 export interface Entry {
-  // cmdk's `value` and the recents key: unique, opaque, stable.
   id: string;
   label: string;
   hint?: string;
@@ -48,9 +46,7 @@ export interface Entry {
   group: string;
   href: string;
   owner?: EntryOwner;
-  // Two apps may share a display name, so this cannot be looked up by name at match time.
   ownerSearch?: string[];
-  // Set ⇒ choosing this row switches team first, the way a cross-team search hit does.
   team?: { id: string; name: string; avatarUrl?: string | null };
   requires?: string;
   requiresAny?: string[];
@@ -69,7 +65,6 @@ function fromSections(
   );
 }
 
-// An app's two navigations overlap and not every "Back to" row is flagged, so two rows can share one URL.
 function byDestination(entries: Entry[]): Entry[] {
   const seen = new Set<string>();
   return entries.filter((entry) => {
@@ -163,7 +158,6 @@ const SETTINGS_EXTRAS: Entry[] = [
   },
 ];
 
-// The wizard has no nav row of its own.
 const NEW_APP: Entry = {
   id: "page:new-app",
   label: "New app",
@@ -174,7 +168,6 @@ const NEW_APP: Entry = {
   requires: "create_apps",
 };
 
-// Every page the palette knows without asking the server.
 export function staticEntries(): Entry[] {
   return [
     ...fromSections(NAV, (s) => s.title ?? "Navigation"),
@@ -186,7 +179,6 @@ export function staticEntries(): Entry[] {
   ];
 }
 
-// Only the Team section: Account is one person's and System the whole instance's, so neither is copied per team.
 export function teamPageEntries(
   teams: { id: string; name: string; avatarUrl?: string | null }[],
   activeTeamId: string,
@@ -204,7 +196,6 @@ export function teamPageEntries(
     );
 }
 
-// Capability-gated tabs stay on (the server is the real gate); feature-switch tabs stay off.
 export const PALETTE_APP_FLAGS: AppNavFlags = {
   pathname: "",
   canManageEnv: true,
@@ -222,7 +213,6 @@ export const PALETTE_DB_FLAGS = {
   cronsEnabled: false,
 };
 
-// Where you can go inside one app.
 export function appPageEntries(
   slug: string,
   flags: AppNavFlags = PALETTE_APP_FLAGS,
@@ -237,7 +227,6 @@ export function appPageEntries(
   ]);
 }
 
-// Where you can go inside one database.
 export function dbPageEntries(
   id: string,
   flags: typeof PALETTE_DB_FLAGS = PALETTE_DB_FLAGS,
@@ -248,7 +237,6 @@ export function dbPageEntries(
   ]);
 }
 
-// What the palette knows about a resource without asking the server.
 export interface KnownApp {
   id: string;
   slug: string;
@@ -264,7 +252,6 @@ export interface KnownDatabase {
   logo?: string | null;
 }
 
-// Every page of every app and database, as one flat list, built once per team snapshot.
 export function ownedPageEntries(
   apps: KnownApp[],
   databases: KnownDatabase[],
@@ -277,7 +264,6 @@ export function ownedPageEntries(
       slug: app.slug,
       logo: app.logo ?? null,
     };
-    // `running` is deliberately true: it is live state the breadcrumb has no business carrying.
     const flags: AppNavFlags = {
       ...PALETTE_APP_FLAGS,
       running: true,
@@ -316,7 +302,6 @@ export function ownedPageEntries(
   return out;
 }
 
-// At least one word must name the PAGE, or typing an app's name buries the app under its own pages.
 export function matchOwnedPages(
   entries: Entry[],
   query: string,
@@ -325,7 +310,6 @@ export function matchOwnedPages(
   const words = queryTerms(query);
   if (words.length === 0) return [];
 
-  // "deplo" is a prefix of "deployments": without this, an app's name would list every other app's Deployments page.
   const ownerWords = new Set<string>();
   for (const entry of entries) {
     if (!entry.ownerSearch) continue;
@@ -340,7 +324,6 @@ export function matchOwnedPages(
   for (const entry of entries) {
     if (!entry.owner) continue;
     const owner = entry.ownerSearch ?? [];
-    // Otherwise one app named "logs" would stop `logs` reaching any app's Logs page, for everyone.
     const { pieces, exact } = searchable(entry);
     let namesPage = false;
     let covered = true;
@@ -359,23 +342,19 @@ export function matchOwnedPages(
   }
   return out
     .sort(
-      // `sort` is stable, so ties keep catalogue order - the order the apps are in.
       (a, b) => Number(a.group === "Settings") - Number(b.group === "Settings"),
     )
     .slice(0, limit);
 }
 
-// How many owned pages the query would reach if nothing were capped.
 export function countOwnedPages(entries: Entry[], query: string): number {
   return matchOwnedPages(entries, query, Number.POSITIVE_INFINITY).length;
 }
 
-// Split what was typed into the words it is made of, folded.
 export function queryTerms(query: string): string[] {
   return query.trim().split(/\s+/).map(foldQuery).filter(Boolean);
 }
 
-// Descriptions stay out: they are sentences, and would match on anything.
 function capabilityText(entry: Entry): string {
   const caps = [entry.requires, ...(entry.requiresAny ?? [])];
   let out = "";
@@ -386,13 +365,11 @@ function capabilityText(entry: Entry): string {
   return out;
 }
 
-// Folding a row into ONE string invents words across the joins: "access login" then answers to "ssl".
 interface Searchable {
   pieces: string[];
   exact: ReadonlySet<string>;
 }
 
-// Keyed on the row, which is rebuilt only when the team snapshot changes.
 const folded = new WeakMap<Entry, Searchable>();
 
 function searchable(entry: Entry): Searchable {
@@ -424,7 +401,6 @@ function rankTerm(entry: Entry, term: string): number {
   return 0;
 }
 
-// Folding the whole query into one needle meant "team settings" found nothing: its words live in the heading and the label separately.
 export function matchEntries(entries: Entry[], query: string): Entry[] {
   const terms = queryTerms(query);
   if (terms.length === 0) return entries;
@@ -433,6 +409,5 @@ export function matchEntries(entries: Entry[], query: string): Entry[] {
     if (!covers(searchPieces(entry), terms)) continue;
     scored.push([entry, rankTerm(entry, terms[0]!)]);
   }
-  // `sort` is stable, so ties keep catalogue order.
   return scored.sort((a, b) => b[1] - a[1]).map(([entry]) => entry);
 }

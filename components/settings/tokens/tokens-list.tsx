@@ -36,21 +36,17 @@ import { scopeLabel } from "@/components/settings/tokens/scope-label";
 import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
 import type { ApiTokenDTO } from "@/lib/data/tokens/listing";
 
-// Your API tokens. Every row is yours: nobody else can see or touch it.
 export function TokensList({
   tokens,
   names,
   activeTeamId,
 }: {
   tokens: ApiTokenDTO[];
-  // Team / project / app id → name, as far as this team can resolve them.
   names: Record<string, string>;
-  // The Revoke dialog names the OTHER teams the token also reaches.
   activeTeamId: string;
 }) {
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<ApiTokenDTO | null>(null);
-  // The row is gone server-side by then; a live Revoke button is one stray click from "Not found".
   const {
     visible: rows,
     remove,
@@ -133,7 +129,6 @@ export function TokensList({
                             : "This token drives an AI agent over MCP. Edit or revoke it here."
                         }
                       >
-                        {/* The client name is free text of any length, so the badge is bounded. */}
                         <Badge variant="outline" className="max-w-40 gap-1">
                           <Bot className="size-3 shrink-0" aria-hidden />
                           <span className="truncate">
@@ -221,7 +216,6 @@ export function TokensList({
         successMessage="Token revoked"
         optimistic
         onConfirm={async () => {
-          // This render's value: the dialog has already closed and cleared it by now.
           const id = revoke!.id;
           remove(id);
           const res = await gqlAction(

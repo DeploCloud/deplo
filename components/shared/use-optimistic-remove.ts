@@ -7,7 +7,6 @@ import {
   withoutRemoved,
 } from "@/lib/optimistic-remove";
 
-// useOptimisticRemove drops a row on the CLICK, not when the server answers.
 export function useOptimisticRemove<T>(
   items: T[],
   keyOf: (item: T) => string,
@@ -19,7 +18,6 @@ export function useOptimisticRemove<T>(
   const [removed, setRemoved] =
     React.useState<ReadonlySet<string>>(NOTHING_REMOVED);
 
-  // Setting state during render is React's derive-from-props escape hatch; an effect would paint one stale frame.
   const pending =
     removed.size === 0 ? removed : retainRemoved(removed, items.map(keyOf));
   if (pending !== removed) setRemoved(pending);

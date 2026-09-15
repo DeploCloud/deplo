@@ -4,7 +4,6 @@ import * as React from "react";
 
 import { gqlAction } from "@/lib/graphql-client";
 
-// The release waiting upstream.
 export interface UpstreamUpdate {
   latest: string;
   current: string;
@@ -28,7 +27,6 @@ type Info = {
   current: string;
 };
 
-// One shared check per dashboard load; admin-only because nobody else can apply an update.
 export function UpdateProvider({
   enabled,
   children,
@@ -61,7 +59,6 @@ export function UpdateProvider({
   );
 }
 
-// The newer release upstream, or null when this instance is current.
 export function useUpstreamUpdate(): UpstreamUpdate | null {
   return React.useContext(UpdateContext);
 }

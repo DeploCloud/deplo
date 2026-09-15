@@ -25,8 +25,6 @@ import {
   USER_1,
 } from "../data/identity-test-helpers";
 
-// Regression: the resolver folded an explicit null into undefined, so "back to the app's port" saved nothing.
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -105,7 +103,6 @@ test("an explicit null clears a nullable preview setting; an omitted one is kept
     max: 5,
   });
 
-  // The form's "back to the app's port" is exactly this shape.
   await call(SET, { appId: "prj_1", input: { port: null } });
   assert.equal((await stored()).port, null);
   assert.equal((await stored()).base, "preview.example.com", "untouched");

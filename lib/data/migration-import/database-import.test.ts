@@ -171,6 +171,5 @@ test("an imported database lands in the Environment its apps did", async () => {
     (a) => a.name === "blink-web",
   );
   assert.ok(app?.environmentId);
-  // Same Environment means the same network (ADR-0028) - `db-blink-db` resolves from the app.
   assert.equal(row?.environmentId, app!.environmentId);
 });

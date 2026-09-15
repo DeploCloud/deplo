@@ -4,9 +4,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
 import { buildSchema, parse, validate } from "graphql";
 
-// The client's inline `/* GraphQL */` documents are never checked at build time:
-// a wrong input type or a query/mutation mix-up only fails at the click.
-
 const DOC = /\/\*\s*GraphQL\s*\*\/\s*`((?:[^`\\]|\\.)*)`/g;
 const CONST = /const\s+([A-Z][A-Z0-9_]*)\s*=\s*`((?:[^`\\]|\\.)*)`/g;
 
@@ -27,7 +24,6 @@ test("every inline GraphQL document in the client is valid", () => {
   let checked = 0;
 
   for (const file of [...walk("app"), ...walk("components"), ...walk("lib")]) {
-    // lib/mcp/tools/ has its own validation test.
     if (file.endsWith(".test.ts") || file.endsWith(".test.tsx")) continue;
     if (file.includes(join("lib", "mcp", "tools") + sep)) continue;
     const src = readFileSync(file, "utf8");

@@ -37,7 +37,6 @@ function randomHex(len: number): string {
     .slice(0, len);
 }
 
-// Helpers MUST produce fresh random secrets, so deployed stacks never share predictable credentials across installs.
 function generateHelper(name: string, lenRaw?: string): string | null {
   const len = lenRaw ? Number(lenRaw.replace(/_/g, "")) : undefined;
   switch (name) {
@@ -90,7 +89,6 @@ function stripComment(input: string): string {
   return input.trim();
 }
 
-// TOML integers allow `_` digit separators (e.g. 5_006).
 function parseTomlInt(value: string): number {
   return Number(stripQuotes(value).replace(/_/g, ""));
 }
@@ -278,7 +276,6 @@ function resolveVariables(
       resolved[key] = value;
     }
   }
-  // Two passes cover one level of nesting.
   for (let pass = 0; pass < 2; pass++) {
     for (const key of Object.keys(resolved)) {
       resolved[key] = substituteRefs(resolved[key], resolved, domain);
@@ -328,7 +325,6 @@ export function getTemplateBlueprint(
         value: substituteRefs(value, vars, domain),
       }));
 
-      // The primary is moved first because creation treats the first expose as the service behind the main domain.
       const domains = parsed.domains.filter((d) => d.serviceName && d.port);
       const primary = domains.find((d) => d.primary);
       const orderedDomains = primary

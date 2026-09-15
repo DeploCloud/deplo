@@ -30,8 +30,6 @@ import {
 } from "./member-capabilities";
 import { writeRoleScope } from "./scope";
 
-// ensureTeamRoles - make sure a team has its three built-in roles, and adopt the
-// memberships that belong to one.
 export async function ensureTeamRoles(
   db: Db,
   teamId: string,
@@ -52,8 +50,6 @@ export async function ensureTeamRoles(
   for (const key of BUILTIN_ROLE_KEYS) {
     if (byKey.has(key)) continue;
     const id = newId("role");
-    // A concurrent first read of the same team races us; the partial unique
-    // index on (team_id, builtin_key) decides, and the loser simply re-reads.
     const inserted = await db
       .insert(teamRolesTable)
       .values({
@@ -79,9 +75,6 @@ export async function ensureTeamRoles(
   return byKey;
 }
 
-// Point role-less memberships at the built-in of their rank when they already grant
-// exactly what it grants TODAY (the team's live role, not the shipped preset - a team
-// that re-scoped its Member role must not have strangers adopted into it).
 async function adoptMatchingMemberships(
   db: Db,
   teamId: string,
@@ -110,9 +103,6 @@ async function adoptMatchingMemberships(
     list.push(r.capability as Capability);
     capsByRole.set(r.roleId, list);
   }
-  // Which of those built-ins are LIMITED: adoption compares against the effective
-  // set, so a hand-picked superset never gets adopted into a scoped role and quietly
-  // inherits its reach while keeping the capabilities the clamp exists to remove.
   const scopedRoles = new Set(
     roleIds.length
       ? (
@@ -149,12 +139,9 @@ async function adoptMatchingMemberships(
   }
 }
 
-// resetRole - restore a default role to exactly what Deplo ships. Built-ins only.
 export async function resetRole(id: string): Promise<void> {
   const { teamId, userId, membership } =
     await requireCapability("manage_roles");
-  // A reset restores the shipped default, and no shipped default is limited, so it
-  // CLEARS the scope, which makes it a widening.
   if (await memberScopeFor(userId, teamId))
     throw new Error(
       "Your own role reaches part of this team, so you can't reset a role to full access.",
@@ -169,7 +156,6 @@ export async function resetRole(id: string): Promise<void> {
       );
     const defaults = ROLE_DEFAULTS[key];
     name = defaults.name;
-    // Bounded exactly like authoring the same role by hand (`updateRole`).
     const capabilities = withinActor(capabilitiesForRole(key), membership);
     await assertNameFree(tx, teamId, defaults.name, role.id);
     await lockTeamMemberships(tx, teamId);
@@ -178,8 +164,6 @@ export async function resetRole(id: string): Promise<void> {
       .set({
         name: defaults.name,
         description: defaults.description,
-        // A shipped default mandates nothing and reaches everything; "reset"
-        // means all the way back, on both axes.
         requireTwoFactor: false,
         scoped: false,
       })
@@ -193,7 +177,6 @@ export async function resetRole(id: string): Promise<void> {
     await tx
       .insert(teamRoleCapabilitiesTable)
       .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
-    // Unscoped: the reset just cleared it, so the clamp must not apply.
     await syncMembersOfRole(tx, teamId, role.id, capabilities, false);
     await assertTeamAdminCoverage(tx, teamId);
   });

@@ -44,7 +44,6 @@ export interface EnvironmentOption {
   isDefault: boolean;
 }
 
-// EnvironmentSwitcher - the project drill-in's environment dropdown (ADR-0009).
 export function EnvironmentSwitcher({
   projectId,
   view,

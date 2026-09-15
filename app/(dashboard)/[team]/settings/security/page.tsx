@@ -12,7 +12,6 @@ import { SecurityTabs } from "@/components/settings/security/security-tabs";
 
 export const metadata = { title: "Settings · Security" };
 
-// SettingsSecurityPage is NOT team-scoped (NON_TEAM_SETTINGS_PREFIXES): a member locked out by a team's 2FA policy must still reach it.
 export default async function SettingsSecurityPage() {
   const [user, requiredBy, sessions, passkeys] = await Promise.all([
     getCurrentUser(),
@@ -20,7 +19,6 @@ export default async function SettingsSecurityPage() {
     listMySessions(),
     listMyPasskeys(),
   ]);
-  // ADR-0024 §3: owning a usable passkey is what allows turning the authenticator app OFF, and the server asks exactly that.
   const hasPasskey = user ? await userHasPasskey(user.id) : false;
   const passkeyStanding = !hasPasskey
     ? ("none" as const)

@@ -16,12 +16,9 @@ import { appInScope } from "./node-scope";
 import { listProjects } from "./projects/read";
 import type { BreadcrumbGraph } from "../breadcrumb-model";
 
-// getBreadcrumbGraph returns the team snapshot the topbar breadcrumb navigates over.
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   const teamId = await requireActiveTeamId();
-  // appScopeWhere answers for a token only, so the role scope is applied by hand.
   const roleScope = await currentMemberScope();
-  // Storage is a TEAM-WIDE list (requireTeamWide in listDatabases): a narrowed member sees none.
   const [folders, projects, appRows, teamWide] = await Promise.all([
     listFolders(),
     listProjects(),

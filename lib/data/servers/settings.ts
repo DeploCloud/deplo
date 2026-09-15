@@ -17,7 +17,6 @@ import {
 import { assertNoWorkloads } from "./removal";
 import type { Server } from "../../types/server";
 
-// Cap the display name like an App's, so a huge string can't ride every payload.
 export const SERVER_NAME_MAX = 60;
 
 export function cleanServerName(name: string): string {
@@ -30,7 +29,6 @@ export function cleanServerName(name: string): string {
   return trimmed;
 }
 
-// renameServer renames a server. Display only: nothing dials, routes or deploys by name.
 export async function renameServer(id: string, name: string): Promise<Server> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
@@ -54,15 +52,11 @@ export async function renameServer(id: string, name: string): Promise<Server> {
   return (await getServerById(id))!;
 }
 
-// setServerRole changes what a server is for. The one true asymmetry is physical:
-// a server INSTALLED as backups-only never had Docker put on it.
 export async function setServerRole(
   id: string,
   role: ServerRole,
 ): Promise<Server> {
   await requireInstanceAdmin();
-  // An unknown role must be refused: falling through would clear both flags and
-  // put a build-only or backups-only host silently back into service.
   if (!SERVER_ROLES.includes(role))
     throw new Error(
       `Unknown server role "${role}". Pick "everything", "build" or "storage".`,
@@ -75,8 +69,6 @@ export async function setServerRole(
   const current = serverRole(server);
   if (role === current) return server;
 
-  // A migration source is not a role anyone picks: it is another platform's host,
-  // where the installer put no Traefik and no shared network.
   if (current === "import")
     throw new Error(
       `${server.name} was installed only to import from another platform. ` +
@@ -88,13 +80,11 @@ export async function setServerRole(
         "agent on the other platform's host for you.",
     );
 
-  // The physical one-way door: no Docker on the box, nothing to run or build with.
   if (current === "storage" && !server.dockerVersion)
     throw new Error(
       "This server was installed to hold backups only and has no Docker on it. " +
         "Re-run the install command on the host to change that.",
     );
-  // Leaving "everything" means it stops serving what it serves today.
   if (current === "everything") await assertNoWorkloads(id);
 
   await getDb()
@@ -119,8 +109,6 @@ export async function setServerRole(
   return (await getServerById(id))!;
 }
 
-// setServerBuildFallback decides whether this host compiles for an app whose own
-// build server could not be reached. `null` is automatic: only the Deplo host does.
 export async function setServerBuildFallback(
   id: string,
   buildFallback: boolean | null,
@@ -151,8 +139,6 @@ export async function setServerBuildFallback(
   return (await getServerById(id))!;
 }
 
-// setServerDeployConcurrency sets how many deployments a server's agent runs at
-// once (read by lib/deploy/deploy-queue); a same-app deploy never overlaps regardless.
 export async function setServerDeployConcurrency(
   id: string,
   concurrency: number,

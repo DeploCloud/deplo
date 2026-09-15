@@ -4,13 +4,10 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import type { ActionResult } from "@/lib/result";
 
-/** "1 app is" / "3 apps are" - both forms spelled out by the caller. */
 function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-// The copy names exactly what is selected: only apps are actually destroyed (a
-// folder or a project is just removed), so one fixed sentence would mislead.
 function describeDelete(
   appCount: number,
   folderCount: number,
@@ -38,7 +35,6 @@ function describeDelete(
   return deleteParts.join(" ");
 }
 
-// BulkDeleteConfirm is the confirm dialog for deleting a whole selection.
 export function BulkDeleteConfirm({
   open,
   onOpenChange,
@@ -59,8 +55,6 @@ export function BulkDeleteConfirm({
   projectCount: number;
   deleteApps: boolean;
   onDeleteAppsChange: (value: boolean) => void;
-  /** A selected folder or project actually holds apps (both counts cover their
-   *  whole subtree) - what "Delete all apps" would have to delete. */
   hasNestedApps: boolean;
   onConfirm: () => Promise<ActionResult<unknown>>;
 }) {
@@ -79,9 +73,6 @@ export function BulkDeleteConfirm({
       successMessage="Selection deleted"
       optimistic
       extra={
-        // Only when the selection holds a CONTAINER WITH APPS in it: for a
-        // selection of apps alone the delete already destroys them, and a
-        // checkbox offering it again would read like a second, different thing.
         hasNestedApps ? (
           <DeleteAppsOption
             checked={deleteApps}

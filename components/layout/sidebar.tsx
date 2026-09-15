@@ -89,7 +89,6 @@ export function Sidebar({
           </Tooltip>
         </div>
 
-        {/* Opens the command palette - the sidebar has no search of its own. */}
         <div className="px-3 pb-1">
           <SearchTrigger />
         </div>
@@ -98,7 +97,6 @@ export function Sidebar({
           <SidebarNav capabilities={capabilities} isAdmin={isAdmin} />
         </div>
 
-        {/* Nudges show only in the main menu. */}
         {menu === "main" && (
           <div className="px-3 pb-2">
             <SidebarTips
@@ -109,7 +107,6 @@ export function Sidebar({
           </div>
         )}
 
-        {/* Outside the scroller, so both stay reachable however far the nav is scrolled. */}
         {menu === "main" && (
           <div className="space-y-0.5 border-t border-border p-2">
             <Tooltip delayDuration={400}>
@@ -144,7 +141,6 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Drag-to-resize handle on the right edge */}
       <div
         onPointerDown={startResize}
         role="separator"
@@ -159,7 +155,6 @@ export function Sidebar({
   );
 }
 
-// SidebarExpandButton - brings the sidebar back once it has collapsed to zero width.
 export function SidebarExpandButton() {
   const { collapsed, toggle } = useSidebar();
   if (!collapsed) return null;

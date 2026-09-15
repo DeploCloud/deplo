@@ -52,7 +52,6 @@ export function LimitInput({
   );
 }
 
-// LimitRow is a label on the left, its input on the right: one limit per line.
 export function LimitRow({
   id,
   label,
@@ -110,7 +109,6 @@ export function LimitGroup({
   );
 }
 
-// LimitCell is a headline limit: label and input on top, the slider and its readings under.
 export function LimitCell({
   id,
   label,

@@ -31,7 +31,6 @@ interface OpenPullRequest {
   authorLogin: string;
 }
 
-// DeployPullRequestDialog deploys a specific open pull request, on purpose.
 export function DeployPullRequestDialog({
   appId,
   repoBranch,
@@ -46,7 +45,6 @@ export function DeployPullRequestDialog({
   const [query, setQuery] = React.useState("");
   const [busy, setBusy] = React.useState<number | null>(null);
 
-  // Fetched on the open event, not in an effect: opening the dialog is the one user action that should spend a GitHub API call.
   function onOpenChange(next: boolean) {
     setOpen(next);
     if (!next) return;

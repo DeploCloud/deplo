@@ -7,16 +7,11 @@ import { requireAppCapability } from "@/lib/data/node-access";
 import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client/connect";
 
-// `--sig-proxy` is off in the agent's spawn, so disconnecting never signals the container.
-
-// Long-lived stream; must run at request time on the Node runtime (spawns docker).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Cut a stalled SSE client off rather than let the queue grow the heap unbounded.
 const MAX_QUEUED_CHUNKS = 1024;
 
-// Belt-and-braces CSRF check: refuse a request whose `Origin` points at another site.
 function isCrossSite(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
@@ -49,7 +44,6 @@ export async function GET(
   const { id: appId } = await ctx.params;
   const params = request.nextUrl.searchParams;
   const target = params.get("container") ?? undefined;
-  // The client seeds the pty size: a hardcoded 80×24 wrapped every TUI wrong.
   const cols = clampDim(params.get("cols"), 80, 500);
   const rows = clampDim(params.get("rows"), 24, 300);
 
@@ -64,10 +58,8 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // Bind the session to the caller + active team; POST/DELETE re-check against these, so the id alone never keeps a demoted caller writing to PID 1.
   const teamId = await requireActiveTeamId();
 
-  // The OWNING server's agent bidi Attach gives a real PTY for tty:true containers, plain pipes otherwise.
   const tty = resolved.instance.tty;
   let session;
   try {
@@ -88,7 +80,6 @@ export async function GET(
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      // Assigned below once the subscription exists; closeStream needs it earlier.
       let unsubscribe: () => void = () => {};
       const closeStream = () => {
         unsubscribe();
@@ -97,23 +88,19 @@ export async function GET(
         } catch {}
       };
       const send = (event: string, data: string) => {
-        // desiredSize is null once the stream errors/closes and goes negative when the client stops reading.
         const size = controller.desiredSize;
         if (size === null) return;
         if (size < -MAX_QUEUED_CHUNKS) {
           closeStream();
           return;
         }
-        // SSE frame: data is JSON so arbitrary container bytes survive newlines.
         controller.enqueue(
           encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
         );
       };
 
-      // NOT named "open": EventSource's built-in `open` event carries no data, so a custom listener JSON.parse(undefined)s.
       send("session", session.id);
 
-      // Streaming decoder: a UTF-8 character split across two chunks is otherwise mangled into �.
       const decoder = new StringDecoder("utf8");
       unsubscribe = attach.subscribe(session, (chunk) => {
         try {
@@ -129,7 +116,6 @@ export async function GET(
         } catch {}
       };
 
-      // A signal that aborted DURING the pre-start awaits never fires "abort" again.
       if (request.signal.aborted) {
         closeStream();
         return;
@@ -143,7 +129,6 @@ export async function GET(
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      // Disable proxy buffering (nginx) so output streams in real time.
       "X-Accel-Buffering": "no",
     },
   });
@@ -172,7 +157,6 @@ export async function POST(
   if (!session)
     return Response.json({ error: "No such session" }, { status: 404 });
 
-  // Re-check caller + capability on every write, so the session id alone is never enough.
   if (!(await stillAuthorized(appId, session, user.id)))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
@@ -186,7 +170,6 @@ export async function POST(
   return Response.json({ ok: true });
 }
 
-// Re-authorise an in-flight attach session against the CALLER, not just the session id.
 async function stillAuthorized(
   appId: string,
   session: attach.AttachSession,
@@ -202,7 +185,6 @@ async function stillAuthorized(
   }
 }
 
-// Clamped so a bad client can't ask for a 10⁶-column pty.
 function clampDim(raw: string | null, fallback: number, max: number): number {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : fallback;
@@ -232,7 +214,6 @@ export async function DELETE(
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? attach.get(sessionId, appId) : undefined;
   if (session) {
-    // Detach is a mutation on a live session: gate it exactly like a write.
     if (!(await stillAuthorized(appId, session, user.id)))
       return Response.json({ error: "Forbidden" }, { status: 403 });
     attach.destroy(sessionId);

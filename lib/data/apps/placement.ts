@@ -21,8 +21,6 @@ export interface AppPlacementInput {
   environmentId?: string | null;
 }
 
-// resolveNewAppPlacement resolves and authorizes where a new app is filed (ADR-0009: one place, folder wins).
-// Authorized exactly like a MOVE into the same destination, or a create smuggles an app into a foreign folder.
 export async function resolveNewAppPlacement(
   input: AppPlacementInput,
   teamId: string,
@@ -33,7 +31,6 @@ export async function resolveNewAppPlacement(
 }> {
   const placement = await resolvePlacement(input, teamId);
 
-  // A FOLDER has no `project_id`, so asking the project question refused a caller their own folder.
   const roleScope = await currentMemberScope();
   if (placement.folderId) {
     if (
@@ -98,7 +95,6 @@ export async function resolvePlacement(
     )[0];
     if (!env || env.teamId !== teamId) throw new Error("Environment not found");
 
-    // A mismatched project/environment pair is a bug or a crafted payload, never a placement.
     if (input.projectId && input.projectId !== env.projectId)
       throw new Error("Environment not found");
     await requireNodeCapability(
@@ -126,7 +122,6 @@ export async function resolvePlacement(
     return { folderId: null, projectId: p.id, environmentId: env?.id ?? null };
   }
 
-  // The team top level belongs to no node: only the team-wide set reaches it.
   await requireCapability("create_apps");
   return { folderId: null, projectId: null, environmentId: null };
 }

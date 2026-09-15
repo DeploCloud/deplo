@@ -41,7 +41,6 @@ test("mapDomains keeps every host in order and drops only what cannot route", ()
     ],
     { isCompose: false },
   );
-  // A throwaway host is flagged, not dropped: an app that answered on two addresses must not arrive with one.
   assert.deepEqual(
     value.map((d) => d.host),
     ["app-x.traefik.me", "acme.com", "api.acme.com"],
@@ -56,7 +55,6 @@ test("mapDomains keeps every host in order and drops only what cannot route", ()
   assert.equal(value[2].stripPrefix, true);
 });
 
-// A throwaway host's route is all that CAN be kept, and it is what the app answers with on its new address.
 test("mapDomains keeps a throwaway host's whole route", () => {
   const { value } = mapDomains(
     [
@@ -199,7 +197,6 @@ test("a compose route with no port reads it off the service it names", () => {
     ],
     { isCompose: true, compose },
   );
-  // A template declaring SERVICE_FQDN_X without the _<PORT> spelling used to land with no port, and Traefik answered 404.
   assert.equal(value[0].port, 80);
   assert.equal(value[0].service, "vaultwarden");
   assert.ok(

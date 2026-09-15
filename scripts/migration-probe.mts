@@ -1,9 +1,3 @@
-/**
- * Read a source panel and print what an import would see. READ ONLY: this only
- * ever issues the GETs the scan issues, never a write, and it touches no Deplo
- * database - it exercises `lib/migration/*` alone.
- */
-
 import { composePublishesPorts } from "../lib/deploy/compose-lint/host-ports";
 import {
   composeNeedsHostPrivileges,
@@ -110,12 +104,6 @@ for (const p of await src.listProjects()) {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* PROBE_MAP=1: run the real mappers over the real row                  */
-/* ------------------------------------------------------------------ */
-
-/** What the import would make of one service. Pure functions only - this writes
- *  nothing anywhere and is the cheapest way to check a mapping against real data. */
 function describe(
   kind: string,
   row: Record<string, unknown>,
@@ -236,14 +224,6 @@ function describe(
   for (const n of notes) console.log(`        note         ${n}`);
 }
 
-/* ------------------------------------------------------------------ */
-/* PROBE_DATA=1: what the cutover would find                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * What the cutover would find: what the service mounts, and whether it is still
- * up. Asked through the same client the cutover uses, so it is the same answer.
- */
 async function describeVolumes(
   kind: string,
   id: string,

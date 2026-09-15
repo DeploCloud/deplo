@@ -46,7 +46,6 @@ import {
 import { setStoredPublicBaseUrl } from "./public-url";
 import { ALL_CAPABILITIES } from "./types/identity";
 
-// A passkey as a SECOND FACTOR, true only by construction (ADR-0024).
 const SOME_CAPABILITY = ALL_CAPABILITIES.find((c) => c !== "view")!;
 
 let db: TestDb;
@@ -149,7 +148,6 @@ const sessionCount = async () =>
   (await pg.query<{ n: number }>(`select count(*)::int as n from session`))
     .rows[0]!.n;
 
-// better-call answers 404 on a verb mismatch, which would pass a "not 200" assertion while proving nothing.
 async function overHttp(path: string, method: "GET" | "POST") {
   return requireAuth().handler(
     new Request(
@@ -206,7 +204,6 @@ test("removing the passkey puts the account back under the mandate", async () =>
   await db.delete(passkeyTable).where(eq(passkeyTable.userId, USER_1));
 
   await asUser(USER_1, async () => {
-    // Both gates: reads never touch `membershipFor`, so closing only one is the bug this catches.
     await assert.rejects(
       () => requireActiveTeamId(),
       (e: unknown) => e instanceof TwoFactorRequiredError,
@@ -218,7 +215,6 @@ test("removing the passkey puts the account back under the mandate", async () =>
   });
 });
 
-// Owning a passkey must not clear a policy by password alone; ADR-0014 §4 keeps account settings reachable.
 test("a password session does not inherit the account's passkey", async () => {
   await requireForTeam();
   await seedPasskey(USER_1);
@@ -354,7 +350,6 @@ test("the challenge is refused outright when this panel cannot have passkeys", a
 });
 
 test("a session refresh does not wash the stamp off", async () => {
-  // Better Auth extends a session in place, UPDATEing `expires_at`/`updated_at` on the same row.
   await requireForTeam();
   await seedPasskey(USER_1);
   await login(EMAIL_1, PASSWORD);
@@ -658,7 +653,6 @@ test("renaming is scoped to your own passkeys", async () => {
 });
 
 test("the plugin's adapter can write, find and update a passkey row", async () => {
-  // The Drizzle adapter resolves a field as `schema.passkey[field]`, so a rename in lib/db/schema/auth.ts breaks it SILENTLY.
   const adapter = (await requireAuth().$context).adapter;
   const created = (await adapter.create({
     model: "passkey",

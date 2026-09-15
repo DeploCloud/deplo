@@ -30,8 +30,6 @@ export default async function TokenPage(
     listScopeTree(),
     requireActiveTeamId(),
   ]);
-  // Someone else's token resolves to nothing here - exactly as it does in the
-  // data layer. There is no id to guess your way into.
   if (!token) notFound();
 
   return (
@@ -66,9 +64,6 @@ export default async function TokenPage(
           its next call, without connecting it again.
         </p>
       ) : null}
-      {/* An OAuth connection edits here like any other token: approving the
-          consent screen mints an ordinary row and re-approving DELETES it for a
-          fresh one, so there is never a second copy of the permissions. */}
       <TokenEditor
         mode="edit"
         token={token}

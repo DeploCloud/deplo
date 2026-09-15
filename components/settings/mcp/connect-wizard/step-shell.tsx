@@ -2,7 +2,6 @@
 
 import * as React from "react";
 
-// StepShell is the shape every step shares: a question, one line under it, the controls, then the buttons.
 export function StepShell({
   mark,
   title,
@@ -14,7 +13,6 @@ export function StepShell({
   title: string;
   lead: string;
   children: React.ReactNode;
-  /** The step's buttons. Anything that belongs left of the primary takes `mr-auto`. */
   action?: React.ReactNode;
 }) {
   return (

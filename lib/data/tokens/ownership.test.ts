@@ -69,7 +69,6 @@ test("listTokens shows the tokens you minted in your OTHER teams", async () => {
   const id = await asUser1(
     async () => (await createToken({ name: "CI", teamIds: [TEAM_A] })).token.id,
   );
-  // Settings → API tokens is an account page with no team switcher on it, so a token the active team filters out is one you cannot reach at all.
   await asUser1InB(async () => {
     const rows = await listTokens();
     assert.deepEqual(

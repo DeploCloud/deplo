@@ -2,8 +2,6 @@ import "server-only";
 
 import { execFile } from "node:child_process";
 
-// The only caller left is the dormant plugin sweep - the control plane never touches a host per-app (ADR-0006, ADR-0013).
-
 export interface ExecResult {
   stdout: string;
   stderr: string;
@@ -19,7 +17,6 @@ interface RunOpts {
   noThrow?: boolean;
 }
 
-// docker - run `docker <args>`; rejects on non-zero exit.
 export function docker(
   args: string[],
   opts: RunOpts = {},
@@ -77,7 +74,6 @@ export function isDockerLevelStderr(stderr: string): boolean {
   return DOCKER_LEVEL_STDERR.test(stderr ?? "");
 }
 
-// AttachHandle - transport-agnostic handle over a live container stream.
 export interface AttachHandle {
   onData(cb: (chunk: Buffer) => void): () => void;
   onExit(cb: (error?: string) => void): void;

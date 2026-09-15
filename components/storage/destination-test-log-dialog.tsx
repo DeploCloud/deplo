@@ -18,7 +18,6 @@ import { cn, timeAgo } from "@/lib/utils";
 import { gql } from "@/lib/graphql-client";
 import type { LogLevel } from "@/lib/types/deployment";
 
-// S3TestReportView mirrors the GraphQL `S3TestReport` shape (see lib/data/s3-test-report.ts).
 export type S3TestReportView = {
   ok: boolean;
   never: boolean;
@@ -43,7 +42,6 @@ export const S3_TEST_REPORT_FIELDS = `
   command
 `;
 
-// DestinationTestLogDialog shows the full debug output of a destination's "Test connection".
 export function DestinationTestLogDialog({
   open,
   onOpenChange,
@@ -59,11 +57,9 @@ export function DestinationTestLogDialog({
 }) {
   const [report, setReport] = React.useState<S3TestReportView | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
-  // A failed re-run shows above the report, never instead of it: a retry that cannot reach the server must not lose the open log.
   const [runError, setRunError] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState(false);
 
-  // The reset happens on CLOSE, so re-opening shows the spinner rather than the previous verdict.
   React.useEffect(() => {
     if (!open) return;
     const controller = new AbortController();

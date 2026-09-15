@@ -15,7 +15,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import { RobotMark } from "./robot-graphic";
 import { cn } from "@/lib/utils";
 
-// McpSwitchMenu - the team's one MCP switch; what an agent may DO is its token's Capabilities, never this switch.
 export function McpSwitchMenu({
   count,
   enabled: initialEnabled,
@@ -76,7 +75,6 @@ export function McpSwitchMenu({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuItem
-              // Stays open: a switch is flipped, not picked.
               onSelect={(e) => {
                 e.preventDefault();
                 toggle(!enabled);

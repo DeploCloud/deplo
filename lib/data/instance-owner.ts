@@ -15,7 +15,6 @@ import { stepUpCode } from "./two-factor";
 
 const SETTINGS_ID = "default";
 
-// instanceOwnerUserId is the owning user's id, or null when the instance is unowned.
 export async function instanceOwnerUserId(tx?: DbTx): Promise<string | null> {
   const db = tx ?? getDb();
   const rows = await db
@@ -26,7 +25,6 @@ export async function instanceOwnerUserId(tx?: DbTx): Promise<string | null> {
   return rows[0]?.ownerUserId ?? null;
 }
 
-/** True if `userId` owns this instance. Internal; no auth gate. */
 export async function isInstanceOwner(
   userId: string,
   tx?: DbTx,
@@ -35,14 +33,12 @@ export async function isInstanceOwner(
   return owner !== null && owner === userId;
 }
 
-/** True if the CURRENT viewer owns this instance. Safe for UI/GraphQL reads. */
 export async function viewerIsInstanceOwner(): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
   return isInstanceOwner(user.id);
 }
 
-// welcomePending is true when the viewer owns this instance and has not opened it yet.
 export async function welcomePending(): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
@@ -59,7 +55,6 @@ export async function welcomePending(): Promise<boolean> {
   return row?.ownerUserId === user.id && !row.welcomeSeenAt;
 }
 
-/** Stamp the welcome as shown. Idempotent - the first caller wins. */
 export async function markWelcomeSeen(): Promise<boolean> {
   const user = await assertUser();
   const done = await getDb()
@@ -76,11 +71,9 @@ export async function markWelcomeSeen(): Promise<boolean> {
   return done.length > 0;
 }
 
-// transferInstanceOwner hands the crown over; the OWNER alone may, not an instance admin.
 export async function transferInstanceOwner(input: {
   userId: string;
   password: string;
-  /** The second factor, required when the actor's account has one. */
   code?: string;
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
@@ -94,7 +87,6 @@ export async function transferInstanceOwner(input: {
     throw new Error(`Too many attempts. Try again in ${limit.retryAfterSec}s.`);
 
   const targetUsername = await getDb().transaction(async (tx) => {
-    // Lock the singleton first: two concurrent transfers must serialize.
     const settings = (
       await tx
         .select({ ownerUserId: instanceSettings.ownerUserId })
@@ -113,7 +105,6 @@ export async function transferInstanceOwner(input: {
     if (input.userId === actingUserId)
       throw new Error("You already own this instance");
 
-    // Reads the actor's CURRENT hash inside the transaction: a rotated hash must win.
     const me = (
       await tx
         .select({ password: accountTable.password })
@@ -157,7 +148,6 @@ export async function transferInstanceOwner(input: {
     return target.username;
   });
 
-  // Outside the transaction, per the recordActivity rule (own connection).
   await recordActivity(
     "member",
     `Transferred instance ownership to @${targetUsername}`,

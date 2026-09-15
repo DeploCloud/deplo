@@ -78,10 +78,8 @@ function Spec({
   );
 }
 
-// Awaited behind the card's own <Suspense>: `hydrateServerSpecs` dials an unmeasured server and can take four seconds.
 async function SpecTiles({ specs }: { specs: Promise<Server> }) {
   const server = await specs;
-  // 0 means not-yet-measured or unprovisioned - show an em dash rather than a misleading "0".
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
   const num = (n: number) => (n > 0 ? String(n) : "—");
   return (
@@ -140,10 +138,8 @@ function ServerCard({
   isDeploHost,
 }: {
   server: Server;
-  // Capacity measured, still in flight - everything else on the card reads `server`.
   specs: Promise<Server>;
   accessTeamIds: string[];
-  // True for the ONE host that also runs the Deplo control plane, not just the deploy agent.
   isDeploHost: boolean;
 }) {
   const agentVersion = reportedAgentVersion(server);
@@ -153,14 +149,11 @@ function ServerCard({
   return (
     <Card className="transition-colors hover:border-foreground/20">
       <CardHeader className="space-y-3">
-        {/* The name and its chips give ground, or a long name pushes Refresh and Manage onto their own line. */}
         <div className="flex items-start gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {/* The chip owns both the dot and the label: split, a card paints a confident green dot next to an unverified status. */}
             <CardTitle className="min-w-0 truncate" title={serverLabel(server)}>
               {serverLabel(server)}
             </CardTitle>
-            {/* Health leads every card, and is the only chip allowed to be green. */}
             <ServerHealthChip
               serverId={server.id}
               fallback={{
@@ -171,18 +164,15 @@ function ServerCard({
                 lastReachedAt: server.lastSeenAt ?? null,
               }}
             />
-            {/* Only the control-plane host is badged: a chip every row wears says nothing. */}
             {isDeploHost && (
               <Badge
                 className="shrink-0 gap-1"
                 title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
               >
-                {/* currentColor, so the mark takes the badge's primary-foreground. */}
                 <DeploMark size={12} className="text-current" />
                 Deplo host
               </Badge>
             )}
-            {/* What the host is for, in its own colour. */}
             <ServerUseBadge use={serverUse(server)} />
             <Badge
               variant="muted"
@@ -191,7 +181,6 @@ function ServerCard({
               {accessLabel}
             </Badge>
           </div>
-          {/* The card stays a summary: everything you can do to a server lives on its own page. */}
           <div className="ml-auto flex shrink-0 items-center gap-1">
             <CheckStatusButton
               serverId={server.id}
@@ -210,8 +199,6 @@ function ServerCard({
             <span className="font-mono text-muted-foreground">{server.ip}</span>
             <CopyButton value={server.ip} className="size-6" />
           </span>
-          {/* A stored traefikEnabled would keep claiming "on" for a host offline for weeks, so this reads the live
-              observation. Only on a host that ROUTES: a build or backup server has no proxy on purpose. */}
           {serverUse(server) === "everything" && (
             <ServerTraefikBadge
               serverId={server.id}
@@ -226,7 +213,6 @@ function ServerCard({
           )}
           <AgentVersionBadge version={agentVersion} />
         </div>
-        {/* Deplo removes its own agent by itself, retrying for a few minutes, so the card says which state that is in. */}
         {server.uninstallPending && (
           <p className="text-xs text-muted-foreground">
             Deplo is removing its agent from this machine.
@@ -238,7 +224,6 @@ function ServerCard({
           </p>
         )}
       </CardHeader>
-      {/* A migration source is never measured, so four "—" tiles would only read as a broken card. */}
       {!server.importOnly && (
         <CardContent>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -326,26 +311,20 @@ function ServerListRow({
 export default async function ServersPage(
   props: PageProps<"/[team]/settings/servers">,
 ) {
-  // This view lists EVERY server, including ones restricted to other teams, so it is instance-admin-only, not manage_infra.
   if (!(await isInstanceAdmin())) notFound();
 
-  // The global "New ▸ Add server" action links here with ?new=1 to open the register dialog straight away.
   const { new: newParam } = await props.searchParams;
   const autoOpenServer =
     (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
 
   const [serversRaw, serverTeamIds, teamsRaw] = await Promise.all([
-    // A migration source is another platform's machine, borrowed for one import: the wizard that borrowed it owns it.
     listAllServers().then((all) => all.filter((s) => !s.importOnly)),
     listAllServerTeamIds(),
-    // The instance-admin variant: manage_infra-scoped listAllTeams would reject an admin who isn't a manage_infra member of their active team.
     listAllTeamsForAdmin(),
   ]);
-  // Deliberately NOT awaited: measuring dials the agent, and an unreachable host spends the full four-second cap.
   const measured = hydrateServerSpecs(serversRaw)
     .catch(() => serversRaw)
     .then((list) => new Map(list.map((s) => [s.id, s])));
-  // `hydrateServerSpecs` never re-measures a server that already has capacity stored, so those tiles resolve with no placeholder.
   const specsFor = (server: Server) =>
     server.cpuCores > 0
       ? Promise.resolve(server)
@@ -356,7 +335,6 @@ export default async function ServersPage(
     avatarUrl: t.avatarUrl,
   }));
 
-  // The control-plane host sorts first; the remotes keep their creation order.
   const selfAddrs = deploHostSelfAddresses();
   const servers = [...serversRaw].sort(
     (a, b) =>
@@ -364,7 +342,6 @@ export default async function ServersPage(
       Number(isDeploHostServer(a, selfAddrs)),
   );
 
-  // Cards are rendered HERE and handed to the client list: filtering must not cost them their RSC-ness.
   const items: ServerListItem[] = servers.map((server) => ({
     id: server.id,
     search: [server.name, server.host, server.ip].join(" ").toLowerCase(),
@@ -386,7 +363,6 @@ export default async function ServersPage(
     ),
   }));
 
-  // A seed, not the answer: the provider re-probes on mount; dialing every agent in the render would make the page as slow as a broken host.
   const healthSeed: Record<string, ServerHealthState> = Object.fromEntries(
     servers.map((s) => [
       s.id,
@@ -403,7 +379,6 @@ export default async function ServersPage(
   return (
     <ServerHealthProvider seed={healthSeed}>
       <div className="space-y-6">
-        {/* The install flow is explained once, on the page and not inside the dialog, so it can be read before clicking. */}
         <PageHeader
           docs="servers.overview"
           title={
@@ -426,7 +401,6 @@ export default async function ServersPage(
           actions={
             <>
               <RefreshFleetButton />
-              {/* The ONE mounted AddServer on this page: a second would also answer ?new=1 and open two dialogs. */}
               <AddServer autoOpen={autoOpenServer} teams={teams} />
             </>
           }

@@ -10,8 +10,6 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-// The toolbar's five narrowers, at the widths their real SelectTriggers carry:
-// Server, App, Status, Environment, Time.
 const FACETS = [
   "w-[170px]",
   "w-[180px]",
@@ -20,8 +18,6 @@ const FACETS = [
   "w-[205px]",
 ];
 
-// One tuple per placeholder row: the commit message width and the app name's,
-// so the column doesn't read as a ruler.
 const ROWS: [string, string][] = [
   ["w-52", "w-24"],
   ["w-40", "w-20"],
@@ -41,7 +37,6 @@ export default function Loading() {
       aria-busy
       aria-label="Loading deployments"
     >
-      {/* Header: title over subtitle, opposite the bulk-action slot. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-1">
           <Skeleton className="h-7 w-40" />
@@ -49,7 +44,6 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* Search, the five narrowers, and the sort pinned right. */}
       <div className="flex min-h-9 flex-wrap items-center gap-2">
         <div className="w-full min-w-0 sm:w-64">
           <Skeleton className="h-9 w-full" />
@@ -84,7 +78,6 @@ export default function Loading() {
                 <TableCell>
                   <Skeleton className="size-4 rounded" />
                 </TableCell>
-                {/* Commit message over its sha */}
                 <TableCell className="max-w-[280px]">
                   <Skeleton className={cn("h-4", message)} />
                   <Skeleton className="mt-1.5 h-3 w-16" />
@@ -110,7 +103,6 @@ export default function Loading() {
                     <Skeleton className="h-3 w-16" />
                   </div>
                 </TableCell>
-                {/* Time ago over who deployed it */}
                 <TableCell>
                   <Skeleton className="h-4 w-20" />
                   <div className="mt-1.5 flex items-center gap-1.5">

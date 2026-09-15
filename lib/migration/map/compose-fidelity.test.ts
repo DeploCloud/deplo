@@ -45,12 +45,10 @@ networks:
 `;
   const { compose, changes } = adaptComposeForDeplo(src);
   assert.equal(changes.length, 2, changes.join(" | "));
-  // A stack whose shared defaults stop being shared is a different file from the one somebody hands over.
   assert.match(compose, /^# an imported stack$/m);
   assert.match(compose, /x-common: &common/);
   assert.match(compose, /<<: \*common/);
   assert.match(compose, /restart: unless-stopped # keep me/);
-  // Off the ANCHOR too, not only off the services that merge it: the report says it was removed.
   assert.equal(compose.includes("dokploy-network"), false, compose);
   assert.match(compose, /- \.\/x\.conf:\/etc\/x\.conf/);
 });
@@ -74,7 +72,6 @@ networks:
       services: { app: { environment: Record<string, unknown> } };
     }
   ).services.app.environment;
-  // `022` is a umask and `1.10` a version: read as numbers they come back as 22 and 1.1, and the container gets a value nobody typed.
   assert.equal(env.UMASK, "022");
   assert.equal(env.VER, "1.10");
   assert.equal(env.PORT, 8080);

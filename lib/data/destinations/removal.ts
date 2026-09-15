@@ -18,7 +18,6 @@ import { recordActivity } from "../activity";
 import { getDestinationWithSecretsForTeam } from "./credentials";
 import { loadDestination } from "./listing";
 
-// destinationRemovalImpact counts what removing a destination is about to destroy.
 export async function destinationRemovalImpact(id: string): Promise<{
   schedules: number;
   runs: number;
@@ -58,7 +57,6 @@ export async function destinationRemovalImpact(id: string): Promise<{
   };
 }
 
-// deleteDestination removes a destination, and optionally the artifacts it holds (off by default).
 export async function deleteDestination(
   id: string,
   opts: { deleteArtifacts?: boolean } = {},
@@ -69,9 +67,6 @@ export async function deleteDestination(
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Not found");
 
-  // BEFORE the rows go: the keys live on the runs, and the creds on the row we are
-  // about to delete. A failure here aborts the whole removal rather than leaving
-  // files nothing can name any more.
   if (opts.deleteArtifacts) {
     const runs = await getDb()
       .select({ objectKey: backupRunsTable.objectKey })
@@ -87,8 +82,6 @@ export async function deleteDestination(
       .filter((r) => r.objectKey)
       .map((r) => ({ key: r.objectKey }));
     if (keys.length > 0) {
-      // Imported HERE: backup-transport imports `destinationServerId` / `s3TargetFor`,
-      // so a static import back would close a cycle.
       const { deleteManyFromDestination } = await import("../backup-transport");
       const creds = await getDestinationWithSecretsForTeam(teamId, id);
       const results = await deleteManyFromDestination(
@@ -105,9 +98,6 @@ export async function deleteDestination(
         );
     }
   }
-  // `backups.destination_id` / `backup_runs.destination_id` are both RESTRICT (a
-  // destination must never be cascade-deleted out from under live schedules), so the
-  // dependent rows are removed first.
   await getDb().transaction(async (tx) => {
     await tx
       .delete(backupRunsTable)

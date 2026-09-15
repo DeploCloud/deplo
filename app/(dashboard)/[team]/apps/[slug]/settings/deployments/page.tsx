@@ -32,7 +32,6 @@ export default async function AppDeploymentSettingsPage(
   if (!project) notFound();
 
   const servers = await listServerChoices();
-  // Who this app talks to by name on its server: a move cuts it off from them.
   const neighbours = await neighboursOnNetwork(
     {
       teamId: project.teamId,
@@ -49,13 +48,11 @@ export default async function AppDeploymentSettingsPage(
     (Boolean(project.repo?.connectionId) &&
       providerFor(project.repo?.provider ?? "git").api != null);
 
-  // Asked of the provider, not remembered: a stored flag misses a webhook deleted on their side.
   const webhook =
     providerTriggers && project.source !== "github" && project.autoDeploy
       ? await appWebhookStatus(project.repo)
       : null;
 
-  // Both halves fail open: an unreachable provider says nothing rather than accusing one.
   const [repoAccess, cloneRefusal, canManageGit] = await Promise.all([
     project.repo?.installationId
       ? installationAccess(project.repo.installationId, {
@@ -66,7 +63,6 @@ export default async function AppDeploymentSettingsPage(
     hasCapability("manage_git"),
   ]);
 
-  // The same predicate the data layer gates on, so the card cannot offer a refused setting.
   const canRollBack = appBuildsItsOwnImage(project);
 
   return (
@@ -120,7 +116,6 @@ export default async function AppDeploymentSettingsPage(
               : []
           }
         />
-        {/* Only where a rollback can exist: the app has to be one Deplo builds. */}
         {canRollBack && (
           <RollbackSettingsForm
             appId={project.id}

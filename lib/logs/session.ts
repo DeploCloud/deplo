@@ -5,15 +5,11 @@ import { type AttachHandle } from "../infra/docker";
 
 export interface LogsSession {
   id: string;
-  // App that authorised this session - the GET must match it.
   appId: string;
-  // A session id is a capability on its own, so the DELETE re-checks the principal.
   userId: string;
   containerName: string;
   handle: AttachHandle;
-  // Subscribers draining output, normally exactly one: the GET stream.
   readonly subscribers: Set<(chunk: Buffer) => void>;
-  // Null once the first subscribe() flushed it, so live chunks pass straight through.
   backlog: Buffer[] | null;
   onExit?: (error?: string) => void;
   idleTimer?: NodeJS.Timeout;
@@ -22,7 +18,6 @@ export interface LogsSession {
 
 const sessions = new Map<string, LogsSession>();
 
-// A tab closed without a clean DELETE leaves no subscriber, and the `docker logs -f` child would linger forever.
 const IDLE_MS = 30_000;
 
 function armIdleReaper(s: LogsSession) {
@@ -32,10 +27,8 @@ function armIdleReaper(s: LogsSession) {
   }, IDLE_MS);
 }
 
-// The idle reaper only fires at zero subscribers, so an EventSource held open forever pins a backing (and its gRPC client) for good.
 const MAX_SESSIONS = 64;
 const MAX_SESSIONS_PER_APP = 8;
-// One person cannot hold the whole instance ceiling.
 const MAX_SESSIONS_PER_USER = 16;
 
 function evict(s: LogsSession) {
@@ -44,7 +37,6 @@ function evict(s: LogsSession) {
 }
 
 function enforceSessionCaps(appId: string, userId: string) {
-  // Only the caller's OWN sessions are evicted: a cap reached by other people's streams is a refusal.
   const mine = [...sessions.values()].filter((s) => s.userId === userId);
   const forApp = mine.filter((s) => s.appId === appId);
   if (forApp.length >= MAX_SESSIONS_PER_APP) evict(forApp[0]);
@@ -58,7 +50,6 @@ function enforceSessionCaps(appId: string, userId: string) {
   }
 }
 
-// Open a new logs session over a pre-built backing handle.
 export function open(
   appId: string,
   userId: string,
@@ -101,13 +92,11 @@ export function open(
   return session;
 }
 
-// Look up a session, scoped to its project so ids can't be used cross-project.
 export function get(id: string, appId: string): LogsSession | undefined {
   const s = sessions.get(id);
   return s && s.appId === appId ? s : undefined;
 }
 
-// Subscribe to a session's output; returns an unsubscribe fn.
 export function subscribe(
   s: LogsSession,
   onChunk: (chunk: Buffer) => void,
@@ -125,7 +114,6 @@ export function subscribe(
   };
 }
 
-// Tear down a session: kill the local `docker logs` client (never the container).
 export function destroy(id: string): void {
   const s = sessions.get(id);
   if (!s) return;
@@ -134,7 +122,6 @@ export function destroy(id: string): void {
   s.handle.close();
 }
 
-// Every live session id - for the cap test only.
 export function __allSessionIdsForTest(): string[] {
   return [...sessions.keys()];
 }

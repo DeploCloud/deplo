@@ -47,12 +47,10 @@ const AccordionContent = React.forwardRef<
     { className, children, onAnimationStart, onAnimationEnd, ...props },
     ref,
   ) => {
-    // `overflow: hidden` makes the height animation a slide instead of a spill, but it clips anything a child paints outside its box - a focus ring is exactly that.
     const [animating, setAnimating] = React.useState(false);
     return (
       <AccordionPrimitive.Content
         ref={ref}
-        // Guarded on the target: `animate-in` children bubble their own animation events through here and must not pin the panel shut.
         onAnimationStart={(event) => {
           if (event.target === event.currentTarget) setAnimating(true);
           onAnimationStart?.(event);

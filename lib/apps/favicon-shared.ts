@@ -1,7 +1,6 @@
 import { MAX_LOGO_BYTES } from "./logo-shared";
 import { usesComposeStack } from "../utils";
 
-// Every value is a type isValidLogoValue accepts, so a detected favicon always validates.
 const EXT_MIME: Record<string, string> = {
   svg: "image/svg+xml",
   png: "image/png",
@@ -12,7 +11,6 @@ const EXT_MIME: Record<string, string> = {
   jpeg: "image/jpeg",
 };
 
-// mimeForFaviconPath - the stored-logo MIME for a path's extension, or null.
 export function mimeForFaviconPath(path: string): string | null {
   const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
   return EXT_MIME[ext] ?? null;
@@ -21,7 +19,6 @@ export function mimeForFaviconPath(path: string): string | null {
 const EXCLUDED_DIR_RE =
   /^(node_modules|bower_components|vendor|\.git|\.github|\.next|\.nuxt|\.svelte-kit|\.cache|\.turbo|dist|build|out|coverage|tmp|temp|__tests__|__mocks__|tests?|e2e|examples?|samples?|fixtures?|docs?|storybook|\.storybook)$/i;
 
-// isGithubRepo - the only provider the control plane can read files from over the API.
 export function isGithubRepo(
   repo: { provider?: string | null; url?: string | null } | null | undefined,
 ): boolean {
@@ -34,7 +31,6 @@ export function isGithubRepo(
   }
 }
 
-// FaviconSourceKind - which pile of files an app's icon is detected from; the detector and the settings UI share it.
 export type FaviconSourceKind =
   "github" | "connection" | "upload" | "app-files" | "none";
 
@@ -49,19 +45,16 @@ export function faviconSourceKind(app: {
   dockerImage: string | null;
 }): FaviconSourceKind {
   if (usesComposeStack({ ...app, repo: app.repo ?? null })) return "app-files";
-  // A connection names the API outright, so it is checked before the URL-sniffing github test.
   if (app.repo?.connectionId) return "connection";
   if (isGithubRepo(app.repo)) return "github";
   if (app.source === "upload") return "upload";
   return "none";
 }
 
-// isExcludedDirName - whether a directory name is one detection should never descend into.
 export function isExcludedDirName(name: string): boolean {
   return EXCLUDED_DIR_RE.test(name);
 }
 
-// Only a file named `favicon`, with an optional suffix: never an arbitrarily-named image.
 const FAVICON_STEM_RE = /^favicon(?:[-_.].*)?$/;
 
 const EXT_SCORES: Record<string, number> = {
@@ -74,7 +67,6 @@ const EXT_SCORES: Record<string, number> = {
   jpeg: 8,
 };
 
-// faviconFormatScore - the format preference above, for the detector that reads a running app's declared icons.
 export function faviconFormatScore(ext: string): number {
   return EXT_SCORES[ext.toLowerCase()] ?? 0;
 }
@@ -85,7 +77,7 @@ function locationScore(segments: readonly string[]): number {
   const head = dir[0];
   if (head === "public") return 15;
   if (head === "static" || head === "assets") return 12;
-  if (head === "app") return 14; // Next.js app-router icon.svg / favicon
+  if (head === "app") return 14;
   if (head === "src") return 8;
   if (
     head === "www" ||
@@ -101,7 +93,6 @@ function segmentsOf(path: string): string[] {
   return path.split("/").filter((s) => s && s !== ".");
 }
 
-// scoreFaviconPath - score one repo-relative path as a favicon candidate.
 export function scoreFaviconPath(path: string, rootRel = ""): number | null {
   const segments = segmentsOf(path);
   if (segments.length === 0) return null;
@@ -134,7 +125,6 @@ export interface FaviconFile {
   size: number;
 }
 
-// pickBestFavicon - the best candidate, or null; ties break on the smaller path so a repo always yields the same icon.
 export function pickBestFavicon(
   files: readonly FaviconFile[],
   opts: { rootRel?: string } = {},

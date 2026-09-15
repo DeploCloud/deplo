@@ -133,8 +133,8 @@ test("expressions outside the picker's vocabulary stay custom, not broken", () =
     "0,30 * * * *",
     "0 1-5 * * *",
     "0 0 1 6 *",
-    "0 0 13 * 5", // both day fields restricted (Vixie union)
-    "0 0 31 * *", // day 31 - deliberately not offered
+    "0 0 13 * 5",
+    "0 0 31 * *",
     "0-30/10 * * * *",
   ]) {
     assert.equal(partsFromCron(cron), null, `${cron} should be custom`);

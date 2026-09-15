@@ -20,7 +20,6 @@ import { Row } from "./row";
 import { useTreeSearch } from "./search";
 import { countLabel, placeAll, shared, tickAll, tristate } from "./selection";
 
-// MigrationTree is what is coming over, as a tree you can prune and place.
 export function MigrationTree({
   projects,
   chosen,
@@ -33,25 +32,18 @@ export function MigrationTree({
   showPorts,
 }: {
   projects: PlanProject[];
-  // Source service ids. The leaves ARE the selection; parents are derived.
   chosen: Set<string>;
   onChange: (next: Set<string>) => void;
-  // Hosts that can RUN a workload.
   servers: ServerChoice[];
-  // Hosts that can COMPILE - wider, a build-only host belongs here and not above.
   buildServers: ServerChoice[];
   placements: Record<string, Placement>;
   onPlacementsChange: (next: Record<string, Placement>) => void;
-  // Source service id → the port clash to resolve on that row, if any.
   portConflicts: Record<string, PortConflict>;
-  // False without the publish-ports grant: no port comes over, so none is shown.
   showPorts: boolean;
 }) {
   const { query, setQuery, shown, isOpen, toggleOpen } =
     useTreeSearch(projects);
 
-  // No build-only host in the fleet means the column could only ever read
-  // "Automatic" on every row, which is a tax on everyone who reads past it.
   const showBuild = buildServers.some((s) => s.buildOnly);
 
   const all = React.useMemo(() => projects.flatMap(importableOf), [projects]);
@@ -121,7 +113,6 @@ export function MigrationTree({
           <div className="min-w-[32rem]">
             <div className="max-h-[28rem] divide-y divide-border/60 overflow-y-auto">
               {rows.map((p) => {
-                // Counted over the WHOLE project, never the filtered slice.
                 const pickable = importableOf(p);
                 const on = pickable.filter((s) =>
                   chosen.has(s.sourceId),

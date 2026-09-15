@@ -27,7 +27,6 @@ function makeEditor({ cols = 40, rows = 10 } = {}) {
   return { term, ed, submitted };
 }
 
-/** xterm writes are queued - settle the parser before reading the buffer. */
 const flush = (term: Terminal) =>
   new Promise<void>((resolve) => term.write("", resolve));
 
@@ -97,10 +96,10 @@ test("Home/End (and Ctrl-A/Ctrl-E) jump to the line edges", async () => {
   ed.data(END);
   await flush(term);
   assert.deepEqual(caret(term), { x: 3 + 6, y: 0 });
-  ed.data("\x01"); // Ctrl-A
+  ed.data("\x01");
   await flush(term);
   assert.deepEqual(caret(term), { x: 3, y: 0 });
-  ed.data("\x05"); // Ctrl-E
+  ed.data("\x05");
   await flush(term);
   assert.deepEqual(caret(term), { x: 3 + 6, y: 0 });
 });
@@ -126,21 +125,20 @@ test("Ctrl-U/Ctrl-K kill to the line edges, Ctrl-W kills the word left", async (
   const { term, ed } = makeEditor();
   ed.data("one two three");
   type(ed, [LEFT, LEFT, LEFT, LEFT, LEFT]);
-  ed.data("\x15"); // Ctrl-U
+  ed.data("\x15");
   await flush(term);
   assert.equal(row(term, 0), "p$ three");
   assert.deepEqual(caret(term), { x: 3, y: 0 });
 
   ed.data(END);
-  ed.data("\x17"); // Ctrl-W
+  ed.data("\x17");
   await flush(term);
-  // The prompt's trailing space is a REAL cell - translateToString keeps it.
   assert.equal(row(term, 0), "p$ ");
 
   ed.data("abc def");
   ed.data(HOME);
   type(ed, [RIGHT, RIGHT, RIGHT]);
-  ed.data("\x0b"); // Ctrl-K
+  ed.data("\x0b");
   await flush(term);
   assert.equal(row(term, 0), "p$ abc");
   assert.deepEqual(caret(term), { x: 3 + 3, y: 0 });
@@ -149,14 +147,14 @@ test("Ctrl-U/Ctrl-K kill to the line edges, Ctrl-W kills the word left", async (
 test("Ctrl-←/Ctrl-→ hop between words", async () => {
   const { term, ed } = makeEditor();
   ed.data("git push origin");
-  ed.data("\x1b[1;5D"); // Ctrl-← → start of "origin"
+  ed.data("\x1b[1;5D");
   await flush(term);
   assert.deepEqual(caret(term), { x: 3 + 9, y: 0 });
   ed.data("\x1b[1;5D");
   ed.data("\x1b[1;5D");
   await flush(term);
   assert.deepEqual(caret(term), { x: 3, y: 0 });
-  ed.data("\x1b[1;5C"); // Ctrl-→ → end of "git"
+  ed.data("\x1b[1;5C");
   await flush(term);
   assert.deepEqual(caret(term), { x: 3 + 3, y: 0 });
 });
@@ -300,7 +298,6 @@ test("Ctrl-L clears the screen but keeps the line and the caret column", async (
   const { term, ed } = makeEditor();
   ed.data("abc");
   ed.data(LEFT);
-  // term.reset() is synchronous while writes queue - settle first, as the browser has.
   await flush(term);
   ed.data("\x0c");
   await flush(term);

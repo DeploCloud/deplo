@@ -22,14 +22,10 @@ import {
 } from "./hello-capabilities";
 import { resolveTarget } from "./mtls-channel";
 
-// One host-ops call: resolve the pinned target, pre-flight the capability via
-// Hello, invoke, and always close the channel.
 async function withHostOps<T>(
   serverId: string,
   fn: (conn: AgentConnection) => Promise<T>,
 ): Promise<T> {
-  // Through connectAgent, not dial: same target, and the one seam a test can
-  // stand in on - host ops had none.
   const conn = await connectAgent(serverId);
   try {
     const hello = await conn.hello();
@@ -44,8 +40,6 @@ async function withHostOps<T>(
   }
 }
 
-/** What this host IS: CPU model, distro, kernel, clock, Docker root dir, plus the
- *  deplo-traefik stack file and whether `controlPlaneHint` names a live container. */
 export function fetchHostInfo(
   serverId: string,
   opts: { dataDir?: string; controlPlaneHint?: string } = {},
@@ -58,7 +52,6 @@ export function fetchHostInfo(
   );
 }
 
-/** Move the host clock to an IANA zone, answering with a fresh reading of it. */
 export function setHostTimezone(
   serverId: string,
   timezone: string,
@@ -73,9 +66,6 @@ export function setHostTimezone(
   );
 }
 
-// Serialise stack rewrites for ONE host: interleaved, the second read misses the
-// first write and puts it back - a certificate that reports itself installed and
-// is not on the host.
 const stackWrites = new Map<string, Promise<unknown>>();
 
 export function withTraefikStackLock<T>(
@@ -83,8 +73,6 @@ export function withTraefikStackLock<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const queued = (stackWrites.get(serverId) ?? Promise.resolve()).then(fn, fn);
-  // Swallowed on the CHAIN only: the next writer must run whether or not this one
-  // failed, while the caller still sees its own rejection.
   stackWrites.set(
     serverId,
     queued.catch(() => {}),
@@ -92,7 +80,6 @@ export function withTraefikStackLock<T>(
   return queued;
 }
 
-/** Restart the host's Traefik, or rewrite its stack and recreate it. */
 export function applyTraefikConfig(
   serverId: string,
   req: { composeYaml?: string; restartOnly?: boolean },
@@ -105,8 +92,6 @@ export function applyTraefikConfig(
   );
 }
 
-// restartControlPlaneOn bounces the panel's own container. `ok:true` means
-// SCHEDULED: the restart kills the process waiting on the reply.
 export function restartControlPlaneOn(
   serverId: string,
   controlPlaneHint: string,
@@ -116,9 +101,6 @@ export function restartControlPlaneOn(
   );
 }
 
-// updateControlPlaneOn has the host's agent re-run the Deplo installer. `ok:true`
-// means STARTED: the updater outlives the reply and takes this process down with
-// it, so the outcome is read from the version that comes back.
 export async function updateControlPlaneOn(
   serverId: string,
   controlPlaneHint: string,

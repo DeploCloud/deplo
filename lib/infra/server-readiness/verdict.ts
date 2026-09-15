@@ -5,10 +5,6 @@ import type {
   ReadinessVerdict,
 } from "./types";
 
-/**
- * `fail` beats everything - a brand-new server no team can reach is "not ready", not
- * "provisioning". `skip` never moves the verdict: "we didn't look" is not "it's broken".
- */
 export function readinessVerdict(
   checks: ReadinessCheck[],
   opts: { provisioning: boolean },
@@ -19,7 +15,6 @@ export function readinessVerdict(
   return "ready";
 }
 
-// readinessSummary - the banner sentence; a `skip` must not be laundered into a pass here.
 export function readinessSummary(
   verdict: ReadinessVerdict,
   checks: ReadinessCheck[],
@@ -42,7 +37,6 @@ export function readinessSummary(
   }
 }
 
-// report - the finished ReadinessReport for a probe and the rows it produced.
 export function report(
   probe: ReadinessProbe,
   checks: ReadinessCheck[],

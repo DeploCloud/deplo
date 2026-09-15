@@ -22,12 +22,9 @@ function stamp(value: number): void {
   const state = window.history.state as Record<string, unknown> | null;
   try {
     window.history.replaceState({ ...state, [DEPTH_KEY]: value }, "");
-  } catch {
-    /* replaceState can throw in rare sandboxed contexts - degrade gracefully */
-  }
+  } catch {}
 }
 
-// record - the entry just landed on, deduped on the pathname.
 export function record(pathname: string): void {
   navigating = false;
   if (pathname === lastPath) return;
@@ -75,7 +72,6 @@ function isUnder(path: string, prefix: string): boolean {
 
 const TRANSIENT_PREFIXES = ["/new", "/templates"];
 
-// backOutOf - jump to the nearest earlier in-app entry outside `prefix`.
 export function backOutOf(prefix: string): "jumped" | "busy" | "none" {
   if (navigating) return "busy";
 
@@ -99,7 +95,6 @@ export function backOutOf(prefix: string): "jumped" | "busy" | "none" {
   return "none";
 }
 
-// NavigationHistoryTracker - mounted once in the app shell; records every route change.
 export function NavigationHistoryTracker(): null {
   const pathname = usePathname();
   React.useEffect(() => {

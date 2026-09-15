@@ -33,8 +33,6 @@ import { rehostAppDomains } from "./app-domains";
 import { landAppStorage } from "./app-storage";
 import { landAppExtras } from "./app-extras";
 
-// One source application or compose stack becomes one Deplo App, with its env vars,
-// config files, domains, volumes, resource limits, basic-auth users and crons.
 export async function importAppService(
   c: SourceCredential,
   svc: SourceService,
@@ -45,25 +43,15 @@ export async function importAppService(
     environmentId: string;
     serverId: string | undefined;
     buildServerId: string | null;
-    // The Deplo server that IS the machine it ran on, when there is one.
     sourceHost: string | null;
-    // Old database hostname -> the one Deplo gave it, for the connection strings this
-    // app's variables still spell out.
     dbHosts: Map<string, string>;
-    // The shared variables this import has already written, by key.
     shared: SharedIndex;
-    // Backup destination name (lower-case) -> Deplo destination id.
     destinations?: Map<string, string>;
   },
   report: Report,
 ): Promise<string | null> {
-  // Which source table it sat in. Whether it is a STACK here is decided below: a
-  // compose service can turn out to be one app built from its own repository, and
-  // importing that as a stack produces something that cannot deploy.
   let isCompose = svc.kind === "compose";
 
-  // Already here? Leave it completely alone - a second pass must not re-write
-  // someone's configuration behind their back.
   const existing = await getDb()
     .select({ id: appsTable.id, name: appsTable.name })
     .from(appsTable)
@@ -72,8 +60,6 @@ export async function importAppService(
     (a) => a.name.trim().toLowerCase() === name.trim().toLowerCase(),
   );
   if (match) {
-    // The one thing still worth adding: a schedule whose destination was not
-    // here on the first pass.
     const extra: string[] = [];
     await landSourceBackups(
       detail.backups,
@@ -100,8 +86,6 @@ export async function importAppService(
     ...((detail as SourceApplication).platformNotes ?? []),
   ];
 
-  // The same name somewhere ELSE in this team is allowed - staging may share a name with
-  // production - but never silent: two apps called the same thing is worth knowing.
   const namesake = (
     await getDb()
       .select({
@@ -117,8 +101,6 @@ export async function importAppService(
         and(
           eq(appsTable.teamId, await requireActiveTeamId()),
           sql`lower(${appsTable.name}) = ${name.trim().toLowerCase()}`,
-          // `NULL <> id` is NULL, not true: an app sitting outside every
-          // environment is exactly the one this has to see.
           or(
             isNull(appsTable.environmentId),
             ne(appsTable.environmentId, home.environmentId),
@@ -137,7 +119,6 @@ export async function importAppService(
     yamlText = text;
   }
 
-  // A compose service that is really one app built from its own repository.
   const repoTarget = isCompose ? cloneTarget(detail) : null;
   const asRepoApp = repoTarget ? composeAsRepoApp(yamlText) : null;
   if (asRepoApp) isCompose = false;
@@ -148,16 +129,12 @@ export async function importAppService(
     compose: isCompose ? yamlText : null,
   });
   notes.push(...domains.notes);
-  // Landing on the machine it ran on (a takeover): the generated name still
-  // points here, so the address people already have keeps working.
   if (
     home.sourceHost != null &&
     home.sourceHost === (await landingServerId(home.serverId))
   )
     for (const d of domains.value)
       if (d.generated && !/(^|\.)localhost$/i.test(d.host)) d.generated = false;
-  // The app's own address wins the primary slot over a temporary one, whatever order the
-  // source kept them in: promoting a throwaway would demote the name people type.
   const primary =
     domains.value.find((d) => !d.generated) ?? domains.value[0] ?? null;
   const mounts = mapMounts(detail.mounts, { isCompose, compose: yamlText });
@@ -174,20 +151,11 @@ export async function importAppService(
       notes,
     );
 
-  // The panel keeps the routing port on the domain, Deplo on the build config (a domain
-  // may still override it); a platform that records it on the app itself answers when
-  // there is no domain to read it off.
   const routingPort =
     primary?.port ?? (detail as SourceApplication).routingPort ?? null;
   if (routingPort) build.port = routingPort;
 
-  // Claiming a hostname needs `manage_domains`, and an import must not turn a missing
-  // permission into a failed app: without it the app comes across on a generated host and
-  // the report says which names were left behind.
   const mayClaimHosts = await hasCapability("manage_domains");
-  // Only a REAL hostname is a claim the permission gates. A throwaway address is
-  // re-hosted onto one of Deplo's own either way (`addImportedDomains`), so
-  // naming it here would blame a permission for something it never blocked.
   const claimed = domains.value.filter((d) => !d.generated);
   if (!mayClaimHosts && claimed.length > 0)
     notes.push(
@@ -196,9 +164,6 @@ export async function importAppService(
         .join(", ")} came across on a generated address instead.`,
     );
 
-  // A stack that reaches the host cannot be written without the grant, and `createApp`
-  // is right to refuse it. Said HERE it reads like the line with the remedy a bind mount
-  // gets, rather than a failure that names the wrong thing.
   const grantRefusal = compose
     ? await composeGrantRefusal(compose, name)
     : null;
@@ -227,28 +192,18 @@ export async function importAppService(
     environmentId: home.environmentId,
     build,
     autoDeploy: detail.autoDeploy ?? true,
-    // A throwaway host is never asked for: it names the SOURCE's machine, and
-    // createApp would either refuse it or point this app at the old box.
     autoDomain:
       mayClaimHosts && primary && !primary.generated ? primary.host : null,
-    // Two apps of one team may share a hostname on different paths, and the
-    // import is where that shape arrives - so the path is claimed with the name.
     autoDomainPath: primary?.pathPrefix || null,
-    // A service that answered on NOTHING over there gets nothing here.
     noAutoDomain: domains.value.length === 0,
     composeService: isCompose ? (primary?.service ?? null) : null,
     composePort: isCompose ? (primary?.port ?? null) : null,
-    // `app_mounts` is materialised by the compose deploy and by nothing else, so a
-    // single-image app's config files are written later instead.
     mounts:
       isCompose && mounts.value.files.length > 0 ? mounts.value.files : null,
-    // The icon comes across with everything else.
     logo: mapLogo(detail.icon),
     deploy: false,
   });
 
-  // What does not speak HTTP: the ports the source published, on the app itself
-  // rather than as a line telling somebody to rewrite it as a compose stack.
   if (ports.length > 0) {
     if (!(await canExposePorts()))
       notes.push(
@@ -270,8 +225,6 @@ export async function importAppService(
       }
   }
 
-  // One name in two environments is the commonest shape there is, and not an accident to
-  // be corrected: only the internal name, one per team, has to give way.
   await landSourceBackups(
     detail.backups,
     home.destinations,
@@ -288,8 +241,6 @@ export async function importAppService(
       }. Both are kept; this one is /apps/${created.slug}.`,
     );
 
-  // The links the references asked for. A value must never vanish because a link
-  // could not be made, so a refusal writes the entry back instead.
   const linkRefused: { key: string; value: string }[] = [];
   for (const r of linkable) {
     try {
@@ -304,7 +255,6 @@ export async function importAppService(
     }
   }
   if (linkRefused.length > 0) {
-    // `setAppEnv` is a whole-set replace, so it takes the FULL set back.
     await setAppEnv(created.id, [...env, ...linkRefused], undefined, {
       overwriteSecrets: true,
     });

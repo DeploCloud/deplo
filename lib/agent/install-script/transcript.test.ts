@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import { bash, shellFn } from "./install-script-test-helpers";
 
-// A `set -u` violation is a shell error, not a failed command, so installs died on a bare "unbound variable" with no transcript and no next step.
 test("a fatal shell error still names the transcript", async () => {
   const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
   const harness = (file: string, body: string) => `set -Eeuo pipefail
@@ -33,7 +32,6 @@ ${body}`;
     );
     assert.match(fatal, /NOTE Full transcript: \/tmp\/deplo-test\.log/, file);
 
-    // A failed command still reports through the ERR trap, and still says WHERE.
     const failed = await bash(
       `bash -c ${quote(`${script}\nfalse`)} 2>&1 || true`,
     );
@@ -42,7 +40,6 @@ ${body}`;
       /ERR The install failed during: Reverse proxy \(line \d+, exit 1\)\./,
       file,
     );
-    // Reported once, not once per trap.
     assert.equal(failed.match(/ERR The install failed/g)?.length, 1, file);
   }
 });

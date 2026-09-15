@@ -49,7 +49,6 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
   lastOrphanSweepAt: 0,
 });
 
-// runSchedulerTick claims the lease, then runs every schedule due this minute.
 export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
   if (state.ticking) return;
   state.ticking = true;
@@ -94,9 +93,7 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
     }
 
     for (const { backup: b, firedFor } of due) {
-      // Heartbeat mid-drain: a slow dump can outlast the lease and let another steal it.
       if (!(await acquireLease(BACKUP_SCHEDULER_LEASE, state.owner))) break;
-      // Stamp before awaiting: an overlapping tick must not double-fire this schedule.
       state.lastFired.set(b.id, { key: firedFor, at: now.getTime() });
       try {
         await runScheduledBackup(b);
@@ -122,18 +119,15 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       }
     }
   } finally {
-    // Advance even when the lease was denied: those minutes were another instance's.
     state.lastTickAt = now;
     state.ticking = false;
   }
 }
 
-// releaseBackupSchedulerLease drops this process's hold; safe when it never held it.
 export async function releaseBackupSchedulerLease(): Promise<void> {
   await releaseLease(BACKUP_SCHEDULER_LEASE, state.owner);
 }
 
-// startBackupScheduler starts the once-a-minute loop; idempotent, called at boot.
 export function startBackupScheduler(): void {
   if (state.started) return;
   state.started = true;
@@ -146,7 +140,6 @@ export function startBackupScheduler(): void {
   console.log("[deplo] backup scheduler started");
 }
 
-// __stopBackupScheduler is test-only: stop the loop, drop the lease, reset the state.
 export async function __stopBackupScheduler(): Promise<void> {
   if (state.timer) clearInterval(state.timer);
   state.timer = null;

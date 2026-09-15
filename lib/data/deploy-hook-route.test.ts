@@ -8,7 +8,6 @@ import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-hook-"));
-// Set BEFORE the module loads, so the hook never reaches for request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -60,8 +59,6 @@ before(async () => {
 });
 
 after(async () => {
-  // The queue re-drains its lane in `startOne`'s finally: give that pass a tick
-  // here, or it fails on a torn-down fixture and re-arms itself on a timer.
   await new Promise((r) => setTimeout(r, 100));
   __resetQueueForTest();
   __resetTestDb();
@@ -157,7 +154,7 @@ test("a bearer that isn't a live token is refused, and says nothing about the ap
 });
 
 test("a valid API token with the wrong URL token deploys nothing", async () => {
-  await hookToken(); // mint one, then present a different secret
+  await hookToken();
   const bearer = await mint(DEPLOYER, TEAM_A, ["deploy_apps"]);
   const res = await post(APP, "wrong-secret", bearer);
   assert.equal(res.status, 404);
@@ -297,8 +294,6 @@ test("the right token and the right permission queue a deploy", async () => {
     DEPLOYER,
     "the deploy names the account behind the token, not just its display name",
   );
-  // Wait for the queue to dispatch it (the stub settles the row), so the fixture
-  // isn't torn down under a pump that would then retry forever.
   for (let i = 0; i < 200; i++) {
     const [row] = await db
       .select({ status: deploymentsTable.status })

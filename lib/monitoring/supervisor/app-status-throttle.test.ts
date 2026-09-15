@@ -20,8 +20,6 @@ import {
 const h = setupSupervisor();
 
 test("NOTHING is written when nothing changed - across many frames and many reconcile windows", async () => {
-  // A reconcile that wrote an unchanged row every frame would put per-resource DB churn back on the stream cadence,
-  // plus an SSE frame to every open dashboard.
   const realNow = Date.now;
   let clock = realNow();
   Date.now = () => clock;
@@ -37,7 +35,6 @@ test("NOTHING is written when nothing changed - across many frames and many reco
     });
     const before = await appRow(h.db, "prj_ok");
 
-    // A full reconcile window per frame, so the guarded UPDATE genuinely RUNS instead of being skipped by the throttle.
     for (let i = 0; i < 6; i++) {
       clock += APP_STATUS_RECONCILE_MS;
       await feed.send(frame([containerStat("prj_ok", "ok-web-1", 5)]));
@@ -99,7 +96,6 @@ test("a corrected App is written and published EXACTLY once, not once per frame"
 });
 
 test("the reconcile runs on its OWN clock, not the frame's", async () => {
-  // Pins the throttle behaviourally: an `error` written between frames waits for a full reconcile window.
   const realNow = Date.now;
   let clock = realNow();
   Date.now = () => clock;
@@ -113,7 +109,6 @@ test("the reconcile runs on its OWN clock, not the frame's", async () => {
       status: "active",
     });
 
-    // Frame 1 consumes the connect-time free reconcile.
     await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
 
     await h.db
@@ -121,7 +116,7 @@ test("the reconcile runs on its OWN clock, not the frame's", async () => {
       .set({ status: "error" })
       .where(eq(appsTable.id, "prj_1"));
 
-    clock += STREAM_INTERVAL_MS; // one cadence - well inside the window
+    clock += STREAM_INTERVAL_MS;
     await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
     assert.equal(
       (await appRow(h.db, "prj_1")).status,

@@ -19,7 +19,6 @@ import { ensureTeamRoles } from "./roles/builtin-roles";
 import { clearNodeGrants } from "./node-grants";
 import { stepUpCode, stepUpPassword } from "./two-factor";
 
-// Handing a TEAM to somebody else - the only write of `teams.founder_user_id` after creation.
 export async function transferTeamOwnership(input: {
   userId: string;
   password: string;
@@ -32,11 +31,9 @@ export async function transferTeamOwnership(input: {
   if (input.userId === actingUserId)
     throw new Error("You already own this team");
 
-  // Step up BEFORE the transaction: a consumed recovery code is not rolled back.
   await stepUpPassword(input.password);
   if (actor.twoFactorEnabled) await stepUpCode(input.code ?? "");
 
-  // Seeded outside the transaction: ensureTeamRoles commits its own inserts.
   const db = getDb();
   const ownerRoleId = (await ensureTeamRoles(db, teamId)).get("owner") ?? null;
   const ownerCapabilities = capabilitiesForRole("owner");
@@ -51,8 +48,6 @@ export async function transferTeamOwnership(input: {
         .limit(1)
     )[0];
     if (!team) throw new Error("Team not found");
-    // A legacy team whose founder column was never backfilled has no crown to hand
-    // over, and inventing one here would let any owner claim it.
     if (team.founderUserId === null)
       throw new Error("This team has no primary owner to transfer.");
     if (team.founderUserId !== actingUserId)
@@ -111,7 +106,6 @@ export async function transferTeamOwnership(input: {
     return target.username;
   });
 
-  // Outside the transaction, per the recordActivity rule (own connection).
   await recordActivity(
     "member",
     `Transferred ownership of this team to @${targetUsername}`,

@@ -13,12 +13,8 @@ import {
   currentSessionId,
 } from "./auth/current-user";
 
-// Where "a passkey counts as two factors" is decided (ADR-0024).
-
-// The condition "this account holds a passkey that works on THIS panel", as a SQL fragment.
 export const holdsAPasskey = (userIdColumn: typeof usersTable.id) => {
   const rp = passkeyRelyingParty();
-  // Not "no rows matched": with no relying party no passkey works here at all.
   if (!rp) return sql<boolean>`false`;
   return exists(
     getDb()
@@ -33,7 +29,6 @@ export const holdsAPasskey = (userIdColumn: typeof usersTable.id) => {
   );
 };
 
-// Whether `userId` holds a passkey that can sign in on this panel.
 export const userHasPasskey = cache(
   async (userId: string): Promise<boolean> => {
     const rp = passkeyRelyingParty();
@@ -49,9 +44,7 @@ export const userHasPasskey = cache(
   },
 );
 
-// Whether a passkey may count as this REQUEST's second factor; the account-level question is holdsAPasskey.
 export async function passkeyCountsForThisRequest(): Promise<boolean> {
-  // The session ID separates "no sign-in to describe" from "a sign-in that presented something else".
   const sessionId = await currentSessionId();
   if (!sessionId) return true;
   return (await currentSessionAuthMethod()) === "passkey";

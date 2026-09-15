@@ -6,7 +6,6 @@ import { join } from "node:path";
 
 import { bash, shellFn } from "./install-script-test-helpers";
 
-// Four containers, two ALREADY STOPPED; the two core ones answer to a name AND to an id, which is what used to be counted twice.
 const DOCKER_STUB = `#!/bin/bash
 S="$STUB_STATE"
 NAMES="oldplatform oldplatform-db app-abc worker-xyz"
@@ -86,9 +85,7 @@ done`,
   await rm(dir, { recursive: true, force: true });
 
   const lines = out.trim().split("\n");
-  // Six entries for four containers is the name/id double count.
   assert.equal(lines[0], "ids=4");
-  // Two of them were already down; recording only the running ones loses their policy.
   assert.equal(lines[1], "recorded=4");
   assert.deepEqual(
     lines.slice(2),
@@ -97,7 +94,6 @@ done`,
   );
 });
 
-// Every docker call the removal makes, in order.
 const REMOVE_STUB = `#!/bin/bash
 printf '%s\\n' "$*" >> "$STUB_LOG"
 cmd="$1"; shift
@@ -123,7 +119,6 @@ const REMOVAL_CASES = [
   {
     platform: "dokploy",
     label: "Dokploy",
-    // https://docs.dokploy.com/docs/core/uninstall - the swarm is the one thing a container sweep can never reach, and `ingress` only goes with it.
     expected: [
       "service rm dokploy dokploy-postgres",
       "swarm leave --force",
@@ -136,7 +131,6 @@ const REMOVAL_CASES = [
     platform: "coolify",
     label: "Coolify",
     expected: ["volume rm -f coolify-db coolify-redis", "network rm coolify"],
-    // Its installer writes a key into root's authorized_keys, so leaving it there leaves a removed panel with root on the box.
     key: true,
   },
 ];
@@ -171,7 +165,6 @@ for (const c of REMOVAL_CASES) {
       )
     ).join("\n");
 
-    // `unset HOME`: the removal runs from a systemd unit, which sets none, and a `set -u` script reading it there ends at that line.
     await bash(
       `set -euo pipefail
 export STUB_LOG=${log}
@@ -195,12 +188,10 @@ foreign_remove`,
         calls.includes(want),
         `missing "${want}": ${calls.join(" | ")}`,
       );
-    // Their uninstall prunes the whole daemon; here that is every app just migrated.
     assert.ok(
       !calls.some((x) => x.includes("prune")),
       "the removal must never prune the daemon",
     );
-    // An app's volume is the user's data: the removal never touches one.
     assert.ok(!calls.some((x) => x.includes("foreign-data")));
     assert.ok(!calls.some((x) => x.includes("deplo-keep")));
     assert.ok(!calls.some((x) => x.includes("myapp:latest")));

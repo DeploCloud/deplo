@@ -3,8 +3,6 @@ import type { GitCredential, GitProviderApi } from "./types";
 
 const UA = "deplo";
 const MAX_FILE_BYTES = 1_000_000;
-// 500 repos is far past what a picker with a search box is useful for, and every
-// page is a round trip the user waits on.
 export const PER_PAGE = 100;
 export const REPO_PAGES = 5;
 
@@ -13,10 +11,8 @@ function url(c: GitCredential, path: string): string {
   return `${origin.replace(/\/+$/, "")}${path}`;
 }
 
-// owner/name, the only repo identifier any of these APIs is given.
 const FULL_NAME_RE = /^[\w.~-]+(?:\/[\w.~-]+)+$/;
 
-// assertFullName - refuse anything that is not an owner/name pair.
 export function assertFullName(fullName: string): string {
   if (!FULL_NAME_RE.test(fullName)) throw new Error("Invalid repository");
   return fullName;
@@ -24,12 +20,7 @@ export function assertFullName(fullName: string): string {
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
-// The base URL is SSRF-checked once, when the connection is saved; a 302 is the
-// way out of that check, so `redirect: "manual"` closes it - what
-// lib/outbound-url.ts documents every dialer as doing.
-//
 // ponytail: a redirect is refused, not re-validated. If a host is ever found that
-// legitimately redirects, put each `Location` through the outbound guard instead.
 function timedFetch(target: string, init: RequestInit): Promise<Response> {
   return fetch(target, {
     ...init,
@@ -38,7 +29,6 @@ function timedFetch(target: string, init: RequestInit): Promise<Response> {
   });
 }
 
-// call - one request against a provider, with its auth header and a readable failure.
 export async function call(
   c: GitCredential,
   path: string,
@@ -55,9 +45,6 @@ export async function call(
       ...(rest.headers as Record<string, string> | undefined),
     },
   });
-  // A redirect is refused rather than followed (see timedFetch), and the everyday
-  // cause is not an attack: an `http://` address in front of a proxy that sends
-  // everything to https.
   if (res.status >= 300 && res.status < 400) {
     const to = res.headers.get("location") ?? "";
     throw new Error(
@@ -76,7 +63,6 @@ export async function call(
   return res;
 }
 
-// json - `call`, with the response body parsed.
 export async function json<T>(
   c: GitCredential,
   path: string,
@@ -85,8 +71,6 @@ export async function json<T>(
   return (await call(c, path, init)).json() as Promise<T>;
 }
 
-// Bytes rather than text: the same reader feeds favicon detection, and decoding
-// a .ico as UTF-8 would corrupt it.
 async function readCapped(res: Response): Promise<Buffer | null> {
   if (!res.ok) return null;
   const len = Number(res.headers.get("content-length") ?? "0");
@@ -99,7 +83,6 @@ async function readCapped(res: Response): Promise<Buffer | null> {
   return buf;
 }
 
-// fetchRaw - one raw-file response, refusing anything oversized or missing.
 export async function fetchRaw(
   c: GitCredential,
   path: string,
@@ -111,7 +94,6 @@ export async function fetchRaw(
   return readCapped(res);
 }
 
-// readProviderText - UTF-8 contents of one file, or null when it cannot be read.
 export async function readProviderText(
   api: GitProviderApi,
   c: GitCredential,

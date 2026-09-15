@@ -11,8 +11,6 @@ import { FacetClearRow, FacetOptionList, toggleValue } from "./facet-options";
 import { facetSummary, facetTitle } from "./facet-summary";
 import type { EnvFacet } from "./types";
 
-// FacetMenu is the default facet control: a button stating the filter in its own
-// words - "Modified by: Ada" / "Modified by · 3" - that opens the multi-select menu.
 export function FacetMenu<T>({
   facet,
   values,

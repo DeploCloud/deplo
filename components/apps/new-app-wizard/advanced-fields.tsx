@@ -33,10 +33,8 @@ import { serverLabel } from "@/lib/utils";
 import { ComposeSummary } from "./compose-summary";
 import type { WizardBuildServer, WizardServer } from "./types";
 
-/** The build server picker's "let Deplo choose" row - a Select cannot hold null. */
 const AUTO_BUILD_SERVER = "__auto__";
 
-// WizardAdvanced - everything the first-run path must not have to read: server, variables, build, compose flags.
 export function WizardAdvanced({
   servers,
   serverId,
@@ -153,7 +151,6 @@ export function WizardAdvanced({
 
       {buildsImage && (
         <>
-          {/* No wrapper title: these fields carry their own headings. */}
           <BuildConfigFields
             build={build}
             onBuildChange={onBuildChange}
@@ -198,7 +195,6 @@ export function WizardAdvanced({
         </AdvancedGroup>
       )}
 
-      {/* A template's stack is decided; editing it is the expert's door. */}
       {templateCompose && (
         <AdvancedGroup title="Compose">
           <ComposeSummary

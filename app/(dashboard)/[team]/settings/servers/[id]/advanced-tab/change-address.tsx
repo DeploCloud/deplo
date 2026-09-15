@@ -20,7 +20,6 @@ import { BetaChip } from "@/components/shared/beta-chip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "../server-detail-tabs";
 
-// ChangeAddress is the migration verb: the host got a new IP, or the instance moved.
 export function ChangeAddress({ server }: { server: ServerSummary }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -52,7 +51,6 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
         },
       );
       if (!res.ok) {
-        // Shown inline (verbatim) where the "Save anyway" escape sits next to it.
         setRefusal(res.error);
         return;
       }

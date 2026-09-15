@@ -63,7 +63,6 @@ test("a folder created with a parent nests under it (parentId is set)", async ()
       "the child's parentId is the open folder - it nests, not top-level",
     );
   });
-  // Persisted, not just returned.
   const rows = await db
     .select({ id: foldersTable.id, parentId: foldersTable.parentId })
     .from(foldersTable);

@@ -48,7 +48,6 @@ async function clientKey(scope: string): Promise<string> {
   return `${scope}:${ip}`;
 }
 
-// Hashed: the limiter key sits in memory next to a token that is still live.
 async function pendingLoginKey(): Promise<
   { key: string; limit: number; windowMs: number }[]
 > {
@@ -73,7 +72,6 @@ async function pendingLoginEmail(): Promise<string | null> {
     .getAll()
     .find((c) => c.name.endsWith("two_factor") && c.value);
   if (!pending) return null;
-  // A Better Auth signed cookie is `<identifier>.<signature>`, and the identifier never contains a dot.
   const identifier = pending.value.split(".")[0];
   if (!identifier) return null;
   const rows = await getDb()
@@ -140,7 +138,6 @@ const setupSchema = z.object({
     .max(200),
   image: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
   teamImage: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
-  // The installer's setup link. Verified in completeSetup, never here.
   key: z.string().max(200).nullish(),
 });
 
@@ -167,9 +164,7 @@ builder.mutationFields((t) => ({
       const parsed = loginSchema.safeParse(args);
       if (!parsed.success)
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
-      // Resolved BEFORE the limiter, so a username and the address behind it share one bucket.
       const email = await emailForIdentifier(parsed.data.email);
-      // No global bucket: a shared fixed-window counter lets an attacker lock every user out.
       const limited = await checkLimits([
         { key: `login:email:${email}`, limit: 8, windowMs: 60_000 },
         { key: await clientKey("login"), limit: 30, windowMs: 60_000 },
@@ -197,7 +192,6 @@ builder.mutationFields((t) => ({
       const code = args.code.trim();
       if (!code) throw new Error("Enter the code from your authenticator app");
       const who = await pendingLoginEmail();
-      // Tighter than the password limiter: a 6-digit code is guessable in a way a password is not.
       const limited = await checkLimits([
         { key: await clientKey("2fa"), limit: 5, windowMs: 15 * 60_000 },
         ...(await pendingLoginKey()),
@@ -241,7 +235,6 @@ builder.mutationFields((t) => ({
       "Finish a passkey sign-in with what the authenticator produced. Sets the session cookie.",
     args: { response: t.arg({ type: "JSON", required: true }) },
     resolve: async (_r, { response }) => {
-      // No per-account bucket on purpose: an assertion is a signature, not six digits to guess.
       const limited = await checkLimits([
         {
           key: await clientKey("passkey-verify"),
@@ -307,7 +300,6 @@ builder.mutationFields((t) => ({
         h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
         h.get("x-real-ip") ||
         "local";
-      // Through `checkLimits` so both buckets always count: the `||` short-circuited.
       const limited = await checkLimits([
         { key: `register:ip:${ip}`, limit: 10, windowMs: 60_000 },
         {
@@ -322,7 +314,6 @@ builder.mutationFields((t) => ({
       const usernameError = validateUsername(username);
       if (usernameError) throw new Error(usernameError);
 
-      // The team handling is dictated by the link's stored mode, NEVER the client.
       const info = await getRegistrationLinkInfo(parsed.data.token);
       if (!info.valid)
         throw new Error("This registration link is no longer valid");

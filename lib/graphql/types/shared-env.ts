@@ -155,7 +155,6 @@ const AppSharedVarRef = builder
         description:
           "The most specific covering scope: teamWide | environment | project.",
       }),
-      // No `createdBy`: the data layer already falls back to the creator, so this is the single "Modified by".
       updatedBy: t.field({
         type: VarAuthorRef,
         nullable: true,
@@ -174,7 +173,6 @@ const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
     key: t.string({ required: true }),
     value: t.string({ required: true }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
-    // Omit ⇒ every deploy runtime (the UI no longer asks); see UpsertEnvInput.
     targets: t.field({ type: [EnvTargetEnum], required: false }),
     teamIds: t.idList({
       required: true,
@@ -232,7 +230,6 @@ builder.mutationFields((t) => ({
         projectIds: input.projectIds,
         appIds: input.appIds ?? undefined,
       });
-      // Reload by the id the data fn minted - keys are deliberately NOT unique per team.
       const saved = (await listSharedVars()).find((v) => v.id === id);
       if (!saved) throw new Error("Shared variable not found");
       return saved;

@@ -7,8 +7,6 @@ import { requireAuth } from "../auth/better-auth";
 import { requirePersonalSession } from "../auth/request-context";
 import { describeUserAgent, type DeviceKind } from "../user-agent";
 
-// Security: `session.token` never leaves this module.
-
 export interface UserSessionDTO {
   id: string;
   current: boolean;
@@ -37,7 +35,6 @@ async function liveSessions(userId: string) {
     );
 }
 
-// listMySessions returns every live session of the current user, most recently seen first.
 export const listMySessions = cache(async (): Promise<UserSessionDTO[]> => {
   requirePersonalSession("your signed-in devices");
   const user = await assertUser();
@@ -51,7 +48,6 @@ export const listMySessions = cache(async (): Promise<UserSessionDTO[]> => {
       device,
       browser,
       os,
-      // Better Auth writes "" (not null) when it could not determine the address.
       ipAddress: s.ipAddress || null,
       lastSeenAt: new Date(s.updatedAt).toISOString(),
       createdAt: new Date(s.createdAt).toISOString(),
@@ -60,7 +56,6 @@ export const listMySessions = cache(async (): Promise<UserSessionDTO[]> => {
   });
 });
 
-// revokeSession ends one session by id, answering the same "no longer signed in" for an id that never existed.
 export async function revokeSession(id: string): Promise<void> {
   requirePersonalSession("your signed-in devices");
   const user = await assertUser();
@@ -74,7 +69,6 @@ export async function revokeSession(id: string): Promise<void> {
   await (await adapter()).deleteSession(target.token);
 }
 
-// revokeOtherSessions ends every session except the one making the request, and reports how many live ones went.
 export async function revokeOtherSessions(): Promise<number> {
   requirePersonalSession("your signed-in devices");
   const user = await assertUser();

@@ -158,7 +158,6 @@ export function GitIcon({ className }: { className?: string }) {
   );
 }
 
-// GitProviderIcon - the mark of a git host, by provider id.
 export function GitProviderIcon({
   provider,
   className,
@@ -187,7 +186,6 @@ const GIT_BRAND: Record<string, { bg: string; fg: string }> = {
   git: { bg: "#F05032", fg: "#FFFFFF" },
 };
 
-// GitProviderMark - a git host's mark on its own brand colour.
 export function GitProviderMark({
   provider,
   className,
@@ -204,7 +202,6 @@ export function GitProviderMark({
       )}
       style={{ backgroundColor: brand.bg, color: brand.fg }}
     >
-      {/* Half the tile: a menu item sizes any icon inside it with a descendant selector. */}
       <GitProviderIcon provider={provider} className="h-1/2! w-1/2!" />
     </span>
   );
@@ -254,7 +251,6 @@ export function RegistryMark({
       )}
       style={brand ? { backgroundColor: brand.bg, color: brand.fg } : undefined}
     >
-      {/* Half the tile: a menu item sizes any icon inside it with a descendant selector. */}
       <Icon className="h-1/2! w-1/2!" />
     </span>
   );

@@ -15,16 +15,11 @@ import { composeServiceNames } from "../../deploy/compose-stack/compose-read";
 export type JobRow = typeof cronJobsTable.$inferSelect;
 export type RunRow = typeof cronRunsTable.$inferSelect;
 
-// CronTarget is a job plus the bits of its target the runner needs to reach a container.
 export interface CronTarget {
   serverId: string;
-  // The `deplo.project` label: the app's or database's id.
   projectId: string;
-  // The stack slug the agent lists instances for (a database's is its host).
   slug: string;
-  // For an app, its own compose service - the default container to pick.
   primaryService: string;
-  // Where the UI shows this job, for the alert link.
   path: string;
 }
 
@@ -33,9 +28,6 @@ export interface SchedulableJob {
   target: CronTarget;
 }
 
-// primaryServiceOf picks the container a job runs in when it names none: the routed
-// service, else the first the compose file declares, else the slug. Never "whichever
-// the host listed first".
 export function primaryServiceOf(app: {
   slug: string;
   compose: string | null;
@@ -67,7 +59,6 @@ function targetOf(
     return {
       serverId: db.serverId,
       projectId: job.databaseId,
-      // A database is a single-container stack whose container_name IS its host.
       slug: db.host,
       primaryService: db.host,
       path: `/storage/databases/${job.databaseId}/cron-jobs`,
@@ -76,8 +67,6 @@ function targetOf(
   return null;
 }
 
-// routedServiceSql is the service an app's domain routes to, the primary domain first -
-// a subquery, so the page and the scheduler read the same rule.
 export const routedServiceSql = (appId: typeof appsTable.id) =>
   sql<string | null>`(select ${domainsTable.service} from ${domainsTable}
     where ${domainsTable.appId} = ${appId} and ${domainsTable.service} is not null
@@ -118,13 +107,10 @@ function assembleTarget(r: {
   );
 }
 
-// listSchedulableJobs returns every job the scheduler may fire: enabled, on a target
-// whose own cron switch is on - which is what makes that switch a real pause button.
 export async function listSchedulableJobs(): Promise<SchedulableJob[]> {
   const rows = await getDb()
     .select(targetColumns)
     .from(cronJobsTable)
-    // Defense in depth: a cron_job only resolves a target in the SAME team as the job.
     .leftJoin(
       appsTable,
       and(
@@ -156,14 +142,12 @@ export async function listSchedulableJobs(): Promise<SchedulableJob[]> {
   return out;
 }
 
-// InFlightRun is one in-flight run, with everything needed to poll or relaunch it.
 export interface InFlightRun {
   run: RunRow;
   job: JobRow;
   target: CronTarget;
 }
 
-// listInFlightRuns returns every `running` run - the reaper's whole working set.
 export async function listInFlightRuns(): Promise<InFlightRun[]> {
   const rows = await getDb()
     .select({ run: cronRunsTable, ...targetColumns })
@@ -180,14 +164,12 @@ export async function listInFlightRuns(): Promise<InFlightRun[]> {
   return out;
 }
 
-// loadSchedulableJob loads one job with its target, for the manual "Run now" path.
 export async function loadSchedulableJob(
   jobId: string,
 ): Promise<SchedulableJob | null> {
   const rows = await getDb()
     .select(targetColumns)
     .from(cronJobsTable)
-    // Defense in depth: a cron_job only resolves a target in the SAME team as the job.
     .leftJoin(
       appsTable,
       and(
@@ -210,7 +192,6 @@ export async function loadSchedulableJob(
   return target ? { job: r.job, target } : null;
 }
 
-// loadInFlightRun returns one in-flight run by id, for the cancel path.
 export async function loadInFlightRun(
   runId: string,
 ): Promise<InFlightRun | null> {

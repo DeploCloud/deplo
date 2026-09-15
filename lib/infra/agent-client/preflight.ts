@@ -27,8 +27,6 @@ import {
   METRICS_STREAM_CAPABILITY,
 } from "./hello-capabilities";
 
-// serverSupports is best-effort: unreachable, too old or simply slow all answer
-// `false`, because every caller is deciding whether to WARN, never to proceed.
 export async function serverSupports(
   serverId: string,
   capability: string,
@@ -46,8 +44,6 @@ export async function serverSupports(
   }
 }
 
-// agentPreflight confirms the agent answers Hello before a deploy, contract version
-// included. Throws a clear "server unreachable" error, never hangs.
 export async function agentPreflight(serverId: string): Promise<HelloResponse> {
   const conn = await connectAgent(serverId);
   try {
@@ -57,8 +53,6 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
         `agent speaks contract ${resp.contractVersion}, control plane speaks V1`,
       );
     }
-    // Heartbeat cache: best-effort, behind the live-read. Also refresh the
-    // server's traefikEnabled from this live Hello so the badge reflects reality.
     try {
       void markServerSeen(
         serverId,
@@ -68,16 +62,13 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
         undefined,
         resp.hostArch,
       );
-    } catch {
-      /* unknown id: no row to touch */
-    }
+    } catch {}
     return resp;
   } finally {
     conn.close();
   }
 }
 
-// connectCronAgent opens a connection to an agent that can run cron jobs, or throws.
 export async function connectCronAgent(
   serverId: string,
 ): Promise<AgentConnection> {
@@ -94,8 +85,6 @@ export async function connectCronAgent(
   return conn;
 }
 
-// connectMetricsStreamAgent opens a connection for the telemetry stream,
-// preflighting the capability.
 export async function connectMetricsStreamAgent(
   serverId: string,
 ): Promise<{ conn: AgentConnection; hello: HelloResponse }> {
@@ -114,25 +103,13 @@ export async function connectMetricsStreamAgent(
   }
 }
 
-// connectBackupAgent is the entry point every real backup/restore path uses: it
-// preflights the backup capabilities and returns the LIVE connection to close().
 export async function connectBackupAgent(
   serverId: string,
-  /** Also require `"backup-store"` - set when the artifact lives on THIS host's
-   *  disk. Split from the base check so an agent that can dump to S3 but cannot
-   *  hold artifacts fails the SECOND thing with a message that names it. */
   opts: {
     store?: boolean;
     encryptedS3?: boolean;
-    /** This destination carries advanced S3 flags - warn if they will be
-     *  dropped, but never refuse. */
     s3Args?: boolean;
-    /** Also require `"backup-s3-read"` - set when the artifact is to be streamed
-     *  back OUT of a bucket, which only an agent with that RPC arm can do. */
     s3Read?: boolean;
-    /** Also require `"backup-untrusted-config"` - set when the artifact came from
-     *  outside the fleet, so it is only ever handed to an agent that will refuse
-     *  to take its stack configuration. */
     untrustedConfig?: boolean;
   } = {},
 ): Promise<AgentConnection> {
@@ -151,9 +128,6 @@ export async function connectBackupAgent(
           `Update the agent on this server, then try again.`,
       );
     }
-    // FAIL rather than downgrade. An agent without this ignores the recipient and
-    // writes the artifact - the app's entire decrypted env included - to the bucket in
-    // plaintext, under a key whose `.age` suffix says otherwise.
     if (
       opts.encryptedS3 &&
       !hello.capabilities?.includes(BACKUP_ENCRYPT_S3_CAPABILITY)
@@ -183,9 +157,6 @@ export async function connectBackupAgent(
           `Update the agent on this server, then try again.`,
       );
     }
-    // Said out loud, not swallowed: the flags exist because a store misbehaves without
-    // them, so an operator whose backup is failing needs to know this host is not
-    // applying them.
     if (
       opts.s3Args &&
       !hello.capabilities?.includes(BACKUP_S3_ARGS_CAPABILITY)

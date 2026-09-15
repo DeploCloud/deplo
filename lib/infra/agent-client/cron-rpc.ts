@@ -10,8 +10,6 @@ import { CRON_POLL_TIMEOUT_MS, CRON_START_TIMEOUT_MS } from "./deadlines";
 import { toAgentError } from "./errors";
 import type { AgentChannel } from "./mtls-channel";
 
-// cronRpc - one scheduled attempt's lifecycle in the agent (ADR-0018): spawn,
-// poll, kill.
 export function cronRpc(
   channel: AgentChannel,
 ): Pick<AgentConnection, "startJob" | "pollJob" | "killJob"> {

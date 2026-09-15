@@ -41,7 +41,6 @@ const as = <T>(
   fn: () => Promise<T>,
 ): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
-// `user:$2b$<cost>$<salt+digest>` - the bcrypt htpasswd line Traefik parses.
 const HTPASSWD_LINE = /^[^\s:,]+:\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 
 before(async () => {
@@ -130,7 +129,6 @@ test("a password that cannot be decrypted fails the render (never fails open)", 
     const u = await addBasicAuthUser(APP_A, "alice", "Hunter2!x");
     return u.id;
   });
-  // A rotated DEPLO_SECRET: decryptSecret's "" would hash into a valid EMPTY password.
   await db
     .update(appBasicAuthUsers)
     .set({ passwordEnc: "not-a-valid-ciphertext" })
@@ -246,7 +244,6 @@ test("a credential from before authorship tracking is never attributed to anyone
   const added = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
-  // Exactly what migration 0045 leaves behind: it does NOT backfill the authors.
   await db
     .update(appBasicAuthUsers)
     .set({ createdByUserId: null, updatedByUserId: null })
@@ -262,7 +259,6 @@ test("no DTO ever carries the password - the reveal is the only way to it", asyn
     addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
   const [listed] = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
-  // Field-by-field, not a substring scan: a new column must not join the DTO by accident.
   const EXPECTED = [
     "appId",
     "createdAt",
@@ -310,7 +306,6 @@ test("a password that cannot be decrypted fails the reveal (never returns empty)
   const u = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
-  // decryptSecret fails closed to "", and showing that as "the password" would be a lie.
   await db
     .update(appBasicAuthUsers)
     .set({ passwordEnc: "not-a-valid-ciphertext" })
@@ -322,7 +317,6 @@ test("a password that cannot be decrypted fails the reveal (never returns empty)
   );
 });
 
-// An imported password is already in use and protecting a public URL; refusing it removes the protection.
 test("an imported credential skips the password policy and is flagged weak", async () => {
   const weak = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "carried", "coderpass123", { imported: true }),

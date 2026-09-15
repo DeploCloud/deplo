@@ -14,8 +14,6 @@ import { cn } from "@/lib/utils";
 import { STATUS_LABELS } from "./deployment-status";
 import { ALL, type DeploymentFilters } from "./use-deployment-filters";
 
-// DeploymentFilterBar is the search box, the narrowers and the Created sort, on
-// one wrapping row.
 export function DeploymentFilterBar({
   filters,
 }: {
@@ -127,8 +125,6 @@ export function DeploymentFilterBar({
             className="w-[205px]"
             aria-label="Filter by created date"
           >
-            {/* Same `flex!` trick as the sort trigger below - see the note there
-                for why the plain class loses to `line-clamp-1`. */}
             <span className="flex! items-center gap-2">
               <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
               <SelectValue />
@@ -162,9 +158,6 @@ export function DeploymentFilterBar({
                 className="w-[150px]"
                 aria-label="Sort by created date"
               >
-                {/* `flex!` is load-bearing: SelectTrigger's `[&>span]:line-clamp-1`
-                    sets `display:-webkit-box` on direct-child spans and outranks a
-                    plain `flex`, stacking the icon above the value. */}
                 <span className="flex! items-center gap-2">
                   <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
                   <SelectValue />

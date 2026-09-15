@@ -1,13 +1,11 @@
 import { FRAMEWORKS, type FrameworkId } from "./framework-catalog";
 
-// PackageManifest - the `package.json` fields recognition reads; all optional, it is arbitrary user JSON.
 export interface PackageManifest {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   scripts?: Record<string, string>;
 }
 
-// parsePackageManifest - null unless the payload is a JSON object; `null` and `[]` also parse, so the shape is checked.
 export function parsePackageManifest(text: string): PackageManifest | null {
   let parsed: unknown;
   try {
@@ -21,7 +19,6 @@ export function parsePackageManifest(text: string): PackageManifest | null {
   return parsed as PackageManifest;
 }
 
-// declaredDependencies - the direct names from `dependencies` plus `devDependencies`, where a framework always sits.
 export function declaredDependencies(
   manifest: PackageManifest | null | undefined,
 ): Set<string> {
@@ -33,7 +30,6 @@ export function declaredDependencies(
   return names;
 }
 
-// rootFileNames - the file names sitting directly in the build root, from a repo-root relative path list.
 export function rootFileNames(
   paths: readonly string[],
   rootRel = "",
@@ -56,10 +52,8 @@ export function rootFileNames(
   return out;
 }
 
-// PackageManager - the package managers a lockfile at the build root can name.
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 
-// Most specific first, the same priority the generated Dockerfile's install step uses.
 const LOCKFILES: readonly (readonly [string, PackageManager])[] = [
   ["bun.lock", "bun"],
   ["bun.lockb", "bun"],
@@ -67,7 +61,6 @@ const LOCKFILES: readonly (readonly [string, PackageManager])[] = [
   ["yarn.lock", "yarn"],
 ];
 
-// packageManagerFrom - the manager named by the lockfile, npm when nothing says otherwise.
 export function packageManagerFrom(
   rootFiles: readonly string[],
 ): PackageManager {
@@ -76,15 +69,12 @@ export function packageManagerFrom(
   return "npm";
 }
 
-// DetectedCommands - the commands a repository declares for itself, null where it declares none.
 export interface DetectedCommands {
   buildCommand: string | null;
 }
 
 const NO_COMMANDS: DetectedCommands = { buildCommand: null };
 
-// detectCommands - the build command a repo declares in its own `package.json`, never one invented from the framework.
-// No start command on purpose: a repo's `start` is as often the dev server as the production one.
 export function detectCommands(
   rootFiles: readonly string[],
   manifest: PackageManifest | null | undefined,
@@ -105,29 +95,24 @@ function runScript(
 ): string | null {
   const body = scripts[name];
   if (typeof body !== "string" || body.trim() === "") return null;
-  // `yarn build` is how yarn spells it; the other three take `run`.
   return manager === "yarn" ? `yarn ${name}` : `${manager} run ${name}`;
 }
 
-// frameworkDefaults - what a framework needs that no builder supplies, when the answer lives in its dependencies.
 export function frameworkDefaults(
   framework: FrameworkId | null,
   deps: ReadonlySet<string>,
 ): { staticOutput: string | null; startCommand: string | null } {
-  // A SvelteKit build is whatever its adapter emits, and a builder only handles adapter-auto.
   if (framework === "sveltekit") {
     if (deps.has("@sveltejs/adapter-static"))
       return { staticOutput: "build", startCommand: null };
     if (deps.has("@sveltejs/adapter-node"))
       return { staticOutput: null, startCommand: "node build" };
   }
-  // `node ace build` emits a whole app under build/, so the repo's own entry only runs from inside it.
   if (framework === "adonisjs")
     return { staticOutput: null, startCommand: "node build/bin/server.js" };
   return { staticOutput: null, startCommand: null };
 }
 
-// angularOutputDir - read from `angular.json`, because the path carries the project's own name.
 export function angularOutputDir(text: string): string | null {
   let parsed: unknown;
   try {
@@ -152,7 +137,6 @@ export function angularOutputDir(text: string): string | null {
     architect?: Record<string, BuildTarget>;
     targets?: Record<string, BuildTarget>;
   };
-  // `architect` is the pre-17 spelling of `targets`; both still ship.
   const build = project?.targets?.build ?? project?.architect?.build;
   if (!build) return null;
 
@@ -163,7 +147,6 @@ export function angularOutputDir(text: string): string | null {
       : typeof options.outputPath?.base === "string"
         ? options.outputPath.base
         : `dist/${name}`;
-  // The application builder splits its output into browser/ and server/.
   const application =
     typeof build.builder === "string" && build.builder.endsWith(":application");
   const dir = application ? `${outputPath}/browser` : outputPath;
@@ -175,7 +158,6 @@ interface BuildTarget {
   options?: { outputPath?: string | { base?: string }; browser?: string };
 }
 
-// detectFramework - the framework backing a build root, or null when nothing in the registry matches.
 export function detectFramework(
   rootFiles: readonly string[],
   manifest: PackageManifest | null | undefined,

@@ -4,8 +4,6 @@ import assert from "node:assert/strict";
 import { buildComposeStack } from "./render";
 import { buildDoc, labelsOf, networksOf, route } from "./stack-test-helpers";
 
-// `network_mode` and `networks` are mutually exclusive and `docker compose up` refuses the
-// WHOLE project, so one host-network container would stop every other service in the stack.
 test("a network_mode service is left alone: no networks key, no router", () => {
   const doc = buildDoc(
     `

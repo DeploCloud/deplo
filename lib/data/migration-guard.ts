@@ -10,7 +10,6 @@ import {
   projects as projectsTable,
 } from "../db/schema/control-plane/projects";
 
-// Its own store rather than a field on the identity: the cookie path installs none.
 const STORE_KEY = Symbol.for("deplo.migration-context.als");
 const g = globalThis as unknown as {
   [STORE_KEY]?: AsyncLocalStorage<true>;
@@ -18,17 +17,14 @@ const g = globalThis as unknown as {
 const store: AsyncLocalStorage<true> = (g[STORE_KEY] ??=
   new AsyncLocalStorage<true>());
 
-// runAsMigration runs the import's own writes, exempt from the marker they set.
 export function runAsMigration<T>(fn: () => T): T {
   return store.run(true, fn);
 }
 
-// inMigration is true inside runAsMigration.
 export function inMigration(): boolean {
   return store.getStore() === true;
 }
 
-// assertNotMigrating is THE refusal, at every gate guarding a row an import can create.
 export function assertNotMigrating(
   what: string,
   name: string,
@@ -42,7 +38,6 @@ export function assertNotMigrating(
   );
 }
 
-// assertContainerNotMigrating is the same refusal for a CONTAINER, which needs a read.
 export async function assertContainerNotMigrating(
   kind: "project" | "environment",
   id: string,

@@ -93,7 +93,6 @@ beforeEach(async () => {
       },
     ],
   });
-  // RFC 5737 TEST-NET-1 and unprovisioned, so nothing here dials a real network.
   await seedServerRow(db, {
     id: SERVER,
     name: "remote-1",
@@ -174,7 +173,6 @@ test("an expired certificate is refused before it reaches the host", async () =>
 });
 
 test("a valid pair passes validation and only then dials the host", async () => {
-  // The dial is what fails here, which is the proof the pair was accepted.
   await assert.rejects(
     () =>
       asAdmin(() =>
@@ -218,7 +216,6 @@ test("a certificate dated in the future is refused, like an expired one", () => 
 });
 
 test("a chain pasted upside down says so, instead of blaming the key", () => {
-  // Traefik serves the FIRST certificate in the file, so the key really does not match it.
   return assert.rejects(
     () =>
       asAdmin(() =>
@@ -231,8 +228,6 @@ test("a chain pasted upside down says so, instead of blaming the key", () => {
   );
 });
 
-// Exact-domain equality was not enough: renewing a certificate after adding a hostname left
-// BOTH on the host, and Traefik answers a request for a shared name with either of them.
 test("supersedes: a certificate replaces one whose every domain it covers", () => {
   const installed = (domains: string[]): ServerCertificate => ({
     id: "x",

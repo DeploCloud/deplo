@@ -28,8 +28,6 @@ export async function listDeployments(filter?: {
   appId?: string;
   environment?: DeploymentEnvironment;
   status?: Deployment["status"];
-  // Bounds the nested GraphQL fan-out (App.deployments) so a small query can't
-  // force loading every deployment.
   limit?: number;
 }): Promise<
   (Deployment & {
@@ -42,8 +40,6 @@ export async function listDeployments(filter?: {
     serverId: string | null;
     serverName: string | null;
     buildServerName: string | null;
-    // Decided HERE, never in the UI: whether an image is still on the host is a
-    // server fact, and a client re-deriving it would drift from the gate.
     canRollback: boolean;
     appMigrating: boolean;
   })[]
@@ -70,8 +66,6 @@ export async function listDeployments(filter?: {
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
-  // A deployment names its app, its commit and its URL, so an app the caller
-  // can't reach (one inside a folder they can't see) must not appear here either.
   const reach = await appCapabilitiesForTeam(
     teamId,
     scopedApps.map((p) => ({
@@ -81,7 +75,6 @@ export async function listDeployments(filter?: {
       environmentId: p.environmentId ?? null,
     })),
   );
-  // A narrowed principal is NOT exempt.
   const teamApps = scopedApps.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);
   const byId = new Map(teamApps.map((p) => [p.id, p] as const));
   const appIds = filter?.appId
@@ -96,7 +89,6 @@ export async function listDeployments(filter?: {
     .from(deploymentsTable)
     .where(inArray(deploymentsTable.appId, appIds))
     .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq));
-  // A page, never the whole history: every row can carry its own log.
   const rows = await base.limit(Math.min(filter?.limit ?? 200, 1000));
 
   const serverIds = [
@@ -179,8 +171,6 @@ export async function getDeployment(
   const dep = await loadDeployment(id);
   if (!dep) return null;
   if (!(await appInTeam(dep.appId, teamId))) return null;
-  // Same answer for "no such deployment" and "not yours", so neither can be told
-  // apart. A narrowed principal is not exempt, exactly as in `listDeployments`.
   if ((await appCapabilities(dep.appId)).length === 0) return null;
   const creators = await loadUserIdentities([dep.creatorUserId]);
   return {
@@ -190,7 +180,6 @@ export async function getDeployment(
   };
 }
 
-// isFirstDeployment says whether this is the app's first build ever.
 export async function isFirstDeployment(dep: Deployment): Promise<boolean> {
   const [oldest] = await getDb()
     .select({ id: deploymentsTable.id })
@@ -201,7 +190,6 @@ export async function isFirstDeployment(dep: Deployment): Promise<boolean> {
   return oldest?.id === dep.id;
 }
 
-// countActiveDeploymentsForTeam counts queued/building deployments one member can reach.
 export async function countActiveDeploymentsForTeam(
   teamId: string,
   userId: string,
@@ -217,7 +205,6 @@ export async function countActiveDeploymentsForTeam(
         inArray(deploymentsTable.status, IN_PROGRESS),
       ),
     );
-  // One reachability answer per DISTINCT app - two builds of one app ask once.
   const reachable = new Map<string, boolean>();
   let count = 0;
   for (const row of rows) {

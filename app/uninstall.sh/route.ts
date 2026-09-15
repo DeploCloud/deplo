@@ -1,6 +1,5 @@
 import { renderUninstallScript } from "@/lib/agent/uninstall-script";
 
-// GET serves the uninstaller: a dry run unless `--yes`, and no data deleted without `--purge-data` / `--purge-backups`.
 export async function GET() {
   const script = await renderUninstallScript();
   return new Response(script, {

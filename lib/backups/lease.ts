@@ -5,28 +5,21 @@ import { hostname } from "node:os";
 
 import { getPool, isPostgresEnabled } from "../db/pg";
 
-// LEASE_STALE_MS - a lease is reclaimable once its heartbeat is older than this.
 export const LEASE_STALE_MS = 2 * 60 * 60 * 1000;
 
-// BACKUP_SCHEDULER_LEASE - the scheduler's lease name (one row in scheduler_lease).
 export const BACKUP_SCHEDULER_LEASE = "backup-scheduler";
 
-// DOCKER_CLEANUP_LEASE - the Docker-cleanup scheduler's lease name.
 export const DOCKER_CLEANUP_LEASE = "docker-cleanup-scheduler";
 
-// PREVIEW_REAPER_LEASE - the pull request preview reaper's lease name.
 export const PREVIEW_REAPER_LEASE = "preview-reaper";
 
-// CRON_SCHEDULER_LEASE - the cron scheduler's lease name.
 export const CRON_SCHEDULER_LEASE = "cron-scheduler";
 
-// LeaseRow - the current lease row as seen by a claimant (null = no row yet).
 export interface LeaseRow {
   owner: string;
   heartbeatAt: Date;
 }
 
-// canAcquire - pure CAS decision: can `me` take or keep the lease as of `now`?
 export function canAcquire(
   existing: LeaseRow | null,
   me: string,
@@ -38,7 +31,6 @@ export function canAcquire(
   return now.getTime() - existing.heartbeatAt.getTime() > staleMs;
 }
 
-// ownedByDeadLocalProcess - is this owner a process on THIS host that no longer exists?
 export function ownedByDeadLocalProcess(
   owner: string,
   probe: { host: string; alive: (pid: number) => boolean } = {
@@ -56,7 +48,6 @@ export function ownedByDeadLocalProcess(
 type LocalLeases = Map<string, LeaseRow>;
 const LOCAL_KEY = Symbol.for("deplo.backup.scheduler.lease.local");
 const g = globalThis as unknown as { [LOCAL_KEY]?: LocalLeases };
-// Separate RSC / route-handler module registries would split a module-level Map.
 const localLeases: LocalLeases = (g[LOCAL_KEY] ??= new Map());
 
 function acquireLocal(
@@ -106,7 +97,6 @@ async function releasePostgres(name: string, owner: string): Promise<void> {
   );
 }
 
-// acquireLease - claim or renew `name` for `owner`; true if we hold it after the call.
 export async function acquireLease(
   name: string,
   owner: string,
@@ -132,7 +122,6 @@ export async function acquireLease(
   }
 }
 
-// releaseLease - release `name` if `owner` still holds it. Best-effort; never throws.
 export async function releaseLease(name: string, owner: string): Promise<void> {
   if (!isPostgresEnabled()) {
     releaseLocal(name, owner);
@@ -147,7 +136,6 @@ export async function releaseLease(name: string, owner: string): Promise<void> {
   }
 }
 
-// __resetLocalLeases - test-only: reset the in-process lease map between cases.
 export function __resetLocalLeases(): void {
   localLeases.clear();
 }

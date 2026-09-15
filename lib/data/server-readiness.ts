@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/advanced/server-roles
-
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import { connectAgent } from "../infra/agent-client/connect";
@@ -29,10 +27,8 @@ import { getServerTeamIds } from "./servers/team-access";
 import type { HelloResponse, HostMetrics } from "../agent/gen/agent";
 import type { Server } from "../types/server";
 
-// READINESS_DEADLINE_MS bounds the WHOLE probe: the dial, the Hello and the port/metrics phase.
 export const READINESS_DEADLINE_MS = 12_000;
 
-// READINESS_PHASE_DEADLINE_MS bounds the post-Hello phase; it must sit below the deadline above.
 export const READINESS_PHASE_DEADLINE_MS = 8_000;
 
 class ProbeTimeout extends Error {}
@@ -77,16 +73,13 @@ const NOT_DIALED: DialedProbe = {
   metrics: null,
 };
 
-// checkServerReadiness reports one server's readiness; the gate lives here, in the data layer.
 export async function checkServerReadiness(
   id: string,
 ): Promise<ReadinessReport> {
   await requireInstanceAdmin();
 
   const server = await getServerById(id);
-  // The same message checkServerHealth throws, so the UI's toast reads identically.
   if (!server) throw new Error("Server not found");
-  // Readiness asks "could a deployment land here?" - a migration source deploys nothing.
   if (server.importOnly)
     throw new Error(
       `${server.name} is a migration source - nothing is deployed there, so there ` +
@@ -96,7 +89,6 @@ export async function checkServerReadiness(
   const observedAt = nowIso();
   const grantedTeamCount = (await getServerTeamIds(id)).length;
 
-  // The fence, identical to the health prober's: a non-empty cert pin is the only proof of an agent.
   if (!server.agent?.certFingerprint) {
     return classifyServerReadiness({
       server,
@@ -112,7 +104,6 @@ export async function checkServerReadiness(
   ).catch((e: unknown) => {
     if (e instanceof ProbeTimeout) {
       console.error(`[deplo] readiness check for ${server.name} timed out`);
-      // The deploy pre-flight budgets 8s for its Hello, so a 12s timeout would not pass one either.
       return TIMED_OUT;
     }
     throw e;
@@ -129,7 +120,6 @@ export async function checkServerReadiness(
 async function probeAgent(server: Server): Promise<DialedProbe> {
   let conn: AgentConnection;
   try {
-    // The fence above covers unprovisioned/untrusted, so a rejection here is a report, not a throw.
     conn = await connectAgent(server.id);
   } catch (e) {
     console.error(`[deplo] readiness check for ${server.name}: ${String(e)}`);
@@ -147,7 +137,6 @@ async function probeAgent(server: Server): Promise<DialedProbe> {
     try {
       hello = await conn.hello(HEALTH_HELLO_TIMEOUT_MS);
     } catch (e) {
-      // Console only: the raw error carries the pinned fingerprint and the dial address.
       console.error(`[deplo] readiness check for ${server.name}: ${String(e)}`);
       return {
         hello: null,
@@ -201,7 +190,6 @@ async function probePort(
   if (!supported) return { kind: "unsupported" };
   try {
     const res = await conn.checkPort(port);
-    // Polarity inverts for a web port: "available" (nothing listening) is the BAD outcome.
     return res.available ? { kind: "free" } : { kind: "held" };
   } catch (e) {
     const mapped = mapCheckPortUnsupported(e);
@@ -214,14 +202,11 @@ async function probePort(
   }
 }
 
-// Deliberately NOT capability-preflighted: Metrics predates the feature list and `metricsFor`
-// does not gate it either, so an agent old enough to lack the flag may still answer.
 async function probeMetrics(
   conn: AgentConnection,
   name: string,
 ): Promise<HostMetrics | null> {
   try {
-    // "" => the agent measures its own --data-dir (the installer points it at the host root).
     return await conn.metrics("");
   } catch (e) {
     console.error(`[deplo] readiness check for ${name}: metrics: ${String(e)}`);

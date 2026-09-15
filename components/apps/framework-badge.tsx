@@ -4,7 +4,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { frameworkById } from "@/lib/apps/framework-catalog";
 import { cn } from "@/lib/utils";
 
-// FrameworkBadge - inline icon + name, sized to sit in a sentence of body text.
 export function FrameworkBadge({
   id,
   className,
@@ -22,7 +21,6 @@ export function FrameworkBadge({
   );
 }
 
-// FrameworkRow - the bordered "we recognised your stack" row.
 export function FrameworkRow({
   id,
   caption,
@@ -56,7 +54,6 @@ export function FrameworkRow({
   );
 }
 
-// FrameworkRowSkeleton - the same row while the repository is still being read.
 export function FrameworkRowSkeleton({ className }: { className?: string }) {
   return (
     <div

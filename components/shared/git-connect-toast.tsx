@@ -13,7 +13,6 @@ const GIT_FEEDBACK: Record<string, { ok: boolean; msg: string }> = {
   },
 };
 
-// GitConnectToast shows one-shot feedback from the GitHub connect redirects, then scrubs the flag.
 export function GitConnectToast(): null {
   const router = useRouter();
 

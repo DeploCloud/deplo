@@ -9,9 +9,6 @@ import {
 } from "./project-backup-descriptor";
 import type { VolumeMount } from "../types/container";
 
-// The agent tars and wipes each resolved name VERBATIM (`-v <name>:/v`): a wrong
-// name silently backs up nothing, or wipes the wrong volume on restore.
-
 const vol = (v: Partial<VolumeMount>): VolumeMount => ({
   id: "vol_x",
   name: "data",
@@ -159,7 +156,6 @@ volumes:
   pinned:
     name: my-pinned-volume
 `;
-  // Unlike the backup enumeration, a move must NOT relocate a volume Deplo does not own.
   assert.deepEqual(appMoveVolumeNames(composeService("shop"), yaml), [
     "deplo-shop_dbdata",
     "deplo-shop_cache",
@@ -235,7 +231,6 @@ test("assertSafeVolumeNames rejects an interpolated compose name with guidance",
 });
 
 test("assertSafeVolumeNames rejects names the agent's pattern forbids", () => {
-  // Mirrors the agent's volumeNamePattern ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$.
   assert.throws(
     () => assertSafeVolumeNames("shop", ["_shared"]),
     /valid Docker volume name/i,

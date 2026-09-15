@@ -12,8 +12,6 @@ export function CopyButton({
   size = "icon-sm",
   label,
 }: {
-  /** The text itself, or a thunk read at click time - a terminal's buffer
-   *  changes on every keystroke, so a snapshot prop would always be stale. */
   value: string | (() => string);
   className?: string;
   size?: "icon" | "icon-sm" | "sm";

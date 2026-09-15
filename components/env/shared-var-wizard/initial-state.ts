@@ -3,7 +3,6 @@ import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
 import type { ProjectScope, ScopeId } from "./types";
 
-// initialScopes - the scope boxes a wizard opens with.
 export function initialScopes(
   editing: SharedVarDTO | null,
   defaultAppIds?: string[],
@@ -17,7 +16,6 @@ export function initialScopes(
   return out;
 }
 
-// initialProjectScopes - the per-project all/some choice a wizard opens with.
 export function initialProjectScopes(
   editing: SharedVarDTO | null,
   environments: TeamEnvironment[],
@@ -28,8 +26,6 @@ export function initialProjectScopes(
   for (const envId of editing?.environmentIds ?? []) {
     const env = environments.find((e) => e.id === envId);
     if (!env) continue;
-    // The old dialog let a var carry a project AND some of that project's
-    // environments; the two-way choice can't say both, so the wider one wins.
     const cur = out[env.projectId];
     if (cur?.mode === "all") continue;
     out[env.projectId] = {

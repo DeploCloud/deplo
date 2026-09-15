@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 
-// DiagnosticHost - one host, as a bug report needs to see it.
 export interface DiagnosticHost {
   name: string;
   agentVersion: string | null;
@@ -21,7 +20,6 @@ function pad(value: string, width: number): string {
     : value + " ".repeat(width - value.length);
 }
 
-// DeploDiagnosticsCard - everything an issue about this instance has to state, in one block.
 export function DeploDiagnosticsCard({
   version,
   panelUrl,

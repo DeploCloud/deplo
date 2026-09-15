@@ -70,7 +70,6 @@ test("a deadline overrun is offline, and says so specifically", () => {
 });
 
 test("a cert-pin mismatch is `error`, NEVER offline - the peer answered, it just isn't ours", () => {
-  // gRPC flattens this into an opaque UNAVAILABLE; "offline" would bury a MITM or a half-done re-provision.
   const err = new AgentUnreachableError(
     "agent cert fingerprint mismatch: pinned abc123, got def456",
     GrpcStatus.UNAVAILABLE,
@@ -100,7 +99,6 @@ test("an application-level gRPC error is `error`", () => {
 });
 
 test("the persisted message NEVER leaks the pinned fingerprint or the dial address", () => {
-  // `status_message` is stored and served over GraphQL.
   const raw =
     "14 UNAVAILABLE: agent cert fingerprint mismatch: pinned deadbeefcafe, got 0badf00d (10.4.2.9:9443)";
   const messages = [

@@ -53,7 +53,6 @@ import type { BasicAuthUserDTO } from "@/lib/data/basic-auth";
 
 type CredentialRow = BasicAuthUserDTO & { key: string };
 
-// BasicAuthManager edits the credentials that gate every domain of the app.
 export function BasicAuthManager({
   appId,
   users,

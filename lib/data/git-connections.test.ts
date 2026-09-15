@@ -195,12 +195,10 @@ test("a connection-backed clone carries its credentials in the userinfo", async 
     connectionId: created.id,
   });
   assert.equal(url, "https://deploy:s3cret-token@git.acme.com/acme/site.git");
-  // Deploy logs are readable by anyone with view_logs, far wider than manage_git.
   assert.equal(redactCloneUrl(url), "https://git.acme.com/acme/site.git");
 });
 
 test("a repo URL on a FOREIGN host does NOT carry the connection's token", async () => {
-  // `repo.url` and `connectionId` are set by a member who needs no manage_git.
   const created = await asTeamA(() => connect());
   const attackerUrl = "https://collector.attacker.test/acme/site.git";
   const url = await resolveCloneUrl({
@@ -290,13 +288,10 @@ test("an app cannot borrow another team's connection", async () => {
       },
     }),
   );
-  // The credential is DROPPED, not honoured: it clones anonymously.
   const app = await loadAppGraph("prj_1");
   assert.equal(app?.repo?.connectionId ?? null, null);
   assert.equal(app?.repo?.repo, "acme/site");
 });
-
-// The control plane dials base_url itself, so it is SSRF surface; the escape is instance-admin only.
 
 const connectTo = (baseUrl: string, allowPrivateEndpoint = false) =>
   connectGitProvider({
@@ -310,7 +305,7 @@ const connectTo = (baseUrl: string, allowPrivateEndpoint = false) =>
 
 test("an address inside the deployment is refused", async () => {
   for (const addr of [
-    "http://169.254.169.254", // the cloud metadata endpoint
+    "http://169.254.169.254",
     "http://127.0.0.1:3000",
     "https://10.0.0.5",
     "https://192.168.1.10",
@@ -327,7 +322,6 @@ test("an address inside the deployment is refused", async () => {
 });
 
 test("a NAME that resolves inside the deployment is refused too", async () => {
-  // Refusing only the literal address would have stopped nothing.
   await assert.rejects(
     () => asTeamA(() => connectTo("https://git.internal.example.com")),
     /private or internal/,
@@ -335,7 +329,6 @@ test("a NAME that resolves inside the deployment is refused too", async () => {
 });
 
 test("a private address needs instance admin, not just manage_git", async () => {
-  // A team capability must never be enough to aim the control plane at its own network.
   await assert.rejects(
     () =>
       runWithIdentity({ userId: "user_3", teamId: TEAM_A }, () =>

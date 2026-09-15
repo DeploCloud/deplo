@@ -142,7 +142,6 @@ test("faviconSourceKind: a compose stack is scanned on its own server", () => {
 });
 
 test("faviconSourceKind: compose wins over a repo the app no longer builds from", () => {
-  // Switching to a compose stack KEEPS the repo so it can switch back, but the deploy ignores it.
   assert.equal(
     faviconSourceKind({
       ...APP,
@@ -174,7 +173,6 @@ test("faviconSourceKind: GitHub repos are read over the API", () => {
     }),
     "github",
   );
-  // The URL host decides, not the provider field: a bare git remote on github.com counts.
   assert.equal(
     faviconSourceKind({
       ...APP,
@@ -198,7 +196,6 @@ test("faviconSourceKind: a non-GitHub git host has nothing the control plane can
 
 test("faviconSourceKind: an upload is scanned from its archive", () => {
   assert.equal(faviconSourceKind({ ...APP, source: "upload" }), "upload");
-  // A stale compose from an earlier source must not win: an upload still builds its archive.
   assert.equal(
     faviconSourceKind({ ...APP, source: "upload", compose: "services: {}" }),
     "upload",

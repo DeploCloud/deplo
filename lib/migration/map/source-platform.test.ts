@@ -19,7 +19,6 @@ test("deploFilesPath reads both platforms' files directories", () => {
     deploFilesPath("/etc/dokploy/compose/shop-abc123/files/conf/app.ini"),
     "./conf/app.ini",
   );
-  // A bind under the panel's own directory is deleted with the panel, so it moves into Deplo's files directory.
   assert.equal(deploFilesPath("/etc/dokploy/mxbind"), "./mxbind");
   assert.equal(deploFilesPath("/data/coolify/backups/x"), "./backups/x");
   assert.equal(deploFilesPath("/etc/dokployer/x"), null);
@@ -35,7 +34,6 @@ test("withPanel puts the source product's name in every slot", () => {
   assert.equal(withPanel("no slot here", "Coolify"), "no slot here");
 });
 
-// A product name written into a note is how a Coolify migration ends up telling somebody what happened "on Dokploy".
 test("no mapper note names a product", () => {
   const notes = [
     ...mapSource({ sourceType: "drop" } as SourceApplication).notes,

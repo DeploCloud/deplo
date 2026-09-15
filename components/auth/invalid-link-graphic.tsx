@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The dead registration link: a chain that comes apart once and stays apart. */
 export function InvalidLinkGraphic({ className }: { className?: string }) {
   return (
     <svg

@@ -89,7 +89,6 @@ test("the self-guard FIRES on the raw repo template", async () => {
   );
 });
 
-// Mirrors the shell guard: the sentinel is split by a wildcard so the exact token never appears literally where replaceAll could rewrite it.
 function guardMatches(url: string): boolean {
   return /__AGENT_URL.*AMD64__/.test(url);
 }

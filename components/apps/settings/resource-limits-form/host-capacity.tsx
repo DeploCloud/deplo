@@ -14,7 +14,6 @@ import {
 } from "@/lib/apps/resource-limits-model";
 import { cn } from "@/lib/utils";
 
-// HostInfo is the owning machine: its name for the captions, its size for the bars.
 export interface HostInfo extends ResourceSize {
   name: string;
 }
@@ -61,7 +60,6 @@ function SizeTile({
   );
 }
 
-// SizeTiles is the quick-pick row: one click sets Memory + CPU together.
 export function SizeTiles({
   form,
   hostCap,
@@ -111,7 +109,6 @@ export function SizeTiles({
   );
 }
 
-// HostSummaryCell names the machine and offers the size the recent peak suggests.
 export function HostSummaryCell({
   hostCap,
   suggestion,

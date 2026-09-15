@@ -2,13 +2,11 @@
 
 import * as React from "react";
 
-// useInitialCaretAtEnd parks the caret at the END of a prefilled field focused as it appears; otherwise the first keystroke is prepended to the value.
 export function useInitialCaretAtEnd<
   T extends HTMLInputElement | HTMLTextAreaElement,
 >(forwardedRef: React.ForwardedRef<T>) {
   const nodeRef = React.useRef<T | null>(null);
 
-  // Forwarding through React rather than composing the refs by hand: it covers a function ref and an object ref alike.
   React.useImperativeHandle(forwardedRef, () => nodeRef.current as T, []);
 
   React.useEffect(() => {
@@ -22,7 +20,6 @@ export function useInitialCaretAtEnd<
   return nodeRef;
 }
 
-// `setSelectionRange` throws on every other input type (number, email, date); a textarea always allows it.
 const SELECTABLE_INPUT_TYPES = new Set([
   "text",
   "search",

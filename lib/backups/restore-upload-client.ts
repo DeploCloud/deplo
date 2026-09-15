@@ -4,13 +4,11 @@ import {
   ServerUnreachableError,
 } from "@/lib/server-connection";
 
-// RestoreUploadEvent - what the caller is told while the restore runs.
 export interface RestoreUploadEvent {
   percent?: number;
   line?: string;
 }
 
-// uploadRestore - stream `file` at a target and follow the restore to its end.
 export function uploadRestore(
   target: { kind: "app" | "database"; id: string },
   file: File,
@@ -57,9 +55,7 @@ export function uploadRestore(
           if (typeof message.ok === "boolean")
             verdict = { ok: message.ok, error: message.error };
           else if (message.text) onEvent({ line: message.text });
-        } catch {
-          // Not our stream (a proxy's error page); onload sorts it out.
-        }
+        } catch {}
       }
     };
     xhr.onprogress = drain;
@@ -87,9 +83,7 @@ export function uploadRestore(
           reject(new Error(message));
           return;
         }
-      } catch {
-        /* not JSON - handled below */
-      }
+      } catch {}
       if (xhr.status >= 500 || xhr.status === 0) {
         reportServerUnreachable();
         reject(new ServerUnreachableError());

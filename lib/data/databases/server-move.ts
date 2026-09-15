@@ -32,15 +32,11 @@ import {
 } from "./stack";
 import { assertHostPortAvailable, resolveTeamServer } from "./server-ports";
 
-// updateDatabase - edit a database's public exposure (publish/unpublish + host
-// port) and, optionally, the SERVER it runs on.
 export async function updateDatabase(
   id: string,
   input: {
     exposedPublicly: boolean;
     exposedPort?: number;
-    /** Move the database to this server. Must be a server visible to the team
-     *  and provisioned (same guard as create). */
     serverId?: string;
   },
 ): Promise<void> {
@@ -50,14 +46,9 @@ export async function updateDatabase(
   const db = await requireDatabase(id, teamId);
 
   const exposed = input.exposedPublicly;
-  // Same privileged gate as create, checked here (not as a GraphQL authScope)
-  // because it only applies when exposure is being turned ON.
   if (exposed && !(await canExposePorts()))
     throw new Error("You don't have permission to publish ports");
 
-  // Resolve the TARGET server through the team's visible set: a move can only
-  // land on a server this team may use, and an in-place edit re-resolves the
-  // current one so a team that LOST access to it can't reroute onto it.
   const targetServer = await resolveTeamServer(
     teamId,
     input.serverId ?? db.serverId,
@@ -81,8 +72,6 @@ export async function updateDatabase(
     newExposedPort = input.exposedPort;
   }
 
-  // Nothing changed, so skip a pointless reroute (a container recreate) and
-  // status churn. A MOVE is never a no-op, so it always falls through.
   if (
     !movingFrom &&
     db.exposedPublicly === exposed &&
@@ -90,17 +79,10 @@ export async function updateDatabase(
   )
     return;
 
-  // Under the DB's lifecycle lock, the SAME lock create/start-stop/delete use:
-  // a delete issued during an edit WAITS for the reroute/teardown, then tears
-  // down the fully-rerouted stack (no orphan).
   let moveWarning: string | null = null;
   await withKeyedLock(id, async () => {
-    // Re-read under the lock - the DB may have been deleted, or just finished
-    // provisioning, while we waited our turn.
     const cur = await requireDatabase(id, teamId);
     assertNotProvisioning(cur, "editing it");
-    // Re-derive the connection string around the UNCHANGED create-only password,
-    // from the LOCK-FRESH row.
     const password = databasePassword(cur);
     const connEnc = encryptSecret(
       buildConnectionString({
@@ -112,13 +94,10 @@ export async function updateDatabase(
         dbName: cur.dbName,
       }),
     );
-    // Render from the FRESH row (with the new exposure overlaid) so the reroute
-    // also applies any pending row edits saved since the pre-lock read.
     const yaml = renderDatabaseStackYaml(
       { ...cur, exposedPublicly: exposed, exposedPort: newExposedPort },
       password,
     );
-    // Provision on the TARGET server first.
     const agent = await connectAgent(targetServer.id);
     try {
       const res = await agent.reroute(rerouteRequest(cur, yaml));
@@ -129,24 +108,17 @@ export async function updateDatabase(
     }
 
     if (movingFrom) {
-      // MOVE: migrate the data volume from the old host to the new one. ONLY
-      // THEN destroy the OLD stack + its volume.
       await stopStackOn(targetServer.id, cur.host);
       await stopStackOn(movingFrom, cur.host);
       try {
         const moved = await migrateWorkloadData(movingFrom, targetServer.id, {
           volumeNames: [dbVolumeHostName(cur.host)],
         });
-        // Deplo provisioned this database and started it, so its volume EXISTS.
-        // Not finding it means the name is wrong, and carrying on would tear the
-        // old host down over a copy that moved nothing.
         if (moved.missing.length > 0)
           throw new Error(
             `${moved.missing.join(", ")} is not on that server, so there was nothing to move`,
           );
       } catch (copyErr) {
-        // Roll back: remove the new (empty/partial) stack + volume, bring the
-        // old DB back up so the operator is left where they started.
         await destroyStackOn(targetServer.id, cur.host).catch(() => {});
         await startStackOn(movingFrom, cur.host).catch(() => {});
         throw new Error(
@@ -164,8 +136,6 @@ export async function updateDatabase(
           `Redeploy the database to bring it up.`;
       }
 
-      // Tear down the OLD host's stack + its (now-migrated) data volume so it
-      // isn't left running and orphaned.
       try {
         const old = await connectAgent(movingFrom);
         try {
@@ -187,8 +157,6 @@ export async function updateDatabase(
       }
     }
 
-    // `host`/`port`/`username`/`dbName` are untouched (the container's DNS
-    // identity and credentials are fixed at first init).
     await getDb()
       .update(databasesTable)
       .set({

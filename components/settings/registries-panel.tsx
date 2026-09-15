@@ -96,7 +96,6 @@ const TYPE_META: Record<
   },
 };
 
-// RegistriesPanel - header, grid of connected registries, empty state.
 export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
   return (
     <PendingCreateProvider count={registries.length}>
@@ -108,7 +107,6 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
 function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
   const router = useRouter();
   const [addOpen, setAddOpen] = React.useState(false);
-  // Bumped after a successful add: the dialog stays mounted, so a refusal keeps what was typed.
   const [addKey, setAddKey] = React.useState(0);
   const [deleting, setDeleting] = React.useState<RegistryDTO | null>(null);
   const {
@@ -314,7 +312,6 @@ function AddRegistryDialog({
                   <SelectContent>
                     {(Object.keys(TYPE_META) as RegistryType[]).map((t) => (
                       <SelectItem key={t} value={t}>
-                        {/* Radix clones the selected item into SelectValue, so the logo rides along. */}
                         <span className="flex items-center gap-2">
                           <RegistryMark type={t} className="size-5" />
                           {TYPE_META[t].label}

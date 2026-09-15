@@ -17,7 +17,6 @@ import { Label } from "@/components/ui/label";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { gqlAction } from "@/lib/graphql-client";
 
-// CreateFolderDialog - controlled dialog that creates a folder in the active team.
 export function CreateFolderDialog({
   open,
   onOpenChange,

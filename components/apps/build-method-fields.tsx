@@ -38,7 +38,6 @@ interface MethodMeta {
   blurb: string;
 }
 
-// BUILD_METHODS - the selectable build methods, in the order shown in the picker.
 export const BUILD_METHODS: MethodMeta[] = [
   {
     id: "railpack",
@@ -66,7 +65,6 @@ export const BUILD_METHODS: MethodMeta[] = [
   },
 ];
 
-// BuildMethodFields - the method picker plus a panel with the fields the selected method uses.
 export function BuildMethodFields({
   method,
   settings,
@@ -86,7 +84,6 @@ export function BuildMethodFields({
 }) {
   return (
     <div className="space-y-4">
-      {/* No heading: the caller titles this group. */}
       <div
         role="radiogroup"
         aria-label="Build method"
@@ -154,7 +151,6 @@ function MethodCard({
           {meta.blurb}
         </span>
       </span>
-      {/* Radio dot */}
       <span
         aria-hidden
         className={cn(
@@ -284,10 +280,8 @@ function MethodSettings({
   );
 }
 
-// Radix cannot hold an empty Select value, so "no override" needs a stand-in.
 const AUTO = "__auto";
 
-// A picker is searched alphabetically, unlike the catalog's detection-priority order.
 const FRAMEWORK_CHOICES = [...FRAMEWORKS].sort((a, b) =>
   a.name.localeCompare(b.name),
 );

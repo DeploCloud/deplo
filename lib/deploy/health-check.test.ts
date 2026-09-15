@@ -25,7 +25,6 @@ test("an app with no check renders nothing at all", () => {
   assert.equal(renderHealthCheckYaml(null, 4), "");
 });
 
-// A `healthcheck:` runs inside the image, and a distroless one has neither curl nor wget.
 test("an http check renders NO healthcheck - Deplo asks the app itself", () => {
   assert.deepEqual(healthCheckToComposeKeys(HTTP), {});
   assert.equal(renderHealthCheckYaml(HTTP, 4), "");

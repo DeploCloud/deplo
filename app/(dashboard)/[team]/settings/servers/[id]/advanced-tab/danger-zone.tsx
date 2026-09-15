@@ -24,7 +24,6 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { ConsequenceNote } from "@/components/shared/confirm-action";
 import { ChangeAddress } from "./change-address";
 
-// DangerZone holds the two irreversible things: the address edit and the removal.
 export function DangerZone({ server }: { server: ServerSummary }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -42,7 +41,6 @@ export function DangerZone({ server }: { server: ServerSummary }) {
         { id: server.id },
       );
       if (!res.ok) {
-        // Surfaces "move or delete the apps on this server first" verbatim.
         toast.error(res.error);
         return;
       }
@@ -75,8 +73,6 @@ export function DangerZone({ server }: { server: ServerSummary }) {
                   : "Deplo stops trusting this server and forgets it. Nothing on the host is uninstalled; you get the command for that."}
               </p>
             </div>
-            {/* Disabled rather than hidden on the Deplo host: the data layer
-                refuses it too - this is the explanation, not the guard. */}
             <SimpleTooltip
               content={
                 server.isDeploHost

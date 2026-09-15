@@ -74,8 +74,6 @@ export function useMigrationRun({
   const [report, setReport] = React.useState<RunReport | null>(null);
   const [failure, setFailure] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState(false);
-  // A ref, not state: two clicks in one tick both read the state as false and
-  // start a second migration the server then refuses.
   const startingRef = React.useRef(false);
   const [starting, setStarting] = React.useState(false);
   const [undoing, setUndoing] = React.useState(false);
@@ -89,8 +87,6 @@ export function useMigrationRun({
     queued: ReturnType<typeof queuedAfter>;
   }) {
     if (running) return;
-    // Placed on the landing team's fleet: a host that team may not use is not a
-    // placement, it is a deploy that dies halfway with the services stopped.
     const fleet = fleetsRef.current[opts.home] ?? ownFleet;
     const { targets, servers } = targetsOf(opts.from, fleet);
     if (targets.length === 0) {
@@ -124,7 +120,6 @@ export function useMigrationRun({
     }
     setRunId(res.data);
     setAdoptedId(res.data);
-    // The keys are the control plane's now; a copy held here is one nobody remembers exists.
     setApiKey("");
     updateQueue(queueRef.current.map((e) => ({ ...e, apiKey: "" })));
     void refreshSession(res.data);
@@ -175,8 +170,6 @@ export function useMigrationRun({
           made.ok ? "Deplo could not create the team." : made.error,
         );
       home = made.data;
-      // Remembered rather than written back onto the row: a second press must
-      // not make a second team, and the row still says what the person CHOSE.
       madeTeams.current[i] = home;
       router.refresh();
     }
@@ -275,8 +268,6 @@ export function useMigrationRun({
         failed: sum(runs, "failed"),
         manual: sum(runs, "manual"),
       });
-      // Only off the step that WAS the run: somebody reading the report on the
-      // last step must not be thrown back to People by a poll.
       setStep((at2) => (at2 === "review" ? afterRun() : at2));
     },
     [afterRun, forgetQueue, resetToStart],
@@ -288,7 +279,6 @@ export function useMigrationRun({
     [refreshSession],
   );
   async function closeReport() {
-    // EVERY team of the walk: one run left unseen reopens the wizard on it.
     const ids = sessionRuns.map((r) => ({ id: r.id, teamId: r.teamId }));
     if (ids.length === 0) {
       const id = adoptedId ?? runId;
@@ -357,8 +347,6 @@ export function useMigrationRun({
     setStep("review");
     void settleFinished(resumable.id);
   }, [resumable, settleFinished]);
-  // Fires on the edge, not on the state: `watched` is null for most of this
-  // component's life, and settling on every render would query the server forever.
   const wasWatching = React.useRef<string | null>(null);
   React.useEffect(() => {
     const now = watched?.id ?? null;
@@ -369,8 +357,6 @@ export function useMigrationRun({
   const awaitingRun =
     runId != null && feed == null && report == null && failure == null;
 
-  // The feed is a decoration, never the only way forward: while this tab holds
-  // a run it cannot see, it asks.
   React.useEffect(() => {
     if (!awaitingRun || !runId) return;
     const id = setInterval(() => void settleFinished(runId), 3000);

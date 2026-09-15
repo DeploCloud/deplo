@@ -6,7 +6,6 @@ const TERMINAL: ReadonlySet<DeploymentStatus> = new Set<DeploymentStatus>([
   "canceled",
 ]);
 
-// isDeploymentLive - true while a deployment is still queued or building.
 export function isDeploymentLive(status: DeploymentStatus): boolean {
   return !TERMINAL.has(status);
 }

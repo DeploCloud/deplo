@@ -74,7 +74,6 @@ test("two apps in different teams get different keys and hosts for the same PR n
 });
 
 test("a preview's certificate counts against the team's Let's Encrypt quota", async () => {
-  // A preview host is never a `domains` row (ADR-0017 §5), so the quota could not see it.
   await seedPreviewApp(h.db, "prj_1", { slug: "blog" });
   const now = new Date().toISOString();
 

@@ -8,15 +8,12 @@ import { LineEditor } from "@/lib/exec-line-editor";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 import type { ConsoleControls } from "@/components/console/console-controls";
 
-// The pane colours its own chrome; command output is written verbatim so the container ANSI renders.
 const GREEN = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const CYAN = (s: string) => `\x1b[36m${s}\x1b[0m`;
 const RED = (s: string) => `\x1b[31m${s}\x1b[0m`;
 
-// Container output uses lone \n; a terminal needs \r\n or lines stair-step.
 const toCrlf = (s: string) => s.replace(/\r?\n/g, "\r\n");
 
-// ExecTerminal - the stateless `docker exec` REPL in an xterm.js terminal with a local line editor.
 export function ExecTerminal({
   prompt,
   banner,
@@ -59,13 +56,11 @@ export function ExecTerminal({
         reset: () => api.reset(),
       },
       promptStr,
-      // Visible prompt width: the SGR wrapper is zero-width, +1 = the space.
       prompt.length + 1,
       (cmd) => void run(cmd),
     );
     writeBanner(api);
     api.focus();
-    // Clear is Ctrl-L fed through the editor: a bare `reset()` would swallow the repainted prompt.
     onControlsRef.current?.({
       clear: () => {
         if (!busy.current) editor.current?.data("\x0c");
@@ -141,7 +136,6 @@ export function ExecTerminal({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* The terminal takes whatever height the pane has left. */}
       <div className="min-h-0 flex-1 bg-terminal p-2">
         <XtermView
           onReady={onReady}

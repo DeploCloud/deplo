@@ -10,10 +10,8 @@ import {
   createHmac,
   createHash,
 } from "node:crypto";
-// Pure JS, no native binding: it has to load on the musl runtime image without a rebuild step.
 import { hash as bcryptHash } from "bcryptjs";
 
-// Production refuses to boot without it: deriving every key from a public constant would make all secrets forgeable.
 function rootSecret(): string {
   const s = process.env.DEPLO_SECRET;
   if (s && s.length >= 16) return s;
@@ -27,7 +25,6 @@ function rootSecret(): string {
   return "deplo-dev-insecure-secret-change-me-please-0000";
 }
 
-// deriveKey - a 32-byte key for a purpose, derived from the root secret and memoized per purpose.
 const keyCache = new Map<string, Buffer>();
 export function deriveKey(purpose: string): Buffer {
   const cacheKey = `${rootSecret()} ${purpose}`;
@@ -39,13 +36,10 @@ export function deriveKey(purpose: string): Buffer {
   return key;
 }
 
-// The scrypt work factor NEW hashes are made with: N=65536 rather than the 2^17 OWASP names first, deliberately.
 const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1 } as const;
-// Node caps scrypt memory at 32 MiB by default, well under `128 * N * r`.
 const SCRYPT_MAXMEM = 512 * 1024 * 1024;
 const SCRYPT_KEYLEN = 64;
 
-// The cost node's `scryptSync(pw, salt, len)` defaults to: what every hash written before the parameters were recorded used.
 const LEGACY_PARAMS = { N: 16384, r: 8, p: 1 } as const;
 
 interface ScryptParams {
@@ -71,7 +65,6 @@ function scryptAsync(
   });
 }
 
-// hashPassword - `scrypt$<N>$<r>$<p>$<salt-hex>$<hash-hex>`.
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
   const derived = await scryptAsync(
@@ -127,7 +120,6 @@ export async function verifyPassword(
   }
 }
 
-// passwordNeedsRehash - whether a stored hash was made with a WEAKER setting than the current one.
 export function passwordNeedsRehash(stored: string): boolean {
   const parsed = parseStoredPassword(stored);
   if (!parsed) return false;
@@ -135,14 +127,12 @@ export function passwordNeedsRehash(stored: string): boolean {
   return work(parsed.params) < work(SCRYPT_PARAMS);
 }
 
-// agentCaSeed - the deterministic 32-byte seed for the agent mTLS CA (ADR-0006), so no CA key is ever stored.
 export function agentCaSeed(): Buffer {
   return deriveKey("agent-mtls-ca");
 }
 
 const HTPASSWD_COST = 10;
 
-// htpasswdLine - a `user:hash` htpasswd line for Traefik's `basicauth` middleware.
 export async function htpasswdLine(
   username: string,
   password: string,
@@ -161,7 +151,6 @@ export function encryptSecret(plaintext: string): string {
   )}`;
 }
 
-// tryDecryptSecret - open a ciphertext, saying WHETHER it opened as well as what came out.
 export function tryDecryptSecret(
   payload: string,
 ): { ok: true; value: string } | { ok: false } {
@@ -185,13 +174,11 @@ export function tryDecryptSecret(
   }
 }
 
-// decryptSecret - open a ciphertext, or `""` if it will not open: the lossy best-effort form.
 export function decryptSecret(payload: string): string {
   const res = tryDecryptSecret(payload);
   return res.ok ? res.value : "";
 }
 
-// decryptSecretOrThrow - `decryptSecret` for the call sites where `""` is not an answer.
 export function decryptSecretOrThrow(payload: string, what: string): string {
   const res = tryDecryptSecret(payload);
   if (!res.ok)
@@ -218,7 +205,6 @@ export function sha256Hex(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-// signState - sign a short string into a tamper-proof, expiring token, so CSRF state needs no server-side storage.
 export function signState(data: string, ttlSeconds = 600): string {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const body = b64url(Buffer.from(JSON.stringify({ d: data, exp }), "utf8"));
@@ -228,7 +214,6 @@ export function signState(data: string, ttlSeconds = 600): string {
   return `${body}.${sig}`;
 }
 
-// verifyState - verify a token from `signState`; returns the original data or null.
 export function verifyState(token: string | undefined): string | null {
   if (!token) return null;
   const [body, sig] = token.split(".");

@@ -48,10 +48,8 @@ export default async function ActivityPage(
     resourceIds: params.resourceIds,
     ...activityWindow(params),
   };
-  // Each count call blanks its OWN dimension: picking a person must not collapse the people to one.
   const counted = { ...filter, ...activityCountWindow(params) };
 
-  // `listDatabases` refuses a role that reaches only part of the team, which sees no database here anyway.
   const [
     activities,
     months,
@@ -90,7 +88,6 @@ export default async function ActivityPage(
       folders={folders}
       projects={projects}
       databases={databases}
-      // An option with no number reads as a bug; one showing 0 reads as "nothing lately".
       actorCounts={zeroed(
         actors.map((a) => a.value),
         byActor,
@@ -116,7 +113,6 @@ export default async function ActivityPage(
               ? "No one did any of that in this window. Widen the filters to see more."
               : "As you deploy apps, manage databases and invite members, everything will show up here."
           }
-          // No action: the toolbar above is on screen and already carries "Clear filters".
         />
       </>
     );
@@ -132,7 +128,6 @@ export default async function ActivityPage(
     count: c.count,
     author: actorById.get(c.actorUserId)?.author,
   }));
-  // Static markup, so the phone gets its own copy; the filters carry state and stay mounted once.
   const summary = (className: string) => (
     <ActivitySummary
       className={className}
@@ -151,7 +146,6 @@ export default async function ActivityPage(
       </aside>
       <div className="min-w-0 lg:col-start-1 lg:row-start-1">
         <ActivityFeed
-          // A filter change is a fresh first page, not more of the old one.
           key={activityHref(params)}
           initialItems={activities.map(toActivityItem)}
           monthCounts={Object.fromEntries(

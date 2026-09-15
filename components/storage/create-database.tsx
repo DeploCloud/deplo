@@ -42,7 +42,6 @@ import { DatabaseLogo } from "./database-logo";
 import { DbVersionInput } from "./db-version-input";
 import type { DatabaseType } from "@/lib/types/database";
 
-// A Select cannot hold null, so the top level needs a value of its own.
 const TOP_LEVEL = "__none__";
 
 export function CreateDatabase({
@@ -54,15 +53,10 @@ export function CreateDatabase({
   size = "default",
 }: {
   servers: { id: string; name: string; isDeploHost: boolean }[];
-  // A database placed in an Environment answers on that Environment's network; the top level is the team's own.
   environments?: { id: string; label: string }[];
-  // `create_databases`.
   canCreate: boolean;
-  // The publish-ports grant. False shows the toggle disabled, so no port field ever appears.
   canExposePorts?: boolean;
-  // Open on mount, from the Overview "New database" action (which links to /storage?new=database).
   autoOpen?: boolean;
-  // `sm` outside a toolbar; `default` next to an input, which is h-9.
   size?: "sm" | "default";
 }) {
   const router = useRouter();
@@ -72,38 +66,32 @@ export function CreateDatabase({
   const [pending, startTransition] = React.useTransition();
   const { create } = usePendingCreate();
 
-  // Drop ?new=database so a refresh or Back doesn't reopen the dialog.
   React.useEffect(() => {
     if (autoOpen) router.replace("/storage", { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState<DatabaseType>("postgres");
-  // The newest fallback major; DbVersionInput fetches the real Docker Hub tag list when opened.
   const [version, setVersion] = React.useState(
     TYPES.find((t) => t.id === "postgres")!.versions[0],
   );
   const [serverId, setServerId] = React.useState<string>(servers[0]?.id ?? "");
   const [environmentId, setEnvironmentId] = React.useState<string>(TOP_LEVEL);
-  // Optional per-engine credentials. Blank => the server's generated defaults.
   const [username, setUsername] = React.useState("");
   const [dbName, setDbName] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
   const [exposed, setExposed] = React.useState(false);
-  // A string so the field can be cleared and typed freely; parsed on submit.
   const [port, setPort] = React.useState("");
   const [generatingPort, setGeneratingPort] = React.useState(false);
 
   const creds = ENGINE_CREDS[type];
   const noServers = servers.length === 0;
-  // The missing permission wins: it is the one a server can't fix.
   const blocked = !canCreate
     ? "You don't have permission to create databases"
     : noServers
       ? "Provision a server first"
       : null;
-  // `servers` arrives via a soft router.refresh() that reconciles in place, so the mount-only initializer can be stale (0→1).
   const effectiveServerId =
     servers.find((s) => s.id === serverId)?.id ?? servers[0]?.id ?? "";
 
@@ -111,14 +99,12 @@ export function CreateDatabase({
     const t = v as DatabaseType;
     setType(t);
     setVersion(TYPES.find((x) => x.id === t)!.versions[0]);
-    // Reset the credential fields so a value typed for one engine never rides along for an engine that has no such field.
     setUsername("");
     setDbName("");
     setPassword("");
     setShowPassword(false);
   }
 
-  // generateAvailableDbPort probes the owning agent for a port free on that host.
   function generatePort() {
     if (!effectiveServerId) return;
     setGeneratingPort(true);
@@ -134,7 +120,6 @@ export function CreateDatabase({
     });
   }
 
-  // The server refuses anything outside this range; checking here is only for instant feedback.
   const parsedPort = Number.parseInt(port, 10);
   const portValid =
     Number.isInteger(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535;
@@ -152,12 +137,10 @@ export function CreateDatabase({
       version,
       serverId: effectiveServerId || null,
       environmentId: environmentId === TOP_LEVEL ? null : environmentId,
-      // null keeps the server's generated default.
       username: creds.username && username.trim() ? username.trim() : null,
       dbName: creds.dbName && dbName.trim() ? dbName.trim() : null,
       password: creds.password && password ? password : null,
       exposedPublicly: exposed,
-      // null keeps it internal-only.
       exposedPort: exposed ? parsedPort : null,
     };
     const restore = { username, dbName, password, showPassword, exposed, port };
@@ -202,7 +185,6 @@ export function CreateDatabase({
       <Tooltip>
         <TooltipTrigger asChild>
           {blocked ? (
-            // Disabled buttons swallow pointer events, so the span keeps the tooltip reachable; no DialogTrigger means a blocked click can never open the dialog.
             <span tabIndex={0}>
               <Button size={size} disabled>
                 <Plus className="size-4" />
@@ -394,7 +376,6 @@ export function CreateDatabase({
                 {canExposePorts ? (
                   <Switch checked={exposed} onCheckedChange={setExposed} />
                 ) : (
-                  // The switch can never be turned on without the grant, so the port field below never appears.
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span tabIndex={0}>
@@ -444,7 +425,6 @@ export function CreateDatabase({
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            {/* `pending` is only the port generator: submitting hands the work to the pulsing card in the grid. */}
             <Button
               type="submit"
               disabled={

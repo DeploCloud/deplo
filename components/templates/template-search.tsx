@@ -6,7 +6,6 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-// TemplateSearchField - the store filters in memory; a template's own page uses `TemplateSearchLink`, which navigates.
 export function TemplateSearchField({
   value,
   onChange,
@@ -30,19 +29,16 @@ export function TemplateSearchField({
   );
 }
 
-// TemplateSearchLink - `push`es rather than `replace`s, so Back returns to the template you were reading.
 export function TemplateSearchLink({
   scope = "",
   className,
 }: {
-  // The drill-in query string (`folder=…` / `project=…&env=…`) to preserve.
   scope?: string;
   className?: string;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState("");
 
-  // Nothing happens until the box is actually typed in - a bare mount must not navigate away from the page that just rendered.
   const typed = React.useRef(false);
   React.useEffect(() => {
     if (!typed.current) return;

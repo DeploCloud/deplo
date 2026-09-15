@@ -3,7 +3,6 @@ import "server-only";
 import { HEALTH_CHECK_DEFAULTS } from "../../deploy/health-check";
 import type { HealthCheck } from "../../types/container";
 
-/** Fold the flat `health_check_*` columns into a {@link HealthCheck}, or null when the app has none. */
 export function assembleHealthCheck(row: {
   healthCheckEnabled: boolean;
   healthCheckType: string | null;
@@ -29,7 +28,6 @@ export function assembleHealthCheck(row: {
   };
 }
 
-/** The flat `health_check_*` columns for a {@link HealthCheck} (null ⇒ off). */
 export function healthCheckToRow(h: HealthCheck | null) {
   return {
     healthCheckEnabled: h != null,

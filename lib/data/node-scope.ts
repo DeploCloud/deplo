@@ -22,7 +22,6 @@ import {
   projects as projectsTable,
 } from "../db/schema/control-plane/projects";
 
-// NodeScope is what a scope names; null anywhere below means unrestricted.
 export interface NodeScope {
   projectIds: string[];
   environmentIds: string[];
@@ -31,7 +30,6 @@ export interface NodeScope {
   appProjectIds: string[];
 }
 
-// expandFolders returns every folder a scope reaches, plus the projects those folders sit in.
 export async function expandFolders(
   teamIds: string[],
   ticked: string[],
@@ -84,7 +82,6 @@ export async function expandFolders(
   return { folderIds: [...reached], folderProjectIds };
 }
 
-// memberScopeFor is this person's reach in a team, or null for the whole of it.
 export const memberScopeFor = cache(async function memberScopeFor(
   userId: string,
   teamId: string,
@@ -98,7 +95,6 @@ export const memberScopeFor = cache(async function memberScopeFor(
         granular: membershipsTable.granular,
       })
       .from(membershipsTable)
-      // LEFT, not inner: a granular membership carries its own reach with or without a role.
       .leftJoin(teamRolesTable, eq(teamRolesTable.id, membershipsTable.roleId))
       .where(
         and(
@@ -114,7 +110,6 @@ export const memberScopeFor = cache(async function memberScopeFor(
   return loadRoleScope(row.roleId, teamId);
 });
 
-// The same rows that grant a person capabilities (ADR-0016), read as reach rather than power.
 async function loadMemberScope(
   userId: string,
   teamId: string,
@@ -153,7 +148,6 @@ async function loadMemberScope(
   );
   return {
     projectIds,
-    // No environment rung: a grant cannot name one, so this list is always empty here.
     environmentIds: [],
     folderIds,
     appIds: appRows.map((r) => r.id),
@@ -169,7 +163,6 @@ async function loadMemberScope(
   };
 }
 
-// loadRoleScope expands the junctions of one scoped role.
 export async function loadRoleScope(
   roleId: string,
   teamId: string,
@@ -226,7 +219,6 @@ export async function loadRoleScope(
     appProjectIds: [
       ...new Set(
         [
-          // A named node makes its project navigable: no drilling into staging without its project.
           ...envRows.map((r) => r.projectId),
           ...appRows.map((r) => r.projectId),
           ...folderRows.map((r) => r.projectId),
@@ -237,7 +229,6 @@ export async function loadRoleScope(
   };
 }
 
-// appInScope: an app lives in exactly ONE place - folder, project or team top level - so the clauses are alternatives.
 export function appInScope(
   scope: NodeScope | null,
   app: {
@@ -259,7 +250,6 @@ export function appInScope(
   return app.projectId != null && scope.projectIds.includes(app.projectId);
 }
 
-// environmentInScope is strict, like a folder: an environment is reached by being named.
 export function environmentInScope(
   scope: NodeScope | null,
   environmentId: string | null,
@@ -268,7 +258,6 @@ export function environmentInScope(
   return environmentId != null && scope.environmentIds.includes(environmentId);
 }
 
-// folderInScope is strict: the subtree is already flattened into folderIds, so no walk here.
 export function folderInScope(
   scope: NodeScope | null,
   folderId: string | null,
@@ -277,7 +266,6 @@ export function folderInScope(
   return folderId != null && scope.folderIds.includes(folderId);
 }
 
-// projectInScope: a project is reached by being named, or by containing something that was.
 export function projectInScope(
   scope: NodeScope | null,
   projectId: string | null,

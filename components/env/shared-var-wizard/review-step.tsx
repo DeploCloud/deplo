@@ -6,7 +6,6 @@ import { TeamAvatar } from "@/components/shared/user-avatar";
 import type { TeamEnvironment } from "@/lib/data/environments";
 import type { AppRef, ProjectScope, TeamRef, WizardRef } from "./types";
 
-// Review - the last step: everything the Save button is about to do, as chips.
 export function Review({
   varKeys,
   secret,
@@ -31,8 +30,6 @@ export function Review({
   const name = (list: WizardRef[], id: string) =>
     list.find((x) => x.id === id)?.name ?? id;
 
-  // Availability scopes only SUGGEST (each app opts in itself, ADR-0012), so the
-  // counts read "can add it"; only the Apps group adds anything directly.
   const reach = (scope: ProjectScope, projectId: string) =>
     scope.mode === "all"
       ? apps.filter((a) => a.projectId === projectId).length
@@ -42,8 +39,6 @@ export function Review({
         ).length;
   const appCount = (n: number) => `${n} app${n === 1 ? "" : "s"}`;
 
-  // Keyed by ENTITY id, never by the label: two projects (or an app and a
-  // project) may legitimately carry the same name.
   const projectChips = Object.entries(projectScopes).map(
     ([projectId, scope]) => ({
       id: projectId,
@@ -57,8 +52,6 @@ export function Review({
     }),
   );
   const appChips = appIds.map((id) => ({ id, label: name(apps, id) }));
-  // `apps` only counts the ACTIVE team, so a multi-team reach names the teams
-  // rather than pretending to a total it cannot see.
   const teamNames = teamIds.map(
     (id) => teams.find((t) => t.id === id)?.name ?? id,
   );
@@ -90,8 +83,6 @@ export function Review({
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             {varKeys.length === 1 ? "Variable" : `${varKeys.length} variables`}
           </p>
-          {/* The type is one choice for the whole batch, so it is named once
-              here rather than repeated on every row. */}
           <Badge variant="muted" className="text-[10px]">
             {secret ? "Secret" : "Plain"}
           </Badge>
@@ -127,13 +118,11 @@ export function Review({
   );
 }
 
-// list - "a, b and c", the plain-English join the review sentence reads with.
 function list(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-// ChipGroup - one labelled row of scope chips; the label tells a project from an app.
 function ChipGroup({
   title,
   chips,

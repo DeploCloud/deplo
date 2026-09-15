@@ -13,7 +13,6 @@ import {
 import { FOLDER_COLORS } from "@/lib/folder-colors";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-// FolderColorPicker - curated swatches plus a free-form HEX field for a folder.
 export function FolderColorPicker({
   value,
   onChange,
@@ -46,7 +45,6 @@ export function FolderColorPicker({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {/* Default: no colour. */}
         <SimpleTooltip content="Default (no colour)">
           <button
             type="button"
@@ -110,7 +108,6 @@ export function FolderColorPicker({
             spellCheck={false}
             aria-invalid={invalid}
           />
-          {/* Live contrast preview. */}
           <div
             className="flex size-9 shrink-0 items-center justify-center rounded-md border border-black/10"
             style={

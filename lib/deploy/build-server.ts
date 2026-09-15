@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/advanced/build-servers
-
 import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -15,7 +13,6 @@ import {
 import type { App } from "../types/app";
 import type { Server } from "../types/server";
 
-/** Why a build server was (or was not) chosen. Surfaced in the deploy log. */
 export type BuildServerChoice =
   | { serverId: string; reason: "pinned" | "automatic" }
   | {
@@ -23,21 +20,15 @@ export type BuildServerChoice =
       reason: "own-server" | "none-available" | "arch-mismatch";
     };
 
-/** Every host this deploy may compile on, in the order they are tried. */
 export interface BuildPlan {
-  /** The app's own choice first, then the fleet's build fallbacks. */
   chain: string[];
-  /** Whether the app's own server may build it, once every host above failed. */
   local: boolean;
-  /** Why the build is not happening where the app's setting says, when it is not. */
   missed: {
     reason: "none-available" | "arch-mismatch";
-    /** Whether the app names that server itself, as opposed to Automatic. */
     pinned: boolean;
   } | null;
 }
 
-/** The pure decision - a setting that silently routes elsewhere is not a setting. */
 export function pickBuildServer(
   app: Pick<App, "serverId" | "buildServerId">,
   target: Pick<Server, "id" | "hostArch">,
@@ -81,7 +72,6 @@ function leastBusy(
   });
 }
 
-/** The fleet's build fallbacks for one target, in the order they are tried. */
 export function pickBuildFallbacks(
   target: Pick<Server, "id" | "hostArch">,
   candidates: readonly Server[],
@@ -106,7 +96,6 @@ export function pickBuildFallbacks(
     );
 }
 
-/** Every host this deploy may compile on: the app's choice, the fleet's fallbacks, then its own server. */
 export function planBuildServers(
   app: Pick<App, "serverId" | "buildServerId" | "buildFallback">,
   target: Pick<Server, "id" | "hostArch">,
@@ -152,7 +141,6 @@ function buildsElsewhere(
   return candidates.some((s) => s.buildOnly && s.id !== target.id);
 }
 
-/** Whether `builder` can produce an image `target` will actually run. */
 export function canBuildFor(
   builder: Pick<
     Server,
@@ -161,15 +149,12 @@ export function canBuildFor(
   target: Pick<Server, "id" | "hostArch">,
 ): boolean {
   if (builder.id === target.id) return false;
-  if (builder.storageOnly) return false; // no Docker, nothing to build with
-  // A build ships this app's source and its decrypted env to the builder, and an import source is not ours.
+  if (builder.storageOnly) return false;
   if (builder.importOnly) return false;
-  // `warning` is `dockerAvailable: false` and `error` is a trust or agent failure - see classifyServerHealth.
   if (builder.status !== "online") return false;
   return builder.hostArch !== "" && builder.hostArch === target.hostArch;
 }
 
-/** {@link planBuildServers} against the live fleet: the team's servers and their in-flight builds. */
 export async function resolveBuildPlan(
   app: Pick<App, "serverId" | "buildServerId" | "buildFallback" | "teamId">,
   target: Server,
@@ -199,7 +184,6 @@ export async function resolveBuildPlan(
   return planBuildServers(app, target, candidates, self, inFlight);
 }
 
-/** What the deploy log says about where this app compiles. */
 export function buildPlanLines(
   plan: BuildPlan,
   serverName: (serverId: string) => string,

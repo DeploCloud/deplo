@@ -22,7 +22,6 @@ import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
 import { landSourceBackups } from "./source-backups";
 
-// One source database becomes one Deplo Database.
 export async function importDatabaseService(
   c: SourceCredential,
   svc: SourceService,
@@ -30,18 +29,12 @@ export async function importDatabaseService(
   name: string,
   opts: {
     serverId: string | undefined;
-    // The Environment its apps landed in - and therefore the network it has to answer
-    // on, or `db-<slug>` does not resolve from them (ADR-0028).
     environmentId: string | null;
-    // Undefined keeps the source's port, null publishes none, a number overrides.
     exposedPort?: number | null;
     mayExposePorts: boolean;
     sourceIsTargetHost: boolean;
-    // The project it came from, which names a namesake database apart.
     projectName?: string;
-    // Filled in with `old host -> new host`, for the apps that name it.
     dbHosts: Map<string, string>;
-    // The panel's backup stores by name (lower-cased), as Deplo destinations.
     destinations?: Map<string, string>;
   },
   report: Report,
@@ -62,10 +55,6 @@ export async function importDatabaseService(
   }
   const spec = mapped.value;
 
-  // A database's name is one per team here, and "postgres" is in every project
-  // over there. The SAME environment is the same database (a second run, which
-  // is how newer data comes across); anywhere else it is a namesake, and it
-  // gets a name of its own rather than a skip that never copies its data.
   const teamId = await requireActiveTeamId();
   const taken = async (candidate: string) =>
     (
@@ -120,9 +109,6 @@ export async function importDatabaseService(
     spec.name = candidate;
   }
 
-  // The password is carried over on purpose (see mapDatabase), and as a GENERATED
-  // credential: another platform's random token is not something a person chose, so
-  // Deplo's account policy does not apply to it.
   const base = {
     name: spec.name,
     type: spec.type,
@@ -131,7 +117,6 @@ export async function importDatabaseService(
     environmentId: opts.environmentId,
     username: spec.username ?? undefined,
     dbName: spec.dbName ?? undefined,
-    // The source's image, pinned at CREATE so the first provision already runs it.
     customImage: spec.customImage,
   };
   const withPassword = {
@@ -140,9 +125,6 @@ export async function importDatabaseService(
     passwordIsGenerated: true,
   };
 
-  // What this database publishes here. The review may have said otherwise - a
-  // different port, or none at all - and without the grant nothing can be
-  // published whatever anyone chose.
   const sourcePort = spec.exposedPort ?? null;
   const chosenPort =
     opts.exposedPort !== undefined ? opts.exposedPort : sourcePort;
@@ -163,8 +145,6 @@ export async function importDatabaseService(
   const portNote = (why: string) =>
     `Port ${publishPort} was not published (${why}). Publish it from the database's Connection settings once that port is free.`;
 
-  // The FIRST failure is the one worth reporting: every later attempt is Deplo
-  // giving something up, so their errors describe the compromise, not the cause.
   let firstError = "";
   const attempt = async (payload: Parameters<typeof createDatabase>[0]) => {
     try {
@@ -177,12 +157,9 @@ export async function importDatabaseService(
 
   let created = await attempt({ ...withPassword, ...withPort });
 
-  // The port is held by the very container we are importing.
   if (!created && publishPort != null && opts.sourceIsTargetHost) {
     try {
       await sourceClient(c).stopService(svc.kind, svc.id);
-      // Written down like the data phase's own stops: backing out starts again
-      // exactly what Deplo stopped, and this one used to be forgotten.
       if (report.id)
         await getDb()
           .update(targetsTable)
@@ -194,14 +171,9 @@ export async function importDatabaseService(
             ),
           );
       created = await attempt({ ...withPassword, ...withPort });
-    } catch {
-      /* Dokploy would not stop it; the data phase tries again and says so. */
-    }
+    } catch {}
   }
 
-  // Two things can still fail here, and the report must name the one that did: the
-  // port is held by something that is not ours, or the password cannot ride inside a
-  // connection string.
   if (!created && publishPort != null) {
     created = await attempt(withPassword);
     if (created) notes.push(portNote(firstError));
@@ -227,10 +199,6 @@ export async function importDatabaseService(
     return;
   }
 
-  // The start command and the resource caps, both of which Deplo stores on a database
-  // and neither of which the import was writing: a Postgres tuned with `-c
-  // shared_buffers=1GB` arrived untuned, and one capped at 1 GB / 0.5 CPU arrived
-  // uncapped - free to take the whole host from every other tenant.
   if (spec.command) {
     try {
       const { updateDatabaseImage } = await import("../databases/settings");
@@ -254,9 +222,6 @@ export async function importDatabaseService(
     }
   }
 
-  // The engine's config files. AFTER the create, because they are a whole-set replace
-  // on an existing database - and before the report, so a refusal is one of the notes
-  // rather than a silent gap.
   if (spec.mounts.length > 0) {
     try {
       await setDatabaseMounts(created.id, spec.mounts);
@@ -276,8 +241,6 @@ export async function importDatabaseService(
     notes,
   );
 
-  // Said out loud, because every connection string the import just brought over
-  // still spells out the old one.
   if (publishPort != null && sourcePort != null && publishPort !== sourcePort)
     notes.push(
       `Published on ${publishPort} instead of ${sourcePort} - update the connection strings that name the old port.`,
@@ -292,14 +255,9 @@ export async function importDatabaseService(
     targetId: created.id,
   });
 
-  // Says what happens NEXT, in this same import. "Restore your data" read as "go
-  // find a dump and do it yourself", which is how someone concludes the import left
-  // them with an empty database and no way to move the old one.
   notes.push(
     `Empty until the data copy runs, a moment from now in this same import. It answers as "${created.host}", not "${row.appName}", so update the connection strings.`,
   );
-  // Both names an app can reach it by: the container's label (Dokploy) and the
-  // service's own id, which is what Coolify hands out as the internal URL.
   for (const from of [row.appName, svc.id])
     if (from?.trim()) {
       opts.dbHosts.set(from.trim(), created.host);

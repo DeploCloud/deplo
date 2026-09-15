@@ -19,9 +19,8 @@ import {
 } from "./stack";
 import type { DatabaseMount, DatabaseType } from "../../types/database";
 
-const MAX_MOUNT_BYTES = 1024 * 1024; // 1 MiB, the same ceiling the Files editor uses
+const MAX_MOUNT_BYTES = 1024 * 1024;
 
-// validateDatabaseMounts - validate + canonicalise a database's whole config-file set.
 export function validateDatabaseMounts(
   type: DatabaseType,
   raw: DatabaseMount[],
@@ -75,16 +74,12 @@ export function validateDatabaseMounts(
   return out;
 }
 
-// setDatabaseMounts - replace a database's config files (whole set) and APPLY
-// them. The reroute recreates the container, so the UI says so before the save.
 export async function setDatabaseMounts(
   id: string,
   mounts: DatabaseMount[],
 ): Promise<void> {
   const { teamId } = await requireCapability("configure_databases");
   const user = (await getCurrentUser())!;
-  // Captured inside the lock so the audit line can name the database the way
-  // every other one does; `cur` does not outlive the closure.
   let name = "";
   await withKeyedLock(id, async () => {
     const cur = await requireDatabase(id, teamId);
@@ -109,8 +104,6 @@ export async function setDatabaseMounts(
     });
     publishDatabaseChanged(id);
 
-    // Nothing to write into yet: a database still provisioning renders from the
-    // row when it comes up, and one that never did has no stack at all.
     if (cur.status === "provisioning") return;
     const password = databasePassword(cur);
     const next = { ...cur, mounts: validated };

@@ -5,7 +5,6 @@ import { VOLUME_KINDS } from "@/lib/apps/volume-model";
 import type { ComposeMount } from "@/lib/apps/compose-storage";
 import { KIND_ICON } from "./kind-picker";
 
-// ComposeMountList lists the storage the stack's own compose file mounts, read-only.
 export function ComposeMountList({ mounts }: { mounts: ComposeMount[] }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">

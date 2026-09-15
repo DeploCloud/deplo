@@ -5,7 +5,6 @@ import { FileText, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { LintDiagnostic } from "@/lib/deploy/compose-lint/lint";
 
-// ComposeSummary - what the card says about a stack it is not showing, plus the way into the editor.
 export function ComposeSummary({
   services,
   diagnostics,

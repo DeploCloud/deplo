@@ -61,7 +61,6 @@ beforeEach(async () => {
     ],
   });
   await seedServer(db);
-  // A REAL channel: `REFUSED` matches /not found/i, so an invented id would fake a refusal.
   await db.insert(notificationChannelsTable).values({
     id: CHANNEL,
     teamId: TEAM_A,
@@ -80,7 +79,6 @@ beforeEach(async () => {
     createdAt: new Date().toISOString(),
   });
   await db.insert(foldersTable).values([
-    // Owned by the OTHER member: what a capability must NOT be able to open.
     {
       id: FOLDER,
       teamId: TEAM_A,
@@ -89,7 +87,6 @@ beforeEach(async () => {
       createdAt: T0,
       updatedAt: T0,
     },
-    // Owned by the subject: a refusal here is the CAPABILITY talking, not the folder's privacy.
     {
       id: MY_FOLDER,
       teamId: TEAM_A,
@@ -141,13 +138,11 @@ async function callAs(
   });
 }
 
-// "not found" counts: every id below is REAL, so hiding it IS the refusal.
 const REFUSED =
   /not authorized|don't have permission|only the folder owner|only an instance admin|not a member|only its primary owner|not found/i;
 const refused = (messages: string[]): boolean =>
   messages.some((m) => REFUSED.test(m));
 
-// `cap: null` means no team capability admits it - the gate is ownership or the founder's crown.
 const CASES: { name: string; doc: string; cap: Capability | null }[] = [
   {
     name: "renameFolder",
@@ -180,7 +175,6 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
     cap: "move_apps",
   },
   {
-    // Someone else's folder: only the super-user `manage_team` overrides its owner.
     name: "setFolderGrant",
     doc: `mutation { setFolderGrant(folderId: "${FOLDER}", userId: "${USER_M}", capabilities: ["view"]) { userId } }`,
     cap: "manage_team",
@@ -191,7 +185,6 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
     cap: "manage_team",
   },
   {
-    // A channel row carries the webhook URL, a chat room's credential: the `view` floor must not reach it.
     name: "notificationChannels",
     doc: `query { notificationChannels }`,
     cap: "manage_notifications",
@@ -207,7 +200,6 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
     cap: "manage_notifications",
   },
   {
-    // A cap-holder gets "Add a Discord webhook URL first", which is not a refusal.
     name: "testNotificationChannel",
     doc: `mutation { testNotificationChannel(id: "${CHANNEL}") }`,
     cap: "manage_notifications",
@@ -259,7 +251,6 @@ for (const c of CASES) {
 
 test("a view-only member still owns their own account and sessions", async () => {
   await setCaps([]);
-  // `loggedIn` on purpose: refusing these locks a Viewer out of their own profile and 2FA.
   for (const doc of [
     `mutation { updateProfile(name: "New Name") }`,
     `mutation { revokeOtherSessions }`,
@@ -285,7 +276,6 @@ test("switching to a team you don't belong to is refused", async () => {
 
 test("the compose preview is served at the view floor with every value masked", async () => {
   await setCaps([]);
-  // Readable at the view floor only because the values are stripped: assert the masking.
   const identity: RequestIdentity = { userId: USER_M, teamId: TEAM_A };
   const rendered = await runWithIdentity(identity, async () => {
     const ctx: GraphQLContext = {
@@ -317,7 +307,6 @@ test("the compose preview is served at the view floor with every value masked", 
 });
 
 test("a team capability does not reach into a folder the member can't see", async () => {
-  // `manage_team` is the documented folder super-user, so the subject must not hold it.
   await setCaps(ALL_CAPABILITIES.filter((c) => c !== "manage_team"));
   const messages = await callAs(
     USER_M,

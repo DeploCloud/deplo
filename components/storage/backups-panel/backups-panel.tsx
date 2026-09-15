@@ -26,7 +26,6 @@ import { ScheduleBackup } from "./schedule-wizard";
 import { ScheduleRow } from "./schedule-row";
 import { PendingRunRow, RunRow } from "./run-row";
 
-// BackupsPanel - the Backups tab: schedules, one-off runs, and the artifacts they produced.
 export function BackupsPanel({
   target,
   schedules,
@@ -41,16 +40,9 @@ export function BackupsPanel({
   schedules: BackupDTO[];
   runs: BackupRun[];
   destinations: Destination[];
-  /** `manage_backups` - schedule, run, edit, delete. */
   canManage: boolean;
-  /** `restore_backups` - its own, because a restore overwrites live data (and
-   *  a download hands over every byte, which is the same power). */
   canRestore: boolean;
-  /** `delete_backups` - its own capability, and the only irreversible one on
-   *  this screen: the artifact is the last copy of that moment. */
   canDelete: boolean;
-  /** `manage_backup_destinations`: whether this user may run the live connection
-   *  probe the picker fires, and take a destination's recovery key. */
   canTestDestinations: boolean;
 }) {
   const router = useRouter();
@@ -63,15 +55,10 @@ export function BackupsPanel({
     [destinations],
   );
 
-  // A dump runs on the host for minutes with nothing on this page changing by itself,
-  // and the mutation that started it only resolves at the very END.
   const [pending, setPending] = React.useState<
     { id: number; destinationId: string; baseline: number }[]
   >([]);
   const runningNow = runs.filter((r) => r.status === "running").length;
-  // Retire a placeholder the moment a real `running` row shows up above the count
-  // that stood when it was created: the swap happens in one commit, so there is
-  // never a duplicate.
   const [seenRunning, setSeenRunning] = React.useState(runningNow);
   if (runningNow !== seenRunning) {
     setSeenRunning(runningNow);
@@ -83,9 +70,6 @@ export function BackupsPanel({
   const startRun = React.useCallback(
     (destinationId: string, run: () => Promise<unknown>) => {
       const id = nextPendingId.current++;
-      // `runningNow` as of this render is the baseline: "has MY row landed yet?"
-      // is answerable by the count alone, and the run's real id does not exist
-      // on this side until the dump finishes.
       setPending((p) => [...p, { id, destinationId, baseline: runningNow }]);
       void run().finally(() => setPending((p) => p.filter((x) => x.id !== id)));
     },
@@ -110,8 +94,6 @@ export function BackupsPanel({
 
   return (
     <div className="space-y-8">
-      {/* Faster while a run started here has not surfaced yet: that gap is the
-          one the placeholder is covering. */}
       <AutoRefresh
         active={anythingRunning}
         intervalMs={pending.length > 0 ? 2_000 : 5_000}
@@ -152,8 +134,6 @@ export function BackupsPanel({
         open={fileOpen}
         onOpenChange={setFileOpen}
       />
-      {/* Only the destinations THIS target writes to, so a page for one app
-          never nags about a bucket it has nothing to do with. */}
       {unsavedKeyDestinations.map((d) => (
         <RecoveryKeyNudge
           key={d.id}
@@ -164,8 +144,6 @@ export function BackupsPanel({
         />
       ))}
 
-      {/* Away on a target with nothing at all, so a new page is one empty state
-          and not two stacked. */}
       {(schedules.length > 0 || runs.length > 0 || pending.length > 0) && (
         <section className="space-y-3">
           <h2 className="text-sm font-medium">Schedules</h2>

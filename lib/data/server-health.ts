@@ -29,11 +29,8 @@ import { getServerById, listAllServers } from "./servers/roster";
 import type { HelloResponse } from "../agent/gen/agent";
 import type { Server } from "../types/server";
 
-// The status column stays a CACHE, never a gate (ADR-0006).
-
 const THROTTLE_MS = 15_000;
 const FORCE_FLOOR_MS = 5_000;
-// Bounds the WHOLE probe: connectAgent reads the DB and issues a cert before the RPC's own 3s clock starts.
 const PROBE_DEADLINE_MS = 3_500;
 const RETRY_DELAY_MS = 750;
 
@@ -63,7 +60,6 @@ const HAS_LIVE_AGENT = and(
   sql`${serversTable.agentCertFingerprint} <> ''`,
 );
 
-// claimProbe - the throttle LEASE: `status_probed_at` records "we tried", never "we observed".
 export async function claimProbe(id: string, force: boolean): Promise<boolean> {
   const now = nowIso();
   const window = force ? FORCE_FLOOR_MS : THROTTLE_MS;
@@ -76,7 +72,6 @@ export async function claimProbe(id: string, force: boolean): Promise<boolean> {
       and(
         eq(serversTable.id, id),
         HAS_LIVE_AGENT,
-        // Either column being fresh means a re-dial would learn nothing new.
         stale(serversTable.statusProbedAt),
         stale(serversTable.statusCheckedAt),
       ),
@@ -101,7 +96,6 @@ async function serversDeployingNow(ids: string[]): Promise<Set<string>> {
   );
 }
 
-// recordServerHealth - the one writer of an observed outcome; ungated, because it is a heartbeat, not a user action.
 export async function recordServerHealth(
   id: string,
   health: ServerHealth,
@@ -140,7 +134,6 @@ function alertServerHealth(
   name: string,
   health: ServerHealth,
 ): void {
-  // `provisioning` is mid-setup, not an observed verdict - nothing to report yet.
   if (health.status === "provisioning") return;
   const dedupe = { id: `server:${id}`, state: health.status };
   const alert = {
@@ -178,7 +171,6 @@ async function probeServer(
 ): Promise<Server | null> {
   if (!(await claimProbe(server.id, force))) return null;
 
-  // Watermark on probe START, not on write. See recordServerHealth.
   const observedAt = nowIso();
 
   const dialHello = async (): Promise<HelloResponse> => {
@@ -218,7 +210,6 @@ async function probeServer(
     storageOnly: server.storageOnly,
   });
   if (error) {
-    // The raw error carries the pinned fingerprint and the dial address: log it, never store it.
     console.error(`[deplo] health probe for ${server.name}: ${String(error)}`);
   }
 
@@ -258,7 +249,6 @@ function isProbeable(server: Server): boolean {
   return Boolean(server.agent?.certFingerprint);
 }
 
-// checkServerHealth - re-check ONE server (the per-card button); this gate is the boundary.
 export async function checkServerHealth(
   id: string,
   opts: { force?: boolean } = {},
@@ -270,7 +260,6 @@ export async function checkServerHealth(
   return probeCoalesced(server, opts.force ?? false);
 }
 
-// checkAllServerHealth - re-check every server (the on-load sweep and "Check all").
 export async function checkAllServerHealth(
   opts: { force?: boolean } = {},
 ): Promise<Server[]> {

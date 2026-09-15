@@ -12,9 +12,6 @@ import type {
 import type { SourceBackupSchedule } from "../../migration/model";
 import type { Report } from "./run-report";
 
-// The source's backup schedules as backups on `target`, one per schedule and
-// destination, skipping any the target already holds - so a second pass adds what the
-// first could not (a destination that was not here yet) and no more.
 export async function landSourceBackups(
   backups: SourceBackupSchedule[] | null | undefined,
   destinations: Map<string, string> | undefined,
@@ -41,8 +38,6 @@ export async function landSourceBackups(
         )
     ).map((b) => `${b.schedule}|${b.destinationId}`),
   );
-  // An app backup covers every volume of the app, so two volumes on one
-  // schedule fold into one backup and the note names both.
   const seen = new Map<string, string[]>();
   for (const b of schedules) {
     const schedule = b.schedule!.trim();
@@ -108,9 +103,6 @@ export async function landSourceBackups(
         );
 }
 
-// The S3 stores the panel backed up to, as Deplo's own destinations. Tried at once,
-// exactly as a hand-made one is: a credential that stopped working over there should
-// say so now, not at the first backup that needed it.
 export async function importBackupDestinations(
   c: SourceCredential,
   report: Report,
@@ -122,8 +114,6 @@ export async function importBackupDestinations(
   try {
     stores = await sourceClient(c).listBackupDestinations();
   } catch (e) {
-    // Said, not swallowed: every schedule below then reads "that destination is
-    // not here" with no line saying why.
     await report.add({
       sourceKind: "destination",
       sourceName: "backup destinations",
@@ -138,8 +128,6 @@ export async function importBackupDestinations(
   const { createDestination } = await import("../destinations/create");
   const { listDestinations } = await import("../destinations/listing");
   const { testDestination } = await import("../destinations/probe");
-  // The bucket is the identity: a store already here under any name is the one
-  // the panel's schedules meant, so its name here answers for the panel's.
   const existing = new Map<string, string>(
     (await listDestinations()).map((d) => [
       `${(d.endpoint ?? "").toLowerCase()}|${d.bucket ?? ""}`,

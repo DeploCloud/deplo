@@ -18,8 +18,6 @@ import { timeAgo } from "@/lib/utils";
 import { IN_PROGRESS } from "./deployment-status";
 import type { DeploymentStatus } from "@/lib/types/deployment";
 
-// Anything inside a row that owns its own click: links, buttons, the selection
-// checkbox, and any cell explicitly opted out with `data-no-row-nav`.
 const ROW_NAV_EXEMPT =
   'a, button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-no-row-nav]';
 
@@ -28,48 +26,33 @@ export interface DeploymentRow {
   appId: string;
   appSlug: string;
   serviceName: string;
-  /** The app's logo - only the global page, the one place the column exists. */
   appLogo?: string | null;
-  /** Owning server id - present on the global page (for the Server filter). */
   serverId?: string | null;
-  /** Owning server name - present on the global page (for the Server column). */
   serverName?: string | null;
-  /** The server this deploy BUILT on, when that was not the owning one. */
   buildServerName?: string | null;
   commitMessage: string;
   commitSha: string;
   commitUrl: string | null;
-  /** The pull request this preview build came from, or null for production. */
   pullRequestUrl?: string | null;
-  /** Denormalized pull request number - null for every non-PR row. */
   prNumber?: number | null;
   status: DeploymentStatus;
   branch: string;
   createdAt: string;
   creator: string;
-  /** The account behind `creator` - null for a webhook push (a GitHub login). */
   creatorUser?: {
     name: string;
     username: string;
     avatarColor: string;
     avatarUrl: string | null;
   } | null;
-  /** Set ⇒ `creator` is a login on this git host, not a Deplo account. */
   creatorProvider?: string | null;
-  /** That account's profile on the host, when it can be linked. */
   creatorUrl?: string | null;
   url: string;
-  /** The SERVER's answer on whether its image is still on the host. */
   canRollback?: boolean;
-  /** This deployment WAS a rollback: it re-ran an older build's image. */
   rollbackOf?: string | null;
-  /** A migration is still writing this row's app - the server refuses every
-   *  action on it until the run ends. */
   appMigrating?: boolean;
 }
 
-// useOpenDeployment builds the whole-row click handler: anywhere that isn't a
-// dedicated control opens that deployment's build logs & details.
 export function useOpenDeployment() {
   const router = useRouter();
   const team = useTeamSlug();
@@ -81,8 +64,6 @@ export function useOpenDeployment() {
     if (window.getSelection()?.toString()) return;
     const href = `/apps/${d.appSlug}/deployments/${d.id}`;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
-      // A new tab is not the router, so this is the one push that has to put the
-      // team on the path itself.
       window.open(withTeam(href, team), "_blank", "noopener,noreferrer");
       return;
     }
@@ -90,8 +71,6 @@ export function useOpenDeployment() {
   };
 }
 
-// DeploymentTableRow is one deployment's row: selection, commit, app/server,
-// live status, branch, who ran it and the row's actions.
 export function DeploymentTableRow({
   d,
   showApp,
@@ -128,8 +107,6 @@ export function DeploymentTableRow({
       }}
     >
       {canManage && (
-        /* The checkbox cell opts out of row navigation entirely - its padding is
-           aimed at while selecting, and a near-miss must not navigate away. */
         <TableCell data-no-row-nav>
           <SimpleTooltip
             content={
@@ -153,8 +130,6 @@ export function DeploymentTableRow({
       )}
 
       <TableCell className="max-w-[280px]">
-        {/* The keyboard/screen-reader path to what the whole row does on click
-            (a <tr> can't be a link itself). */}
         <Link
           href={`/apps/${d.appSlug}/deployments/${d.id}`}
           className="block truncate font-medium text-foreground hover:underline focus-visible:underline"
@@ -167,8 +142,6 @@ export function DeploymentTableRow({
             url={d.commitUrl}
             className="font-mono text-xs text-muted-foreground"
           />
-          {/* Read off the deployment's own denormalized number, so it survives
-              the preview being reaped. */}
           {d.prNumber ? (
             <SimpleTooltip content={`Built for pull request #${d.prNumber}`}>
               <Badge
@@ -196,8 +169,6 @@ export function DeploymentTableRow({
 
       {showApp && (
         <TableCell>
-          {/* On the global page the App name opens THIS row's build logs, not
-              the app overview. */}
           <SimpleTooltip content="Open this deployment's build logs">
             <Link
               href={`/apps/${d.appSlug}/deployments/${d.id}`}
@@ -213,8 +184,6 @@ export function DeploymentTableRow({
       {showServer && (
         <TableCell>
           {d.serverName ? (
-            // The BUILD server rides in the tooltip rather than a column of its
-            // own: it is null for almost every row.
             <SimpleTooltip
               content={
                 d.buildServerName

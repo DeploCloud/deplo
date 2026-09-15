@@ -90,7 +90,6 @@ export function HealthCheckForm({
           onCheckedChange={(v) => {
             const next = { ...form, enabled: v };
             setForm(next);
-            // Off saves at once; on waits for the fields to be filled in first.
             if (!v) save(next);
           }}
         />

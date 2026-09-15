@@ -46,7 +46,6 @@ export function Topbar({
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md">
-      {/* Mobile menu */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetTrigger asChild>
           <Button
@@ -71,10 +70,8 @@ export function Topbar({
         </SheetContent>
       </Sheet>
 
-      {/* Only present while the sidebar is collapsed. */}
       <SidebarExpandButton />
 
-      {/* Team switcher, or a neutral label outside any single team. */}
       {hideTeam ? (
         <span className="flex items-center gap-2 text-sm font-medium">
           <Settings className="size-4 text-muted-foreground" />
@@ -84,7 +81,6 @@ export function Topbar({
         <TeamSwitcher team={team} teams={teams} />
       )}
 
-      {/* Rich trail on the apps tree, a plain "/ Label" everywhere else. */}
       <React.Suspense
         fallback={
           <span className="hidden items-center gap-2 sm:flex">
@@ -104,7 +100,6 @@ export function Topbar({
       </React.Suspense>
 
       <div className="flex flex-1 items-center justify-end gap-2">
-        {/* The sidebar is hidden here, so this is the only way into search. */}
         <Button
           variant="ghost"
           size="icon-sm"
@@ -115,7 +110,6 @@ export function Topbar({
         >
           <Search className="size-5" />
         </Button>
-        {/* Creation lives on the Overview's "Add New" menu, not here. */}
         <MigrationChip canOpen={isAdmin} />
         <UpdateChip />
         <ThemeToggle />

@@ -5,10 +5,8 @@ import {
   type ServerChoice,
 } from "../types";
 
-// OWN_HOST - the source panel's own host has no server row over there; it is the empty id.
 export const OWN_HOST = "";
 
-// FleetServer - a server as the fleet query lists it; `role` "everything" is one that runs.
 export interface FleetServer {
   id: string;
   name: string;
@@ -16,13 +14,11 @@ export interface FleetServer {
   isDeploHost: boolean;
 }
 
-// Fleet - what one landing team may place services on.
 export interface Fleet {
   servers: ServerChoice[];
   buildServers: ServerChoice[];
 }
 
-// defaultChoice - what a fresh plan arrives ticked with: everything Deplo can create that is not here yet.
 export function defaultChoice(plan: Plan): Set<string> {
   return new Set(
     plan.projects.flatMap((p) =>
@@ -33,7 +29,6 @@ export function defaultChoice(plan: Plan): Set<string> {
   );
 }
 
-// landingDefaults - where each service lands unless somebody says otherwise: the Deplo server that IS its machine.
 export function landingDefaults(
   scanned: Plan,
   servers: ServerChoice[],
@@ -58,8 +53,6 @@ export function landingDefaults(
         ]),
       ),
     ),
-    // Only where its apps LAND: where the data is READ from is derived
-    // server-side from the machine's address, never from this map.
     servers: Object.fromEntries([
       [OWN_HOST, landingFor(OWN_HOST)],
       ...scanned.servers.map((s) => [s.sourceId, landingFor(s.sourceId)]),
@@ -67,7 +60,6 @@ export function landingDefaults(
   };
 }
 
-// reconcilePlacements - drop a placement the landing team's fleet no longer offers.
 export function reconcilePlacements(
   placements: Record<string, Placement>,
   machines: Record<string, string>,
@@ -85,7 +77,6 @@ export function reconcilePlacements(
         {
           ...p,
           serverId: runnable.has(p.serverId) ? p.serverId : home,
-          // Null is Automatic, which is the right answer for a host that is gone.
           buildServerId:
             p.buildServerId && !buildable.has(p.buildServerId)
               ? null

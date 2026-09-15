@@ -18,7 +18,6 @@ test("a selection moves as one block, keeping its relative order", () => {
     "c",
     "e",
   ]);
-  // Upward: the block lands before the target.
   assert.deepEqual(reorderBlock(order, "e", "b", ["c", "e"]), [
     "a",
     "c",

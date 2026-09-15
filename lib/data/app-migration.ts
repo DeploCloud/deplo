@@ -37,16 +37,13 @@ import {
 
 type Emit = (level: "info" | "warn" | "error", text: string) => void;
 
-// MoveOutcome is how a move ended; rolled-back and held are the two ways a copy can fail.
 export type MoveOutcome = "done" | "nothing" | "rolled-back" | "held";
 
-// completePendingAppMigration finishes a pending server move, right after a deploy on the new server.
 export async function completePendingAppMigration(
   appId: string,
   deployedOn: string,
   emit: Emit,
 ): Promise<MoveOutcome> {
-  // The app's lifecycle lock: start/stop/reroute/delete take the same one.
   return withKeyedLock(`app-lifecycle:${appId}`, () =>
     runMigration(appId, deployedOn, emit),
   );
@@ -93,7 +90,6 @@ async function runMigration(
     await clearMarker(appId);
     return "nothing";
   }
-  // A second move re-targeted the app mid-deploy: what this deploy brought up is a stray.
   if (deployedOn !== to) {
     const [here, there] = await Promise.all([
       serverName(deployedOn),
@@ -259,7 +255,6 @@ function strayEntry(app: App, serverId: string, reclaim?: string[]) {
   };
 }
 
-// Only with the old host reachable - otherwise there is nothing to go back to (see hold).
 async function rollback(
   app: App,
   ctx: {
@@ -280,7 +275,6 @@ async function rollback(
       () => false,
     );
   await relocate(app, from, oldUp ? "active" : "error");
-  // Best-effort: an unreachable new host lands in the retry queue.
   await teardownOrQueue(strayEntry(app, to)).catch(() => {});
   publishAppChanged(app.id);
   emit(
@@ -300,8 +294,6 @@ async function rollback(
   return "rolled-back";
 }
 
-// Kept STOPPED on the new server rather than running on empty storage: a redeploy retries
-// once the old host answers, "Deploy anyway" accepts the loss.
 async function hold(
   app: App,
   ctx: {
@@ -337,7 +329,6 @@ async function relocate(
   serverId: string,
   status: "active" | "error",
 ): Promise<void> {
-  // An earlier failed attempt queued a teardown of this stack here; it now lives here.
   await dropTeardown(serverId, app.slug);
   const [leaving, arriving] = await Promise.all([
     getServerById(app.serverId),

@@ -11,7 +11,6 @@ import {
 } from "@/components/apps/git-deploy-options";
 import type { DeploymentSettings } from "./use-deployment-settings";
 
-// AutoDeployCard: the deploy-on-push switch and the trigger that shapes it.
 export function AutoDeployCard({ settings }: { settings: DeploymentSettings }) {
   const {
     autoDeploy,

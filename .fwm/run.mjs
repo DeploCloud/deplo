@@ -3,8 +3,8 @@ import { execFileSync } from "node:child_process";
 
 const API = "http://127.0.0.1:3000/api/graphql";
 const TOKEN = readFileSync("/root/projects/deplo/.fwm/token", "utf8").trim();
-const SERVER = "srv_3667cf1973005952"; // eu-main-1
-const INSTALL = "ghi_fb046534356f874a"; // the team's GitHub App installation
+const SERVER = "srv_3667cf1973005952";
+const INSTALL = "ghi_fb046534356f874a";
 const PREFIX = "fwm-";
 const MATRIX = JSON.parse(
   readFileSync("/root/projects/deplo/.fwm/matrix.json", "utf8"),
@@ -35,11 +35,8 @@ const DELETE = `mutation($id:String!){ deleteApp(id:$id) }`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Everything the wizard does for one repo, then wait for the first deploy. */
 async function createOne(e, opts) {
   const url = `https://github.com/${e.repo}`;
-  // The SERVER-SIDE detection, called as the resolver calls it. The panel on :3000
-  // is the owner's own process and predates these fixes, so it is not restarted.
   const d = JSON.parse(
     execFileSync(
       "/usr/bin/node",
@@ -77,7 +74,6 @@ async function createOne(e, opts) {
     installCommand: null,
     buildCommand: d?.buildCommand ?? null,
     outputDir: d?.staticOutput ?? null,
-    // The whole point of the A/B: `legacy` reproduces what the wizard used to seed.
     startCommand: d?.startCommand ?? null,
     rootDir: e.root ? `./${e.root}` : "./",
     runtimeVersion: "",
@@ -122,8 +118,6 @@ async function waitReady(slug, budgetMs) {
   return last;
 }
 
-/** The check that would have caught the Vite report: is the page the BUILD?
- * Retried: a deployment reads `ready` a few seconds before Traefik has its router. */
 async function httpCheck(url, budgetMs = 120000) {
   const until = Date.now() + budgetMs;
   for (;;) {
@@ -162,8 +156,6 @@ const legacy = flags.includes("--legacy");
 const prefix = flags.find((f) => f.startsWith("--prefix="))?.slice(9) ?? "";
 const OUT = `/root/projects/deplo/.fwm/results-${method}${legacy ? "-legacy" : ""}.json`;
 
-/** The control plane reads GitHub unauthenticated: 60/h for the whole instance,
- * and an exhausted budget makes detection answer null. Wait rather than measure it. */
 async function awaitGithubBudget(need) {
   for (;;) {
     const r = await fetch("https://api.github.com/rate_limit").then((x) =>

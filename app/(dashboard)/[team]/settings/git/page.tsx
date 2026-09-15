@@ -18,7 +18,6 @@ export default async function SettingsGitPage(props: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const sp = await props.searchParams;
-  // The `?git=` flag the GitHub redirects carry is handled in the app shell, for every page.
   const next = safeReturnPath(Array.isArray(sp.next) ? sp.next[0] : sp.next);
   if (!(await reachesWholeTeam()))
     return (
@@ -29,7 +28,6 @@ export default async function SettingsGitPage(props: {
       />
     );
   const githubApps = await listGithubApps();
-  // An App that cannot be checked gets no entry and no warning.
   const appAccess = await githubAppsAccess({
     previews: await teamUsesPreviews(),
   });
@@ -44,7 +42,6 @@ export default async function SettingsGitPage(props: {
     tokenHelpUrl: tokenHelpUrl(id, PROVIDERS[id].defaultBaseUrl ?? ""),
   }));
 
-  // The page header lives inside the panel: its Connect menu and the connect dialog share state.
   return (
     <GitPanel
       githubApps={githubApps}

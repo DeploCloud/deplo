@@ -18,7 +18,6 @@ const REVEAL = /* GraphQL */ `
   }
 `;
 
-// RegistrationLinkRow - one pending link: what it is, when it dies, and the link.
 export function RegistrationLinkRow({
   link,
   onRemoved,
@@ -223,7 +222,6 @@ interface TimeLeft {
   label: string;
 }
 
-// Null until mounted: a server-rendered clock would hydrate to a different value.
 function useTimeLeft(expiresAt: string): TimeLeft | null {
   const [left, setLeft] = React.useState<TimeLeft | null>(null);
 
@@ -249,7 +247,6 @@ function formatLeft(ms: number): string {
   return h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`;
 }
 
-// atClock - "today, 22 Jul at 20:15" / "tomorrow, 23 Jul at 09:12".
 export function atClock(iso: string): string {
   const date = new Date(iso);
   const time = date.toLocaleTimeString([], {

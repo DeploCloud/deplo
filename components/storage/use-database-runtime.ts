@@ -53,16 +53,13 @@ export function useDatabaseRuntime(
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const tick = async () => {
-      // Skip the round trip while backgrounded, but keep the timer so it resumes on its own.
       if (document.visibilityState === "visible") {
         try {
           const data = await gql<Response>(DATABASE_RUNTIME_QUERY, {
             databaseId,
           });
           if (!cancelled) setRuntime(data.databaseRuntime);
-        } catch {
-          // A failed poll is no evidence about the container - keep the last answer.
-        }
+        } catch {}
       }
       if (!cancelled) timer = setTimeout(tick, pollMs);
     };

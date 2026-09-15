@@ -61,7 +61,6 @@ import type { TeamEnvironment } from "@/lib/data/environments";
 
 type LinkableSharedVar = Omit<AppSharedVarDTO, "value">;
 
-// EnvVarDialog - add or edit an app's environment variables (standalone, or linked shared ones).
 export function EnvVarDialog({
   open,
   onOpenChange,
@@ -140,7 +139,6 @@ function EditForm({
   function submit() {
     onOpenChange(false);
     startTransition(async () => {
-      // The rename goes first: it is keyed by id, so it cannot clash with the upsert below.
       if (renamed) {
         const r = await gqlAction<{ renameEnv: { id: string } }>(
           `mutation($id: String!, $newKey: String!) {
@@ -154,7 +152,6 @@ function EditForm({
           return;
         }
       }
-      // No `targets`: the server defaults every variable to every runtime.
       const res = await gqlAction<{ upsertEnv: { id: string } }>(
         `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
         {
@@ -214,7 +211,6 @@ function EditForm({
             </div>
             <div className="space-y-2">
               <Label>Value</Label>
-              {/* Focus lands on the value, off the info button beside the Key label. */}
               <Textarea
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
@@ -299,7 +295,6 @@ function AddDialog({
           onValueChange={(v) => setTab(v as AddTab)}
           className="flex min-h-0 flex-col"
         >
-          {/* One chrome row either way, so nothing jumps while the track moves. */}
           <div className="border-b border-border px-6 pb-4">
             {creating ? (
               <Button
@@ -392,7 +387,6 @@ function StandaloneTab({
   function save() {
     onDone();
     void (async () => {
-      // No `targets` on either path: the server defaults every variable to every runtime.
       if (filled.length === 1) {
         const res = await gqlAction<{ upsertEnv: { id: string } }>(
           `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
@@ -435,7 +429,6 @@ function StandaloneTab({
 
   return (
     <form onSubmit={onSubmit}>
-      {/* The body - the only thing that scrolls. */}
       <div
         className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
       >
@@ -465,7 +458,6 @@ function StandaloneTab({
       </div>
 
       <DialogFooter className="items-center border-t border-border px-6 py-4 sm:justify-between">
-        {/* Nothing else announces it: the Key input explodes a pasted .env into rows. */}
         <p className="text-xs text-muted-foreground">
           or paste .env contents in the Key field
         </p>
@@ -577,7 +569,6 @@ function SharedTab({
         )}
       </div>
 
-      {/* Each toggle already saved itself - Done only closes. */}
       <DialogFooter className="border-t border-border px-6 py-4">
         {canCreate && (
           <Button variant="outline" onClick={onCreate}>
@@ -633,10 +624,8 @@ function SharedVarLinkRow({
     });
   }
 
-  // Every shared variable is opt-in (ADR-0012): the scope only explains why it's suggested.
   const hint = sharedVar.scope ? SCOPE_HINT[sharedVar.scope] : null;
 
-  // The one exception to the opt-in (ADR-0027): it already reaches this app with no link.
   if (sharedVar.autoInject && !linked)
     return (
       <div className="flex items-center justify-between gap-3 px-3 py-2.5">

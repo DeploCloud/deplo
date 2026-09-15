@@ -36,7 +36,6 @@ export default async function AppAdvancedSettingsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The console page refuses without this, so the row says so instead of linking to a 404.
   const [canConsole, canCron, mayExposePorts, buildServerChoices] =
     await Promise.all([
       hasAppCapability(project.id, "open_app_console"),
@@ -48,7 +47,6 @@ export default async function AppAdvancedSettingsPage(
 
   const isComposeStack = usesComposeStack(project);
   const buildsOwnImage = appBuildsItsOwnImage(project);
-  // A provider that already triggers deploys makes a second trigger one more credential to leak.
   const providerTriggers =
     project.source === "github" ||
     (Boolean(project.repo?.connectionId) &&
@@ -101,7 +99,6 @@ export default async function AppAdvancedSettingsPage(
             </CapabilityFieldset>
           )}
 
-          {/* A compose stack publishes its own ports in its own YAML. */}
           {project.source !== "compose" && (
             <CapabilityFieldset cap="configure_apps">
               <PublishedPortsForm

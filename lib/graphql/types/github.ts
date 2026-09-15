@@ -22,7 +22,6 @@ import {
   type GithubRepoSummary,
 } from "@/lib/github/app";
 
-// `state` is the signed CSRF state echoed back to our callback.
 interface GithubConnectStart {
   actionUrl: string;
   manifest: string;
@@ -145,7 +144,6 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { org, returnTo }): Promise<GithubConnectStart> => {
       const user = await assertUser();
-      // The manifest base is baked permanently into the App on GitHub, so it must be an explicit external URL.
       const base = resolveManifestBaseUrl();
       if (base === PUBLIC_URL_PLACEHOLDER) {
         throw new Error(

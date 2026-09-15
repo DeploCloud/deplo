@@ -40,7 +40,6 @@ export function DestinationsTable({
 }: {
   destinations: DestinationCardView[];
   canManage: boolean;
-  /** Ids currently selected, so a row can paint itself picked. */
   selected: Set<string>;
   onSelect: (
     id: string,
@@ -108,9 +107,6 @@ function DestinationRow({
         <span className="flex items-center gap-2">
           <StatusDot status={dest.status} />
           <span className="truncate">{dest.name}</span>
-          {/* The card's banners, as one icon each: a row cannot carry a
-              paragraph, and a security warning that disappears when you switch
-              view is a warning that gets lost. */}
           {!dest.encrypted && (
             <SimpleTooltip content="Backups here are not encrypted. Add this destination again to get an encrypted one.">
               <ShieldOff className="size-3.5 shrink-0 text-[var(--warning)]" />

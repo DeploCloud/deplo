@@ -1,8 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/deploy/from-template
-// Remote input: every response is validated against ./schema, and variant files end up in a deploy.
-
 import { z } from "zod";
 import { MAX_LOGO_BYTES } from "@/lib/apps/logo-shared";
 import { templatesApiBase } from "./api-base";
@@ -24,7 +21,6 @@ function apiUrl(path: string): string {
   return `${templatesApiBase()}${path}`;
 }
 
-// templateAssetUrl re-validates the path, so a compromised catalog cannot aim the browser at an arbitrary URL.
 export function templateAssetUrl(path: string): string {
   return apiUrl(templateAssetPathSchema.parse(path));
 }
@@ -55,7 +51,6 @@ async function fetchText(path: string, slug: string): Promise<string> {
   return response.text();
 }
 
-// getTemplates returns one page of the catalog.
 export async function getTemplates(query: TemplateListQuery = {}) {
   const parsed = templateListQuerySchema.parse(query);
   const params = new URLSearchParams();
@@ -76,7 +71,6 @@ function withAssetUrls(t: ApiTemplate): CatalogTemplate {
   };
 }
 
-// listCatalog returns the whole catalog, every field the service serves.
 export async function listCatalog(): Promise<CatalogTemplate[]> {
   const first = await getTemplates({ page: 1, limit: 100 });
   const rest = await Promise.all(
@@ -88,7 +82,6 @@ export async function listCatalog(): Promise<CatalogTemplate[]> {
   return [first, ...rest].flatMap((page) => page.data).map(withAssetUrls);
 }
 
-// getTemplate answers null when the slug is unknown, and never selects a variant.
 export async function getTemplate(slug: string) {
   const safe = slugSchema.safeParse(slug);
   if (!safe.success) return null;
@@ -104,7 +97,6 @@ export async function getTemplate(slug: string) {
   return apiTemplateSchema.parse(await response.json());
 }
 
-// getTemplateVariant answers null when a slug is invalid, the family is unknown, or the variant is not in it.
 export async function getTemplateVariant(
   templateSlug: string,
   variantSlug: string,
@@ -126,7 +118,6 @@ export async function getTemplateVariant(
   return { ...family, variant: selected, compose, config };
 }
 
-// templateImageBytes returns a catalog image's bytes, from the same hour-long cache every request uses.
 export async function templateImageBytes(url: string): Promise<Buffer | null> {
   try {
     const response = await get(url, "image/webp");
@@ -139,7 +130,6 @@ export async function templateImageBytes(url: string): Promise<Buffer | null> {
   }
 }
 
-// templateLogoDataUri inlines a template's logo as a data URI.
 export async function templateLogoDataUri(
   path: string | null,
 ): Promise<string | null> {

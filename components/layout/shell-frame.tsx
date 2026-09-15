@@ -17,7 +17,6 @@ export function isDottedRoute(pathname: string): boolean {
   return DOTTED.some((re) => re.test(pathname));
 }
 
-// useFullBleedRoute - is the current route one of the full-bleed ones?
 export function useFullBleedRoute(): boolean {
   const pathname = useFlatPathname();
   return FULL_BLEED.some((re) => re.test(pathname));

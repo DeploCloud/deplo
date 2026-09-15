@@ -27,7 +27,6 @@ const cborText = (s: string) => {
 const cborMap = (entries: [Buffer, Buffer][]) =>
   Buffer.concat([head(5, entries.length), ...entries.flat()]);
 
-// Authenticator data flag bits, in the order the spec lays them out.
 export const FLAG = {
   up: 0x01,
   uv: 0x04,
@@ -119,7 +118,6 @@ function coseKey(publicKey: KeyObject): Buffer {
   ]);
 }
 
-// Mint an authenticator holding one ES256 credential.
 export function makeAuthenticator(): Authenticator {
   const { publicKey, privateKey } = generateKeyPairSync("ec", {
     namedCurve: "prime256v1",

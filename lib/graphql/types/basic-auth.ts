@@ -10,7 +10,6 @@ import {
 } from "@/lib/data/basic-auth";
 import { rerouteApp } from "@/lib/deploy/build/reroute";
 
-// The password is never a FIELD: reading one back is the deliberate `revealBasicAuthPassword` call.
 const BasicAuthUserRef = builder
   .objectRef<BasicAuthUserDTO>("BasicAuthUser")
   .implement({
@@ -19,7 +18,6 @@ const BasicAuthUserRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       username: t.exposeString("username"),
-      // Null before authorship was tracked (migration 0045 does not backfill) or once the author's account is deleted.
       createdBy: t.field({
         type: VarAuthorRef,
         nullable: true,
@@ -116,7 +114,6 @@ async function applyRouting(appId: string): Promise<void> {
   try {
     await rerouteApp(appId);
   } catch (e) {
-    // The row is already committed, so a failed reroute is not "the save failed" - name it and say how to retry.
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(
       `Saved, but applying it to the running app failed: ${msg}. ` +

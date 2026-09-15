@@ -32,14 +32,8 @@ import { MAX_RUNS_PER_TARGET, pruneRetention } from "./retention";
 import { formatBytes } from "./format-bytes";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
-// The dumps this process is driving, by run id, so "Stop" can reach one halfway
-// through a 25 GB tar: aborting the controller cancels the gRPC stream, so the
-// work stops ON THE HOST. In-memory, single process.
 export const backupRunsInFlight = new Map<string, AbortController>();
 
-// assertNotAlreadyBackingUp - refuse to dump a workload already being dumped: two
-// runs five seconds apart tarred one 61 GB volume in parallel. Read from the ROW,
-// so a second control plane on the same database is caught.
 export async function assertNotAlreadyBackingUp(
   teamId: string,
   targetId: string,
@@ -65,8 +59,6 @@ export async function assertNotAlreadyBackingUp(
     );
 }
 
-// executeBackup - the ONE executor every real backup goes through: "Run now", an
-// ad-hoc project run, and the scheduler.
 export async function executeBackup(
   teamId: string,
   actor: string,
@@ -84,8 +76,6 @@ export async function executeBackup(
   const targetKey =
     (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "";
   if (targetKey) await assertNotAlreadyBackingUp(teamId, targetKey);
-  // The target id is known up front, so the run record is appended BEFORE the
-  // expensive resolution (a project's descriptor build dials the agent).
   const run: BackupRun = {
     id: runId,
     teamId,
@@ -94,11 +84,8 @@ export async function executeBackup(
     databaseId: opts.kind === "database" ? opts.databaseId : null,
     appId: opts.kind === "app" ? opts.appId : null,
     destinationId: opts.destinationId,
-    // Denormalized on purpose: the two FK columns above are ON DELETE SET NULL, so
-    // deleting the app or database blanks them and nothing is left naming what the
-    // artifact on disk belonged to.
     targetId: (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "",
-    objectKey: "", // filled once the key is built (after resolution)
+    objectKey: "",
     sizeBytes: 0,
     decryptedSizeBytes: null,
     sha256: null,
@@ -118,19 +105,14 @@ export async function executeBackup(
     }
   });
 
-  // Resolve + dump under one try so EVERY failure (resolution, dial, the dump
-  // itself) lands on the same `failed`-run path below.
   let label = opts.kind === "database" ? "database" : "app";
   let activityAppId: string | null = opts.kind === "app" ? opts.appId : null;
   let activityDatabaseId: string | null =
     opts.kind === "database" ? opts.databaseId : null;
-  // Kept out here for the cancel cleanup below.
   let targetServerId = "";
   let result: BackupOutcome | null = null;
   let failure: string | null = null;
   let objectKey = "";
-  // Registered before the first dial and removed in the `finally` below, so
-  // "Stop" can reach this dump for exactly as long as it is running.
   const abort = new AbortController();
   backupRunsInFlight.set(runId, abort);
   let creds: Awaited<
@@ -153,8 +135,6 @@ export async function executeBackup(
       kind: opts.kind,
       targetId: target.targetId,
       runId,
-      // A store artifact is age-encrypted, so its name says so - the `.age` a
-      // user would need to know to decrypt it by hand with the recovery key.
       ext: artifactExt(
         opts.kind,
         target.dbType,
@@ -162,15 +142,11 @@ export async function executeBackup(
       ),
       at: new Date(startedAt),
     });
-    // Recorded on the running record now, so a crash mid-dump leaves the
-    // object's key behind for a sweep.
     await getDb()
       .update(backupRunsTable)
       .set({ objectKey })
       .where(eq(backupRunsTable.id, runId));
 
-    // WHERE the bytes go - bucket, this host's disk, another server's - is
-    // entirely backup-transport's problem.
     result = await backupToDestination(
       creds,
       {
@@ -185,8 +161,6 @@ export async function executeBackup(
     if (!result.ok)
       failure = result.error || "the agent reported a failed backup";
 
-    // Retention runs on success only (a failed run wrote no object). Best-effort: a
-    // prune failure must never fail the backup the operator asked for.
     if (!failure) {
       try {
         await pruneRetention(
@@ -217,13 +191,7 @@ export async function executeBackup(
           error: null,
           objectKey: result!.objectKey,
           sizeBytes: result!.sizeBytes,
-          // 0 means the agent that wrote it predates the field. Stored NULL, so
-          // the download can tell "no length recorded" from "an empty file" and
-          // simply omits Content-Length rather than advertising nothing.
           decryptedSizeBytes: result!.decryptedSizeBytes || null,
-          // Empty means the agent predates integrity checking. Stored NULL, so a
-          // restore can say "this backup was taken before Deplo could prove what
-          // it wrote" instead of silently skipping the check.
           sha256: result!.sha256 || null,
           finishedAt,
         };
@@ -237,8 +205,6 @@ export async function executeBackup(
         ),
       )
       .returning();
-    // The record can be gone (deleting a target sweeps its run history) or no
-    // longer `running` (it was canceled).
     if (updated.length === 0) {
       const still = await tx
         .select({ status: backupRunsTable.status })
@@ -260,8 +226,6 @@ export async function executeBackup(
     return assembleBackupRun(updated[0]!);
   });
 
-  // The cancel already said what happened, in its own Activity entry and to the
-  // person who pressed the button.
   if (canceled) {
     if (!failure && result?.ok && result.objectKey && creds) {
       try {
@@ -276,8 +240,6 @@ export async function executeBackup(
         );
       }
     }
-    // Thrown, not returned: every caller of this treats a non-success as an
-    // error, and "the backup you stopped did not produce one" is the truth.
     throw new Error("This backup was canceled");
   }
 
@@ -304,9 +266,6 @@ export async function executeBackup(
   return finished;
 }
 
-// cancelBackupRun - stop a running backup. The ORDER is the point: the record is
-// flipped first as a compare-and-swap on `running`, so the dump finishing a second
-// later cannot undo it; then the stream is aborted, so the tar stops on the host.
 export async function cancelBackupRun(runId: string): Promise<boolean> {
   const { membership } = await requireMembership();
   const teamId = membership.teamId;
@@ -323,9 +282,6 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
   const run = assembleBackupRun(runRows[0]);
   await requireBackupCapability(run, "manage_backups");
 
-  // `running` is part of the WHERE, not just a pre-check: a dump that finished
-  // between the read above and this write must NOT be retroactively flipped from
-  // success to canceled - it produced a real artifact and a real restore point.
   const stopped = await getDb()
     .update(backupRunsTable)
     .set({
@@ -339,8 +295,6 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
     .returning({ id: backupRunsTable.id });
   if (stopped.length === 0) return false;
 
-  // The schedule stops reading "Running" at once, rather than waiting out
-  // whatever the abort below takes to unwind.
   if (run.backupId)
     await getDb()
       .update(backupsTable)
@@ -349,9 +303,6 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
         and(eq(backupsTable.id, run.backupId), eq(backupsTable.teamId, teamId)),
       );
 
-  // Only this process can hold the stream. One that does not (it restarted, or
-  // another instance owns the run) still settles the record above, and
-  // `reconcileInFlightBackupRuns` sweeps whatever is left behind.
   backupRunsInFlight.get(runId)?.abort();
 
   const target = await downloadTargetFor(run, teamId);

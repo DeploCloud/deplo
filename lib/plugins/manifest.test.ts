@@ -111,7 +111,7 @@ test("resolvePluginEnv: ${secret:N} yields a fresh token of the right rough leng
   const a = resolvePluginEnv(env, CTX).A;
   const b = resolvePluginEnv(env, CTX).A;
   assert.notEqual(a, b);
-  assert.ok(a.length >= 16); // base64url of 16 bytes is ~22 chars
+  assert.ok(a.length >= 16);
   assert.ok(/^[A-Za-z0-9_-]+$/.test(a));
 });
 

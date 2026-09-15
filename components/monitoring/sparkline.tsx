@@ -4,7 +4,6 @@ import * as React from "react";
 import { areaPath, linePath, type XY } from "@/lib/monitoring/chart-geometry";
 import { cn } from "@/lib/utils";
 
-// Sparkline - fewer than two points draws NOTHING: a flat line at zero reads as an idle host, not an unmeasured one.
 export function Sparkline({
   values,
   width = 72,
@@ -24,7 +23,6 @@ export function Sparkline({
   const gradId = `spark-${uid}`;
   if (values.length < 2) return null;
 
-  // Zero-based, so the trace reads as magnitude, not as the wiggle a min-max scale blows up out of a flat 2% line.
   const max = Math.max(...values, 1e-9);
   const pts: XY[] = values.map((v, i) => ({
     x: (i / (values.length - 1)) * width,

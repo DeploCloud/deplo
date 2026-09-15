@@ -15,7 +15,6 @@ const glyph = (Icon: React.ComponentType<{ className?: string }>) => (
   <Icon className="size-3 shrink-0" />
 );
 
-// SharedWithChips - who a shared variable is available to, by name rather than by count.
 export function SharedWithChips({
   v,
   limit = CHIP_LIMIT,

@@ -1,10 +1,7 @@
-// https://deplo.build/docs/guides/observability/monitoring
-
 import yaml from "../yaml";
 
 import type { HealthCheck } from "../types/container";
 
-// What Deplo uses when a field is left blank. Docker's own defaults, rounded.
 export const HEALTH_CHECK_DEFAULTS = {
   intervalS: 30,
   timeoutS: 5,
@@ -12,7 +9,6 @@ export const HEALTH_CHECK_DEFAULTS = {
   startPeriodS: 10,
 } as const;
 
-// A health check → the compose healthcheck keys; only a command check renders one, http is probed by the agent.
 export function healthCheckToComposeKeys(
   h: HealthCheck | null | undefined,
 ): Record<string, unknown> {
@@ -30,7 +26,6 @@ export function healthCheckToComposeKeys(
   };
 }
 
-// Any compose keys as a YAML fragment indented `indent` spaces.
 export function renderYamlKeys(
   keys: Record<string, unknown>,
   indent: number,
@@ -47,7 +42,6 @@ export function renderYamlKeys(
   );
 }
 
-// The same keys as a YAML fragment for the string-built renderCompose path; empty when there is no check.
 export function renderHealthCheckYaml(
   h: HealthCheck | null | undefined,
   indent: number,

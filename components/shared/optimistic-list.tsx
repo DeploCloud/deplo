@@ -14,7 +14,6 @@ const OptimisticListContext = React.createContext<OptimisticListApi | null>(
 );
 
 export function OptimisticList({ children }: { children: React.ReactNode }) {
-  // toArray namespaces the child keys - `childKey` is the other half of that contract.
   const items = React.Children.toArray(children);
   const { visible, remove, restore } = useOptimisticRemove(items, (child) =>
     childKey(child as { key?: string | null }),

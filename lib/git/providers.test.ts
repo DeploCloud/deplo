@@ -27,7 +27,6 @@ test("gitlab: the shared token must match exactly", () => {
     gl.verify(SECRET, headers({ "x-gitlab-token": "nope" }), ""),
     "bad",
   );
-  // A missing header is a forgery, not an unsigned delivery: GitLab always sends back the token it was configured with.
   assert.equal(gl.verify(SECRET, headers({}), ""), "bad");
 });
 
@@ -68,7 +67,6 @@ test("bitbucket: signed when a secret is set, refused when the signature is miss
     bb.verify(SECRET, headers({ "x-hub-signature": "sha256=deadbeef" }), body),
     "bad",
   );
-  // Deplo registers every hook with a secret and Bitbucket signs whenever one is set, so an unsigned delivery is not Bitbucket's.
   assert.equal(bb.verify(SECRET, headers({}), body), "bad");
 });
 
@@ -105,7 +103,6 @@ test("gitlab: an all-zero after sha is a branch deletion", () => {
     },
   );
   assert.equal(p.event.deleted, true);
-  // …and a deletion never deploys, whatever else is configured.
   assert.equal(
     shouldAutoDeploy(
       { branch: "gone", triggerType: "push", watchPaths: [] },
@@ -194,7 +191,6 @@ test("bitbucket: no file list means path filters fall open", () => {
     },
   );
   assert.deepEqual(p.event.changedPaths, []);
-  // Bitbucket sends no changed files, so a watch-path allowlist cannot be evaluated and must NOT silently block every deploy.
   assert.equal(
     shouldAutoDeploy(
       { branch: "main", triggerType: "push", watchPaths: ["apps/**"] },
@@ -233,7 +229,6 @@ test("the token help link resolves against a self-hosted base URL", () => {
   assert.equal(tokenHelpUrl("git", "https://git.acme.com"), "");
 });
 
-// A secret that no longer decrypts (`decryptSecret` fails closed to `""` after a `DEPLO_SECRET` rotation) must never verify: second lock on the route's own refusal.
 test("an empty secret never verifies, whatever arrives", () => {
   const headers = (h: Record<string, string>) => new Headers(h);
   assert.equal(
@@ -248,7 +243,6 @@ test("an empty secret never verifies, whatever arrives", () => {
     ),
     "bad",
   );
-  // A real secret still matches, so the guard did not simply break verification.
   assert.equal(
     PROVIDERS.gitlab.api!.verify(
       "s3cret",

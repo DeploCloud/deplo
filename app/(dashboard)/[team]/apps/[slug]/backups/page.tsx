@@ -19,7 +19,6 @@ export default async function AppBackupsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // Gate on manage_backups ON THIS APP (ADR-0016); the hidden tab is not the guard, a direct link needs this.
   if (!(await hasAppCapability(project.id, "manage_backups"))) {
     return (
       <EmptyState
@@ -32,7 +31,6 @@ export default async function AppBackupsPage(
   }
 
   await ensureDefaultDestination();
-  // listDestinationOptions, NOT listDestinations: the team-wide one showed an empty list to a folder-scoped member.
   const [
     allBackups,
     runs,
@@ -44,19 +42,16 @@ export default async function AppBackupsPage(
     listBackups(),
     listBackupRuns({ appId: project.id }),
     listDestinationOptions(),
-    // On THIS app (ADR-0016), the same way the page's own gate is asked.
     hasAppCapability(project.id, "restore_backups"),
     hasAppCapability(project.id, "delete_backups"),
     hasCapability("manage_backup_destinations"),
   ]);
 
-  // Only this app's schedules - listBackups returns the whole team's.
   const schedules = allBackups.filter(
     (b) => b.targetKind === "app" && b.appId === project.id,
   );
 
   return (
-    // BackupsPanel renders the header too, shared with a database's Backups tab.
     <BackupsPanel
       target={{
         kind: "app",

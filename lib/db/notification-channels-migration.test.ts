@@ -36,7 +36,6 @@ before(async () => {
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
-  // These later migrations add columns the live-drizzle seed below names in its INSERT.
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 75 ||
     f.startsWith("0085_") ||
@@ -183,7 +182,6 @@ test("a type that was neither enabled nor configured becomes nothing", async () 
 });
 
 test("ntfy's NOT NULL default base URL is not evidence of anything", async () => {
-  // ntfy_base_url is NOT NULL with a default on every row, so "non-empty means configured" would give every team an ntfy channel.
   for (const team of [TEAM_A, TEAM_B]) {
     const kinds = (await channels(team)).map((c) => c.kind);
     assert.equal(kinds.includes("ntfy"), false, `${team} should have no ntfy`);
@@ -214,7 +212,6 @@ test("a team with nothing configured comes out with no channels at all", async (
 });
 
 test("the instances come out in catalog order, not the planner's", async () => {
-  // now() is the transaction's clock, so without the INSERT's ordinal offset this order would be luck.
   const kinds = (await channels(TEAM_A)).map((c) => c.kind);
   const expected = ALL_CHANNELS.filter((k) => kinds.includes(k));
   assert.deepEqual(kinds, expected);

@@ -14,7 +14,6 @@ const CHIP = `h-[calc(var(--log-fs)*1.38)] ${CHIP_WIDTH}`;
 
 const URL_RE = /(https?:\/\/[^\s]+?)(?=[.,;:!?)\]}]*(?:\s|$))/g;
 
-// indexOf, not a regex: the term is arbitrary user input, so nothing to escape and no backtracking.
 function markMatches(text: string, term: string): React.ReactNode {
   if (!term) return text;
   const hay = text.toLowerCase();
@@ -49,7 +48,6 @@ function LinkifiedText({
   return (
     <>
       {parts.map((part, i) =>
-        // Odd indices are the captured URLs (see URL_RE); even are plain text.
         i % 2 === 1 ? (
           <a
             key={i}
@@ -90,7 +88,6 @@ export function LevelChip({
   );
 }
 
-// LogLines - the scrolling body of a log console.
 export function LogLines({
   children,
   className,
@@ -133,12 +130,10 @@ export function LogRow({
       className={cn(
         "group relative flex items-start gap-3 rounded-md py-px pr-1.5 pl-3 log-row",
         "transition-colors",
-        // Before the level, never after: cn keeps the LAST background.
         zebra && "bg-terminal-stripe",
         LEVEL_ROW_CLASS[level] ?? "hover:bg-surface",
       )}
     >
-      {/* The rail: absolute, so it costs no width and spans the wrapped lines too. */}
       <span
         aria-hidden
         className={cn(
@@ -192,7 +187,6 @@ const SKELETON_WIDTHS = [
   "w-[50%]",
 ];
 
-// LogLinesSkeleton - placeholder lines for a console still waiting on its first row.
 export function LogLinesSkeleton() {
   return (
     <div aria-hidden className="space-y-0.5">

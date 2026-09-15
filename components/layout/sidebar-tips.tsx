@@ -7,16 +7,12 @@ import { ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** One card. */
 export interface SidebarTip {
-  /** Also the dismissal key: change it to show a rewritten tip again. */
   id: string;
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
-  /** Neutral unless the card is about something going wrong. */
   tone?: SidebarTipTone;
-  /** At most one, always secondary. */
   cta?: { label: string; href: string };
   when: (ctx: SidebarTipContext) => boolean;
 }
@@ -44,7 +40,6 @@ export interface SidebarTipContext {
   isAdmin: boolean;
 }
 
-/** In order: the first one that applies and has not been dismissed is shown. */
 export const SIDEBAR_TIPS: SidebarTip[] = [
   {
     id: "two-factor",
@@ -57,7 +52,6 @@ export const SIDEBAR_TIPS: SidebarTip[] = [
   },
 ];
 
-/** The card to show right now, if any. */
 export function nextTip(
   dismissed: string[],
   ctx: SidebarTipContext,
@@ -67,8 +61,6 @@ export function nextTip(
   );
 }
 
-/** Dismissal is LOCAL: a card closed on one laptop has no business following
- *  the account to the next one. */
 const KEY = "deplo:sidebar-tips";
 
 function readDismissed(): string[] {
@@ -78,7 +70,6 @@ function readDismissed(): string[] {
     );
     return Array.isArray(parsed) ? (parsed as string[]) : [];
   } catch {
-    /* blocked or corrupt storage - the card simply shows */
     return [];
   }
 }
@@ -91,8 +82,6 @@ export function SidebarTips(ctx: SidebarTipContext) {
     setDismissed(readDismissed());
   }, []);
 
-  // `null` is "not read yet": rendering before the stored answer is in would
-  // flash a card the user closed on the last page.
   if (dismissed === null) return null;
   const tip = nextTip(dismissed, ctx);
   if (!tip) return null;
@@ -101,9 +90,7 @@ export function SidebarTips(ctx: SidebarTipContext) {
     const next = [...(dismissed ?? []), id];
     try {
       window.localStorage.setItem(KEY, JSON.stringify(next));
-    } catch {
-      /* nothing to remember, and nothing to break */
-    }
+    } catch {}
     setDismissed(next);
   }
 

@@ -23,7 +23,6 @@ import { avatarResolver, avatarUrlFor } from "../avatar";
 import type { Capability } from "../types/identity";
 import { inAppScope } from "../auth/request-context";
 
-// A folder access grant as surfaced to the Share UI.
 export interface FolderGrant {
   folderId: string;
   userId: string;
@@ -35,16 +34,13 @@ export interface FolderGrant {
   isOwner: boolean;
 }
 
-// Intersect `caps` with `bound` - how a folder capability set is clamped.
 export { boundedBy };
 
-// node-access's `view` floor, re-exported for callers here.
 export { withView };
 
 async function folderRow(
   folderId: string,
 ): Promise<{ teamId: string; ownerUserId: string | null } | null> {
-  // Scoped to the ACTIVE team: `null` never leaks that the id exists in another team.
   const activeTeamId = await getActiveTeamId();
   if (!activeTeamId) return null;
   const rows = await getDb()
@@ -75,18 +71,15 @@ async function isFolderSuperUser(
   admin: boolean,
 ): Promise<boolean> {
   if (admin) return true;
-  // The token-CLAMPED capability on purpose.
   return (await teamCapsFor(userId, teamId)).includes("manage_team");
 }
 
-// The CURRENT caller's effective capabilities on `folderId`.
 export async function folderCapabilities(
   folderId: string,
 ): Promise<Capability[]> {
   return nodeCapabilities({ kind: "folder", id: folderId });
 }
 
-// Gate a folder mutation on a capability; "Folder not found" never leaks existence.
 export async function requireFolderCapability(
   folderId: string,
   cap: Capability,
@@ -101,23 +94,19 @@ export async function requireFolderCapability(
   return { teamId: f!.teamId, userName };
 }
 
-// True if the caller can SEE the folder at all (owner, grantee, or super-user).
 export async function canSeeFolder(folderId: string): Promise<boolean> {
   return (await folderCapabilities(folderId)).length > 0;
 }
 
-// FOLDER-SCOPE a project action - the same user-facing errors as `requireFolderCapability`.
 export async function requireFolderCapabilityForApp(
   appId: string,
   cap: Capability,
 ): Promise<void> {
   const placement = await appPlacement(appId);
-  if (!placement) return; // the surrounding team scope owns existence
-  // A narrowed API token reaches nothing outside its scope, whatever the node grants say.
+  if (!placement) return;
   if (!inAppScope({ id: appId, ...placement }))
     throw new Error("App not found");
   const caps = await nodeCapabilities({ kind: "app", id: appId });
-  // Invisible folder: don't leak that the app exists via a capability-specific message.
   if (caps.length === 0) throw new Error("App not found");
   if (!caps.includes(cap)) {
     throw new Error(
@@ -137,35 +126,29 @@ async function appPlacement(
   return rows[0] ?? null;
 }
 
-// True if the caller is the folder's owner OR a super-user (admin/manage_team).
 export async function folderIsOwnerOrAdmin(folderId: string): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
   const f = await folderRow(folderId);
   if (!f) return false;
-  // `isInstanceAdmin()`, not the stored flag: administration is opt-in per API token.
   if (await isFolderSuperUser(user.id, f.teamId, await isInstanceAdmin()))
     return true;
   return f.ownerUserId === user.id;
 }
 
-// The folder ids in `teamId` the caller may SEE, or `"all"` for a super-user.
 export async function visibleFolderIds(
   teamId: string,
 ): Promise<Set<string> | "all"> {
   const user = await getCurrentUser();
   if (!user) return new Set();
-  // VISIBILITY, not power: the token narrows only what may be done, never the reach.
   const admin = await isInstanceAdmin();
   const scope = admin ? null : await memberScopeFor(user.id, teamId);
-  // A scoped ROLE is not a super-user, whatever `manage_team` says.
   if (!scope && (admin || (await holdsManageTeam(user.id, teamId))))
     return "all";
   if (!admin && (await teamCapsFor(user.id, teamId)).length === 0)
     return new Set();
 
   const visible = new Set<string>();
-  // Owned and granted folders EXTEND the role's scope rather than being filtered by it.
   for (const id of scope?.folderIds ?? []) visible.add(id);
   const owned = await getDb()
     .select({ id: foldersTable.id })
@@ -190,7 +173,6 @@ export async function visibleFolderIds(
   for (const r of granted) visible.add(r.folderId);
   if (visible.size === 0) return visible;
 
-  // Fixpoint walk bounded by the folder count, so a cycle in `parent_id` can't spin it.
   const links = await getDb()
     .select({ id: foldersTable.id, parentId: foldersTable.parentId })
     .from(foldersTable)
@@ -208,7 +190,6 @@ export async function visibleFolderIds(
   return visible;
 }
 
-// A grantee, even one holding every folder capability, may NEVER re-share.
 async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
   teamId: string;
   ownerUserId: string | null;
@@ -218,12 +199,10 @@ async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
   const f = await folderRow(folderId);
   if (!f) throw new Error("Folder not found");
   const admin = await isInstanceAdmin();
-  // Ownership requires LIVE team membership: `owner_user_id` survives the owner leaving.
   const isOwner =
     f.ownerUserId === user.id &&
     (admin || (await teamCapsFor(user.id, f.teamId)).length > 0);
   if (!isOwner && !(await isFolderSuperUser(user.id, f.teamId, admin))) {
-    // Don't leak existence to a caller who can't administer sharing.
     if (!(await canSeeFolder(folderId))) throw new Error("Folder not found");
     throw new Error("Only the folder owner can share this folder");
   }
@@ -245,7 +224,6 @@ async function userIdentity(userId: string): Promise<{
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
-      // Consumed by `avatarUrl` and dropped - a grant DTO carries no email.
       image: usersTable.image,
       email: usersTable.email,
     })
@@ -262,7 +240,6 @@ async function userIdentity(userId: string): Promise<{
   };
 }
 
-// The folder's owner (as an implicit `isOwner` row) plus every grantee.
 export async function listFolderGrants(
   folderId: string,
 ): Promise<FolderGrant[]> {
@@ -316,7 +293,6 @@ export async function listFolderGrants(
   return out;
 }
 
-// The capabilities the caller may hand out here - never one they don't hold themselves.
 export async function grantableFolderCapabilities(
   folderId: string,
 ): Promise<Capability[]> {
@@ -324,7 +300,6 @@ export async function grantableFolderCapabilities(
   return folderCapabilities(folderId);
 }
 
-// Grant (or replace) a user's capabilities on a folder; the target must be a team member.
 export async function setFolderGrant(
   folderId: string,
   userId: string,
@@ -352,7 +327,6 @@ export async function setFolderGrant(
           eq(folderGrantsTable.userId, userId),
         ),
       );
-    // `view` is never stored: a grantee with only `view` is indistinguishable from no grant.
     const toStore = bounded.filter((c) => c !== "view");
     if (toStore.length > 0) {
       await tx
@@ -364,7 +338,6 @@ export async function setFolderGrant(
   return listFolderGrants(folderId);
 }
 
-// Revoke a grantee's entire access to a folder; removing the owner is a no-op.
 export async function removeFolderGrant(
   folderId: string,
   userId: string,
@@ -383,7 +356,6 @@ export async function removeFolderGrant(
   return listFolderGrants(folderId);
 }
 
-// Team members who could be granted access to a folder but aren't yet.
 export async function folderShareCandidates(
   folderId: string,
   query?: string,

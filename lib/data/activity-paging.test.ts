@@ -95,7 +95,6 @@ test("paging: the cursor crosses a timestamp boundary cleanly", async () => {
 
   await asUser1(async () => {
     assert.deepEqual(await pageThrough(2), ["act_b", "act_a", "act_old"]);
-    // Page size 1 lands on the boundary, the case that repeats a row on a date-only cursor.
     assert.deepEqual(await pageThrough(1), ["act_b", "act_a", "act_old"]);
   });
 });
@@ -207,7 +206,6 @@ test("filters: resourceIds resolves an app, its folder and its project", async (
         ["a_in"],
         `${what} reaches the app's rows, and nothing else`,
       );
-    // Deliberate: a team-level row belongs to no app, so asking about an app hides it.
     assert.equal(
       (await listActivity(50, { resourceIds: ["prj_in"] })).some(
         (a) => a.id === "a_team",
@@ -218,7 +216,6 @@ test("filters: resourceIds resolves an app, its folder and its project", async (
 });
 
 test("filters: resourceIds reaches a database, which is not an app", async () => {
-  // `app_id` cannot hold a database id (its FK points at `apps`), so the feed matches `database_id` too.
   await seedServer(db);
   await seedApp(db, { id: "prj_1" });
   await seedDatabase(db, { id: "db_1" });
@@ -279,7 +276,6 @@ test("activityMonths: buckets in UTC whatever the session timezone is", async ()
       { month: "2026-05", count: 1 },
     ];
     assert.deepEqual(await activityMonths(), expected);
-    // A raw timestamptz renders in the SESSION zone, hence the explicit `at time zone`.
     await pg.exec("set time zone 'Etc/GMT-1'");
     assert.deepEqual(await activityMonths(), expected);
     await pg.exec("set time zone 'UTC'");

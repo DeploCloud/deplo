@@ -16,7 +16,6 @@ export const ApiTokenRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
-      // The full secret and the token hash are never exposed.
       prefix: t.exposeString("prefix"),
       capabilities: t.exposeStringList("capabilities", {
         description:
@@ -104,14 +103,12 @@ const CreateTokenPayloadRef = builder
 const CreateTokenInputType = builder.inputType("CreateTokenInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
-    // Omitted / empty ⇒ a view-only token; there is no "everything" default.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
     teamIds: t.stringList({ required: false }),
     projectIds: t.stringList({ required: false }),
     folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
-    // ISO instant. OMITTED ⇒ the editor's default (ninety days); explicit null ⇒ never.
     expiresAt: t.string({ required: false }),
   }),
 });
@@ -160,7 +157,6 @@ builder.mutationFields((t) => ({
         folderIds: input.folderIds ?? undefined,
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
-        // Passed through, NOT `?? undefined`: absent means the default expiry, null means never.
         expiresAt: input.expiresAt,
       }),
   }),
@@ -182,7 +178,6 @@ builder.mutationFields((t) => ({
         folderIds: input.folderIds ?? undefined,
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
-        // `null` from a client CLEARS the expiry; absent leaves it.
         expiresAt: input.expiresAt,
       });
       return true;

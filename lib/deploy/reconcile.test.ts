@@ -7,7 +7,6 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { asc, eq } from "drizzle-orm";
 
-// DEPLO_DATA_DIR points build staging at a throwaway dir, set BEFORE the build modules load.
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-reconcile-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";

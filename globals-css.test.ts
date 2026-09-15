@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-// Exempt: it ends at a min-width the element lacks, so releasing the fill collapses the row.
 const KEEPS_ITS_FILL = new Set(["deplo-phase-in"]);
 
 const css = readFileSync(new URL("./app/globals.css", import.meta.url), "utf8");

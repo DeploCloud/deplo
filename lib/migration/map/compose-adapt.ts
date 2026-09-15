@@ -26,11 +26,6 @@ import {
   stripNetworks,
 } from "./compose-networks";
 
-/**
- * Keys a panel's own compose dialect adds and `docker compose` refuses outright:
- * `exclude_from_hc` on a service, `content` / `is_directory` on a long-syntax
- * volume. The file content already travels as a Files entry, so nothing is lost.
- */
 function stripPanelComposeExtensions(
   serviceName: string,
   holder: YAMLMap,
@@ -59,32 +54,18 @@ function stripPanelComposeExtensions(
     );
 }
 
-/**
- * Docker's own rule for telling a NAMED volume from a path: no separator, and no
- * leading `.`, `~` or `$`.
- */
 const NAMED_VOLUME_SOURCE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 
 function isNamedVolumeSource(source: string): boolean {
   return NAMED_VOLUME_SOURCE.test(source.trim());
 }
 
-/**
- * A volume NAME somebody typed a slash onto (`memos/`). With no leading `./`,
- * `../` or `/` compose reads it as a name, not a path - then refuses the whole
- * stack over it. The source platform normalises on render; Deplo does it here.
- */
 const VOLUME_NAME_WITH_SLASH = /^([A-Za-z0-9][A-Za-z0-9_.-]*)\/+$/;
 
 function trailingSlashOffVolume(source: string): string | null {
   return VOLUME_NAME_WITH_SLASH.exec(source.trim())?.[1] ?? null;
 }
 
-/**
- * A top-level volume naming storage OUTSIDE this stack - `external:`, a pinned
- * `name:`, a `driver_opts` bind - is storage the destination does not have. The
- * copy fills the stack's OWN volume, so the declaration has to point at it.
- */
 function localiseStackVolumes(root: YAMLMap, changes: string[]): void {
   const declared = root.get("volumes", true);
   if (!isMap(declared)) return;
@@ -111,11 +92,6 @@ function localiseStackVolumes(root: YAMLMap, changes: string[]): void {
   }
 }
 
-/**
- * Declare every named volume the services mount that the file itself does not: a
- * one-click template's compose is a FRAGMENT, and the platform synthesises the
- * top-level `volumes:` block on render, so the stored file is refused outright.
- */
 function declareMissingVolumes(
   doc: Document,
   root: YAMLMap,
@@ -141,11 +117,6 @@ function declareMissingVolumes(
   );
 }
 
-/**
- * Every place OUTSIDE `services[].volumes` where a compose file names a file next
- * to itself: the env files, the label files, a build context, and the `secrets` /
- * `configs` blocks.
- */
 function composeFileRefs(root: YAMLMap): [string, Scalar][] {
   const out: [string, Scalar][] = [];
   for (const { name: who, map: holder } of serviceLikeMaps(root)) {
@@ -182,12 +153,6 @@ function composeFileRefs(root: YAMLMap): [string, Scalar][] {
   return out;
 }
 
-/**
- * Turn the source platform's compose file into a Deplo one. A `../` source is not
- * merely wrong: Deplo reads it as climbing OUT of the sandbox, so the stack would
- * demand the host-volumes grant and then bind nothing. Edited as a DOCUMENT, so
- * anchors, comments and layout survive and an anchor is edited once.
- */
 export function adaptComposeForDeplo(
   source: string,
   platform: SourcePlatformShape = DOKPLOY_PLATFORM,
@@ -202,10 +167,6 @@ export function adaptComposeForDeplo(
   const changes: string[] = [];
   const declaredNetworks = { networks: toPlain(root.get("networks")) };
   const platformKeys = platformNetworkKeys(declaredNetworks, platform.networks);
-  // A network the stack does not create is one the destination host does not have,
-  // and compose refuses the whole stack over it. Dropping it is the right mapping,
-  // not a loss: an Environment is one network (ADR-0028), which is what a shared
-  // network on the source was for.
   const strays = [...externalNetworkKeys(declaredNetworks)].filter(
     (k) => !platformKeys.has(k),
   );
@@ -227,8 +188,6 @@ export function adaptComposeForDeplo(
       );
   }
 
-  // Every named volume a service mounts, so an undeclared one can be declared
-  // below rather than refused by `docker compose up`.
   const mounted = new Set<string>();
 
   for (const { name: serviceName, map: holder } of serviceLikeMaps(root)) {
@@ -236,8 +195,6 @@ export function adaptComposeForDeplo(
     stripHostNetworkMode(serviceName, holder, changes);
     stripPanelComposeExtensions(serviceName, holder, changes);
 
-    // The file-mount paths, off both shapes of a volume entry. A SEQUENCE is what
-    // tells a service's mounts from the top-level named-volume block.
     const vols = holder.get("volumes", true);
     if (!isSeq(vols)) continue;
     for (const entry of vols.items) {
@@ -288,8 +245,6 @@ export function adaptComposeForDeplo(
   localiseStackVolumes(root, changes);
   declareMissingVolumes(doc, root, mounted, changes);
 
-  // The SAME `../files/x` rewrite, everywhere else a compose file can name a file
-  // next to itself.
   for (const [where, target] of composeFileRefs(root)) {
     const rewritten = deploFilesPath(target.value as string);
     if (rewritten == null) continue;
@@ -303,11 +258,6 @@ export function adaptComposeForDeplo(
   return { compose: String(doc), changes };
 }
 
-/**
- * Point an `env_file` at the env file DEPLO writes, when the stack names one it
- * did not bring with it. The rule is deliberately narrow: an entry is retargeted
- * ONLY when the file is not one this app carries.
- */
 export function retargetPlatformEnvFiles(
   source: string,
   carried: string[],
@@ -328,8 +278,6 @@ export function retargetPlatformEnvFiles(
   const retarget = (value: string): string | null => {
     const named = value.trim().replace(/^\.\/+/, "");
     if (!named || named === ".env") return null;
-    // An absolute path or one climbing out is a host path, not the platform's
-    // env file - the compose gates decide about those, not this.
     if (named.startsWith("/") || named.split("/").includes("..")) return null;
     if (have.has(named)) return null;
     return "./.env";

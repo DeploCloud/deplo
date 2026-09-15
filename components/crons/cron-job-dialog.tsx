@@ -82,18 +82,14 @@ export function CronJobDialog({
   onOpenChange: (o: boolean) => void;
   targetKind: "app" | "database";
   targetId: string;
-  // Compose services a job can run in. Empty for a database (one container).
   services: string[];
-  // Where a job that picks no container runs - named in the picker.
   primaryService?: string | null;
   job?: CronJobDTO;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // TimezonePicker shows a live clock per zone; Date.now() during render would be impure.
   const [pickerNow] = React.useState(() => Date.now());
 
-  // Seeded at MOUNT: the caller mounts this only while the dialog is open, so mounting IS opening.
   const [name, setName] = React.useState(job?.name ?? "");
   const [description, setDescription] = React.useState(job?.description ?? "");
   const [service, setService] = React.useState(job?.service ?? SERVICE_INHERIT);
@@ -117,9 +113,7 @@ export function CronJobDialog({
   const [env, setEnv] = React.useState<EnvRow[]>(() =>
     (job?.envKeys ?? []).map((key) => ({ key, value: "" })),
   );
-  // Values are unreadable here, so sending the list back unchanged would blank every secret.
   const [envTouched, setEnvTouched] = React.useState(false);
-  // A stored key sent back blank means "keep it" - the server carries the value over.
   const storedKeys = React.useMemo(() => new Set(job?.envKeys ?? []), [job]);
 
   const timeout = Number(timeoutMinutes) || 0;
@@ -204,7 +198,6 @@ export function CronJobDialog({
                   autoFocus
                 />
               </div>
-              {/* A database is a single container, so there is nothing to pick. */}
               {services.length > 1 && (
                 <div className="space-y-2">
                   <FieldLabel
@@ -249,7 +242,6 @@ export function CronJobDialog({
                   >
                     Timezone
                   </FieldLabel>
-                  {/* The reader's clock: 03:00 means 03:00 where you are. */}
                   <TimezonePicker
                     id="cron-timezone"
                     value={timezone}
@@ -438,7 +430,6 @@ export function CronJobDialog({
                     </div>
                   </div>
 
-                  {/* The two multiply and the server refuses the product, so say so first. */}
                   {attempts > 1 && (
                     <p
                       className={

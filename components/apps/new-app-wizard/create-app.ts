@@ -30,7 +30,6 @@ import type {
 } from "./types";
 import { parseRepo } from "./source-hints";
 
-// buildCreateAppInput - the wizard's answers as the `createApp` payload, or null once it has said why not.
 export function buildCreateAppInput({
   name,
   serverId,
@@ -135,8 +134,6 @@ export function buildCreateAppInput({
       installationId: ghSelection.installationId,
     };
   } else if (source === "git") {
-    // A bare owner/repo still means GitHub, the way it always has; anything
-    // else comes back from the picker already resolved.
     const parsed = parseRepo(gitValue.url);
     if (!parsed) {
       toast.error("Enter a valid Git repository URL");
@@ -175,16 +172,11 @@ export function buildCreateAppInput({
 
   return {
     name: name.trim(),
-    // A template deploying its own stack is stored as the `compose`
-    // source so settings opens on the Compose tab and the deploy engine
-    // is unambiguous.
     source: deploySourceEnumName(useCompose ? "compose" : source!),
     serverId,
     buildServerId,
     composeUpArgs: useCompose ? composeUpArgs.trim() || null : null,
     dockerImage: image,
-    // Seed the app's display logo from the template so a deployed
-    // template carries its icon; editable later from app settings.
     logo: isTemplate ? template!.logo : null,
     logoFromTemplate: isTemplate,
     compose: useCompose ? compose : null,
@@ -192,8 +184,6 @@ export function buildCreateAppInput({
       ? filledEnv.map((e) => ({
           key: e.key.trim(),
           value: e.value,
-          // Undefined lets the key's own name decide, which is what a
-          // template's generated passwords want.
           type: e.secret ? "secret" : undefined,
         }))
       : undefined,
@@ -212,8 +202,6 @@ export function buildCreateAppInput({
     },
     autoDeploy: usesGit ? autoDeploy : false,
     deploy: shouldDeploy,
-    // Where the first domain points: what a template declares, else what
-    // the wizard showed the user for their own stack.
     composeService: templateCompose
       ? (template!.expose?.service ?? null)
       : (primaryService?.name ?? null),
@@ -246,7 +234,6 @@ export function buildCreateAppInput({
   };
 }
 
-// checkComposeNameClashes - ask before creating: a taken service name is a choice to make, not a refusal to read.
 export function checkComposeNameClashes({
   compose,
   serverId,
@@ -279,7 +266,6 @@ export function checkComposeNameClashes({
   );
 }
 
-// submitCreatedApp - run `createApp`, land the held archive if there is one, then go where the result points.
 export async function submitCreatedApp(
   input: CreateAppVariables,
   {
@@ -320,17 +306,12 @@ export async function submitCreatedApp(
   const app = res.data;
   if (!app) return;
 
-  // Invalidate the router cache so the shared dashboard layout re-runs on
-  // the destination, otherwise the topbar breadcrumb's team snapshot is
-  // stale and the brand-new app is missing from it until a hard reload.
   router.refresh();
 
   if (source === "upload" && uploadFile) {
     try {
       await uploadArchive(app.id, uploadFile);
     } catch (e) {
-      // The app exists but the archive didn't land - send the user to its
-      // settings to retry rather than deploying nothing.
       toast.error(
         `App created, but the upload failed (${
           e instanceof Error ? e.message : "unknown error"
@@ -348,7 +329,6 @@ export async function submitCreatedApp(
       toast.success("Deployment started");
       router.push(`/apps/${app.slug}/deployments/${dep.data.id}`);
     } else {
-      // The archive is stored; only the deploy kick-off failed.
       if (!dep.ok) toast.error(dep.error);
       router.push(`/apps/${app.slug}/settings`);
     }

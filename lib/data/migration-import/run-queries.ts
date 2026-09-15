@@ -31,18 +31,14 @@ import { runMembersOf, type MigrationInvite } from "./member-invites";
 
 export interface ImportRunDTO {
   id: string;
-  // The team it landed in. Every call about the run names it.
   teamId: string;
   teamName: string;
   teamSlug: string;
   teamAvatarUrl: string | null;
-  // Which product this run read.
   platform: MigrationPlatform;
   sourceUrl: string;
   orgName: string | null;
   actor: string;
-  // The actor's picture and monogram colour, or nulls for a run whose starter has no
-  // account here any more. Never their email - see `avatarResolver`.
   actorUsername: string | null;
   actorAvatarUrl: string | null;
   actorAvatarColor: string | null;
@@ -54,34 +50,21 @@ export interface ImportRunDTO {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
-  // `'config'` | `'data'` | `'done'` - which half it is in.
   phase: string;
-  // Steps done and to do IN THE CURRENT PHASE. The two halves count different things,
-  // so one running total across both would mean nothing in either.
   doneSteps: number;
   totalSteps: number;
-  // What it is on right now, as a person would say it.
   stepLabel: string | null;
-  // Somebody asked it to stop; it notices between steps.
   stopRequested: boolean;
-  // When the process driving this run last said it was alive, or null while nothing
-  // has picked it up.
   heartbeatAt: string | null;
-  // When its report was closed by the person who started it. Null while the wizard
-  // should still open on this run.
   reportSeenAt: string | null;
-  // The path of the last thing this run touched, or null before it has touched anything.
   lastPath: string | null;
-  // The runs of one walk of the wizard share this - see the column's own doc.
   sessionId: string | null;
 }
 
-// MigrationSessionRun - one team of a session, with the people its run brought over.
 export interface MigrationSessionRun extends ImportRunDTO {
   members: MigrationInvite[];
 }
 
-// resumableMigration - the run the wizard should OPEN on, or null for an empty connect form.
 export async function resumableMigration(): Promise<ImportRunDTO | null> {
   const teamId = await requireActiveTeamId();
   const user = await getCurrentUser();
@@ -93,8 +76,6 @@ export async function resumableMigration(): Promise<ImportRunDTO | null> {
       and(
         eq(runsTable.teamId, teamId),
         isNull(runsTable.reportSeenAt),
-        // A team still waiting its turn is not a screen: the wizard opens on the
-        // run that is moving, and reads the queue off its session.
         ne(runsTable.status, "queued"),
         or(eq(runsTable.actorUserId, user.id), eq(runsTable.status, "running")),
       ),
@@ -104,8 +85,6 @@ export async function resumableMigration(): Promise<ImportRunDTO | null> {
   return row ? (await toRunDTOs([row]))[0] : null;
 }
 
-// resumableMigrationAnywhere - the same, across every team this person is in: the page
-// is the instance's, and the run it should open on may have landed in any of them.
 export async function resumableMigrationAnywhere(): Promise<ImportRunDTO | null> {
   await requireInstanceAdmin();
   const user = await getCurrentUser();
@@ -128,9 +107,6 @@ export async function resumableMigrationAnywhere(): Promise<ImportRunDTO | null>
   return row ? (await toRunDTOs([row]))[0] : null;
 }
 
-// migrationSessionRuns - every run of ONE walk of the wizard, oldest first: a panel
-// with three teams is three runs, and this makes them one migration on the screen
-// again after the tab that started them is gone.
 export async function migrationSessionRuns(
   runId: string,
 ): Promise<MigrationSessionRun[]> {
@@ -163,8 +139,6 @@ export async function migrationSessionRuns(
   );
 }
 
-// cancelQueuedRuns - called when the team before them did not finish: the next team
-// reads the same disks through the same agents, and carrying on would import into the mess.
 export async function cancelQueuedRuns(
   sessionId: string,
   why: string,
@@ -175,8 +149,6 @@ export async function cancelQueuedRuns(
       status: "stopped",
       error: why,
       finishedAt: nowIso(),
-      // Nothing to acknowledge: it never ran, and an unseen report reopens the
-      // wizard on it forever.
       reportSeenAt: nowIso(),
       apiKeyEnc: null,
       phase: "done",
@@ -189,20 +161,15 @@ export async function cancelQueuedRuns(
   return rows.length;
 }
 
-// dismissMigrationReport - "I am done looking at this run": the wizard stops opening on it.
 export async function dismissMigrationReport(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
   await getDb()
     .update(runsTable)
     .set({ reportSeenAt: nowIso() })
     .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
-  // The header chip holds a finished run until its report is closed.
   publishMigrationChanged();
 }
 
-// activeMigrationForTeam - the team's migration in flight, or null. There is at most
-// one: opening a run marks any older `running` row of the team interrupted, so this is
-// a fact, not a first-of-many.
 export async function activeMigrationForTeam(
   teamId: string,
 ): Promise<ImportRunDTO | null> {
@@ -211,9 +178,6 @@ export async function activeMigrationForTeam(
     .from(runsTable)
     .where(and(eq(runsTable.teamId, teamId), eq(runsTable.status, "running")));
   if (rows.length === 0) return null;
-  // One row, by the same ordering the report reads in. Cheap enough to run on
-  // every tick of the live feed: the index on (run_id, seq) makes it a lookup,
-  // and the feed only re-reads when something actually changed.
   const [last] = await getDb()
     .select({ path: itemsTable.path })
     .from(itemsTable)
@@ -224,9 +188,6 @@ export async function activeMigrationForTeam(
   return { ...dto, lastPath: last?.path ?? null };
 }
 
-// headerMigrationForTeam - the run in flight or, with nothing moving, the one that
-// finished and whose report nobody has closed yet. Not `activeMigrationForTeam`, which
-// gates writes.
 export async function headerMigrationForTeam(
   teamId: string,
 ): Promise<ImportRunDTO | null> {
@@ -256,8 +217,6 @@ export async function listMigrationRuns(): Promise<ImportRunDTO[]> {
   return toRunDTOs(newestFirst(rows));
 }
 
-// listAllMigrationRuns - every team's migrations, for the instance's admins. A team
-// still waiting its turn has no history yet: it is a row of the queue, not a run.
 export async function listAllMigrationRuns(): Promise<ImportRunDTO[]> {
   await requireInstanceAdmin();
   const rows = await getDb()
@@ -311,15 +270,12 @@ export async function getMigrationRun(
   };
 }
 
-// What the History table draws before a name.
 interface ActorFace {
   username: string | null;
   avatarUrl: string | null;
   avatarColor: string | null;
 }
 
-// Resolve every run's actor in one query, so a page of history is two reads and not one
-// per row. Email is read only to feed the Gravatar fallback, and dropped.
 async function actorFaces(
   rows: (typeof runsTable.$inferSelect)[],
 ): Promise<Map<string, ActorFace>> {
@@ -352,7 +308,6 @@ async function actorFaces(
   );
 }
 
-// The same rows as DTOs, with their actors' faces attached.
 async function toRunDTOs(
   rows: (typeof runsTable.$inferSelect)[],
 ): Promise<ImportRunDTO[]> {
@@ -366,7 +321,6 @@ async function toRunDTOs(
   );
 }
 
-// The teams these runs landed in, one read for the whole list.
 async function teamsOf(
   rows: { teamId: string }[],
 ): Promise<Map<string, { name: string; slug: string; image: string | null }>> {

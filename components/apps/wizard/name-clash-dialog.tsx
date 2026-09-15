@@ -20,7 +20,6 @@ export interface NameClash {
   renamedTo: string;
 }
 
-// NameClashDialog - a stack landing on a network where a neighbour already answers to a service name.
 export function NameClashDialog({
   clashes,
   open,

@@ -6,14 +6,12 @@ import { sendEmail, type EmailConfig } from "./email";
 import { sendWebPushTo } from "./web-push";
 import type { AlertKey } from "../types/notification";
 
-// A configured destination, ready to dial.
 export type AlertChannel =
   | { kind: "discord"; webhookUrl: string }
   | { kind: "slack"; webhookUrl: string }
   | { kind: "telegram"; botToken: string; chatId: string }
   | { kind: "webhook"; url: string }
   | { kind: "email"; to: string; config: EmailConfig }
-  // Endpoints are per user and resolved at send time from `push_subscriptions`.
   | { kind: "push"; teamId: string; userId?: string }
   | { kind: "lark"; webhookUrl: string }
   | { kind: "msteams"; webhookUrl: string }
@@ -22,21 +20,16 @@ export type AlertChannel =
   | { kind: "ntfy"; baseUrl: string; topic: string; token: string }
   | { kind: "pushover"; token: string; userKey: string };
 
-// How long one channel gets before the others stop waiting for it.
 export const CHANNEL_TIMEOUT_MS = 5_000;
 
 export interface AlertMessage {
   key: AlertKey;
-  // One line, plain text.
   title: string;
-  // One or two lines.
   body: string;
-  // Absolute dashboard link, or null when the panel URL isn't known.
   url: string | null;
   ts: string;
 }
 
-// Throws with the provider's own words; the dispatcher catches per channel.
 export async function sendToChannel(
   channel: AlertChannel,
   msg: AlertMessage,
@@ -62,7 +55,6 @@ export async function sendToChannel(
       return;
 
     case "telegram": {
-      // A fixed host with the token in the path: nothing user-supplied to check.
       const res = await fetch(
         `https://api.telegram.org/bot${channel.botToken}/sendMessage`,
         {
@@ -108,7 +100,6 @@ export async function sendToChannel(
       );
       return;
 
-    // No signal: `web-push` takes none and bounds itself with `PUSH_TIMEOUT_MS`.
     case "push":
       await sendWebPushTo(channel.teamId, channel.userId ?? null, msg);
       return;
@@ -125,7 +116,6 @@ export async function sendToChannel(
       );
       return;
 
-    // The Power Automate Workflows template posts `text`; an Adaptive Card envelope renders nothing.
     case "msteams":
       await postJson(
         channel.webhookUrl,
@@ -144,7 +134,6 @@ export async function sendToChannel(
       );
       return;
 
-    // The token goes in a header, not `?token=`: a query string lands in every access log.
     case "gotify":
       await postJson(
         `${channel.url.replace(/\/+$/, "")}/message`,
@@ -159,7 +148,6 @@ export async function sendToChannel(
       );
       return;
 
-    // The topic rides in the BODY, so the dial is the bare server address.
     case "ntfy":
       await postJson(
         channel.baseUrl,
@@ -178,7 +166,6 @@ export async function sendToChannel(
       );
       return;
 
-    // A fixed host with the credentials in the BODY: nothing user-supplied in the URL to check.
     case "pushover": {
       const res = await fetch("https://api.pushover.net/1/messages.json", {
         method: "POST",
@@ -198,7 +185,6 @@ export async function sendToChannel(
     }
 
     default: {
-      // The switch is `async`, so a missing case would fall off the end and deliver silence.
       const unreachable: never = channel;
       throw new Error(`No sender for channel ${JSON.stringify(unreachable)}`);
     }
@@ -215,14 +201,12 @@ function discordPayload(msg: AlertMessage) {
       {
         author: { name: `Deplo · ${categoryLabel(msg.key)}` },
         title: msg.title,
-        // Omitted when the panel address is unknown: a title link to a bare path is dead.
         ...(msg.url ? { url: msg.url } : {}),
         description: msg.body,
         color: embedColor(msg.key),
         fields: [
           { name: "Event", value: ALERT_META[msg.key].label, inline: true },
         ],
-        // Rendered by Discord in the reader's own timezone.
         timestamp: msg.ts,
       },
     ],
@@ -235,7 +219,6 @@ function categoryLabel(key: AlertKey): string {
   );
 }
 
-// The `--destructive` / `--success` / `--warning` / `--info` dark tokens.
 const DANGER = new Set<AlertKey>([
   "app_crash_loop",
   "server_offline",
@@ -283,13 +266,10 @@ async function postJson(
     throw new Error(`${label.replace(/ URL$/, "")} returned ${res.status}`);
 }
 
-// Telegram answers a bad token or chat id with a readable `description`.
 async function telegramError(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as { description?: string };
     if (body.description) return body.description;
-  } catch {
-    // Not JSON - fall through to the status.
-  }
+  } catch {}
   return `Telegram returned ${res.status}`;
 }

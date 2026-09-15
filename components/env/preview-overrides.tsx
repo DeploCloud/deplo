@@ -50,7 +50,6 @@ export interface PreviewOverride {
   updatedAt: string;
 }
 
-// PreviewOverrides - preview-only variable overrides, as a disclosure (advanced).
 export function PreviewOverrides({
   appId,
   overrides,
@@ -139,9 +138,7 @@ export function PreviewOverrides({
 
   return (
     <section className="space-y-4">
-      {/* A disclosure, not a second permanent section. */}
       <div>
-        {/* The info button stays a sibling: a button inside a button is a hydration mismatch. */}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -215,7 +212,6 @@ export function PreviewOverrides({
                         </div>
                       </TableCell>
                       <TableCell>
-                        {/* An override's value is never projected back, so there is nothing to reveal. */}
                         <EnvValueCell value="" masked />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
@@ -244,7 +240,6 @@ export function PreviewOverrides({
           </div>
         ))}
 
-      {/* The same dialog as Add variable, row editor included. */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>

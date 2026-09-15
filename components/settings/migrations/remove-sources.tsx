@@ -11,10 +11,6 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { CommandLine } from "@/components/shared/code-block";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
-/**
- * The FALLBACK for taking Deplo's agent back off the machines it was installed on,
- * and it appears only once Deplo has GIVEN UP.
- */
 const SOURCES = /* GraphQL */ `
   query MigrationSources {
     agentUninstallCommand
@@ -36,11 +32,6 @@ const UNINSTALL = /* GraphQL */ `
   }
 `;
 
-/**
- * The exit that needs no network. `removeServer` revokes the pin and forgets the
- * row without dialing anything, which is the only thing that still works once the
- * host cannot be reached - and this card exists precisely because it could not be.
- */
 const FORGET = /* GraphQL */ `
   mutation ForgetMigrationSource($id: String!) {
     removeServer(id: $id) {
@@ -53,23 +44,16 @@ interface Source {
   id: string;
   name: string;
   role: string;
-  /** Why Deplo stopped trying. Empty ⇒ nothing to ask anyone. */
   uninstallError: string;
 }
 
 export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
   const router = useRouter();
-  /** The sources are granted to the team the last run landed in, which need
-   *  not be the page's. */
   const opts = React.useMemo(() => (teamId ? { teamId } : undefined), [teamId]);
   const [sources, setSources] = React.useState<Source[]>([]);
   const [command, setCommand] = React.useState("");
-  /** Machines Deplo has stopped tracking whose agent is still on them. */
   const [leftovers, setLeftovers] = React.useState<string[]>([]);
 
-  // Read on mount rather than passed as a prop: this component has two homes (the
-  // wizard's last step and the report page opened days later), and in the first
-  // one the sources are created by the very run that is finishing.
   const load = React.useCallback(async (): Promise<{
     rows: Source[];
     command: string;
@@ -86,8 +70,6 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
         command: data.agentUninstallCommand ?? "",
       };
     } catch {
-      // The report is worth reading on its own; a failed side query must not
-      // take it down.
       return { rows: [], command: "" };
     }
   }, [opts]);
@@ -110,15 +92,8 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
     };
   }, [load]);
 
-  // Stays up after the rows are gone, when any of them kept its agent: the
-  // command is the rest of the job, and losing it the instant the button works
-  // would be the same dead end in a new shape.
   if (sources.length === 0 && leftovers.length === 0) return null;
 
-  /**
-   * The same verb the Servers page offers, in bulk: uninstall where the host
-   * answers, and stop tracking the ones it does not.
-   */
   async function finish() {
     const failures: string[] = [];
     const kept: string[] = [];
@@ -132,8 +107,6 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
         { removeServer: { warning: string | null } },
         { warning: string | null }
       >(FORGET, { id: s.id }, (d) => d.removeServer, opts);
-      // Both halves go through the same removable check, so this is a genuine
-      // blocker (something still depends on that host), not an unreachable one.
       if (!rm.ok) {
         failures.push(`${s.name}: ${rm.error}`);
         continue;
@@ -145,8 +118,6 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
     await reload();
     router.refresh();
     if (failures.length > 0) {
-      // Named, one by one: "some of them failed" is not something anyone can act
-      // on.
       for (const f of failures) toast.error(f);
       return {
         ok: false as const,
@@ -158,8 +129,6 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
 
   const names = sources.map((s) => s.name).join(", ");
   const one = sources.length === 1;
-  // The rows are gone and their agents are not: nothing left to press, only
-  // something left to run.
   const done = sources.length === 0;
   return (
     <Card>
@@ -202,9 +171,6 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
           {sources.map((s) => (
             <li key={s.id}>
               <p className="truncate font-medium">{s.name}</p>
-              {/* The host's own words, verbatim: whether this is worth retrying
-                  or the machine is simply gone is not something Deplo can tell
-                  the reader, and the sentence usually can. */}
               <p className="mt-1 font-mono text-xs break-words text-muted-foreground">
                 {s.uninstallError}
               </p>
@@ -219,10 +185,6 @@ export function RemoveMigrationSources({ teamId }: { teamId?: string }) {
             </li>
           ))}
         </ul>
-        {/**
-         * One command for every host: it is `<panel>/uninstall.sh --agent-only` and nothing
-         * else, so asking once is honest and asking per row would be noise.
-         */}
         {command && (
           <div className="mt-4 space-y-2">
             <p className="text-xs text-muted-foreground">

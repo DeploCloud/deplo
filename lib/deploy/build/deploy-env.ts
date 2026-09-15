@@ -16,7 +16,6 @@ import {
   type PreviewOverrideEntry,
 } from "../env-resolve";
 
-// PreviewEnvContext is what a pull request preview tells its own containers about themselves.
 export interface PreviewEnvContext {
   host: string;
   url: string;
@@ -48,9 +47,6 @@ async function resolvedEntries(
     target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
   ]);
   const dropSecrets = Boolean(preview?.isFork);
-  // A FORK gets the preview-only overrides and nothing the app itself was given:
-  // a plain-typed value is a credential often enough (ADR-0017 §7). `type` is
-  // required so a loader that forgets to project it does not compile.
   const keep = <T extends { type: EnvEntryType }>(
     list: T[],
     inherited = true,
@@ -70,8 +66,6 @@ async function resolvedEntries(
   );
 }
 
-// appEnv is the decrypted env for the stack being deployed: the app's own vars, its
-// linked shared vars and the instance globals, all targeting this runtime.
 export async function appEnv(
   appId: string,
   target: EnvTarget = "production",
@@ -81,8 +75,6 @@ export async function appEnv(
   const entries = await resolvedEntries(appId, target, preview);
   const out: Record<string, string> = preview ? previewEnvExtras(preview) : {};
   for (const e of entries) {
-    // STRICT at the deploy edge. Refusing to deploy is the only honest answer to a
-    // secret we cannot read.
     out[e.key] = decryptSecretOrThrow(e.valueEnc, `The variable ${e.key}`);
   }
   return out;
@@ -107,7 +99,6 @@ async function loadPreviewEnvOverrides(
   }));
 }
 
-// appEnvKeys is the NAMES `appEnv` would carry, without decrypting any value.
 export async function appEnvKeys(
   appId: string,
   target: EnvTarget = "production",

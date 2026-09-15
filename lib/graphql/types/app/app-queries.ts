@@ -54,7 +54,6 @@ const ComposeNameClashRef = builder
     }),
   });
 
-// What one read of a repository yields the new-app wizard.
 interface RecognizedFrameworkDTO {
   framework: FrameworkDefinition | null;
   staticOutput: string | null;
@@ -273,8 +272,6 @@ builder.queryFields((t) => ({
         url: args.url,
         branch: args.branch,
         installationId: args.installationId,
-        // Untrusted string: anything that isn't a real method simply fails the
-        // Nixpacks/Railpack test inside and yields nothing.
         buildMethod: args.buildMethod as BuildMethod,
         rootDirectory: args.rootDirectory,
       });

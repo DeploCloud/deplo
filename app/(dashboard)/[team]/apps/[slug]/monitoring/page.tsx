@@ -21,8 +21,6 @@ export default async function AppMonitoringPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // Held per app (ADR-0016), so ask at the app. The tab is hidden without it;
-  // this is what a direct link lands on.
   if (!(await hasAppCapability(project.id, "view_metrics"))) {
     return (
       <EmptyState
@@ -34,11 +32,8 @@ export default async function AppMonitoringPage(
     );
   }
 
-  // The buffered window, so the charts render full on the first paint instead of
-  // rebuilding themselves client-side.
   const [initialHistory, servers, canManageServers] = await Promise.all([
     getAppMetricsHistory(project.id),
-    // Team-scoped, so the name only ever comes from a server this team reaches.
     listServers(),
     isInstanceAdmin(),
   ]);

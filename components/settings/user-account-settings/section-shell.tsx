@@ -7,8 +7,6 @@ import { Switch } from "@/components/ui/switch";
 import type { DocsTopic } from "@/lib/docs";
 import { cn } from "@/lib/utils";
 
-// The two shells the real rows and their skeletons BOTH wear, so a padding
-// change can't drift the placeholder out of alignment.
 export const ROW_SHELL =
   "flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5";
 
@@ -21,7 +19,6 @@ export function sectionShell(tone: "default" | "destructive") {
   );
 }
 
-// Section - a named group of controls, headed by what the admin is editing.
 export function Section({
   icon: Icon,
   title,
@@ -57,7 +54,6 @@ export function Section({
   );
 }
 
-// Row - one row: name, its tooltip, and the control.
 export function Row({
   title,
   info,
@@ -69,7 +65,6 @@ export function Row({
   info: React.ReactNode;
   docs?: DocsTopic;
   control: React.ReactNode;
-  // A RowNotice follows - drop the bottom edge so they read as one box.
   attached?: boolean;
 }) {
   return (
@@ -78,8 +73,6 @@ export function Row({
         <span className="truncate">{title}</span>
         <InfoTip content={info} docs={docs} label={`About ${title}`} />
       </p>
-      {/* `flex` on purpose: an inline-flex control in a block box sits on the
-          text baseline and drags 5px of descender space in with it. */}
       <div className="flex shrink-0 items-center">{control}</div>
     </div>
   );
@@ -109,8 +102,6 @@ export function ToggleRow({
       docs={docs}
       attached={attached}
       control={
-        // The title is a <p>, not a <label>, so the switch carries the name
-        // itself, otherwise it announces as a bare "switch, off".
         <Switch
           aria-label={title}
           checked={checked}
@@ -122,7 +113,6 @@ export function ToggleRow({
   );
 }
 
-// RowNotice - why the row above is locked, glued under it so it reads as part of it.
 export function RowNotice({
   tone,
   children,
@@ -145,7 +135,6 @@ export function RowNotice({
   );
 }
 
-// ActionRow - a row whose control fires straight away, the danger zone's shape.
 export function ActionRow({
   title,
   info,

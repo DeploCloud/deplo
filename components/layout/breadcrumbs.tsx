@@ -33,7 +33,6 @@ import { cn } from "@/lib/utils";
 
 const MAX_FOLDER_CRUMBS = 3;
 
-// Breadcrumbs - the topbar breadcrumb.
 export function Breadcrumbs({
   pathname,
   graph,
@@ -151,7 +150,6 @@ function Crumb({
           isCurrent ? "font-medium text-foreground" : "text-muted-foreground",
         )}
       >
-        {/* The thing's own mark, before its name. */}
         {home ? (
           <House className="size-3.5 shrink-0" />
         ) : (

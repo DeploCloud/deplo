@@ -22,7 +22,6 @@ const target: S3TestTarget = {
   path: "",
 };
 
-// The other destination shape: a folder on a server (ADR-0019).
 const serverTarget: S3TestTarget = {
   name: "This server",
   kind: "server",
@@ -124,7 +123,6 @@ test("a passing probe marks every step passed and ends on success", () => {
 });
 
 test("the passing report still says the cleanup delete is best effort", () => {
-  // The agent ignores a RemoveObject failure, so the report must not imply otherwise.
   const detail = report().steps.find((s) => s.key === "cleanup")!.detail;
   assert.match(detail, /best effort/i);
 });
@@ -220,7 +218,6 @@ test("reproduce commands cover the same three calls, in order", () => {
   const put = cmd.indexOf("put-object");
   const del = cmd.indexOf("delete-object");
   assert.ok(head > 0 && put > head && del > put, cmd);
-  // Single-quoted, all of it: this block gets pasted into a shell, from strings a user typed.
   assert.ok(cmd.includes(`--bucket '${target.bucket}'`));
   assert.ok(cmd.includes(`--endpoint-url 'https://s3.example.com'`));
   assert.ok(cmd.includes(`--region 'eu-central-1'`));
@@ -228,7 +225,6 @@ test("reproduce commands cover the same three calls, in order", () => {
 });
 
 test("a bucket name carrying shell syntax cannot escape the reproduce block", () => {
-  // The second of two guards - the one that survives someone loosening the first.
   const hostile = "b'; rm -rf /; echo '";
   const cmd = reproduceCommand({ ...target, bucket: hostile });
   const quoted = "'" + hostile.replaceAll("'", "'\\''") + "'";
@@ -238,7 +234,6 @@ test("a bucket name carrying shell syntax cannot escape the reproduce block", ()
 
 test("reproduce commands NEVER carry a real credential", () => {
   const cmd = reproduceCommand(target);
-  // A stored secret has no reveal path in Deplo, and this block must not become one.
   assert.match(cmd, /AWS_ACCESS_KEY_ID='<access key>'/);
   assert.match(cmd, /AWS_SECRET_ACCESS_KEY='<secret key>'/);
 });
@@ -297,7 +292,6 @@ test("a server destination reports the folder sequence, never S3", () => {
 });
 
 test("a folder probe blames the step the agent's own message names", () => {
-  // deplo-agent internal/server/backup_store.go, verbatim prefixes.
   assert.equal(
     classifyFailedStep(
       'backup store path "/mnt/nope" does not exist on this server',

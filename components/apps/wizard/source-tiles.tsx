@@ -9,7 +9,6 @@ import { SOURCE_TABS, type SourceTab } from "@/components/apps/source-tabs";
 import type { DeploySource } from "@/lib/types/app";
 import { cn } from "@/lib/utils";
 
-// SourceTiles - the bento of deploy sources; the two git ones lead.
 export function SourceTiles({
   value,
   onSelect,
@@ -34,7 +33,6 @@ export function SourceTiles({
           />
         ))}
       </div>
-      {/* Three across only where there is room: a phone shows one column. */}
       <div className="grid gap-2 sm:grid-cols-3">
         {rest.map((tab) => (
           <SourceTile
@@ -51,7 +49,6 @@ export function SourceTiles({
   );
 }
 
-// A template is not a source: it becomes a compose App in the catalogue, so this one leaves.
 function TemplateTile({ href }: { href: string }) {
   const veil = veilProps({ tone: "dark" }, "hover");
   return (
@@ -76,7 +73,6 @@ function TemplateTile({ href }: { href: string }) {
   );
 }
 
-// SourceMark - a source's own mark on its own colour.
 export function SourceMark({
   tab,
   size = "sm",
@@ -139,7 +135,6 @@ function SourceTile({
           {tab.label}
           {tab.id === "git" && <Badge variant="info">Beta</Badge>}
         </span>
-        {/* Reserved AND capped, so every tile in a row is the same height. */}
         <span className="mt-1 line-clamp-2 min-h-[2lh] text-xs leading-snug text-muted-foreground">
           {tab.blurb}
         </span>

@@ -3,7 +3,6 @@
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-// PickerSearch - the filter box every scope picker narrows its rows with.
 export function PickerSearch({
   value,
   onChange,
@@ -24,8 +23,6 @@ export function PickerSearch({
         placeholder={placeholder}
         aria-label={label}
         className="h-9 pl-9"
-        // A filter box, not a field of the form: Enter here would otherwise
-        // advance the wizard mid-search.
         onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
       />
     </div>

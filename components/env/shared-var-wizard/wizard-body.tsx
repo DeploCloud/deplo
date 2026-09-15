@@ -37,10 +37,6 @@ import { ProjectsSection } from "./project-picker";
 import { AppsSection } from "./app-picker";
 import { Review } from "./review-step";
 
-/**
- * The wizard itself, without a Dialog of its own: the Variables page hosts it in
- * one, an app's Add-variable modal hosts it as a panel on its own track.
- */
 export function SharedVarWizardBody({
   editing,
   apps,
@@ -52,26 +48,17 @@ export function SharedVarWizardBody({
   onOpenChange,
 }: {
   editing: SharedVarDTO | null;
-  /** Every app of the team. */
   apps: AppRef[];
   projects: ProjectRef[];
   environments: TeamEnvironment[];
-  /** The teams the author may share with. The active team is always among them. */
   teams: TeamRef[];
-  /** Apps ticked from the start when creating - opened from an app, that app. */
   defaultAppIds?: string[];
-  /** Hosted inside another modal, which already spends a header row above this. */
   nested?: boolean;
-  /** Closes on save and re-opens on a refusal, exactly like a Dialog's own. */
   onOpenChange: (v: boolean) => void;
 }) {
-  // Editing opens on the scope: the key and value are already what they are,
-  // and the only way in is "Change sharing".
   const [step, setStep] = React.useState<StepId>(
     editing ? "scope" : "variable",
   );
-  // A secret's DTO value is the MASK, and the server reads that back as "keep
-  // the stored value", so prefilling it is what lets a scope-only edit save.
   const [rows, setRows] = React.useState<EnvRow[]>(() =>
     editing ? [{ key: editing.key, value: editing.value }] : emptyRow(),
   );
@@ -82,8 +69,6 @@ export function SharedVarWizardBody({
   const [projectScopes, setProjectScopes] = React.useState<
     Record<string, ProjectScope>
   >(() => initialProjectScopes(editing, environments));
-  // Every team the author may reach, ticked: sharing with all of them is the
-  // default, and narrowing is the deliberate act (ADR-0027).
   const [teamIds, setTeamIds] = React.useState<string[]>(() =>
     editing ? editing.teamIds : teams.map((t) => t.id),
   );
@@ -92,7 +77,6 @@ export function SharedVarWizardBody({
   );
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
-  /** Editing a stored secret: its value, key and type are frozen server-side. */
   const frozen = editing?.type === "secret";
 
   const envsByProject = React.useMemo(() => {
@@ -111,15 +95,11 @@ export function SharedVarWizardBody({
     apps: scopes.includes("apps"),
   };
 
-  // Teams the variable already reaches that this author cannot tick. Shown LOCKED:
-  // invisible, they were still submitted, and the save answered "Team not found"
-  // with nothing on screen to untick.
   const lockedTeams = (editing?.teams ?? []).filter(
     (t) => !teams.some((o) => o.id === t.id),
   );
   const teamPickerRows = teams.length + lockedTeams.length;
 
-  // With one team on offer, "Teams" IS that team and there is nothing to pick.
   const needsDetails =
     (picked.team && teamPickerRows > 1) || picked.projects || picked.apps;
   const steps: StepId[] = [
@@ -152,8 +132,6 @@ export function SharedVarWizardBody({
   const canGoOn = valid[steps[index]];
   const canSave = steps.every((s) => valid[s]);
 
-  // Only the scopes actually picked reach the server: unchecking "Projects"
-  // drops its details rather than saving them invisibly.
   const scoped = {
     teamIds: picked.team ? teamIds : [],
     projectIds: picked.projects
@@ -162,9 +140,6 @@ export function SharedVarWizardBody({
     environmentIds: picked.projects
       ? checkedProjects.flatMap(([, s]) => (s.mode === "some" ? s.envIds : []))
       : [],
-    // Always sent: `saveSharedVar` replaces the whole link set, so an empty
-    // array UNLINKS every app. That is deliberate - the wizard checks the "apps"
-    // scope whenever the variable has links, so clearing it is an explicit act.
     appIds: picked.apps ? appIds : [],
   };
 
@@ -174,8 +149,6 @@ export function SharedVarWizardBody({
     );
   }
 
-  // Enter runs whatever the current step's primary button does: "Next" until the
-  // last step, "Save" on it.
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (last) {
@@ -195,16 +168,11 @@ export function SharedVarWizardBody({
   }
 
   function save() {
-    // Stays open until the writes answer - the state that would carry a refused
-    // row back lives INSIDE the dialog, and Radix unmounts that on close.
-    // One row per KEY: two rows with the same name would share a name AND a scope.
     const batch = filled.filter(
       (r, i) => filled.findIndex((o) => o.key.trim() === r.key.trim()) === i,
     );
     const type = secret ? "secret" : "plain";
     startTransition(async () => {
-      // One variable per call - `saveSharedVar` writes one row, and every row of
-      // the batch shares the scope picked once.
       const results = await Promise.all(
         batch.map((r) =>
           gqlAction<{ saveSharedVar: { id: string } }>(
@@ -233,8 +201,6 @@ export function SharedVarWizardBody({
               : `${batch.length} shared variables created`,
         );
       } else {
-        // The rows that landed stay landed; the ones that did not stay in the
-        // table, with the server's own words for why.
         const first = results.find((r) => !r.ok);
         const done = batch.length - failed.length;
         const why = first && !first.ok ? first.error : "Something went wrong";
@@ -257,8 +223,6 @@ export function SharedVarWizardBody({
 
   return (
     <form className="flex min-h-0 flex-col" onSubmit={onSubmit}>
-      {/* Nested in an app's Add-variable modal there is a back row above this
-          one, so the rail needs its own top padding. */}
       <div className={cn("border-b border-border px-6 pb-4", nested && "pt-4")}>
         <WizardStepper
           steps={steps.map((s) => ({ id: s, label: stepLabel[s] }))}
@@ -353,8 +317,6 @@ export function SharedVarWizardBody({
       />
 
       <DialogFooter className="items-center border-t border-border px-6 py-4">
-        {/* Kept in the footer, hidden on the first step: a disabled Back reads
-            as something broken, and removing it would move Cancel across. */}
         <Button
           variant="ghost"
           onClick={() => setStep(steps[index - 1])}

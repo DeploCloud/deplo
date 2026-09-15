@@ -80,7 +80,6 @@ const edit = (
   ...patch,
 });
 
-// The credential lives on the Better Auth `account` row since migration 0055.
 const userRow = async (id: string) =>
   (
     await db
@@ -150,7 +149,6 @@ test("the owner can still edit their own account, but not set their own password
   await asUser(OWNER, () =>
     updateUserAdmin(edit(OWNER, { canExposePorts: true })),
   );
-  // One's own password is changed with the current one in hand, never from a door a stolen session could walk through.
   await assert.rejects(
     () =>
       asUser(OWNER, () =>
@@ -197,7 +195,6 @@ test("admins can still edit each other when neither is the owner", async () => {
 });
 
 test("an UNOWNED instance behaves exactly as before (no guard fires)", async () => {
-  // The pre-0038 state: a row that was never written, or no admin to backfill from.
   await seedIdentity(db, {
     users: [
       { id: OWNER, teamId: TEAM_A, role: "owner", isInstanceAdmin: true },

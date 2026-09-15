@@ -4,8 +4,6 @@ import assert from "node:assert/strict";
 import { traefikRouterLabels } from "../routing";
 import { CR } from "./routing-test-helpers";
 
-// Traefik picks the highest-priority MATCHING router, defaulting an un-pinned one to its rule-string length.
-
 function effectivePriority(labels: string[]): number {
   const prio = labels.find((l) => l.includes(".priority="));
   if (prio)

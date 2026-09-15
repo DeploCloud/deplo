@@ -34,7 +34,6 @@ import {
 import { useOptimisticRow } from "@/components/shared/optimistic-list";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
-// DestinationCardView - what the card and the table row need. Narrower than the DTO, no secrets.
 export interface DestinationCardView {
   id: string;
   name: string;
@@ -51,7 +50,6 @@ export interface DestinationCardView {
   accessKeyMasked: string | null;
   serverName: string | null;
   resolvedPath: string | null;
-  // True for every server destination, and for any bucket connected since buckets were encrypted.
   encrypted: boolean;
   freeBytes: number | null;
   totalBytes: number | null;
@@ -80,18 +78,15 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-// firstLine - the actionable first line of a multi-line provider dump, for the toast.
 export function firstLine(text: string): string {
   return text.split("\n")[0]?.trim() ?? "";
 }
 
-// useDestinationActions - the ⋯ menu, connection log, removal confirm and test, shared by the card and the table row.
 export function useDestinationActions({
   dest,
   canManage,
 }: {
   dest: DestinationCardView;
-  // `manage_backup_destinations`. Gates testing, the recovery key and removal.
   canManage: boolean;
 }): {
   pending: boolean;
@@ -104,9 +99,7 @@ export function useDestinationActions({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  // The row leaves on the click: the destination is dropped server-side before a sweep that can run as long as the bucket is big.
   const { hide, restore } = useOptimisticRow(dest.id);
-  // Null while unknown, so the copy never asserts a count it does not have.
   const [impact, setImpact] = React.useState<RemovalImpact | null>(null);
   const [alsoDeleteFiles, setAlsoDeleteFiles] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
@@ -123,7 +116,6 @@ export function useDestinationActions({
           { id: dest.id },
         );
         const report = data.testDestination.report;
-        // Unconditional: the verdict is persisted server-side, so a refresh repaints the badge and the free-space figure.
         router.refresh();
         if (report.ok) {
           toast.success(
@@ -141,7 +133,6 @@ export function useDestinationActions({
           },
         );
       } catch (e) {
-        // The mutation itself failed, so no verdict was recorded: say only what we know.
         toast.error(e instanceof Error ? e.message : "The test could not run");
       }
     });
@@ -153,7 +144,6 @@ export function useDestinationActions({
     });
   }, [dest.id, router]);
 
-  // Reset in the close handler, not an effect: a synchronous setState inside an effect cascades a render.
   function onConfirmOpenChange(next: boolean) {
     if (!next) {
       setImpact(null);
@@ -162,7 +152,6 @@ export function useDestinationActions({
     setConfirmOpen(next);
   }
 
-  // Fetch the impact each time the dialog opens - a backup may have run since.
   React.useEffect(() => {
     if (!confirmOpen) return;
     let cancelled = false;
@@ -176,7 +165,6 @@ export function useDestinationActions({
         if (!cancelled) setImpact(d.destinationRemovalImpact);
       })
       .catch(() => {
-        // Unknown stays unknown: the dialog then says only what it is sure of.
         if (!cancelled) setImpact(null);
       });
     return () => {
@@ -206,7 +194,6 @@ export function useDestinationActions({
           side="left"
         >
           <DropdownMenuItem
-            // destinationTestReport declares the same capability the test does: without this a plain Member clicks into an authorization error.
             disabled={!canManage}
             onSelect={() => setLogOpen(true)}
           >
@@ -256,7 +243,6 @@ export function useDestinationActions({
         onTested={() => router.refresh()}
       />
 
-      {/* The copy used to say backups "will stop running": the schedules and the whole run history are DELETED. */}
       <ConfirmAction
         open={confirmOpen}
         onOpenChange={onConfirmOpenChange}
@@ -285,7 +271,6 @@ export function useDestinationActions({
         extra={
           impact && impact.artifacts > 0 ? (
             <div className="grid gap-3">
-              {/* Removing the destination deletes its keypair with it. */}
               {encrypted && !alsoDeleteFiles && !dest.recoveryKeySavedAt && (
                 <RecoveryKeyNudge
                   destinationId={dest.id}
@@ -314,7 +299,6 @@ export function useDestinationActions({
             </div>
           ) : undefined
         }
-        // Typed, like a restore: none of this can be undone, and it used to be one click.
         confirmText={dest.name}
         confirmLabel="Remove destination"
         successMessage="Destination removed"

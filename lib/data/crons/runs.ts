@@ -16,12 +16,6 @@ import { type CronRunDTO, toRunDTO } from "./dto";
 import { gateJob } from "./gates";
 import { MAX_KEEP_RUNS } from "./job-validate";
 
-/**
- * One job's run history, newest first.
- *
- * Gated on `manage_crons` and NOT on `view`, because stdout can contain anything
- * the command printed - including whatever was in the job's environment.
- */
 export async function listCronRuns(
   jobId: string,
   limit = 50,
@@ -36,11 +30,6 @@ export async function listCronRuns(
   return rows.map(toRunDTO);
 }
 
-/**
- * Run a job now, outside its schedule. Honours the target's master switch: it
- * means "no cron job runs here", and the UI hides this page when it is off - so an
- * API caller must not be the one exception.
- */
 export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
   const { job, teamId, targetEnabled } = await gateJob(jobId);
   if (!targetEnabled) {
@@ -63,8 +52,6 @@ export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
     null,
     job.databaseId,
   );
-  // Re-read: startAttempt may already have settled it (a stopped container is a
-  // `skipped` run before this call returns), and the caller renders the outcome.
   const rows = await getDb()
     .select()
     .from(cronRunsTable)
@@ -73,7 +60,6 @@ export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
   return toRunDTO(rows[0] ?? r.run);
 }
 
-/** Stop a run that is in flight. */
 export async function cancelCronRun(runId: string): Promise<void> {
   const teamId = await requireActiveTeamId();
   const r = await loadInFlightRun(runId);

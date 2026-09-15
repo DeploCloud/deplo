@@ -21,7 +21,6 @@ import { languageForPath } from "@/components/apps/editor-language";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-// ~40KB of CodeMirror, loaded only when a database actually has a file.
 const TextEditor = dynamic(
   () => import("@/components/apps/text-editor").then((m) => m.TextEditor),
   { ssr: false, loading: () => <EditorSkeleton /> },
@@ -29,7 +28,6 @@ const TextEditor = dynamic(
 
 const EDITOR_MIN_HEIGHT = 200;
 
-// The extra `key` is because two rows may briefly share an empty path.
 interface Row {
   key: string;
   filePath: string;
@@ -43,7 +41,6 @@ function toRows(mounts: DatabaseDTO["mounts"]): Row[] {
   return mounts.map((m) => ({ key: `row-${nextKey++}`, ...m }));
 }
 
-// What each engine documents as its config file, offered as the placeholder pair.
 const SUGGESTION: Record<string, { filePath: string; mountPath: string }> = {
   postgres: { filePath: "postgresql.conf", mountPath: "/etc/postgresql.conf" },
   mysql: { filePath: "my.cnf", mountPath: "/etc/mysql/conf.d/my.cnf" },
@@ -59,7 +56,6 @@ const SUGGESTION: Record<string, { filePath: string; mountPath: string }> = {
   },
 };
 
-// The refusal worth linting in the browser is the engine's data directory.
 function problemFor(row: Row, dataDir: string): string | null {
   const filePath = row.filePath.trim();
   const mountPath = row.mountPath.trim().replace(/\/+$/, "");
@@ -82,7 +78,6 @@ export function DatabaseConfigFiles({
   dataDir,
 }: {
   db: DatabaseDTO;
-  // `DB_DATA_DIRS` lives next to the compose renderer, which is server-only, so the page passes it in rather than a second copy drifting here.
   dataDir: string;
 }) {
   const router = useRouter();
@@ -93,7 +88,6 @@ export function DatabaseConfigFiles({
     mountPath: "/etc/engine.conf",
   };
 
-  // After a save `router.refresh()` re-renders with the new props, so `dirty` clears itself without the form re-seeding.
   const saved = React.useMemo(() => JSON.stringify(db.mounts), [db.mounts]);
 
   const current = JSON.stringify(

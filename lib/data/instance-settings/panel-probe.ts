@@ -5,16 +5,12 @@ import { get as httpsGet } from "node:https";
 
 import { requireInstanceAdmin } from "../../membership";
 
-// Whether an address actually reaches this instance, asked of the address itself.
 export type PanelReachability = {
   url: string;
   ok: boolean;
-  // What went wrong, verbatim: a DNS failure and a 502 need different fixes.
   error: string | null;
 };
 
-// Ask an address whether this instance answers on it. The one sanctioned exemption
-// from lib/outbound-url.ts, and like `allowPrivateEndpoint` it is INSTANCE-ADMIN ONLY.
 export async function probePanel(url: string): Promise<PanelReachability> {
   await requireInstanceAdmin();
   try {
@@ -45,8 +41,6 @@ export async function probePanel(url: string): Promise<PanelReachability> {
   }
 }
 
-// GET an address, tolerating a certificate no CA signed: the generated host serves
-// Traefik's self-signed one, which `fetch` refuses outright. Redirects are FOLLOWED.
 function getTolerant(
   url: string,
   redirectsLeft = 3,
@@ -82,8 +76,6 @@ function getTolerant(
   });
 }
 
-// Whether a browser accepts the certificate the panel's address serves. Null when
-// the answer could not be read at all, which is not the same as "not trusted".
 export async function panelCertificateTrusted(
   url: string,
 ): Promise<boolean | null> {
@@ -96,8 +88,6 @@ export async function panelCertificateTrusted(
   }
 }
 
-// Ask the new address whether it answers, allowing for the moment Traefik takes to
-// pick the file up. One attempt would report a working move as a failure.
 export async function probeUntilAnswers(
   url: string,
 ): Promise<PanelReachability> {

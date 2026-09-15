@@ -47,7 +47,6 @@ export async function teamsForServerAlerts(
   return firstTeamId();
 }
 
-// Every team, for a condition that is genuinely instance-wide (a new release).
 export async function allTeamIds(): Promise<string[]> {
   const rows = await getDb().select({ id: teamsTable.id }).from(teamsTable);
   return rows.map((r) => r.id);

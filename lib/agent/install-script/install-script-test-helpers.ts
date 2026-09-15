@@ -15,7 +15,6 @@ export const FAKE = {
   arm64Sha: "b".repeat(64),
 };
 
-// resolveLatestAgentRelease makes two calls - the release JSON, then the checksums asset - so the stub branches on the URL.
 export function stubReleaseFetch() {
   const orig = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -55,20 +54,17 @@ export function stubReleaseFetch() {
   };
 }
 
-// Pull a `KEY="value"` assignment out of the rendered script.
 export function shVar(script: string, name: string): string | null {
   const m = script.match(new RegExp(`^${name}="([^"]*)"`, "m"));
   return m ? m[1] : null;
 }
 
-// One shell function, lifted out of an installer so it can be driven directly.
 export async function shellFn(file: string, name: string): Promise<string> {
   const script = await readFile(join(process.cwd(), file), "utf8");
   const start = script.search(new RegExp(`^${name}\\(\\)\\s*\\{`, "m"));
   assert.ok(start >= 0, `${name} not found in ${file}`);
   const head = script.slice(start);
   const first = head.slice(0, head.indexOf("\n"));
-  // A one-liner closes on its own line; anything else runs to the next `\n}`.
   return first.trimEnd().endsWith("}")
     ? first
     : head.slice(0, head.indexOf("\n}\n") + 2);
@@ -84,7 +80,6 @@ export async function bash(body: string, extraPath?: string) {
   return stdout;
 }
 
-// The stack file a panel that has been moved onto its own domain is serving.
 export const LIVE_STACK = `services:
   traefik:
     command:
@@ -125,7 +120,6 @@ networks:
     external: true
 `;
 
-// A host mid-update: the stack file above, and a .env from before the move.
 export async function updatedHost(stack = LIVE_STACK) {
   const dir = await mkdtemp(join(tmpdir(), "deplo-update-"));
   await writeFile(join(dir, "docker-compose.yml"), stack);
@@ -136,7 +130,6 @@ export async function updatedHost(stack = LIVE_STACK) {
   return dir;
 }
 
-// The update's view of the panel: what `adopt_live_panel_route` resolves to.
 export async function adopt(dir: string) {
   return bash(`set -euo pipefail
 MODE=update; DEPLO_DOMAIN=""; PANEL_HTTPS=true; FALLBACK_HOST=deplo-cb00710b.nip.io

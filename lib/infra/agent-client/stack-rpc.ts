@@ -8,7 +8,6 @@ import { DEPLOY_DEADLINE_MS, STACK_DEADLINE_MS } from "./deadlines";
 import { toAgentError } from "./errors";
 import type { AgentChannel } from "./mtls-channel";
 
-// stackRpc - deploying a stack and moving it through its lifecycle.
 export function stackRpc(
   channel: AgentChannel,
 ): Pick<
@@ -24,8 +23,6 @@ export function stackRpc(
   const { client, assertNetworkCapable } = channel;
   return {
     deploy(req: DeployRequest) {
-      // Refuse BEFORE the stream, so the failure names the server and the remedy
-      // instead of arriving as a compose error halfway through a build.
       return (async function* () {
         await assertNetworkCapable(req.network);
         yield* streamEvents(
@@ -46,8 +43,6 @@ export function stackRpc(
     },
     stopStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        // `removeVolumes` is part of StackRef but meaningless for start/stop -
-        // these only toggle the running state, never touch volumes.
         client.stopStack(
           { slug, removeVolumes: false, reclaimVolumes: [] },
           new Metadata(),

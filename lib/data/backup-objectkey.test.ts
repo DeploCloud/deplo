@@ -131,8 +131,6 @@ test("retention: age is irrelevant - old runs survive if they are within the cou
 });
 
 test("retention: the newest successful run is ALWAYS kept", () => {
-  // keepLast is clamped to >= 1 by the data layer, so a target can never be left
-  // with zero restorable artifacts.
   const runs = [run("a", 0), run("b", 1), run("c", 2)];
   const doomed = selectDoomedRuns(runs, opts(1));
   assert.deepEqual(doomed.map((r) => r.id).sort(), ["b", "c"]);
@@ -148,8 +146,6 @@ test("retention: a running run is never pruned, and does not use up a slot", () 
 });
 
 test("retention: FAILED runs do not evict a kept success", () => {
-  // The regression this rule exists for: three bad nights in a row must not silently
-  // delete the three good backups "keep the last 3" promised.
   const failed = (id: string, daysAgo: number) =>
     run(id, daysAgo, {
       status: "failed" as const,
@@ -191,8 +187,6 @@ const sameMsRun = (
 ): RunForRetention => ({ ...run(id, 30), seq, ...over });
 
 test("retention: a same-ms tie keeps the higher-seq success (newest), prunes the rest", () => {
-  // All at the same instant: without seq the "newest success to keep" is
-  // non-deterministic and could delete the live object.
   const runs = [sameMsRun("low", 1), sameMsRun("mid", 2), sameMsRun("high", 3)];
   const doomed = selectDoomedRuns(runs, opts(1));
   assert.deepEqual(doomed.map((r) => r.id).sort(), ["low", "mid"]);

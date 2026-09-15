@@ -21,7 +21,6 @@ export default async function VariablesPage(
   const openEditId = Array.isArray(editParam) ? editParam[0] : editParam;
   const wholeTeam = await reachesWholeTeam();
 
-  // The sidebar link is hidden without manage_env; guard the page too for direct navigation.
   if (!(await hasCapability("manage_env"))) {
     return (
       <EmptyState
@@ -42,12 +41,10 @@ export default async function VariablesPage(
     shareableTeams,
   ] = await Promise.all([
     listAllAppEnv(),
-    // Team-wide read: a member scoped to part of the team loses the library, not the page.
     wholeTeam ? listSharedVars() : Promise.resolve([]),
     wholeTeam ? listAppliedSharedVarsByApp() : Promise.resolve([]),
     listProjects(),
     listAllEnvironmentsForTeam(),
-    // Only the viewer's teams where they hold manage_env across the whole team.
     wholeTeam ? listSharedVarTeams() : Promise.resolve([]),
   ]);
 
@@ -61,7 +58,6 @@ export default async function VariablesPage(
     appCount: p.appCount,
     environmentCount: p.environmentCount,
   }));
-  // listAllAppEnv returns a group per app (name-sorted), including apps holding no vars.
   const apps = allAppGroups.map((g) => g.app);
 
   return (

@@ -93,7 +93,6 @@ test("every capability is described exactly once, in exactly one category", () =
     categorised.length,
     "a capability appears in two categories",
   );
-  // `view` is the always-on floor and is deliberately in no category.
   assert.deepEqual(
     ALL_CAPABILITIES.filter((c) => c !== "view" && !categorised.includes(c)),
     [],
@@ -117,7 +116,6 @@ test("the legacy split preserves access: the old eight expand, nothing is orphan
     [],
     "a capability no old name expands to - the migration would under-grant it",
   );
-  // manage_s3 was RENAMED to manage_backup_destinations, so it still expands as input.
   assert.deepEqual(RETIRED_CAPABILITY_NAMES.sort(), [
     "deploy",
     "manage_infra",
@@ -130,7 +128,6 @@ test("expandLegacyCapabilities expands only the RETIRED names", () => {
   assert.deepEqual(expandLegacyCapabilities(once), once, "idempotent");
   assert.deepEqual(expandLegacyCapabilities(["nonsense"]), []);
   assert.deepEqual(expandLegacyCapabilities(["delete_apps"]), ["delete_apps"]);
-  // A name that is still a capability means itself - expanding it would grant what nobody chose.
   assert.deepEqual(expandLegacyCapabilities(["view"]), ["view"]);
   assert.deepEqual(expandLegacyCapabilities(["manage_env"]), ["manage_env"]);
   assert.deepEqual(expandLegacyCapabilities(["manage_members"]), [

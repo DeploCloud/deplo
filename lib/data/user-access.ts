@@ -45,7 +45,6 @@ import {
 import type { Capability, Membership } from "../types/identity";
 import type { AlertKey } from "../types/notification";
 
-// AccessNodeGrant - one node an access set is attached to.
 export interface AccessNodeGrant {
   kind: "project" | "folder" | "app";
   nodeId: string;
@@ -53,7 +52,6 @@ export interface AccessNodeGrant {
   capabilities: Capability[];
 }
 
-// UserTeamAccessDTO - a person's access in one team, as the admin page shows and saves it.
 export interface UserTeamAccessDTO {
   teamId: string;
   teamName: string;
@@ -67,7 +65,6 @@ export interface UserTeamAccessDTO {
   isFounder: boolean;
 }
 
-// NodeGrantInput - one node grant as the client sends it back.
 export interface NodeGrantInput {
   projectIds?: string[];
   folderIds?: string[];
@@ -75,7 +72,6 @@ export interface NodeGrantInput {
   capabilities: Capability[];
 }
 
-// listUserAccess - every team this user belongs to, with their access. Instance admin only.
 export async function listUserAccess(
   userId: string,
 ): Promise<UserTeamAccessDTO[]> {
@@ -83,7 +79,6 @@ export async function listUserAccess(
   return loadUserAccess(userId);
 }
 
-// Ungated: only for a caller already gated that knows which team it may answer for.
 async function loadUserAccess(
   userId: string,
   teamId?: string,
@@ -225,7 +220,6 @@ async function nodeGrantsFor(
   return out;
 }
 
-// getMemberAccess - one member's access in the ACTIVE team, for the team-side member page.
 export async function getMemberAccess(
   userId: string,
 ): Promise<UserTeamAccessDTO | null> {
@@ -233,7 +227,6 @@ export async function getMemberAccess(
   return (await loadUserAccess(userId, teamId))[0] ?? null;
 }
 
-// setUserTeamAccess - set one person's access in one team: role, reach, and the overrides.
 export async function setUserTeamAccess(input: {
   userId: string;
   teamId: string;
@@ -242,18 +235,15 @@ export async function setUserTeamAccess(input: {
   grants?: NodeGrantInput[];
 }): Promise<UserTeamAccessDTO[]> {
   const { userId: actingUserId } = await requireInstanceAdmin();
-  // No actor bound: administering the instance is the power to assign a role you don't hold.
   await writeAccess(actingUserId, input, null);
   return listUserAccess(input.userId);
 }
 
-// setMemberAccess - the same write for a team administering its OWN member (manage_members).
 export async function setMemberAccess(input: {
   userId: string;
   roleId: string;
   granular: boolean;
   grants?: NodeGrantInput[];
-  // Absent (what every older client sends) means "whatever the role gives".
   capabilities?: Capability[];
 }): Promise<UserTeamAccessDTO[]> {
   const {
@@ -262,7 +252,6 @@ export async function setMemberAccess(input: {
     membership,
   } = await requireCapability("manage_members");
   await writeAccess(actingUserId, { ...input, teamId }, membership);
-  // Their access in THIS team, which is the only one this door may answer for.
   return loadUserAccess(input.userId, teamId);
 }
 
@@ -282,7 +271,6 @@ async function writeAccess(
   await ensureTeamRoles(db, input.teamId);
   const assignment = await roleAssignment(db, input.teamId, input.roleId);
   const effective = memberCapabilities(assignment, input);
-  // Their set is not the role's, so the role must stop rewriting it.
   const customCapabilities = !sameCapabilities(
     effective,
     assignment.capabilities,
@@ -297,7 +285,6 @@ async function writeAccess(
       );
     if (assignment.rank === "owner" && actor.role !== "owner")
       throw new Error("Only an owner can make someone an owner");
-    // Read before the transaction opens: a query issued while one is open hangs under pglite.
     const target = (
       await db
         .select({ role: membershipsTable.role })
@@ -345,7 +332,6 @@ async function writeAccess(
         capability: c,
       })),
     );
-    // Turning granular off must clear its rows too, or they linger as overrides.
     if (input.granular || input.grants !== undefined || m.granular) {
       await clearNodeGrants(tx, input.userId, input.teamId);
       await writeNodeGrants(tx, input.userId, resolved);
@@ -370,20 +356,17 @@ function memberCapabilities(
   const own = input.capabilities
     ? withView(cleanCapabilities(input.capabilities, "viewer"))
     : assignment.capabilities;
-  // A reach of named nodes holds nothing team-wide, whatever the base role says.
   return input.granular || assignment.scoped
     ? boundedBy(own, NODE_GRANTABLE_CAPABILITIES)
     : own;
 }
 
-// addUserToTeam - add this person to a team with a role. Instance admin only.
 export async function addUserToTeam(input: {
   userId: string;
   teamId: string;
   roleId: string;
 }): Promise<UserTeamAccessDTO[]> {
   const { userId: actingUserId } = await requireInstanceAdmin();
-  // The same line `requireEditableMembership` draws: access is never self-serve.
   if (input.userId === actingUserId)
     throw new Error("You can't add yourself to a team. Ask another admin.");
   const db = getDb();
@@ -429,7 +412,6 @@ export async function addUserToTeam(input: {
   return listUserAccess(input.userId);
 }
 
-// removeUserFromTeam - since ADR-0016 the ONE thing that revokes every node grant at once.
 export async function removeUserFromTeam(input: {
   userId: string;
   teamId: string;
@@ -466,14 +448,12 @@ async function requireEditableMembership(
   teamId: string,
   actingUserId: string,
 ): Promise<{ id: string; granular: boolean }> {
-  // Never self-serve: an actor who could widen themselves has no boundary.
   if (userId === actingUserId) {
     throw new Error("You can't change your own access. Ask another admin.");
   }
   if (userId === (await teamFounderUserId(tx, teamId))) {
     throw new Error("The team's primary owner's access can't be changed.");
   }
-  // Read through the TX: an outer query issued while one is open hangs under pglite.
   const owner = await instanceOwnerUserId(tx);
   if (owner && userId === owner && actingUserId !== owner) {
     throw new Error(
@@ -500,7 +480,6 @@ interface ResolvedGrant {
   capabilities: Capability[];
 }
 
-// Every ticked node must belong to the team, and the actor must hold there what they hand out.
 async function resolveGrants(
   teamId: string,
   actingUserId: string,
@@ -537,13 +516,11 @@ async function resolveGrants(
         throw new Error("One of those isn't in this team any more");
       }
       for (const id of new Set(ids)) {
-        // The team is an ARGUMENT, not the active team: this door is cross-team by design.
         const mine = await nodeCapabilitiesFor(actingUserId, teamId, {
           kind,
           id,
         });
         if (mine.length === 0)
-          // An unreachable node answers as a missing one: no existence oracle.
           throw new Error("One of those isn't in this team any more");
         const bounded = boundedBy(wanted, mine);
         const over = wanted.filter((c) => !bounded.includes(c));
@@ -589,7 +566,6 @@ async function writeNodeGrants(
   }
 }
 
-// Logged in the AFFECTED team's Activity, so who changed whose access is answerable in the UI.
 async function recordUserAccess(
   userId: string,
   teamId: string,

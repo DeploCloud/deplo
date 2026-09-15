@@ -417,7 +417,6 @@ test("a WRONG password on a suspended account is the GENERIC error, not an enume
   assert.doesNotMatch(res.error ?? "", /suspended/i);
 });
 
-// A successful `login` writes the session cookie via `cookies()`, which throws outside a request scope under node --test.
 async function assertLoginAccepts(
   email: string,
   password: string,
@@ -544,7 +543,6 @@ async function withSetupKey(key: string | null, fn: () => Promise<void>) {
 
 const SETUP_KEY = "a3f9c1d84b7e2065";
 
-// completeSetup signs the owner in last, so the harness throws on the cookie write with the account already created - reaching that throw is the pass.
 async function setupRefusal(
   input: Parameters<typeof completeSetup>[0],
 ): Promise<string | null> {

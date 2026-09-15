@@ -1,4 +1,3 @@
-// Curated, not a general-purpose dictionary: that one produced names like whoami-obnoxious-kite.
 export const FRIENDLY_ADJECTIVES: readonly string[] = [
   "amber",
   "ancient",
@@ -121,7 +120,6 @@ export const FRIENDLY_ANIMALS: readonly string[] = [
   "wren",
 ];
 
-/** One `adjective-animal` pair, e.g. `swift-otter`. */
 export function friendlyWords(): string {
   const pick = (list: readonly string[]) =>
     list[Math.floor(Math.random() * list.length)]!;

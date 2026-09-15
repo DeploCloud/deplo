@@ -29,7 +29,6 @@ import type { Database } from "../types/database";
 const RUNTIME_TTL_MS = 3_000;
 const runtimeCache = new Map<string, { at: number; value: AppRuntime }>();
 
-// getDatabaseRuntime - live container truth for one database; null = not found.
 export async function getDatabaseRuntime(
   id: string,
 ): Promise<AppRuntime | null> {
@@ -122,7 +121,6 @@ function displayFallback(db: Database): ConsoleInstance {
     workdir: "/",
     openStdin: false,
     tty: false,
-    // Unknown, not "stopped": this entry exists because we could not ask.
     state: "",
     health: "",
     restartCount: 0,
@@ -151,7 +149,6 @@ async function listForDisplay(db: Database): Promise<{
   }
 }
 
-// getDatabaseConsoleInfo - console page info, same shape as an app's ConsoleInfo.
 export async function getDatabaseConsoleInfo(
   id: string,
 ): Promise<ConsoleInfo | null> {
@@ -168,14 +165,12 @@ export async function getDatabaseConsoleInfo(
   };
 }
 
-// getDatabaseLogsInfo - logs page info, same shape as an app's LogsInfo.
 export async function getDatabaseLogsInfo(
   id: string,
 ): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return null;
-  // A database's log leaks connection errors and their DSNs, so it takes `view_logs`.
   if (!(await hasCapability("view_logs"))) return null;
   const [found, supportsTimeline, maxDays] = await Promise.all([
     listForDisplay(db),
@@ -192,7 +187,6 @@ export async function getDatabaseLogsInfo(
   };
 }
 
-// getDatabaseShellLabel - the container's shell label for the console banner.
 export async function getDatabaseShellLabel(id: string): Promise<string> {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
@@ -211,7 +205,6 @@ export async function getDatabaseShellLabel(id: string): Promise<string> {
   }
 }
 
-// resolveDatabaseAttachTarget - authorise an attach and resolve the container.
 export async function resolveDatabaseAttachTarget(
   id: string,
   target?: string,
@@ -234,7 +227,6 @@ export async function resolveDatabaseAttachTarget(
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  // Never trust a raw name from the client - the target must be in this stack.
   const pick = target
     ? instances.find((i) => i.name === target)
     : (instances.find((i) => i.running) ?? instances[0]);
@@ -243,8 +235,6 @@ export async function resolveDatabaseAttachTarget(
   return { ok: true, instance: pick, serverId: db.serverId };
 }
 
-// resolveDatabaseLogsTarget - authorise a logs stream and resolve the container.
-// Does NOT refuse a stopped container: `docker logs` still has its output.
 export async function resolveDatabaseLogsTarget(
   id: string,
   target?: string,
@@ -258,7 +248,6 @@ export async function resolveDatabaseLogsTarget(
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return { ok: false, reason: "not-found" };
-  // A reason, not a throw: the caller is an SSE route that turns this into 403.
   if (!(await hasCapability("view_logs")))
     return { ok: false, reason: "forbidden" };
 
@@ -275,7 +264,6 @@ export async function resolveDatabaseLogsTarget(
   return { ok: true, instance: pick, serverId: db.serverId };
 }
 
-// execInDatabase - run one console line inside the database container.
 export async function execInDatabase(
   id: string,
   rawCommand: string,

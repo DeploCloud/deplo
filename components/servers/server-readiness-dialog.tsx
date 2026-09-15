@@ -29,9 +29,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { DocsLink } from "@/components/ui/docs-link";
 
-// Nothing here is persisted, so this deliberately never calls router.refresh().
-
-// Declared locally: the canonical types import server-only `./agent-client`, which would drag @grpc/grpc-js into the browser bundle.
 type ReadinessSeverity = "pass" | "info" | "warn" | "fail" | "skip";
 type ReadinessGroup =
   "agent" | "docker" | "routing" | "capacity" | "build" | "config";
@@ -196,8 +193,6 @@ export function ServerReadinessDialog({
   const [report, setReport] = React.useState<ReadinessReportRow | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  // The open path passes reset, "Run again" does not, so rows stay on screen while a re-run is in flight.
-  // It lives here, not in the effect body, because setState from an effect is a cascading render.
   const run = React.useCallback(
     (opts?: { reset?: boolean }) => {
       const id = ++runId.current;
@@ -208,7 +203,6 @@ export function ServerReadinessDialog({
         const res = await gqlAction<{
           checkServerReadiness: ReadinessReportRow;
         }>(CHECK_READINESS, { id: serverId });
-        // A newer run, or a reopen, superseded this one; its answer is stale.
         if (id !== runId.current) return;
         setLoading(false);
         if (!res.ok) {
@@ -225,7 +219,6 @@ export function ServerReadinessDialog({
 
   React.useEffect(() => {
     if (!open) return;
-    // Opening the dialog IS the probe: it synchronises with the owning server's agent, and `run` owns its state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     run({ reset: true });
   }, [open, run]);
@@ -252,7 +245,6 @@ export function ServerReadinessDialog({
           className="grid grid-cols-[minmax(0,1fr)] gap-4"
           scroll={false}
         >
-          {/* The previous report stays below this banner: blanking it would drop the answer being compared against. */}
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />

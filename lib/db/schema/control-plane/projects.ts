@@ -11,7 +11,6 @@ import {
 import { isoTimestamptz } from "../columns";
 import { teams, users } from "./identity";
 
-// folders - [Folder](../../../types.ts). Ownership survives the owner leaving the team.
 export const folders = pgTable(
   "folders",
   {
@@ -27,9 +26,6 @@ export const folders = pgTable(
     ownerUserId: text("owner_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    // The Project CONTAINER this folder lives in, or NULL when the folder sits at the
-    // team top level (additive adoption - ADR-0008). Forward-ref thunk because
-    // `projects` (the container) is declared just below.
     projectId: text("project_id").references((): AnyPgColumn => projects.id, {
       onDelete: "set null",
     }),
@@ -42,7 +38,6 @@ export const folders = pgTable(
   ],
 );
 
-// projects - the team-scoped Project CONTAINER (ADR-0008); a Project never nests in a Project.
 export const projects = pgTable(
   "projects",
   {
@@ -56,7 +51,6 @@ export const projects = pgTable(
     ownerUserId: text("owner_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    // The migration still creating this project. See the apps column.
     migrationRunId: text("migration_run_id"),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
@@ -67,7 +61,6 @@ export const projects = pgTable(
   ],
 );
 
-// environments - [Environment](../../../types.ts), a per-Project isolated deploy target (ADR-0008).
 export const environments = pgTable(
   "environments",
   {
@@ -81,7 +74,6 @@ export const environments = pgTable(
     gitBranch: text("git_branch").notNull().default(""),
     isDefault: boolean("is_default").notNull().default(false),
     position: integer("position").notNull(),
-    // The migration still creating this environment. See the apps column.
     migrationRunId: text("migration_run_id"),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),

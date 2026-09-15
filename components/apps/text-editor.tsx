@@ -24,7 +24,6 @@ import {
   yamlExtensions,
 } from "@/components/apps/editor-theme";
 
-// TextEditor - a CodeMirror editor on the dashboard's theme; null language is plain text.
 export function TextEditor({
   value,
   onChange,

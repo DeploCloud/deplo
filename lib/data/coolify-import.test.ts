@@ -167,8 +167,6 @@ function defaultFixtures(): Record<string, unknown> {
       { key: "NODE_ENV", value: "production" },
       { key: "SECRET", value: "$SERVICE_PASSWORD_APP", real_value: "aB3k9" },
       { key: "ONLY_PREVIEW", value: "x", is_preview: true },
-      // Same name as the shared variable: a LINK here, not a second copy. A link
-      // cannot rename, so MAIL (a different name) arrives as the resolved value.
       { key: "TEAM_WIDE", value: "{{team.TEAM_WIDE}}", real_value: "t" },
       { key: "MAIL", value: "{{project.PROJECT_WIDE}}", real_value: "p" },
     ],
@@ -349,7 +347,6 @@ test("a scan writes nothing on either side", async () => {
   assert.equal(rows.length, 0);
 });
 
-// The one failure that looks like success: apps land with their variables empty.
 test("a token that cannot read values is refused before anything happens", async () => {
   fixtures.databases = [
     {
@@ -358,7 +355,6 @@ test("a token that cannot read values is refused before anything happens", async
       environment_id: 2,
       type: "standalone-postgresql",
       image: "postgres:16",
-      // No password key at all: this is what Coolify sends without read:sensitive.
     },
   ];
   await assert.rejects(
@@ -396,8 +392,6 @@ test("a project lands: apps, a stack, a database and its variables", async () =>
     "wordpress",
   ]);
 
-  // The seeded host has no agent, so a database create is a REPORT row carrying the
-  // host's own words - not a failed import.
   const items = await db.select().from(itemsTable);
   const pg = items.find((i) => i.sourceKind === "postgres")!;
   assert.equal(pg.outcome, "failed");
@@ -410,11 +404,7 @@ test("a project lands: apps, a stack, a database and its variables", async () =>
     .from(envVarsTable)
     .where(eq(envVarsTable.appId, web.id));
   const keys = vars.map((v) => v.key).sort();
-  // MAIL read {{project.PROJECT_WIDE}}: a link cannot rename, so it arrives as the
-  // value. TEAM_WIDE read a variable of its own name and became a link instead.
   assert.deepEqual(keys, ["MAIL", "NODE_ENV", "SECRET"]);
-  // Deplo's previews inherit the app's env, so importing a preview-only variable
-  // would leak it into production.
   assert.equal(keys.includes("ONLY_PREVIEW"), false);
 });
 
@@ -427,7 +417,6 @@ test("a compose-built application lands as a stack, not as an app", async () => 
   const doc = yaml.load(stack.compose ?? "") as {
     networks?: Record<string, unknown>;
   };
-  // Coolify's per-resource network is the PLATFORM's, and Deplo attaches its own.
   assert.equal(doc.networks, undefined);
 });
 
@@ -502,7 +491,6 @@ test("the health check comes across, and what does not fit is a note", async () 
 
 test("shared variables come across at every level, including the server one", async () => {
   await importAll();
-  // The team level is now a reach ROW, not a boolean (ADR-0027).
   const shared = await db.execute(
     `select v.key, (t.team_id is not null) as team_wide
        from shared_env_vars v
@@ -563,8 +551,6 @@ test("a backup destination comes across and is tried at once", async () => {
     ]),
     [["nightly", "backups"]],
   );
-  // No agent answers in this harness, so it lands with the reason on the report
-  // rather than looking verified.
   const item = (await db.select().from(itemsTable))
     .filter((i) => i.runId === runId)
     .find((i) => i.sourceKind === "destination")!;

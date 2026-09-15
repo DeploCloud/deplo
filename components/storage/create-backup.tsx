@@ -87,7 +87,6 @@ const COPY: Record<
   },
 };
 
-// CreateBackup - the Storage wizard; `ScheduleBackup` in `backups-panel.tsx` is the same one minus the target step.
 export function CreateBackup({
   databases,
   services = [],
@@ -97,17 +96,12 @@ export function CreateBackup({
   autoOpen = false,
   size = "default",
 }: {
-  // `serverId` only flags a destination on the target's own disk; leave it out and the picker says nothing.
   databases: BackupTargetOption[];
   services?: BackupTargetOption[];
   destinations: DestinationOption[];
-  // `manage_backups`.
   canCreate?: boolean;
-  // `manage_backup_destinations`: without it the picker shows stored badges instead of firing a mutation the server would refuse.
   canTestDestinations?: boolean;
-  // Open on mount, from the global "New ▸ Schedule backup" menu (which links to /storage?new=backup).
   autoOpen?: boolean;
-  // `sm` outside a toolbar; `default` next to an input, which is h-9.
   size?: "sm" | "default";
 }) {
   const router = useRouter();
@@ -115,12 +109,10 @@ export function CreateBackup({
   const [pending, startTransition] = React.useTransition();
   const [step, setStep] = React.useState<StepId>("target");
 
-  // Drop ?new=backup so a refresh or Back doesn't reopen the dialog.
   React.useEffect(() => {
     if (autoOpen) router.replace("/storage", { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Named after its frequency until the user types: a blank default would leave Create disabled on open.
   const [name, setName] = React.useState(() =>
     suggestScheduleName(DEFAULT_SCHEDULE),
   );
@@ -140,14 +132,12 @@ export function CreateBackup({
   const [retention, setRetention] = React.useState(DEFAULT_RETENTION);
 
   const noDeps = destinations.length === 0;
-  // The missing permission wins: adding a destination would not unblock it.
   const blocked = !canCreate
     ? "You don't have permission to schedule backups"
     : noDeps
       ? "Add a backup destination first"
       : null;
   const targetId = targetKind === "database" ? databaseId : appId;
-  // A destination on the target's own server is a same-disk copy.
   const targetServerId =
     (targetKind === "database" ? databases : services).find(
       (t) => t.id === targetId,
@@ -163,11 +153,9 @@ export function CreateBackup({
 
   function close() {
     setOpen(false);
-    // Deferred so the close animation does not play over a form already snapped back to step one.
     setTimeout(() => setStep("target"), 200);
   }
 
-  // Enter runs whatever the current step's primary button does.
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (pending || !complete[step]) return;
@@ -209,7 +197,6 @@ export function CreateBackup({
       <Tooltip>
         <TooltipTrigger asChild>
           {blocked ? (
-            // Disabled buttons swallow pointer events, so the span keeps the tooltip reachable; no DialogTrigger means a blocked click can never open the dialog.
             <span tabIndex={0}>
               <Button size={size} disabled>
                 <Plus className="size-4" />
@@ -227,7 +214,6 @@ export function CreateBackup({
         </TooltipTrigger>
         <TooltipContent>{blocked ?? "Schedule a backup"}</TooltipContent>
       </Tooltip>
-      {/* No `overflow-hidden` here: the step box clips itself while animating, and a combobox menu must hang past its field at rest. */}
       <DialogContent selfManaged className="sm:max-w-lg">
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Schedule a backup</DialogTitle>
@@ -249,9 +235,7 @@ export function CreateBackup({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-4">
-          {/* The height is the step's, measured: a wizard padded to its tallest step is mostly air. */}
           <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
-            {/* Same shape on every step, so the eye lands in the same place. */}
             <div className="flex flex-col items-center gap-2 text-center">
               <span className="flex size-10 items-center justify-center rounded-full bg-primary-wash-strong">
                 <StepIcon className="size-5 text-primary" />

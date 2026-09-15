@@ -47,18 +47,11 @@ export default async function DeploymentDetailPage(
   const deployment = await getDeployment(id);
   if (!deployment || deployment.appId !== project.id) notFound();
 
-  // Build logs print the app's build-time variables, so they are their own
-  // permission, held per app (ADR-0016).
   const canReadLogs = await hasAppCapability(project.id, "view_logs");
-  // NOT the same question as `deployment.canRollback`, which is whether this
-  // build is still a target at all. This is whether the VIEWER may take it.
   const canRollbackApps = await hasAppCapability(project.id, "rollback_apps");
   const logs = canReadLogs ? await getLogs(id) : [];
-  // Its live slot in the owning server's build queue (null unless still queued),
-  // so the "in queue" banner paints its position without waiting on the first poll.
   const queuePosition = await getQueuePosition(id);
   const prUrl = githubPullRequestUrl(project.repo, deployment.prNumber);
-  // Confetti is for the app's very first build, and only when it lands.
   const firstEver = await isFirstDeployment(deployment);
 
   return (
@@ -80,8 +73,6 @@ export default async function DeploymentDetailPage(
           <Meta label="Status">
             <StatusBadge status={deployment.status} />
           </Meta>
-          {/* Only a pull request preview has anything to say here: a production
-              build is what every other deployment is. */}
           {deployment.prNumber != null && (
             <Meta label="Pull request">
               <span className="flex items-center gap-1.5 text-sm">
@@ -115,8 +106,6 @@ export default async function DeploymentDetailPage(
           <Meta label="Build time">
             <span className="flex items-center gap-1.5 text-sm">
               <Clock className="size-3.5" />
-              {/* Ticks live while the build runs, then freezes on the measured
-                  duration - see BuildDuration. */}
               <BuildDuration
                 status={deployment.status}
                 startedAt={deployment.startedAt}
@@ -131,9 +120,6 @@ export default async function DeploymentDetailPage(
             />
           </Meta>
           <Meta label="Created">
-            {/* Each part its own flex item: contiguous text collapses into ONE,
-                and "by" lost its space against the name whenever the avatar in
-                between was not rendered. */}
             <span className="flex items-center gap-1.5 text-sm">
               <span>
                 <TimeAgo at={deployment.createdAt} live /> by
@@ -151,8 +137,6 @@ export default async function DeploymentDetailPage(
             </span>
           </Meta>
           <div className="flex items-end gap-2">
-            {/* Only where the server says this build can still be re-run: its
-                image has to be on the app's current host and not already live. */}
             {deployment.canRollback && (
               <RollbackButton
                 id={deployment.id}

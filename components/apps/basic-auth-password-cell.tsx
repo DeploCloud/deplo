@@ -13,7 +13,6 @@ const OUTER =
   "relative block h-7 min-w-0 flex-1 rounded-md ring-1 ring-inset align-middle";
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 
-// BasicAuthPasswordCell - one basic-auth password, masked with a deliberate reveal.
 export function BasicAuthPasswordCell({
   id,
   username,
@@ -27,7 +26,6 @@ export function BasicAuthPasswordCell({
 
   async function toggle() {
     if (revealed) {
-      // A drag to copy leaves a selection; the click ending it must not shut the chip.
       if ((window.getSelection()?.toString().length ?? 0) > 0) return;
       setValue(null);
       return;
@@ -56,7 +54,6 @@ export function BasicAuthPasswordCell({
             ? `Hide ${username}'s password`
             : `Reveal ${username}'s password`
         }
-        // No password in the title: the value is nowhere in the DOM until revealed.
         title={revealed ? "Click to hide" : "Click to reveal"}
         className={cn(
           OUTER,

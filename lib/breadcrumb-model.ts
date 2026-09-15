@@ -31,16 +31,13 @@ export interface BreadcrumbDatabase {
   logo?: string | null;
 }
 
-// BreadcrumbGraph - the team-scoped snapshot the breadcrumb navigates over.
 export interface BreadcrumbGraph {
   folders: BreadcrumbFolder[];
   apps: BreadcrumbApp[];
   projects: BreadcrumbProject[];
-  // Empty for a member whose role or token does not reach the whole team: Storage is a team-wide list.
   databases: BreadcrumbDatabase[];
 }
 
-// BreadcrumbContext - where the viewer is: the pathname plus the Overview's drill-in query params.
 export interface BreadcrumbContext {
   pathname: string;
   openFolderId: string | null;
@@ -48,7 +45,6 @@ export interface BreadcrumbContext {
   view: "grid" | "list";
 }
 
-// DropItem - one entry inside a segment's dropdown.
 export interface DropItem {
   id: string;
   label: string;
@@ -60,7 +56,6 @@ export interface DropItem {
   group?: string;
 }
 
-// BreadcrumbSegment - one "/"-separated crumb: a name that links somewhere plus a sibling dropdown.
 export interface BreadcrumbSegment {
   key: string;
   name: string;
@@ -78,7 +73,6 @@ export interface BreadcrumbSegment {
   dbType?: string | null;
 }
 
-// BreadcrumbCaps - the capabilities that gate which app sections are offered, resolved PER APP by the caller.
 export interface BreadcrumbCaps {
   manageEnv: boolean;
   manageBackups: boolean;
@@ -86,7 +80,6 @@ export interface BreadcrumbCaps {
   managePreviews: boolean;
 }
 
-// BreadcrumbFlags - live per-app facts the section dropdown needs.
 export interface BreadcrumbFlags {
   running: boolean;
   slugMatches: boolean;
@@ -155,7 +148,6 @@ function projectUrl(id: string, view: "grid" | "list"): string {
   return view === "list" ? `/?project=${id}&view=list` : `/?project=${id}`;
 }
 
-// folderChainFor - the ancestor folder chain for a folder id, root to leaf, inclusive.
 export function folderChainFor(
   folderId: string | null,
   folders: BreadcrumbFolder[],
@@ -172,7 +164,6 @@ export function folderChainFor(
   return chain;
 }
 
-// buildBreadcrumb - the breadcrumb segments for the current location, or null when it is not an apps-tree location.
 export function buildBreadcrumb(
   ctx: BreadcrumbContext,
   graph: BreadcrumbGraph,

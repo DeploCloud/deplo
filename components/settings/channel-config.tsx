@@ -20,7 +20,6 @@ import type {
 } from "@/lib/types/notification";
 
 export type Secrets = NonNullable<NotificationChannelInput["secrets"]>;
-// Draft - the instance being edited, before it has an id (creating) or after (editing).
 export type Draft = Omit<NotificationChannelInstance, "id">;
 
 export interface ChannelConfigProps {
@@ -31,7 +30,6 @@ export interface ChannelConfigProps {
   readOnly: boolean;
 }
 
-// isChannelReady - whether this channel has everything it needs to send.
 export function isChannelReady(i: Draft, s: Secrets): boolean {
   const has = (stored: boolean, typed?: string) => stored || !!typed;
   switch (i.kind) {
@@ -62,7 +60,6 @@ export function isChannelReady(i: Draft, s: Secrets): boolean {
   }
 }
 
-// channelTarget - the one line under a row's name: where this channel sends.
 export function channelTarget(i: Draft): string {
   switch (i.kind) {
     case "push":
@@ -93,7 +90,6 @@ function host(url: string): string {
   }
 }
 
-// The last path segment is the token on every brand here, so it is dropped.
 function trimSecret(url: string): string {
   try {
     const u = new URL(url);
@@ -189,7 +185,6 @@ export function ChannelConfig(props: ChannelConfigProps) {
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              {/* `SelectItem` wraps children in Radix `ItemText`, so the mark rides into the trigger. */}
               <SelectContent>
                 <SelectItem value="resend">
                   <span className="flex items-center gap-2">

@@ -44,15 +44,11 @@ import type { DestinationOption } from "@/lib/data/destinations/dto";
 export interface BackupActionProps {
   backup: BackupDTO;
   destinations: DestinationOption[];
-  // `manage_backups`. Gates run / edit / delete and the enable switch.
   canManage: boolean;
-  // `restore_backups`. Restore is the destructive one and has its own.
   canRestore: boolean;
-  // `manage_backup_destinations`, for the picker's live probe.
   canTestDestinations: boolean;
 }
 
-// useBackupActions - the ⋯ menu, the enable toggle and the three dialogs, shared by the table row and the card.
 export function useBackupActions({
   backup,
   destinations,
@@ -60,7 +56,6 @@ export function useBackupActions({
   canRestore,
   canTestDestinations,
 }: BackupActionProps): {
-  // In flight from here, or already running elsewhere according to the last read.
   isRunning: boolean;
   toggle: (enabled: boolean) => void;
   pending: boolean;
@@ -70,7 +65,6 @@ export function useBackupActions({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  // The schedule leaves on the click: deleting one is a single control-plane write with nothing on a host to wait for.
   const { hide, restore } = useOptimisticRow(backup.id);
   const [restoreOpen, setRestoreOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
@@ -79,7 +73,6 @@ export function useBackupActions({
   const targetName = isApp ? backup.serviceName : backup.databaseName;
   const targetId = isApp ? backup.appId : backup.databaseId;
 
-  // runBackup resolves at the END of the dump (minutes), so the toast is the result; the row going `running` is what says it started.
   const [running, setRunning] = React.useState(false);
   const isRunning = running || backup.lastStatus === "running";
 
@@ -114,7 +107,6 @@ export function useBackupActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
-        {/* Disabled rather than hidden: a member who cannot act still sees the action and learns which Capability to ask for. */}
         <SimpleTooltip
           content={
             !canManage
@@ -208,7 +200,6 @@ export function useBackupActions({
           return res;
         }}
       />
-      {/* Restore from a recent run of this schedule's target. */}
       {targetId && (
         <RestoreRunsDialog
           open={restoreOpen}
@@ -218,7 +209,6 @@ export function useBackupActions({
           targetName={targetName ?? backup.name}
         />
       )}
-      {/* Keyed on `editOpen` so each open remounts the dialog with fresh state, no reset effect needed. */}
       <EditBackupDialog
         key={editOpen ? "edit-open" : "edit-closed"}
         backup={backup}
@@ -233,7 +223,6 @@ export function useBackupActions({
   return { isRunning, toggle, pending, menu, dialogs };
 }
 
-// The target is fixed at creation, so only these settings are editable here; `enabled` keeps its own toggle.
 function EditBackupDialog({
   backup,
   destinations,
@@ -249,7 +238,6 @@ function EditBackupDialog({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // Mount-only seeding is safe: the parent remounts this dialog via `key` on every open.
   const [name, setName] = React.useState(backup.name);
   const [destinationId, setDestinationId] = React.useState(
     backup.destinationId,

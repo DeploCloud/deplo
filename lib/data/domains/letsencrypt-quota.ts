@@ -9,9 +9,6 @@ import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { assertLetsencryptQuota } from "../../deploy/domains";
 import type { CertProvider } from "../../types/domain";
 
-// assertTeamLetsencryptQuota: the whole fleet shares ONE ACME account, so an
-// uncapped tenant registering hundreds of letsencrypt hostnames would exhaust
-// the shared account's rate limit for every other team.
 export async function assertTeamLetsencryptQuota(
   teamId: string,
   provider: CertProvider,

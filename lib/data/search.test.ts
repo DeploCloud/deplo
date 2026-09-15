@@ -18,7 +18,6 @@ import { search, type SearchKind } from "./search";
 let db: TestDb;
 let pg: PGlite;
 
-// Every kind but `template`: the catalogue is a real HTTP fetch and the suite must not go to the network.
 const KINDS: SearchKind[] = [
   "app",
   "database",
@@ -52,8 +51,6 @@ beforeEach(async () => {
       { id: TEAM_C, slug: "gamma" },
     ],
   });
-  // The same person in two of the three teams: without this second membership
-  // every cross-team assertion below would pass for the wrong reason.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
      values ('mem_user_1_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,

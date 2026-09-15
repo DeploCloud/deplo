@@ -33,17 +33,14 @@ export function AppCapabilitiesProvider({
   );
 }
 
-// useAppCan - true when the viewer holds `cap` on the app currently open.
 export function useAppCan(cap: Capability): boolean {
   return React.useContext(AppCapabilitiesContext).has(cap);
 }
 
-// needsCapability - the one-line reason a control is closed.
 export function needsCapability(cap: Capability): string {
   return `Needs the “${CAPABILITY_META[cap].label}” permission`;
 }
 
-// CapabilityFieldset - makes a whole section read-only when the viewer lacks `cap`.
 export function CapabilityFieldset({
   cap,
   children,
@@ -65,7 +62,6 @@ export function CapabilityFieldset({
   );
 }
 
-// CapabilityTip - wraps a control disabled for lack of `cap` so hovering says why.
 export function CapabilityTip({
   cap,
   children,

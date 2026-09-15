@@ -47,7 +47,6 @@ export function MembersManager({
   members: MemberDTO[];
   currentUserId: string;
   canManage: boolean;
-  // Instance admin: can create a brand-new user from the add-member modal.
   isAdmin?: boolean;
 }) {
   const [addOpen, setAddOpen] = React.useState(false);
@@ -55,7 +54,6 @@ export function MembersManager({
   const [query, setQuery] = React.useState("");
   const [role, setRole] = React.useState("all");
   const [view, setView] = React.useState<ListView>("grid");
-  // Only an owner (founder or assigned) may grant the owner role; derived from the list, no extra query.
   const viewerIsOwner = members.some(
     (m) => m.userId === currentUserId && m.role === "owner",
   );
@@ -73,7 +71,6 @@ export function MembersManager({
   );
   const actions = (isAdmin || canManage) && (
     <>
-      {/* Instance-wide user administration, before the team-scoped add. */}
       {isAdmin && (
         <Button variant="outline" size="sm" asChild>
           <Link href="/settings/users">
@@ -118,7 +115,6 @@ export function MembersManager({
         description="People who can access this team's apps and resources."
         actions={actions}
       />
-      {/* One member needs no search box, and neither does a single role. */}
       {members.length > 1 && (
         <ListToolbar
           query={query}
@@ -299,7 +295,6 @@ function MemberCard({
 }: {
   member: MemberDTO;
   isSelf: boolean;
-  // `manage_members` - the same gate the member page itself keeps.
   canManage: boolean;
 }) {
   const isFounder = member.isPrimaryOwner;
@@ -317,7 +312,6 @@ function MemberCard({
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 text-sm font-medium">
             <span className="truncate">@{member.username}</span>
-            {/* Crown for the primary owner, shield for an instance admin; both can show at once. */}
             {isFounder && (
               <SimpleTooltip content="Primary owner - created this team; can't be removed or demoted">
                 <span className="shrink-0 leading-none">
@@ -355,7 +349,6 @@ function MemberCard({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        {/* The founder reads as "Primary owner"; an assigned owner is a plain "Owner". */}
         {isFounder ? (
           <Badge className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
             <Crown className="size-3" />
@@ -364,13 +357,11 @@ function MemberCard({
         ) : (
           <Badge variant="outline">{member.roleName ?? "Custom"}</Badge>
         )}
-        {/* The always-on `view` floor is not a granted permission, so it is not counted. */}
         <Badge variant="outline">
           {granted === 0
             ? "View only"
             : `${granted} permission${granted === 1 ? "" : "s"}`}
         </Badge>
-        {/* A role that reaches part of the team narrows access as much as the count does. */}
         {member.roleScoped && (
           <SimpleTooltip
             content={`Their ${member.roleName ?? "assigned"} role only reaches part of this team`}
@@ -381,7 +372,6 @@ function MemberCard({
             </Badge>
           </SimpleTooltip>
         )}
-        {/* Coloured: the only badge that says somebody made an exception. */}
         <AccessDeltaBadge
           delta={member.accessDelta}
           roleName={member.roleName}
@@ -390,7 +380,6 @@ function MemberCard({
     </div>
   );
 
-  // Without `manage_members` there is no member page to open, so the tile is not a link.
   if (!canManage) return inner;
 
   return (
@@ -404,7 +393,6 @@ function MemberCard({
   );
 }
 
-// A count, never a credential: the lever is the member's permissions, not the token.
 function TokenCountBadge({ member }: { member: MemberDTO }) {
   if (member.tokenCount === 0) return null;
   const tokens = `${member.tokenCount} token${member.tokenCount === 1 ? "" : "s"}`;

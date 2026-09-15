@@ -34,10 +34,8 @@ import type { Activity, ActivityType } from "../types/activity";
 import type { VarAuthor } from "../types/identity";
 import type { AlertKey } from "../types/notification";
 
-// ACTOR_SYSTEM - the actor of rows with no human behind them (actor_user_id IS NULL).
 export const ACTOR_SYSTEM = "system";
 
-// ActivityFilter - how the feed is narrowed; it never widens what the caller reaches.
 export interface ActivityFilter {
   actorUserIds?: string[];
   types?: ActivityType[];
@@ -47,7 +45,6 @@ export interface ActivityFilter {
   cursor?: { createdAt: string; seq: number };
 }
 
-// listActivity - the active team's trail, newest-first, with the LIMIT pushed into SQL.
 export async function listActivity(
   limit = 20,
   filter: ActivityFilter = {},
@@ -55,7 +52,6 @@ export async function listActivity(
   return queryActivity(Math.min(Math.max(1, limit), 200), filter);
 }
 
-// Arrays are spelled out: inArray(col, []) has changed behaviour across Drizzle versions.
 function activityFilterWhere(
   teamId: string,
   f: ActivityFilter,
@@ -73,7 +69,6 @@ function activityFilterWhere(
   if (f.from) out.push(gte(activitiesTable.createdAt, f.from));
   if (f.to) out.push(lt(activitiesTable.createdAt, f.to));
   if (f.resourceIds?.length)
-    // Both sub-selects are team-bound, so an id from another team widens nothing.
     out.push(
       or(
         inArray(
@@ -107,7 +102,6 @@ function activityFilterWhere(
       )!,
     );
   if (f.cursor)
-    // The ROW form is the one Postgres takes as an Index Cond on the keyset index.
     out.push(
       sql`(${activitiesTable.createdAt}, ${activitiesTable.seq}) < (${f.cursor.createdAt}::timestamptz, ${f.cursor.seq}::bigint)`,
     );
@@ -119,8 +113,6 @@ async function queryActivity(
   filter: ActivityFilter,
 ): Promise<Activity[]> {
   const teamId = await requireActiveTeamId();
-  // Soft (empty) rather than a throw: this feeds the Overview card and the Activity
-  // page, which both already render "nothing yet".
   if (!(await hasCapability("view_activity"))) return [];
   const rows = await getDb()
     .select()
@@ -129,11 +121,9 @@ async function queryActivity(
       and(
         eq(activitiesTable.teamId, teamId),
         ...activityFilterWhere(teamId, filter),
-        // A narrowed token reaches only its own apps; team-level rows drop out too.
         await scopedActivityWhere(),
       ),
     )
-    // seq breaks a same-timestamp tie; the (team_id, created_at DESC, seq DESC) index serves it.
     .orderBy(desc(activitiesTable.createdAt), desc(activitiesTable.seq))
     .limit(limit);
   const authors = await loadUserIdentities(rows.map((r) => r.actorUserId));
@@ -143,7 +133,6 @@ async function queryActivity(
   }));
 }
 
-// Databases are not folder/project-scoped, so a narrowed caller reaches no database row.
 async function scopedActivityWhere(): Promise<SQL | undefined> {
   const roleScope = await currentMemberScope();
   if (!narrowedScope() && !roleScope) return undefined;
@@ -158,7 +147,6 @@ async function scopedActivityWhere(): Promise<SQL | undefined> {
       alt.push(inArray(appsTable.folderId, roleScope.folderIds));
     if (roleScope.appIds.length)
       alt.push(inArray(appsTable.id, roleScope.appIds));
-    // Spelled out: inArray(col, []) has changed behaviour across Drizzle versions.
     clauses.push(
       alt.length === 0 ? sql`false` : alt.length === 1 ? alt[0] : or(...alt)!,
     );
@@ -172,15 +160,12 @@ async function scopedActivityWhere(): Promise<SQL | undefined> {
   );
 }
 
-// activityMonths - events per month for the feed's headers, filtered minus the cursor.
 export async function activityMonths(
   filter: ActivityFilter = {},
   tz = "UTC",
 ): Promise<{ month: string; count: number }[]> {
   const teamId = await requireActiveTeamId();
   if (!(await hasCapability("view_activity"))) return [];
-  // to_char, not date_trunc: a raw timestamptz comes back in the SESSION's TimeZone.
-  // GROUP BY takes the ORDINAL - Drizzle renders the same sql object qualified there.
   const month = sql<string>`to_char(${activitiesTable.createdAt} at time zone ${tz}, 'YYYY-MM')`;
   return getDb()
     .select({
@@ -199,7 +184,6 @@ export async function activityMonths(
     .orderBy(sql`1 desc`);
 }
 
-// activityCountsByType - events per kind in the window, same filters and scope as the feed.
 export async function activityCountsByType(
   filter: ActivityFilter = {},
 ): Promise<{ type: ActivityType; count: number }[]> {
@@ -223,7 +207,6 @@ export async function activityCountsByType(
   return rows.map((r) => ({ type: r.type as ActivityType, count: r.count }));
 }
 
-// activityCountsByActor - the same counts per person, non-humans in the ACTOR_SYSTEM bucket.
 export async function activityCountsByActor(
   filter: ActivityFilter = {},
 ): Promise<{ actorUserId: string; count: number }[]> {
@@ -247,7 +230,6 @@ export async function activityCountsByActor(
     .orderBy(sql`2 desc, 1 asc`);
 }
 
-// listActivityActors - everyone in this team's trail, read off the trail so leavers stay pickable.
 export async function listActivityActors(): Promise<
   { value: string; label: string; author: VarAuthor | null }[]
 > {
@@ -285,10 +267,8 @@ export async function listActivityActors(): Promise<
   );
 }
 
-// ActivityActor - who acted: a name, or an account on a git host when a webhook did it.
 export type ActivityActor = string | { name: string; provider: string };
 
-// recordActivity - record an event; falls back to the first team so no row is team-less.
 export async function recordActivity(
   type: ActivityType,
   message: string,
@@ -300,7 +280,6 @@ export async function recordActivity(
 ): Promise<void> {
   const name = typeof actor === "string" ? actor : actor.name;
   const provider = typeof actor === "string" ? null : actor.provider;
-  // PLAN §1(c): an audit insert must never roll back the user's action - fire-and-forget.
   let written = false;
   try {
     const db = getDb();
@@ -333,7 +312,6 @@ export async function recordActivity(
     };
     await insertActivityRow(activity);
     written = true;
-    // After the row it follows, so the marker cannot be what fails and hides the entry.
     await flushDroppedMarker(resolved);
     if (alert)
       dispatchAlert({
@@ -394,15 +372,12 @@ async function flushDroppedMarker(teamId: string): Promise<void> {
   }
 }
 
-// resolveActorUserId - the human behind an actor string, or null.
 export async function resolveActorUserId(
   actor: string,
 ): Promise<string | null> {
   try {
     const u = await getCurrentUser();
     if (u && (u.name === actor || u.username === actor)) return u.id;
-  } catch {
-    // No request scope - leave the row unattributed.
-  }
+  } catch {}
   return null;
 }

@@ -43,7 +43,6 @@ test("an old agent gets the map dropped and the scalar raised to its deepest val
     req({ keepPerSlug: { web: 4, api: 2 } }),
     hello(["docker-cleanup"]),
   );
-  // Under-keeping deletes the image a rollback needs, and Deplo pushes to no registry.
   assert.equal(out.keepImagesPerApp, 4);
   assert.deepEqual(out.keepPerSlug, {});
 });
@@ -74,7 +73,6 @@ test("an agent that advertises no capabilities at all is treated as old", async 
   assert.deepEqual(out.keepPerSlug, {});
 });
 
-// An unknown SCOPE is refused with INVALID_ARGUMENT, which fails the whole sweep.
 test("an old agent keeps the scopes it knows and loses only the new ones", () => {
   const out = dropUnsupportedScopes(
     req({

@@ -36,8 +36,6 @@ test("rotateDatabasePassword: requires a running database and a policy-clean pas
       rotateDatabasePassword("db_rot"),
       /Start the database/,
     );
-    // Only a password a PERSON chose gets the policy: the generated default is
-    // base64url and would fail "at least 1 special character" a third of the time.
     await assert.rejects(
       rotateDatabasePassword("db_rot", { password: "weakpass" }),
       /at least/i,
@@ -83,9 +81,6 @@ test("rotationExecCommand: a hostile password never escapes its quotes", () => {
   }
 });
 
-// MariaDB 11 removed the `mysql*` compatibility symlinks, so the client only answers to its own name.
-// Emitting `mysql` there broke rotation with "executable file not found", which reads
-// like the container is broken rather than like Deplo named the wrong program.
 test("rotationExecCommand: mariadb is driven by the mariadb client, mysql by mysql", () => {
   const base = { username: "app", dbName: "db_x" };
   const maria = rotationExecCommand(

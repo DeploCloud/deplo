@@ -1,6 +1,5 @@
 import { renderInstallScript } from "@/lib/agent/install-script";
 
-// GET serves the agent installer; per-arch URLs + sha256s come from the latest agent release, so the script verifies the binary before running it.
 export async function GET() {
   const script = await renderInstallScript();
   if (!script) {

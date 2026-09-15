@@ -18,14 +18,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { FolderRef } from "./grid-contract";
 
-/** Selection-aware bulk actions, composed by the grid that owns the selection. */
 export interface SelectionBulk {
   count: number;
-  // How many of the selected cards are APPS - the only kind that lives inside a
-  // folder, so the two folder actions stay hidden for a folders-only selection.
   appCount: number;
-  // The viewer may delete everything currently selected (each kind has its own
-  // gate, so a mixed selection needs both).
   canDelete: boolean;
   onSelectAll: () => void;
   onClear: () => void;
@@ -35,8 +30,6 @@ export interface SelectionBulk {
   onMoveTo: (folderId: string | null) => void;
 }
 
-// SelectionActionBar is the floating BULK-actions bar. Delete carries its own
-// already-resolved gate, because projects, folders and apps don't share one.
 export function SelectionActionBar({
   selection,
   canCreateFolder,
@@ -49,8 +42,6 @@ export function SelectionActionBar({
   if (selection.count === 0) return null;
   return (
     <div
-      // Not canvas: a press on the bar's own chrome must not clear the selection
-      // it acts on (use-card-selection).
       data-selection-bar=""
       className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4"
     >

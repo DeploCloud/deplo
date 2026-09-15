@@ -9,19 +9,16 @@ import { recordActivity } from "../activity";
 import { updateAppOwned } from "./settings";
 import type { ResourceLimits } from "../../types/container";
 
-// ResourceLimitsInput: every field independently optional; null or absent leaves that dimension uncapped.
 export type ResourceLimitsInput = {
   [K in keyof ResourceLimits]?: ResourceLimits[K] | null;
 };
 
-// Bounds reject only what Docker itself would refuse; nothing is ever clamped silently.
 const MEM_MB_MAX = 1_048_576;
 const CPU_MILLI_MAX = 512_000;
 const PIDS_MAX = 4_194_304;
 const CPU_SHARES_MIN = 2;
 const CPU_SHARES_MAX = 262_144;
 
-// Validate one optional integer limit; null/absent passes through as "uncapped".
 function intLimit(
   v: number | null | undefined,
   label: string,
@@ -37,7 +34,6 @@ function intLimit(
   return v;
 }
 
-// Validate an optional CPU-set list like "0", "0,2" or "0-3".
 function cleanCpuset(v: string | null | undefined): string | null {
   if (v == null) return null;
   const s = v.trim();
@@ -50,7 +46,6 @@ function cleanCpuset(v: string | null | undefined): string | null {
   return s;
 }
 
-// cleanResourceLimits normalizes and validates a limits patch. PURE (no DB, no auth).
 export function cleanResourceLimits(
   input: ResourceLimitsInput,
 ): ResourceLimits {
@@ -118,7 +113,6 @@ export function cleanResourceLimits(
   };
 }
 
-// updateAppResources saves the per-app limits; they take effect on the NEXT deploy. A cleared field writes NULL.
 export async function updateAppResources(
   id: string,
   input: ResourceLimitsInput,
@@ -127,7 +121,6 @@ export async function updateAppResources(
   const user = (await getCurrentUser())!;
   const cleaned = cleanResourceLimits(input);
 
-  // A NEGATIVE oom_score_adj spares THIS container and kills its neighbours - cross-tenant reach, so the host grant.
   if (cleaned.oomScoreAdj != null && cleaned.oomScoreAdj < 0) {
     await requireMountHostVolumes();
   }

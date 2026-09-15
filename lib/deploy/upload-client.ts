@@ -6,7 +6,6 @@ import {
   ServerUnreachableError,
 } from "@/lib/server-connection";
 
-// Reject an archive the server would refuse anyway - a bad extension or one past the size cap.
 export function validateArchive(file: File): string | null {
   if (!ACCEPT_RE.test(file.name)) {
     return "Unsupported archive - use .tar.gz, .tgz, .tar or .zip";
@@ -17,7 +16,6 @@ export function validateArchive(file: File): string | null {
   return null;
 }
 
-// Stream file to an app's upload route as a raw body; XHR, not fetch, because only XHR reports progress.
 export function uploadArchive(
   appId: string,
   file: File,

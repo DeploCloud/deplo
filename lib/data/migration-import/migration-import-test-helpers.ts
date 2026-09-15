@@ -57,7 +57,6 @@ export type Fixtures = Record<
   unknown | { __status: number; body?: string }
 >;
 
-/** The panel the tests answer as: `fixtures` is what it returns, `calls` what it was asked. */
 export const source: { fixtures: Fixtures; calls: string[] } = {
   fixtures: {},
   calls: [],

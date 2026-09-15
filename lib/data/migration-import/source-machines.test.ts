@@ -114,8 +114,6 @@ test("a matched machine is dialed at scan, never assumed from its row", async ()
   __setAgentConnectorForTest();
 });
 
-// The source machine is excluded from every picker, so an over-eager filter here stops
-// matching it and `resolveSourceServer` loses its address - every volume copy breaks silently.
 test("a machine already registered as a MIGRATION SOURCE is still recognised", async () => {
   const { servers: serversTable } =
     await import("../../db/schema/control-plane/servers");

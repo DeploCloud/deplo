@@ -5,9 +5,6 @@ import type { FolderCardData } from "../folder-card";
 import type { ProjectCardData } from "../project-container-card";
 import type { AppSummary } from "@/lib/data/apps/summary";
 
-// useGridArrangement owns the grid's local optimistic order and the projections
-// drawn from it: the order arrays are the sole source of arrangement, while the
-// card objects always come from props (so status etc. stay fresh).
 export function useGridArrangement({
   services,
   allAppIds,
@@ -26,10 +23,7 @@ export function useGridArrangement({
   const [projectOrder, setProjectOrder] = React.useState<string[]>(() =>
     projects.map((p) => p.id),
   );
-  // Apps AND folders optimistically hidden from the current view while a move (into a
-  // folder or a project container) round-trips.
   const [movedIds, setMovedIds] = React.useState<Set<string>>(() => new Set());
-  // The card's own move menu drives the same optimistic hide the drag does.
   const hideMoved = React.useCallback(
     (id: string) => setMovedIds((prev) => new Set(prev).add(id)),
     [],
@@ -56,8 +50,6 @@ export function useGridArrangement({
     [projects],
   );
 
-  // Clear optimistic move-hides whenever the visible projection actually changes -
-  // the move's refresh landing, or navigating in/out of a folder.
   const sig = [
     ...services.map((p) => `${p.id}:${p.folderId ?? ""}`),
     ...folders.map((f) => `${f.id}:${f.parentId ?? ""}`),
@@ -68,9 +60,6 @@ export function useGridArrangement({
     setMovedIds(new Set());
   }
 
-  // The folders to render, in local order, dropping stale ids and appending any
-  // the local order hasn't seen yet (a freshly created folder). Anything
-  // optimistically moved into a project is hidden until its refresh lands.
   const folderItems = React.useMemo(() => {
     const ordered = folderOrder
       .map((id) => folderById.get(id))
@@ -87,7 +76,6 @@ export function useGridArrangement({
     [folderItems],
   );
 
-  // Project container cards, in local order (same contract as folderItems).
   const projectItems = React.useMemo(() => {
     const ordered = projectOrder
       .map((id) => projectById.get(id))
@@ -101,8 +89,6 @@ export function useGridArrangement({
     [projectItems],
   );
 
-  // The visible apps, in the full local order, filtered to the displayed
-  // group (everything in `byId`) minus anything optimistically moved away.
   const items = React.useMemo(() => {
     const ordered = order
       .map((id) => byId.get(id))

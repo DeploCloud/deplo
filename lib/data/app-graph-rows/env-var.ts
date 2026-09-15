@@ -12,7 +12,6 @@ export type EnvVarTargetRow = typeof envVarTargets.$inferSelect;
 type EnvVarInsert = typeof envVars.$inferInsert;
 type EnvVarTargetInsert = typeof envVarTargets.$inferInsert;
 
-/** Reassemble an {@link EnvVar} from its row + target rows. */
 export function assembleEnvVar(
   row: EnvVarRow,
   targets: EnvVarTargetRow[],

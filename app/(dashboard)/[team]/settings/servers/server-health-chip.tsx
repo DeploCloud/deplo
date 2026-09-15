@@ -39,14 +39,12 @@ export function ServerHealthChip({
   fallback,
 }: {
   serverId: string;
-  // The stored observation, for the render before the provider's state settles.
   fallback: ServerHealthState;
 }) {
   const { health, isChecking, now } = useServerHealth();
   const state = health(serverId) ?? fallback;
   const checking = isChecking(serverId);
 
-  // `provisioning` is a lifecycle state, not an observation: the prober skips those rows, so they have no checkedAt and must not age out to "Unknown".
   if (state.status === "provisioning") {
     return (
       <SimpleTooltip content="Waiting for this server's agent to call home. Run the install command on the host.">
@@ -78,7 +76,6 @@ export function ServerHealthChip({
     );
   }
 
-  // `offline` on a host that enrolled fine is usually a firewall: enrolling is the agent dialing OUT, this is us dialing IN.
   const tip = [
     state.message,
     state.status === "offline" ? AGENT_PORT_NOTICE : null,

@@ -15,7 +15,6 @@ import { MonitoringDashboard } from "./monitoring-dashboard";
 export const metadata = { title: "Monitoring" };
 
 export default async function MonitoringPage() {
-  // A narrowed role would otherwise get the error boundary the team-wide read throws.
   if (!(await reachesWholeTeam()))
     return (
       <EmptyState
@@ -29,11 +28,9 @@ export default async function MonitoringPage() {
   const [servers, fleet, canManageServers] = await Promise.all([
     listServers(),
     getFleetMetrics(),
-    // The server pages are instance-admin only; without it the link would 404.
     isInstanceAdmin(),
   ]);
 
-  // A synthetic snapshot from columns nothing writes rendered an online host as 0% CPU.
   const shown = servers.filter((s) => !s.importOnly);
   const selfAddrs = deploHostSelfAddresses();
   const initialHistory = shown[0]
@@ -42,7 +39,6 @@ export default async function MonitoringPage() {
 
   return (
     <MonitoringDashboard
-      // No telemetry stream is opened to migration sources, so a row would read "No data".
       servers={shown.map((s) => ({
         id: s.id,
         name: s.name,

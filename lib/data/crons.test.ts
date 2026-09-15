@@ -84,7 +84,6 @@ test("another team cannot read or write this team's cron jobs", async () => {
     async () => (await crons.createCronJob("app", "prj_1", validJob)).id,
   );
 
-  // Not "denied": the gate must never be an oracle for which ids exist.
   await assert.rejects(
     () => asOtherTeam(() => crons.listAppCronJobs("prj_1")),
     /not found/i,
@@ -107,8 +106,6 @@ test("another team cannot read or write this team's cron jobs", async () => {
 });
 
 test("a database job needs database-console access as well", async () => {
-  // `manage_crons` is seeded from EITHER console capability, so app-console
-  // access alone must not reach inside a database. Strip the database one.
   await db.execute(
     `delete from membership_capabilities where capability = 'open_database_console'`,
   );
@@ -517,7 +514,6 @@ test("a database job cannot name a container", async () => {
 test("running as root on an app that reaches the server takes the host grant", async () => {
   const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
     runWithIdentity({ userId: "user_3", teamId: TEAM_A }, fn);
-  // Without host reach, root inside the container is the image's own business.
   await asMember(() =>
     crons.createCronJob("app", "prj_1", { ...validJob, user: "root" }),
   );

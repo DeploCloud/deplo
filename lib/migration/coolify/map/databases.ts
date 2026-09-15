@@ -3,7 +3,6 @@ import type { SourceDatabase, SourceDbKind } from "../../model";
 import type { CoolifyDatabase } from "../client";
 import type { CoolifyExtras } from "./extras";
 
-/** Coolify's engine name -> Deplo's spelling. `standalone-` is the list endpoints' prefix. */
 const DB_KIND: Record<string, SourceDbKind> = {
   postgresql: "postgres",
   postgres: "postgres",
@@ -17,10 +16,6 @@ const DB_KIND: Record<string, SourceDbKind> = {
   dragonfly: "dragonfly",
 };
 
-/**
- * The engine of one database ROW. `database_type` is what the API answers with -
- * reading `type` alone found nothing and dropped every database in silence.
- */
 export function coolifyDbKindOf(
   row: Pick<CoolifyDatabase, "database_type" | "type" | "image">,
 ): SourceDbKind | null {
@@ -29,8 +24,6 @@ export function coolifyDbKindOf(
   );
 }
 
-/** KeyDB's table carries no `database_type` at all, so the engine comes from the
- *  one other column that names it: the image the panel runs. */
 function kindFromImage(image: string | null | undefined): SourceDbKind | null {
   const ref = (image ?? "").toLowerCase();
   if (!ref) return null;
@@ -49,7 +42,6 @@ export function coolifyDbKind(
   return DB_KIND[t] ?? null;
 }
 
-/** Where each engine keeps its credentials. Read by name, never guessed. */
 const DB_FIELDS: Record<
   SourceDbKind,
   { user?: string[]; password?: string[]; database?: string[]; root?: string[] }
@@ -87,11 +79,6 @@ const DB_FIELDS: Record<
   unknown: {},
 };
 
-/**
- * Whether this row still CARRIES its engine's password column. Coolify drops the
- * key entirely for a token that may not read it, so the presence of the key, not
- * its value, is what says the token holds `read:sensitive`.
- */
 export function coolifyDbSecretsVisible(
   row: CoolifyDatabase,
   kind: SourceDbKind,
@@ -108,11 +95,6 @@ function pick(row: CoolifyDatabase, keys: string[] | undefined): string | null {
   return null;
 }
 
-/**
- * The same credential, out of the resource's own variables. Redis keeps its
- * password ONLY there, and minting a new one silently broke every app that talked
- * to it. The column names are the variable names, so one list serves both.
- */
 function pickEnv(
   blob: string | null | undefined,
   keys: string[] | undefined,
@@ -130,8 +112,6 @@ export function coolifyDatabase(
   extras: CoolifyExtras = {},
 ): SourceDatabase {
   const f = DB_FIELDS[kind];
-  // A custom engine configuration lives in a `<engine>_conf` column here and in
-  // a config file under Settings > Advanced on Deplo; it does not travel yet.
   const conf = (row as Record<string, unknown>)[`${kind}_conf`];
   const confNote =
     typeof conf === "string" && conf.trim()

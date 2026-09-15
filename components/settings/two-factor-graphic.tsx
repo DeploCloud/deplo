@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Security card's mark: a password, then a fingerprint, signed off by a shield. */
 export function TwoFactorGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -10,7 +9,6 @@ export function TwoFactorGraphic({ className }: { className?: string }) {
       aria-label="A password field and a fingerprint, approved by a shield"
       className={cn("h-full w-full", className)}
     >
-      {/* First factor: the password. */}
       <rect
         x="6"
         y="14"
@@ -32,7 +30,6 @@ export function TwoFactorGraphic({ className }: { className?: string }) {
         <rect x="102.5" y="32.5" width="5" height="14" rx="2.5" />
       </g>
 
-      {/* Second factor: the fingerprint. */}
       <rect
         x="120"
         y="14"

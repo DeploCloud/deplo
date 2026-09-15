@@ -206,7 +206,6 @@ export function AppCard({
     });
   }
 
-  // ADR-0009: each environment holds its own apps.
   function moveToEnvironment(environmentId: string | null) {
     onMoved?.();
     startTransition(async () => {
@@ -439,9 +438,7 @@ export function AppCard({
 
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
-      {/* Status as a bare dot - hovering it shows the word. */}
       <LiveCardStatusDot project={project} liveState={liveState} />
-      {/* Hidden at rest so it leaves no gap; appears on hover or focus. */}
       <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
         {dragHandle}
       </span>
@@ -510,7 +507,6 @@ export function AppCard({
     <>
       <GitHubIcon className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{project.repo.repo}</span>
-      {/* A repo with no linked credential would fail to clone. */}
       {repoCredentialMissing(project) && (
         <SimpleTooltip content="No GitHub App is linked - a private repository will not clone">
           <TriangleAlert className="pointer-events-auto size-3.5 shrink-0 text-[var(--warning)]" />
@@ -532,7 +528,6 @@ export function AppCard({
           <AppLogo logo={project.logo} tone={project.logoTone} size={36} />
           <div className="min-w-0 flex-1">
             <span className="block truncate font-medium">{project.name}</span>
-            {/* The live URL when a domain is linked, else the App kind. */}
             <p className="mt-1 truncate text-xs text-muted-foreground">
               {project.productionUrl
                 ? project.productionUrl.replace(/^https?:\/\//, "")
@@ -545,7 +540,6 @@ export function AppCard({
               <span className="whitespace-nowrap">
                 {timeAgoShort(dep.createdAt)}
               </span>
-              {/* Branch only for a git deploy - compose/image/upload have none. */}
               {project.repo && (
                 <>
                   <span className="text-muted-foreground/40">on</span>
@@ -572,7 +566,6 @@ export function AppCard({
       </Card>
     ) : (
       <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20">
-        {/* Stretched link: the whole card is clickable. */}
         {overlayLink}
 
         <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
@@ -583,7 +576,6 @@ export function AppCard({
                 <span className="block truncate font-medium">
                   {project.name}
                 </span>
-                {/* Same subtitle slot as the list view above. */}
                 <p className="mt-1 truncate text-xs text-muted-foreground">
                   {project.productionUrl
                     ? project.productionUrl.replace(/^https?:\/\//, "")
@@ -595,11 +587,9 @@ export function AppCard({
             {actions}
           </div>
 
-          {/* Latest deployment */}
           {dep ? (
             <div className="rounded-lg border border-border bg-surface p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                {/* Non-git deploys have no commit SHA. */}
                 {dep.commitSha && (
                   <code className="shrink-0 font-mono text-foreground">
                     {dep.commitSha.slice(0, 7)}
@@ -636,7 +626,6 @@ export function AppCard({
           ) : (
             <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
               No deployments yet
-              {/* Show the source identity even before the first deploy. */}
               {identity && (
                 <div className="mt-2 flex items-center gap-1.5">{identity}</div>
               )}

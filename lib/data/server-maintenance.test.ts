@@ -25,7 +25,6 @@ let db: TestDb;
 let pg: PGlite;
 
 const REMOTE = "srv_remote";
-// RFC 5737 TEST-NET-1: never a real interface, so the self-host check is ours to decide.
 const REMOTE_IP = "192.0.2.10";
 const SELF_IP = "192.0.2.200";
 const SELF = "srv_self";
@@ -55,7 +54,6 @@ beforeEach(async () => {
       },
     ],
   });
-  // Deliberately UNPROVISIONED (no pinned cert).
   await seedServerRow(db, {
     id: REMOTE,
     name: "remote-1",
@@ -104,7 +102,6 @@ test("an unknown server is rejected, not dialed", async () => {
 });
 
 test("a bogus timezone is rejected before the host is dialed", async () => {
-  // Intl ACCEPTS a bare UTC offset like "+05:30", but no host has a file for it.
   for (const bad of [
     "",
     "   ",
@@ -168,7 +165,6 @@ test("only the host running Deplo can restart the Deplo panel", async () => {
 });
 
 test("restarting workloads skips the stopped ones and never touches another server's", async () => {
-  // seedApp names an App after its id, so the report below is keyed on those.
   await seedApp(db, {
     id: "prj_live",
     slug: "live",
@@ -222,7 +218,6 @@ test("a server with nothing on it reports an empty restart rather than failing",
 });
 
 test("a failed deploy is restarted; a deploy in flight is left to finish", async () => {
-  // `error` means the last DEPLOY failed; the previous stack is routinely still up.
   await seedApp(db, {
     id: "prj_err",
     slug: "err",
@@ -281,7 +276,6 @@ test("a failed deploy is restarted; a deploy in flight is left to finish", async
 });
 
 test("host details obey the team's two-factor policy, like every action here", async () => {
-  // A read that skipped the 2FA gate hands a locked-out member every host's details.
   await db
     .update(teamsTable)
     .set({ requireTwoFactor: true })

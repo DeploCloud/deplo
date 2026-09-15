@@ -24,7 +24,6 @@ export default async function DatabaseConnectionSettingsPage(
   ]);
   if (!db) notFound();
 
-  // Only a provisioned server can host a database: a storage-only host runs nothing, a migration source is not our machine.
   const selfAddrs = deploHostSelfAddresses();
   const dbServers = servers
     .filter(

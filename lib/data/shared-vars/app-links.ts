@@ -20,8 +20,6 @@ import {
   visibleTo,
 } from "./visibility";
 
-// The write-side twin of the filter in `listSharedVarsForApp`: may a narrowed caller
-// name this variable from this app at all?
 async function linkableFromApp(
   varId: string,
   appId: string,
@@ -40,7 +38,6 @@ async function linkableFromApp(
   );
 }
 
-// setSharedVarAppLink - attach or detach one shared var to one app (idempotent).
 export async function setSharedVarAppLink(
   varId: string,
   appId: string,
@@ -48,16 +45,12 @@ export async function setSharedVarAppLink(
 ): Promise<void> {
   const { teamId, userId } = await requireAppCapability(appId, "manage_env");
   const user = (await getCurrentUser())!;
-  // Visible, not owned: attaching a variable another team shared with us is THIS
-  // team's opt-in, not an edit of their row (ADR-0027).
   const v = await getDb()
     .select({ key: varsTable.key })
     .from(varsTable)
     .where(and(eq(varsTable.id, varId), visibleTo(teamId)))
     .limit(1);
   if (!v[0]) throw new Error("Variable not found");
-  // Belonging to the team is not enough for a NARROWED caller. Same message as an
-  // unknown id: a scope must never say which ids exist.
   if (
     !(await reachesWholeTeam()) &&
     !(await linkableFromApp(varId, appId, teamId))
@@ -73,8 +66,6 @@ export async function setSharedVarAppLink(
       .delete(appJunction)
       .where(and(eq(appJunction.varId, varId), eq(appJunction.appId, appId)));
   }
-  // Linking is a scope change, so it IS a modification: stamp the author too -
-  // "Last modified" must never show a timestamp with nobody behind it.
   await getDb()
     .update(varsTable)
     .set({ updatedByUserId: userId, updatedAt: nowIso() })

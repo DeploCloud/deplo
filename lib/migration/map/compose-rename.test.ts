@@ -53,7 +53,6 @@ test("renameClashingServices moves a taken service name and its references", () 
     "redis://b5-docmost-redis:6379",
   );
   assert.equal(doc.services.docmost.environment!.DB_HOST, "b5-docmost-db");
-  // A database NAME that happens to spell a service is not a hostname.
   assert.equal(
     doc.services["b5-docmost-db"].environment!.POSTGRES_DB,
     "postgres",
@@ -123,7 +122,6 @@ test("renameClashingServices moves a taken `hostname:` too", () => {
 });
 
 test("a rename carries a DBHOST-style reference with it", () => {
-  // Measured in production: a rename that left `PAPERLESS_DBHOST: db` behind spent 106 restarts on a NEIGHBOUR's database.
   const out = renameClashingServices(
     [
       "services:",
@@ -140,12 +138,10 @@ test("a rename carries a DBHOST-style reference with it", () => {
   );
   assert.equal(out.renames.get("db"), "b4-paperless-db");
   assert.match(out.compose, /PAPERLESS_DBHOST: b4-paperless-db/);
-  // Untouched: it names a service that was not renamed.
   assert.match(out.compose, /redis:\/\/broker:6379/);
 });
 
 test("a key that merely ENDS in host is not a hostname", () => {
-  // `GHOST` is an application, not a host: renaming its value would be a silent edit to somebody's config.
   const out = renameClashingServices(
     "services:\n  db:\n    image: p\n  app:\n    image: a\n    environment:\n      GHOST: db\n",
     new Set(["db"]),

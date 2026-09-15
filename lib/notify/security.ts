@@ -11,9 +11,7 @@ import { dispatchToTeams } from "./dispatch";
 const BURST_LIMIT = 5;
 const BURST_WINDOW_MS = 10 * 60_000;
 
-// noteFailedLogin counts one failed sign-in and alerts when it has become a burst.
 export async function noteFailedLogin(subject: string): Promise<void> {
-  // `rateLimit` returns ok while under the limit; the first refusal IS the burst.
   const burst = await rateLimit(`failed-login:${subject}`, {
     limit: BURST_LIMIT,
     windowMs: BURST_WINDOW_MS,

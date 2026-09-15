@@ -5,7 +5,6 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { noun, type BackupTarget, type Destination } from "./target";
 
-// ScheduleFields - the editable settings of a schedule, shared by the create and edit forms.
 export type ScheduleFields = {
   name: string;
   destinationId: string;
@@ -14,7 +13,6 @@ export type ScheduleFields = {
   retention: number;
 };
 
-// NameField - the schedule's name, shared by the wizard's last step and the edit form.
 export function NameField({
   value,
   onChange,
@@ -43,7 +41,6 @@ export function NameField({
   );
 }
 
-// DestinationField - where the archives are written: the wizard's first step, and one row of the edit form.
 export function DestinationField({
   value,
   onChange,

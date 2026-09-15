@@ -122,8 +122,6 @@ test("updateCleanupPolicy rejects an unparseable cron and writes nothing", async
       /not a valid cron expression/,
     );
   });
-  // An accepted-but-unparseable cron never matches, so the UI would report an enabled
-  // cleanup that silently never runs.
   assert.equal(
     (await db.select().from(policyTable)).length,
     0,
@@ -220,9 +218,6 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
   ]);
 });
 
-// Reading a scope's absence from a saved policy as "turned off" made every new scope dead on
-// arrival: this policy was saved 2026-07-19 and never once ran `leftover_app_files` (shipped
-// 08-23), nor would it have run `leftover_networks`.
 test("a scope added after the policy was saved is ON, not silently off", async () => {
   await seedCleanupPolicy(db, {
     scopes: [

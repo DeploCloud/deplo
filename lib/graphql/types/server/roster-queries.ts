@@ -57,7 +57,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { id }) => getServer(id),
   }),
   agentUninstallCommand: t.string({
-    // Same floor as `servers` and `server` beside it: signed in, and the data function resolves the team itself.
     authScopes: { loggedIn: true },
     description:
       "The paste-on-the-host command that removes Deplo's agent from a machine. Instance-wide, identical for every host, and carrying no secret - the installer it points at is served unauthenticated by design. Shown next to a migration source Deplo could not reach, because an unreachable host's agent can only be taken off from the host.",

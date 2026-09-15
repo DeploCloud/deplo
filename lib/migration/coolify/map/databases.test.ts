@@ -12,14 +12,12 @@ test("coolifyDbKind answers in Deplo's own spelling", () => {
   assert.equal(coolifyDbKind("standalone-mariadb"), "mariadb");
   assert.equal(coolifyDbKind("standalone-redis"), "redis");
   assert.equal(coolifyDbKind("standalone-clickhouse"), "clickhouse");
-  // These two have no twin, but they still have to be RECOGNISED - a database Deplo silently forgot is worse than one the report names.
   assert.equal(coolifyDbKind("standalone-keydb"), "keydb");
   assert.equal(coolifyDbKind("standalone-dragonfly"), "dragonfly");
   assert.equal(coolifyDbKind("standalone-cockroach"), null);
   assert.equal(coolifyDbKind(null), null);
 });
 
-// KeyDB's table in Coolify carries no `database_type` at all, so the row was dropped before the plan existed - a database that vanished without a line.
 test("an engine with no column of its own is read off the image", () => {
   assert.equal(
     coolifyDbKindOf({ image: "eqalpha/keydb:6.3" } as CoolifyDatabase),
@@ -33,7 +31,6 @@ test("an engine with no column of its own is read off the image", () => {
     coolifyDbKindOf({ image: "mongo:7" } as CoolifyDatabase),
     "mongo",
   );
-  // The column still wins when it is there.
   assert.equal(
     coolifyDbKindOf({
       database_type: "standalone-redis",
@@ -41,14 +38,12 @@ test("an engine with no column of its own is read off the image", () => {
     } as CoolifyDatabase),
     "redis",
   );
-  // And a row neither names is not guessed at.
   assert.equal(
     coolifyDbKindOf({ image: "acme/our-own-store:2" } as CoolifyDatabase),
     null,
   );
 });
 
-// Redis keeps its password in the resource's variables and in no column at all, so Deplo minted a new one: 300 keys arrived and every app talking to it stopped working.
 test("a credential kept only in the variables still comes across", () => {
   const redis = coolifyDatabase(
     { uuid: "db-r", name: "cache", image: "redis:7" } as CoolifyDatabase,
@@ -58,7 +53,6 @@ test("a credential kept only in the variables still comes across", () => {
   assert.equal(redis.databasePassword, "R3dis@Pass1");
   assert.equal(redis.databaseUser, "cacher");
 
-  // The column still wins where there is one.
   const pg = coolifyDatabase(
     {
       uuid: "db-p",
@@ -114,7 +108,6 @@ test("a database's credentials are read from its own engine's columns", () => {
   assert.equal(mongo.databaseUser, "root");
   assert.equal(mongo.databasePassword, "pw");
 
-  // Not public: the port is not an instruction to publish anything.
   const redis = coolifyDatabase(
     {
       uuid: "db-4",
@@ -129,7 +122,6 @@ test("a database's credentials are read from its own engine's columns", () => {
 });
 
 test("the engine is read off `database_type`, which is what the API answers with", () => {
-  // Coolify 4.x spells it `database_type` on the list AND the detail endpoints; reading `type` alone found nothing and dropped every database in silence.
   assert.equal(
     coolifyDbKindOf({ database_type: "standalone-postgresql" }),
     "postgres",

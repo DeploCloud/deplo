@@ -29,15 +29,12 @@ import {
 } from "@/components/env/env-rows-editor";
 import { SecretRow } from "@/components/env/secret-row";
 
-// DraftEnvRow - a variable typed into the wizard; no row exists yet, so it carries its own type.
 export interface DraftEnvRow {
   key: string;
   value: string;
-  // Undefined lets the key's own name decide, which is what the server does.
   secret?: boolean;
 }
 
-// LinkableSharedVar - the team's shared variables, as much of one as the picker shows.
 export interface LinkableSharedVar {
   id: string;
   key: string;
@@ -48,7 +45,6 @@ export interface LinkableSharedVar {
 const TABS = ["variables", "shared"] as const;
 type Tab = (typeof TABS)[number];
 
-// EnvDraftDialog - variables the wizard holds and sends with createApp, so the first deploy has them.
 export function EnvDraftDialog({
   open,
   onOpenChange,
@@ -74,7 +70,6 @@ export function EnvDraftDialog({
             <DocsLink topic="env.overview" />
           </DialogDescription>
         </DialogHeader>
-        {/* The body mounts with the dialog, so a cancelled edit leaves nothing behind. */}
         <EnvDraftBody
           rows={rows}
           sharedIds={sharedIds}
@@ -115,7 +110,6 @@ function EnvDraftBody({
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (invalid) return;
-    // Left off, the row carries no type at all and the key's name decides - what a template wants.
     onSave(
       filledRows(draft).map((r) => ({
         key: r.key.trim(),

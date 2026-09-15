@@ -4,7 +4,6 @@ import { overrideValue, settleOverride } from "./optimistic-value";
 
 test("the override stands while the server still serves the old value", () => {
   const override = { base: "api", value: "api-v2" };
-  // The mutation resolved, but the RSC refresh carrying the new name has not.
   const settled = settleOverride(override, "api");
   assert.equal(
     settled,
@@ -22,14 +21,10 @@ test("the override retires the moment the server's value moves", () => {
 
 test("someone else's change retires the override too", () => {
   const override = { base: false, value: true };
-  // Another tab turned it on and off again while this one was in flight: the
-  // served value is no longer the base, so the local guess steps aside.
   assert.equal(settleOverride(override, true), null);
 });
 
 test("a change that leaves the served value untouched keeps its override", () => {
-  // Renaming something to the name it already had: the mutation succeeds and the
-  // refresh brings back the identical value.
   const override = { base: "api", value: "api" };
   assert.equal(settleOverride(override, "api"), override);
 });

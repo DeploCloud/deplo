@@ -15,7 +15,6 @@ export interface CurrentUpload {
   uploadedAt: string;
 }
 
-// UploadInput - drag-and-drop upload of a code archive for an upload-source app.
 export function UploadInput({
   appId,
   current,

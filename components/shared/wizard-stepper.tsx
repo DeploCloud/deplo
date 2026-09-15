@@ -4,7 +4,6 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-// WizardStep is one step of the rail shared by the dialog wizards.
 export interface WizardStep<T extends string> {
   id: T;
   label: string;
@@ -71,7 +70,6 @@ export function WizardStepper<T extends string>({
               >
                 {done ? <Check className="size-3" /> : i + 1}
               </span>
-              {/* Numbers only on a narrow viewport; the label is still announced. */}
               <span className="truncate max-sm:sr-only">{s.label}</span>
             </button>
           </li>

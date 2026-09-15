@@ -167,8 +167,6 @@ const STACK_STORE = tarGzOf(3072, 6);
 const LANDED_UPLOADS = tarGzOf(64, 1);
 const LANDED_DB = tarGzOf(64, 2);
 
-// Every knob the two fakes read lives here so a test can set it: an exported `let`
-// cannot be assigned from the file that imports it.
 export const state = {
   calls: [] as string[],
   agentCalls: [] as string[],

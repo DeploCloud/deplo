@@ -11,7 +11,6 @@ import { getOperationAST } from "graphql";
 import { runWithIdentity } from "@/lib/auth/request-context";
 import { withoutRequestCache } from "@/lib/request-cache";
 
-// Run the operation inside the bearer-token identity, so lib/data resolves it, not cookies.
 const identityPlugin: Plugin<GraphQLContext> = {
   onExecute({ args, setExecuteFn, executeFn }) {
     const identity = (args.contextValue as GraphQLContext).identity;
@@ -34,7 +33,6 @@ const identityPlugin: Plugin<GraphQLContext> = {
   },
 };
 
-// A mutation must read what it just wrote, and a subscription outlives every gate it passed.
 const uncachedWrites: Plugin<GraphQLContext> = {
   onExecute({ args, setExecuteFn, executeFn }) {
     const op = getOperationAST(args.document, args.operationName)?.operation;
@@ -57,7 +55,6 @@ function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
   );
 }
 
-// Re-apply `wrap` around every TICK, not only around the iterator's creation.
 function perTick<T>(
   source: AsyncIterable<T>,
   wrap: <R>(fn: () => R) => R,
@@ -73,7 +70,6 @@ function perTick<T>(
   } as AsyncIterableIterator<T>;
 }
 
-// A POST must be JSON: a cross-site form could otherwise post a mutation with the cookie.
 const requireJsonPost: Plugin = {
   onRequest({ request, endResponse, fetchAPI }) {
     if (request.method !== "POST") return;
@@ -98,21 +94,18 @@ const requireJsonPost: Plugin = {
 export const yoga = createYoga({
   schema,
   graphqlEndpoint: "/api/graphql",
-  // Same-origin panel: reflecting an Origin with credentials would let any site use the cookie.
   cors: false,
   context: ({ request }) => buildContext(request),
   plugins: [
     requireJsonPost,
     identityPlugin,
     uncachedWrites,
-    // Public-API hardening: bound depth, alias amplification and cost.
     maxDepthPlugin({ n: 12 }),
     maxAliasesPlugin({ n: 30 }),
     costLimitPlugin({ maxCost: 5000 }),
   ],
   maskedErrors: { maskError },
   fetchAPI: { Response },
-  // The IDE loads its bundle from a public CDN into the panel's origin: development only.
   graphiql: process.env.NODE_ENV === "development" && {
     title: "Deplo API",
     defaultQuery: /* GraphQL */ `

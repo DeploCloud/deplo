@@ -138,8 +138,6 @@ services:
 });
 
 test("the env text the author typed is the text the container gets", () => {
-  // `022` is a umask and `1.10` is a version - read as numbers they come back out as 22
-  // and 1.1, and the container is handed a value nobody wrote.
   const doc = buildDoc(`x-common: &common
   environment:
     UMASK: 022

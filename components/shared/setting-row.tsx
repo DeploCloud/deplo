@@ -4,7 +4,6 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
 import type { DocsTopic } from "@/lib/docs";
 
-// SettingRow - one setting: its name on the left, its control on the right, its explanation in the tooltip.
 export function SettingRow({
   label,
   icon: Icon,
@@ -42,7 +41,6 @@ export function SettingRow({
         {Icon && <Icon aria-hidden className="size-3.5 shrink-0 opacity-50" />}
         {label}
       </FieldLabel>
-      {/* A flex basis, not a width, so a narrow grid shrinks the column instead of crushing the label. */}
       <div className="flex w-full min-w-0 justify-end sm:basis-72">
         {children}
       </div>

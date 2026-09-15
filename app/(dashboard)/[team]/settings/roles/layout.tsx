@@ -4,11 +4,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { RolesRail } from "@/components/settings/roles/roles-rail";
 
-// RolesLayout holds the rail so navigating between roles never re-renders it.
 export default async function RolesLayout({
   children,
 }: LayoutProps<"/[team]/settings/roles">) {
-  // Guarded here, and returning rather than throwing: a throw took out the whole section, read-only viewer included.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess

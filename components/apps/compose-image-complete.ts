@@ -29,7 +29,6 @@ function compactNumber(n: number): string {
   return String(n);
 }
 
-// imageCompletionSource - completes an `image:` value, else null so other sources run.
 export async function imageCompletionSource(
   context: CompletionContext,
 ): Promise<CompletionResult | null> {
@@ -50,7 +49,6 @@ export async function imageCompletionSource(
 
   try {
     if (tagPart !== null) {
-      // Server-side filter so an old version surfaces even when it is not among the newest tags.
       const filterParam = tagPart
         ? `&filter=${encodeURIComponent(tagPart)}`
         : "";
@@ -67,7 +65,6 @@ export async function imageCompletionSource(
         type: "constant",
         detail: t.lastUpdated ? relativeDate(t.lastUpdated) : undefined,
       }));
-      // filter:false - the registry already matched the fragment server-side, so prefix scoring must not hide them.
       return { from: tagFrom, options, filter: false };
     }
 
@@ -81,7 +78,6 @@ export async function imageCompletionSource(
 
     const options: Completion[] = names.slice(0, 25).map((n) => ({
       label: n.name,
-      // Appending ":" primes a follow-up tag completion.
       apply: `${n.name}:`,
       type: "class",
       detail: n.official
@@ -90,7 +86,6 @@ export async function imageCompletionSource(
           ? `★ ${compactNumber(n.stars)}`
           : undefined,
     }));
-    // filter:false - Docker Hub already ranked by relevance for the query.
     return { from: valueStart, options, filter: false };
   } catch {
     return null;

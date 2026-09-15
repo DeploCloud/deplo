@@ -14,15 +14,12 @@ import { teamAvatarUrl } from "../../avatar";
 import type { RegistrationMode } from "./registration-links";
 import type { Capability, Role } from "../../types/identity";
 
-/** Public, display-only view of a registration link for the /register page. */
 export interface RegistrationLinkInfo {
   valid: boolean;
   mode: RegistrationMode;
-  /** The teams the registrant will join, with their own pictures - never a stand-in icon. */
   teams: { name: string; avatarUrl: string | null }[];
 }
 
-/** Is the link usable, which mode, and (for `existing_teams`) the teams it joins. */
 export async function getRegistrationLinkInfo(
   rawToken: string,
 ): Promise<RegistrationLinkInfo> {
@@ -56,13 +53,11 @@ export async function getRegistrationLinkInfo(
     name: r.name,
     avatarUrl: teamAvatarUrl(r.image),
   }));
-  // Every assigned team was deleted before use → nothing to join → unusable.
   if (teams.length === 0)
     return { valid: false, mode: "existing_teams", teams: [] };
   return { valid: true, mode: "existing_teams", teams };
 }
 
-/** The per-team role + capabilities baked into a pending `existing_teams` link. */
 export async function getRegistrationLinkAssignments(
   rawToken: string,
 ): Promise<{ teamId: string; role: Role; capabilities: Capability[] }[]> {
@@ -88,7 +83,6 @@ export async function getRegistrationLinkAssignments(
       role: registrationLinkTeamsTable.role,
     })
     .from(registrationLinkTeamsTable)
-    // INNER join drops assignments whose team was deleted after minting.
     .innerJoin(teamsTable, eq(teamsTable.id, registrationLinkTeamsTable.teamId))
     .where(eq(registrationLinkTeamsTable.linkId, link.id));
   if (teamRows.length === 0) return [];
@@ -119,9 +113,6 @@ export async function getRegistrationLinkAssignments(
   }));
 }
 
-// Runs inside the SAME `db.transaction` that creates the account+team, so
-// check-create-consume is one atomic critical section.
-/** Consume a registration link. */
 export async function consumeRegistrationLink(
   tx: DbTx,
   rawToken: string,

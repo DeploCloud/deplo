@@ -1,7 +1,6 @@
 import Link from "@/components/ui/link";
 import { Pencil } from "lucide-react";
 
-// LogoEditLink - a detail header's logo that doubles as the way into General settings.
 export function LogoEditLink({
   href,
   label,

@@ -234,7 +234,6 @@ test("deleteProject re-parents its apps (and legacy folders) to the top level (n
     const p = await createProject("Container");
     const f = await createFolder("Docs");
     await seedApp(db, { id: "prj_svc1", teamId: TEAM_A });
-    // A legacy folder-in-project row (pre-ADR-0009); deleteProject must still clear it.
     await db
       .update(foldersTable)
       .set({ projectId: p.id })
@@ -317,7 +316,6 @@ test("reorderProjects persists a team-wide order and is self-healing", async () 
   });
 });
 
-// "upload" is born idle, so nothing dials an agent.
 const newApp = (
   placement: {
     folderId?: string | null;

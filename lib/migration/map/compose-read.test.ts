@@ -9,7 +9,6 @@ import {
 import { composeVolumeMounts } from "./volume-discovery";
 
 test("a git-backed compose that is one build IS an app, not a stack", () => {
-  // Dokploy "Compose" on a repo with one service: imported as a stack it kept `build: .` with no repository, so it could never build.
   const one = `
 services:
   app:
@@ -42,7 +41,6 @@ services:
       dockerBuildStage: "runner",
     },
   );
-  // "." is Deplo's own default - never written back as if somebody chose it.
   assert.equal(
     composeAsRepoApp("services:\n  a:\n    build:\n      context: .\n")
       ?.dockerContextPath,

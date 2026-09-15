@@ -44,14 +44,12 @@ function RevealToggle({
   );
 }
 
-// RevealInput is a password box with the reveal toggle and nothing else - the current-password and confirm fields, which have no strength to meter.
 export function RevealInput({
   className,
   visible: controlled,
   onVisibleChange,
   ...props
 }: Omit<React.ComponentProps<typeof Input>, "type"> & {
-  // Controlled reveal, for a caller that also unmasks: Generate hands over a password that has to be readable before the dialog closes.
   visible?: boolean;
   onVisibleChange?: (visible: boolean) => void;
 }) {
@@ -77,7 +75,6 @@ export function RevealInput({
   );
 }
 
-// PasswordField is the choose-a-password field, and its meter is cosmetic: the gate that counts is `assertPasswordPolicy` server-side.
 export function PasswordField({
   id,
   value,
@@ -96,7 +93,6 @@ export function PasswordField({
   id?: string;
   value: string;
   onChange: (value: string) => void;
-  // `null` drops the label entirely - for a field its own heading already names.
   label?: React.ReactNode;
   info?: React.ReactNode;
   docs?: DocsTopic;
@@ -117,7 +113,6 @@ export function PasswordField({
   const rules = passwordRuleStatus(value);
   const score = rules.filter((rule) => rule.met).length;
   const complete = score === rules.length;
-  // The meter rides a popover: a checklist growing under the field pushes every control below it down on the first keystroke.
   const open = hintOpen && value !== "";
 
   return (
@@ -129,7 +124,6 @@ export function PasswordField({
       )}
       <Popover open={open} onOpenChange={setHintOpen}>
         <PopoverAnchor asChild>
-          {/* Focus is watched on the wrapper, not the input: clicking the reveal toggle is still being in the field and must not close the meter. */}
           <div
             className="relative"
             onFocus={() => setHintOpen(true)}
@@ -168,7 +162,6 @@ export function PasswordField({
           side="bottom"
           align="start"
           sideOffset={8}
-          // Neither edge may move focus: the caret stays where the person is typing, and closing must not drag it out of the next field.
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
           className="w-[var(--radix-popover-trigger-width)] min-w-64 space-y-2 p-3"

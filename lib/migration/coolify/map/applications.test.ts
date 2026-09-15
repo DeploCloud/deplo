@@ -59,7 +59,6 @@ test("an image app is not told it arrived as the panel's own repository", () => 
     uuid: "app-3",
     build_pack: "dockerimage",
     docker_registry_image_name: "ghcr.io/acme/api",
-    // What the API answers for EVERY image app: its own repository, as a default.
     git_repository: "coollabsio/coolify",
   });
   assert.deepEqual(a.platformNotes, []);
@@ -87,7 +86,6 @@ test("basic auth comes across as one credential", () => {
 });
 
 test("an application carries the port it listens on", () => {
-  // Without it every migrated app landed on Deplo's default 3000 and answered 502.
   assert.equal(coolifyApplication(APP).routingPort, 3000);
   assert.equal(
     coolifyApplication({ ...APP, ports_exposes: "" }).routingPort,

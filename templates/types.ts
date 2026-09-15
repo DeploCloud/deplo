@@ -7,7 +7,6 @@ import type {
 
 export type TemplateListQuery = z.input<typeof templateListQuerySchema>;
 
-// ApiTemplate is a catalog entry exactly as the service serves it.
 export type ApiTemplate = z.output<typeof apiTemplateSchema>;
 export type ApiTemplateVariant = z.output<typeof apiTemplateVariantSchema>;
 
@@ -25,7 +24,6 @@ export function defaultVariant(template: {
   return variant;
 }
 
-// CatalogTemplateVariant is a catalog entry as the UI gets it, asset paths resolved to absolute URLs.
 export type CatalogTemplateVariant = Omit<
   ApiTemplateVariant,
   "logo" | "images"

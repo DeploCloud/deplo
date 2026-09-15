@@ -45,14 +45,12 @@ const STATUS_LABELS: Record<DestinationStatus, string> = {
   unverified: "Unverified",
 };
 
-// DestinationsView - the Destinations tab: search, kind + status filters, cards or table.
 export function DestinationsView({
   destinations,
   canManage,
   createButton,
 }: {
   destinations: DestinationCardView[];
-  // `manage_backup_destinations`. Also gates the probe below.
   canManage: boolean;
   createButton: React.ReactNode;
 }) {
@@ -64,12 +62,10 @@ export function DestinationsView({
   const [live, setLive] = React.useState<Record<string, Live>>({});
   const router = useRouter();
 
-  // Radix unmounts an inactive TabsContent, so this runs when the tab opens; free space is only ever measured by a test (rate-limited in lib/destination-probe.ts).
   React.useEffect(() => {
     if (!canManage) return;
     let cancelled = false;
     void probeDestinations().then((rows) => {
-      // A skipped or failed round leaves the stored figures in place: a tab opening is no place for an error nobody asked for.
       if (cancelled || !rows) return;
       setLive(
         Object.fromEntries(
@@ -102,7 +98,6 @@ export function DestinationsView({
     );
   });
 
-  // Only what is on screen is selectable, so a filtered-out destination can never become a bulk target.
   const visibleIds = filtered.map((d) => d.id);
   const selection = useCardSelection(visibleIds);
   const {
@@ -125,7 +120,6 @@ export function DestinationsView({
 
   const selectionNoun = `${selectionCount} destination${selectionCount === 1 ? "" : "s"}`;
 
-  // No bulk endpoint: one mutation each, and the selection survives a refusal so re-confirming retries.
   async function bulkRun(
     mutation: string,
     vars: (id: string) => Record<string, unknown>,
@@ -207,7 +201,6 @@ export function DestinationsView({
           />
         ) : (
           <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {/* The card leaves on the click: the row is dropped server-side before the artifacts are swept. */}
             <OptimisticList>
               {filtered.map((dest) => (
                 <SelectableCard
@@ -259,7 +252,6 @@ export function DestinationsView({
         )}
       </SelectionBar>
 
-      {/* The bulk remove never touches the artifacts: deleting the files is the single card's checkbox, which can name the count. */}
       <ConfirmAction
         open={bulkRemoveOpen}
         onOpenChange={setBulkRemoveOpen}

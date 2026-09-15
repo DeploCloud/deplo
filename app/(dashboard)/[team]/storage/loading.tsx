@@ -1,7 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Mirrors DatabasesGrid's breakpoints: each extra placeholder appears only once a column exists for it.
 const ROW_FILL = [
   "",
   "",
@@ -19,7 +18,6 @@ export default function Loading() {
       aria-busy
       aria-label="Loading storage"
     >
-      {/* PageHeader */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <Skeleton className="h-7 w-24" />
@@ -27,9 +25,7 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div>
-        {/* UnderlineTabsList: Databases / Destinations / Backups */}
         <div className="flex h-12 items-center gap-1 border-b border-border">
           <div className="flex h-12 items-center gap-2 px-3">
             <Skeleton className="h-4 w-16" />
@@ -45,9 +41,7 @@ export default function Loading() {
           </div>
         </div>
 
-        {/* Databases tab body (default) */}
         <div className="mt-4 space-y-4">
-          {/* ListToolbar: search · engine · status · view toggle · create */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Skeleton className="h-9 flex-1 rounded-md" />
             <Skeleton className="h-9 w-full rounded-md sm:w-40" />
@@ -60,7 +54,6 @@ export default function Loading() {
             {ROW_FILL.map((fill, i) => (
               <Card key={i} className={fill || undefined}>
                 <CardContent className="space-y-4 p-5">
-                  {/* header: icon + name/type, status + menu */}
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <Skeleton className="size-10 rounded-lg" />
@@ -75,7 +68,6 @@ export default function Loading() {
                     </div>
                   </div>
 
-                  {/* connection box: reveal chip + copy, then server · exposure */}
                   <div className="rounded-lg border border-border bg-surface p-3">
                     <div className="flex items-center gap-1.5">
                       <Skeleton className="h-7 flex-1 rounded-md" />
@@ -87,7 +79,6 @@ export default function Loading() {
                     </div>
                   </div>
 
-                  {/* created */}
                   <Skeleton className="h-3 w-28" />
                 </CardContent>
               </Card>

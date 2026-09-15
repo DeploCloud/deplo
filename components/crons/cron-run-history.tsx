@@ -144,7 +144,6 @@ function RunRow({
       </div>
       {open && (
         <div className="space-y-2 border-t border-border px-3 py-2">
-          {/* Why this is not a failure - a colour cannot say it. */}
           {meta.note && (
             <p className="text-xs text-muted-foreground">{meta.note}</p>
           )}
@@ -198,7 +197,6 @@ export function CronRunHistory({
       });
   }, [jobId]);
 
-  // Mounted only while its row is expanded, so the poll runs only while somebody watches.
   React.useEffect(() => {
     alive.current = true;
     load();

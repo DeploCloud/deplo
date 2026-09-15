@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/concepts/what-happens-on-a-deploy
-
 import { and, asc, eq, isNull, sql, count } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -24,7 +22,6 @@ const g = globalThis as unknown as {
 };
 const lanes: Map<string, ServerLane> = (g[REGISTRY_KEY] ??= new Map());
 
-// The deploy keys in flight across every lane: two deploys sharing a key never may overlap.
 const busyKeys: Set<string> = (g[BUSY_KEY] ??= new Set());
 
 const laneKey = sql<string>`coalesce(${deploymentsTable.buildServerId}, ${deploymentsTable.serverId})`;
@@ -38,7 +35,6 @@ function laneFor(serverId: string): ServerLane {
   return lane;
 }
 
-// Read at call time, never captured at module-eval, so the build.ts <-> deploy-queue.ts import cycle is never load-bearing.
 let overrideRunner: ((depId: string) => Promise<void>) | null = null;
 function invokeRunner(depId: string): Promise<void> {
   return (overrideRunner ?? runDeploymentGuarded)(depId);
@@ -84,8 +80,6 @@ async function pickNext(
     running.set(r.teamId, Number(r.n));
   let best: (typeof rows)[number] | null = null;
   for (const r of rows) {
-    // A legacy row with no key falls back to the app id - never an empty string,
-    // which every row would share.
     const key = r.deployKey || r.appId;
     if (busyKeys.has(key)) continue;
     if (!best || (running.get(r.teamId) ?? 0) < (running.get(best.teamId) ?? 0))
@@ -102,8 +96,6 @@ async function pickNext(
 
 function startOne(serverId: string, depId: string, key: string): void {
   void invokeRunner(depId)
-    // runDeploymentGuarded never rejects; a fake runner might, and a swallowed
-    // rejection is what keeps the slot from leaking.
     .catch((e) => {
       console.error("[deplo] deploy runner crashed:", e);
     })
@@ -118,7 +110,6 @@ function startOne(serverId: string, depId: string, key: string): void {
     });
 }
 
-// Wake a server's lane: mark it dirty and ensure exactly one pump loop is running.
 export function scheduleServer(serverId: string): void {
   const lane = laneFor(serverId);
   lane.dirty = true;
@@ -135,8 +126,6 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
       while (lane.running.size < concurrency) {
         const next = await pickNext(serverId);
         if (!next) break;
-        // Reserve the slot in memory BEFORE the runner claims queued->building, so a
-        // re-drain in the same tick cannot pick the same stack twice.
         lane.running.add(next.id);
         busyKeys.add(next.key);
         startOne(serverId, next.id, next.key);
@@ -144,7 +133,6 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
     }
   } catch (e) {
     console.error("[deplo] deploy queue pump failed:", e);
-    // `unref()`: the re-arm must not, by itself, hold the process open.
     setTimeout(() => scheduleServer(serverId), 5_000).unref?.();
   } finally {
     lane.pumping = false;
@@ -155,7 +143,6 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
   }
 }
 
-// Enqueue a freshly-inserted `queued` deployment and wake its lane. Returns immediately.
 export function enqueueDeployment(input: {
   depId: string;
   serverId: string;
@@ -165,7 +152,6 @@ export function enqueueDeployment(input: {
   scheduleServer(input.buildServerId || input.serverId);
 }
 
-// Boot entry: re-drain every server that still has a `queued` backlog, so a restart never discards work.
 export async function startDeployQueue(): Promise<void> {
   const db = getDb();
   const orphans = await db
@@ -190,8 +176,6 @@ export async function startDeployQueue(): Promise<void> {
         .where(eq(deploymentsTable.id, o.id));
     }
   }
-  // The LANE, not the owning server: a backlog waiting on a build server must wake
-  // that builder's lane, or a restart parks it there forever.
   const servers = await db
     .selectDistinct({ serverId: laneKey })
     .from(deploymentsTable)
@@ -201,19 +185,16 @@ export async function startDeployQueue(): Promise<void> {
   }
 }
 
-// Substitute the deploy runner (tests drive a controllable fake).
 export function __setRunnerForTest(fn: (depId: string) => Promise<void>): void {
   overrideRunner = fn;
 }
 
-// Restore the real runner and clear all lane state (call between tests).
 export function __resetQueueForTest(): void {
   overrideRunner = null;
   lanes.clear();
   busyKeys.clear();
 }
 
-// Snapshot a server lane's in-flight accounting (test assertions only).
 export function __laneSnapshotForTest(serverId: string): {
   running: string[];
   busyApps: string[];
@@ -221,7 +202,6 @@ export function __laneSnapshotForTest(serverId: string): {
   const lane = lanes.get(serverId);
   return {
     running: lane ? [...lane.running] : [],
-    // The name is kept so the existing assertions read the same; it holds deploy KEYS.
     busyApps: [...busyKeys],
   };
 }

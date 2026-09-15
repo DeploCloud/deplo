@@ -18,7 +18,6 @@ const MASTER_HEX = "5f87d0d0";
 const REMOTE_HEX = "9859fe85";
 
 test("the panel's own generated host carries this server's IP", () => {
-  // KEEP IN SYNC with install.sh, which mints the same name in shell.
   assert.equal(panelFallbackHost("1.2.3.4"), "deplo-01020304.nip.io");
   assert.equal(panelFallbackHost(MASTER), `deplo-${MASTER_HEX}.nip.io`);
   assert.equal(nipEmbeddedIp(panelFallbackHost(REMOTE)), REMOTE);

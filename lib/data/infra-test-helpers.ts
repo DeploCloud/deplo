@@ -17,12 +17,10 @@ import type { Server } from "../types/server";
 
 const T0 = "2026-01-01T00:00:00.000Z";
 
-// TRUNCATE_INFRA truncates every infra/integration table.
 export const TRUNCATE_INFRA = `truncate table
   activities, github_installation, github_apps, servers
   restart identity cascade;`;
 
-// makeServer builds a full Server with sensible defaults (override any field).
 export function makeServer(opts: Partial<Server> & { id: string }): Server {
   return {
     id: opts.id,
@@ -54,7 +52,6 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
   };
 }
 
-// seedServerRow inserts a Server into the relational servers table.
 export async function seedServerRow(
   db: TestDb,
   opts: Partial<Server> & { id: string },
@@ -67,7 +64,6 @@ export async function seedServerRow(
   return server;
 }
 
-// seedGithubApp inserts a GithubApp (override any field). Secrets are stored as-is.
 export async function seedGithubApp(
   db: TestDb,
   opts: Partial<GithubApp> & { id: string; teamId: string },
@@ -89,7 +85,6 @@ export async function seedGithubApp(
   return app;
 }
 
-// seedGithubInstallation inserts a GithubInstallation of a seeded app.
 export async function seedGithubInstallation(
   db: TestDb,
   opts: Partial<GithubInstallation> & { id: string; appId: string },
@@ -109,7 +104,6 @@ export async function seedGithubInstallation(
   return install;
 }
 
-// seedActivity inserts an Activity (the DB assigns its seq in insertion order).
 export async function seedActivity(
   db: TestDb,
   opts: Partial<Activity> & { id: string; teamId: string },

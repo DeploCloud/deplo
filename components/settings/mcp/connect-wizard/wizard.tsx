@@ -45,9 +45,7 @@ export function ConnectWizard({
   overlay,
 }: {
   mcpEnabled: boolean;
-  /** `manage_mcp`: may connect THEIR OWN agents to this team. */
   canConnect: boolean;
-  /** `manage_team`: may flip the team's MCP switch. */
   canManageTeam: boolean;
   publicUrl: string;
   tree: ScopeTreeTeam[];
@@ -63,8 +61,6 @@ export function ConnectWizard({
 
   return (
     <WizardRun
-      // Remounting is the reset: starting over must not inherit the last run's
-      // token, agent or confetti.
       key={runId}
       mcpEnabled={mcpEnabled}
       canConnect={canConnect}
@@ -131,8 +127,6 @@ function WizardRun({
   const [connected, setConnected] = React.useState(false);
   const [attempt, setAttempt] = React.useState(0);
   const [round, setRound] = React.useState(0);
-  // Frozen on mount: the web branch reads success as "one more connection than
-  // there was", so a baseline moved by any refresh would mean nothing.
   const [baseline] = React.useState(connectionCount);
 
   const agent = agentId ? AGENTS.find((a) => a.id === agentId)! : null;
@@ -152,7 +146,6 @@ function WizardRun({
       }
       setConnected(true);
       setStep("done");
-      // The agent count reads from the server, so it has to be told.
       onRefresh();
     }, POLL_MS);
     return () => {
@@ -184,8 +177,6 @@ function WizardRun({
   function pick(id: AgentId) {
     const next = AGENTS.find((a) => a.id === id)!;
     setAgentId(id);
-    // Only overwrite a name the reader has not touched - retyping their label
-    // because they went back one step would be the wizard arguing with them.
     setName((current) =>
       current === "" || AGENTS.some((a) => a.label === current)
         ? next.label
@@ -295,8 +286,6 @@ function WizardRun({
         <WizardStepper
           steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
           current={step}
-          // Once the secret exists there is nothing left to edit, and "Done" is
-          // the agent's to reach, never a click's.
           reachable={(s) =>
             s === "done"
               ? connected
@@ -357,8 +346,6 @@ function WizardRun({
         </div>
       </div>
 
-      {/* The token is shown once and leaving stops the listening, so the way
-          out asks first. */}
       <UnsavedChangesGuard
         when={minted && !connected}
         title="Leave before the agent connects?"

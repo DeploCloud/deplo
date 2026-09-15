@@ -37,7 +37,6 @@ type CertificateAccount = {
 const ACCOUNT_FIELDS =
   "serverId serverName email unavailable customCertificates expiresInDays";
 
-// CertificatesCard: the one certificate account email, across the whole fleet.
 export function CertificatesCard() {
   const [accounts, setAccounts] = React.useState<CertificateAccount[] | null>(
     null,
@@ -65,8 +64,6 @@ export function CertificatesCard() {
     }
     const next = res.data?.serverCertificateAccounts ?? [];
     setAccounts(next);
-    // Prefill only when the fleet agrees with itself: guessing which host is the
-    // right one would be a silent vote for one of them.
     const found = [
       ...new Set(next.map((a) => a.email).filter((e): e is string => !!e)),
     ];
@@ -74,8 +71,6 @@ export function CertificatesCard() {
   }, []);
 
   React.useEffect(() => {
-    // Opening the page IS the read: it synchronises with the servers' agents and
-    // `load` manages its own state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
@@ -113,8 +108,6 @@ export function CertificatesCard() {
           `Certificates on ${done.length} server${done.length === 1 ? "" : "s"} are now registered to ${email.trim()}`,
         );
       }
-      // Skipped hosts are named, not folded into the count: an operator who does
-      // not know a host was left behind finds out when its certificate expires.
       if (failed.length > 0) {
         toast.warning(
           `Left alone: ${failed.map((a) => `${a.serverName} (${a.unavailable})`).join(", ")}`,
@@ -177,8 +170,6 @@ export function CertificatesCard() {
                       <span className="truncate">{account.serverName}</span>
                     </span>
                     <span className="flex min-w-0 items-center gap-2">
-                      {/* Nothing renews a certificate someone installed by hand,
-                          and this tab is not one anybody opens on a normal day. */}
                       <CertificateExpiry account={account} />
                       <span
                         className={
@@ -242,7 +233,6 @@ export function CertificatesCard() {
   );
 }
 
-// CertificateExpiry: when this host's own certificates run out.
 function CertificateExpiry({ account }: { account: CertificateAccount }) {
   const days = account.expiresInDays;
   if (account.customCertificates === 0 || days === null || days > 21)

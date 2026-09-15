@@ -58,7 +58,6 @@ const INFO_QUERY = /* GraphQL */ `
 const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
 
-// TransferTeamDialog hands this app to another team the viewer belongs to.
 export function TransferTeamDialog({
   trigger,
   appId,

@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 
 export type ListView = "grid" | "list";
 
-// ViewToggle is the grid/list switch every list wears.
 export function ViewToggle({
   view,
   onView,

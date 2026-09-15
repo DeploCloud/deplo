@@ -30,66 +30,46 @@ import { runMigrationTick } from "./run-loop";
 export interface StartRunInput {
   url: string;
   apiKey: string;
-  /** Which product the scan identified. Recorded once, never re-detected. */
   kind?: MigrationPlatform;
   orgName?: string | null;
-  /** One entry per SERVICE, in the order they should be worked through. */
   targets: {
     projectId: string;
     projectName: string;
     serviceId: string;
     serverId?: string | null;
     buildServerId?: string | null;
-    /** Omit to keep the source's port; `null` publishes nothing. */
     exposedPort?: number | null;
     exposedPortSet?: boolean;
   }[];
-  /** Dokploy machine id (`''` for its own host) to the Deplo server it lands on. */
   servers: { from: string; to: string }[];
-  // Another team of the SAME panel is queued behind this run, so the source
-  // agents are not this run's to remove.
   keepSources?: boolean;
-  /** The teams of the same panel to bring over after this one, in order. */
   queued?: QueuedTeamInput[];
 }
 
-// QueuedTeamInput - one more team of the same panel, waiting its turn.
 export interface QueuedTeamInput {
-  /** That team's own token: a key reads exactly one team on both products. */
   apiKey: string;
   orgName?: string | null;
-  /** The Deplo team it lands in, when it exists already. */
   teamId?: string | null;
-  /** Otherwise the team made for it, right now, so its turn has somewhere to go. */
   newTeamName?: string | null;
   newTeamImage?: string | null;
   targets: StartRunInput["targets"];
   servers: { from: string; to: string }[];
 }
 
-// startMigrationRun - open a run, write down everything needed to finish it, and start it moving.
 export async function startMigrationRun(input: StartRunInput): Promise<string> {
   const { teamId } = await assertImportGate();
   if (input.targets.length === 0)
     throw new Error("Nothing is selected, so there is nothing to migrate.");
 
-  // Which panel this is, and whether it answers at all, BEFORE a run exists: a
-  // Coolify migration driven from the API used to die on its first call inside
-  // a run that had already been created.
   const c = await connectCredential(input);
   const client = sourceClient(c);
-  // The scan asserts the token's scope; a run driven from the API skipped it and
-  // imported every variable as KEY= (ADR-0026).
   await client.assertReadable();
   await client.listProjects();
-  // And the MACHINES, which is the half the panel answering says nothing about.
   await assertMigrationMachinesReady(
     c,
     input.targets.map((t) => t.serviceId),
   );
 
-  // Every queued token is proved HERE, before anything is created: a bad key on
-  // the third team used to surface forty minutes into the first one's copy.
   const queued = input.queued ?? [];
   const queuedCreds: SourceCredential[] = [];
   for (const q of queued) {
@@ -110,8 +90,6 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
     url: input.url,
     orgName: input.orgName ?? null,
     kind: c.kind,
-    // A queue is the fact: a caller that says otherwise while queueing teams
-    // would have the first run take the agents off machines the rest still read.
     keepSources: queued.length > 0 || (input.keepSources ?? false),
   });
   const { currentIdentity } = await import("../../auth/request-context");
@@ -160,22 +138,16 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
       credential: queuedCreds[i],
       team: q,
       actor: { name: actorName, userId },
-      // The LAST team of the walk is the one that takes Deplo's agents back off
-      // the source machines; everyone before it leaves them for the next turn.
       keepSources: i < queued.length - 1,
     });
 
   publishMigrationChanged();
-  // Do not await: the caller is a mutation, and the run is now durable enough to
-  // be finished by any tick, including one in another process.
   void runMigrationTick().catch((e) =>
     console.error("[migration] first tick failed:", e),
   );
   return runId;
 }
 
-// Write down one team that is still to come: its own token, where it lands, and
-// everything the review chose for it. Nothing of it runs until its turn comes.
 async function enqueueTeam(opts: {
   sessionId: string;
   url: string;
@@ -192,8 +164,6 @@ async function enqueueTeam(opts: {
   } else {
     const name = team.newTeamName?.trim() || team.orgName?.trim() || "";
     if (!name) throw new Error("A queued team needs a name to land under.");
-    // Made now rather than when its turn comes: a team that does not exist has
-    // nowhere to hang the run row.
     teamId = (await createTeam({ name, image: team.newTeamImage ?? null })).id;
   }
   const id = newId("dimp");

@@ -42,13 +42,11 @@ function fmtMemMb(mb: number): string {
   return mb >= 1024 ? `${Number((mb / 1024).toFixed(2))} GiB` : `${mb} MiB`;
 }
 
-// fmtCoresUsed - `cpu` is a percentage of ONE core (`docker stats`' convention), so 299% has to be said as 3 cores.
 export function fmtCoresUsed(cpuPct: number, hostCores: number): string | null {
   if (hostCores <= 0 || cpuPct < 100) return null;
   return `${(cpuPct / 100).toFixed(2)} of ${hostCores} core${hostCores === 1 ? "" : "s"}`;
 }
 
-// Two containers in one netns read the SAME bytes, so the stack total counts them once.
 function netNoteFor(c: InstanceMetrics, all: InstanceMetrics[]): string | null {
   if (c.netNsHost) return "host network";
   if (!c.netNsId) return null;
@@ -58,7 +56,6 @@ function netNoteFor(c: InstanceMetrics, all: InstanceMetrics[]): string | null {
     : null;
 }
 
-// The server types are `server-only`, so the client redeclares the wire shape.
 interface InstanceMetrics {
   name: string;
   running: boolean;
@@ -71,9 +68,7 @@ interface InstanceMetrics {
   blockRead: number;
   blockWrite: number;
   pids: number;
-  // Raw docker state; empty from an agent too old to send it.
   state: string;
-  // healthy | unhealthy | starting. EMPTY means no healthcheck at all.
   health: string;
   restartCount: number;
   netNsId: number;
@@ -86,7 +81,7 @@ export interface ContainerSample {
   memUsed: number;
   memLimit: number;
   memPct: number;
-  netRx: number; // cumulative bytes
+  netRx: number;
   netTx: number;
   blockRead: number;
   blockWrite: number;
@@ -103,13 +98,11 @@ interface ContainerLive extends ContainerSample {
 const SAMPLE_FIELDS = `online ts cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids running containers hostCores`;
 const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported instances { name running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids state health restartCount netNsId netNsHost }`;
 
-// A counter reset (container restart dropped the total) clamps to 0 rather than a spike.
 function rate(cur: number, prev: number, dtSec: number): number {
   if (dtSec <= 0) return 0;
   return Math.max(0, (cur - prev) / dtSec);
 }
 
-// ContainerMonitoringDashboard - the per-app / per-database Monitoring tab.
 export function ContainerMonitoringDashboard({
   kind,
   id,
@@ -127,7 +120,6 @@ export function ContainerMonitoringDashboard({
     kind === "app" ? "appMetricsHistory" : "databaseMetricsHistory";
   const idArg = kind === "app" ? "appId" : "databaseId";
 
-  // Configured PER-CONTAINER caps.
   const cpuLimitCores =
     resources?.cpuMilli != null ? resources.cpuMilli / 1000 : null;
   const memLimitMb = resources?.memoryMb ?? null;
@@ -135,7 +127,6 @@ export function ContainerMonitoringDashboard({
   const pidsLimit = resources?.pidsLimit ?? null;
   const hasLimits =
     cpuLimitCores != null || memLimitBytes != null || pidsLimit != null;
-  // Aggregate = per-container cap × running count; running 0 ⇒ leave usage host-relative.
   const cpuOf = (cpu: number, running: number) =>
     cpuLimitCores && running > 0 ? cpu / (cpuLimitCores * running) : cpu;
   const memPctOf = (memUsed: number, running: number, dockerPct: number) =>
@@ -154,11 +145,8 @@ export function ContainerMonitoringDashboard({
     [samples],
   );
 
-  // ONE read for both halves: two timers would double the request rate and land
-  // the tiles and the charts a beat apart.
   React.useEffect(() => {
     let active = true;
-    // Without this guard, ticks stack on a slow link and land out of order.
     let busy = false;
 
     const read = async () => {
@@ -183,16 +171,13 @@ export function ContainerMonitoringDashboard({
         if (!active || !res.ok || !res.data) return;
         setLast(res.data.live);
         if (res.data.history.length === 0) return;
-        // Keep every recorded measurement, `running: 0` included.
         const fresh = res.data.history.filter((s) => s.online);
         setSamples((prev) => {
           const byTs = new Map<number, ContainerSample>();
-          // Buffer samples second so they win a timestamp collision.
           for (const s of [...prev, ...fresh]) byTs.set(s.ts, s);
           const merged = [...byTs.values()]
             .sort((a, b) => a.ts - b.ts)
             .slice(-MAX_POINTS);
-          // Reads run faster than the agent's cadence, so most return the window already on screen.
           const head = merged[merged.length - 1];
           const prevHead = prev[prev.length - 1];
           if (merged.length === prev.length && head?.ts === prevHead?.ts) {
@@ -207,7 +192,6 @@ export function ContainerMonitoringDashboard({
 
     void read();
     const iv = setInterval(read, pollMs);
-    // A soft-nav back or bfcache restore may not remount, so a mount-only read never re-runs.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void read();
     };
@@ -231,7 +215,6 @@ export function ContainerMonitoringDashboard({
         return {
           ts: s.ts,
           values: {
-            // Inlined from cpuOf/memPctOf so the memo depends only on the primitive caps.
             cpu:
               cpuLimitCores && s.running > 0
                 ? s.cpu / (cpuLimitCores * s.running)
@@ -253,7 +236,6 @@ export function ContainerMonitoringDashboard({
   const cur = samples[samples.length - 1] ?? null;
   const curCpu = cur ? cpuOf(cur.cpu, cur.running) : 0;
   const curMemPct = cur ? memPctOf(cur.memUsed, cur.running, cur.memPct) : 0;
-  // Clamp the multiplier to ≥1 so the label reads sanely between polls.
   const runningCount = cur?.running ?? 0;
   const capMult = Math.max(runningCount, 1);
   const multiContainer = runningCount > 1;
@@ -261,9 +243,7 @@ export function ContainerMonitoringDashboard({
     cpuLimitCores != null ? cpuLimitCores * capMult : null;
   const memLimitAggMb = memLimitMb != null ? memLimitMb * capMult : null;
   const pidsLimitAgg = pidsLimit != null ? pidsLimit * capMult : null;
-  // Uncapped, memLimit is the MACHINE's RAM - counted once, so it doesn't move when a container stops.
   const memDenom = cur?.memLimit ?? 0;
-  // `curCpu` is a percentage of ONE core when uncapped, so the display divides by the core count to agree with the arc.
   const hostCores = cur?.hostCores ?? 0;
   const cpuAgainstHost = cpuLimitAggCores == null && hostCores > 0;
   const cpuGaugeFull = cpuAgainstHost ? hostCores * 100 : 100;
@@ -281,11 +261,9 @@ export function ContainerMonitoringDashboard({
     pidsLimit != null ? `PIDs ${pidsLimit}` : null,
   ].filter(Boolean) as string[];
 
-  // "Live" is a claim about the FEED: a read that returns last minute's frame is not live.
   const stale =
     Boolean(last && !last.online) ||
     (cur ? now - cur.ts > STALE_AFTER_MS : false);
-  // A stopped stack reports real zeros, so without this the tab drew 16 minutes of flat zero under "Live".
   const latest = last ?? cur;
   const nothingRunning = Boolean(
     latest && latest.containers > 0 && latest.running === 0,
@@ -315,7 +293,6 @@ export function ContainerMonitoringDashboard({
     );
   } else if (!cur) {
     if (last && !last.online) {
-      // "Offline" means the control plane holds NO frame for this stack.
       body = (
         <EmptyState
           graphic={<MonitoringGraphic />}
@@ -352,7 +329,6 @@ export function ContainerMonitoringDashboard({
   } else {
     body = (
       <>
-        {/* When caps are set, the % gauges read against the cap, not the host. */}
         {hasLimits && (
           <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
             <Gauge className="mt-0.5 size-4 shrink-0" />
@@ -371,7 +347,6 @@ export function ContainerMonitoringDashboard({
           </div>
         )}
 
-        {/* Current-value tiles */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <GaugeTile
             icon={Cpu}
@@ -453,7 +428,6 @@ export function ContainerMonitoringDashboard({
           )}
         </div>
 
-        {/* Real-time charts */}
         <div className="grid gap-4 lg:grid-cols-2">
           <ChartCard
             title="CPU usage"
@@ -539,7 +513,6 @@ export function ContainerMonitoringDashboard({
           </ChartCard>
         </div>
 
-        {/* Per-container breakdown (multi-container stacks only) */}
         {last && last.instances.length > 1 && (
           <ContainerBreakdown instances={last.instances} />
         )}
@@ -555,7 +528,6 @@ export function ContainerMonitoringDashboard({
   );
 }
 
-// Never colour alone - the word is always there; grey is "stopped", red only a real failure.
 function stateOf(c: InstanceMetrics): { dot: string; label: string } {
   if (c.health === "unhealthy")
     return { dot: "bg-destructive", label: "unhealthy" };
@@ -563,7 +535,6 @@ function stateOf(c: InstanceMetrics): { dot: string; label: string } {
     return { dot: "bg-[var(--warning)]", label: "starting" };
   switch (c.state) {
     case "running":
-      // An empty `health` is NO healthcheck, not a passing one.
       return {
         dot: "bg-[var(--success)]",
         label: c.health === "healthy" ? "healthy" : "running",
@@ -573,7 +544,6 @@ function stateOf(c: InstanceMetrics): { dot: string; label: string } {
     case "dead":
       return { dot: "bg-destructive", label: "dead" };
     case "":
-      // An agent too old to send a state; the running flag still arrives.
       return {
         dot: c.running ? "bg-[var(--success)]" : "bg-muted-foreground",
         label: c.running ? "running" : "stopped",

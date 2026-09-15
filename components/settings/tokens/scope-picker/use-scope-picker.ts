@@ -14,7 +14,6 @@ import {
   type ScopeSelection,
 } from "./selection";
 
-// Everything under a node becomes redundant the moment the node is ticked.
 function clearBelow(
   node: {
     environments?: { id: string; apps: ScopeTreeApp[] }[];
@@ -69,8 +68,6 @@ export interface ScopePickerState {
   tickAll: (on: boolean) => void;
 }
 
-// useScopePicker - the picker's search, expansion and selection state, and the
-// clamp rules that keep a ticked ancestor from contradicting what is under it.
 export function useScopePicker({
   tree,
   selection,
@@ -103,8 +100,6 @@ export function useScopePicker({
   const [open, setOpen] = React.useState<Set<string>>(() =>
     openForSelection(tree, selection),
   );
-  // While searching every surviving branch is open - a hit three folders deep is
-  // useless if you still have to find and expand its ancestors.
   const isOpen = (id: string) => searching || open.has(id);
   const toggleOpen = (id: string) =>
     setOpen((prev) => {
@@ -205,8 +200,6 @@ export function useScopePicker({
     emit({ teams, projects, folders, apps: a });
   }
 
-  // "All of it" is said in the vocabulary this picker has: whole teams when a
-  // team can be ticked, else every top-level node of the one team it edits.
   const allOn = teamPickable
     ? tree.every((t) => teams.has(t.id))
     : coversEverything(tree, selection);
@@ -222,8 +215,6 @@ export function useScopePicker({
               appIds: [],
             }
           : everythingSelection(tree);
-    // Nothing below a ticked top-level node needs saying, and the field must
-    // stay absent for a consumer that cannot express an environment.
     onChange({
       ...picked,
       environmentIds: selection.environmentIds === undefined ? undefined : [],

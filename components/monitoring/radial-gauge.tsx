@@ -6,13 +6,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { arcPath, gaugeFraction } from "@/lib/monitoring/chart-geometry";
 
-// The sweep opens at the bottom so the caption sits in the gap.
 const START_DEG = -120;
 const SWEEP_DEG = 240;
-// Same threshold as the saturation bars - past it the whole arc goes amber.
 const WARN_AT = 0.8;
 
-// RadialGauge - `full` is the ceiling the number is really measured against: a configured cap, or the whole machine.
 export function RadialGauge({
   value,
   full,
@@ -44,7 +41,6 @@ export function RadialGauge({
       role="img"
       aria-label={ariaLabel}
     >
-      {/* The track must stay visible or the ceiling is invisible: `--secondary` disappears against the card in dark. */}
       <path
         d={track}
         fill="none"
@@ -65,7 +61,6 @@ export function RadialGauge({
   );
 }
 
-// GaugeTile - the number is always text, so nothing here is carried by colour alone.
 export function GaugeTile({
   icon: Icon,
   label,
@@ -79,11 +74,8 @@ export function GaugeTile({
   icon: LucideIcon;
   label: string;
   value: number;
-  // The ceiling it is measured against - see RadialGauge.
   full: number;
-  // The reading as a person says it ("34%").
   display: string;
-  // What the ceiling is, in real units ("2.99 of 8 cores").
   caption: React.ReactNode;
   info?: React.ReactNode;
   color?: string;
@@ -103,7 +95,6 @@ export function GaugeTile({
             <span className="text-xs">{label}</span>
             {info && <InfoTip content={info} side="top" />}
           </div>
-          {/* Proportional figures: tabular-nums makes a big standalone number look loose. */}
           <p className="text-2xl font-semibold tracking-tight">{display}</p>
           <p className="truncate text-xs text-muted-foreground">{caption}</p>
         </div>

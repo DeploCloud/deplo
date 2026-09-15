@@ -1,6 +1,5 @@
 import { ALL_CAPABILITIES, type Capability } from "./types/identity";
 
-// The shipped templates a new API token can start from.
 export type TokenPresetId = "readonly" | "ci" | "mcp" | "automation" | "root";
 
 export interface TokenPreset {
@@ -10,15 +9,12 @@ export interface TokenPreset {
   capabilities: Capability[];
 }
 
-// Display order in the "New token" menu: least powerful first, so Root access is the scroll to the bottom.
 export const TOKEN_PRESETS: TokenPreset[] = [
   {
     id: "readonly",
     name: "Read only",
     description:
       "Reads apps, logs, monitoring and the activity log. Changes nothing.",
-    // Deliberately the same four the Viewer role grants: "Read only" for a token and
-    // "Viewer" for a person must mean the same thing.
     capabilities: ["view", "view_logs", "view_metrics", "view_activity"],
   },
   {
@@ -71,7 +67,6 @@ export function tokenPreset(id: string): TokenPreset | null {
   return TOKEN_PRESETS.find((p) => p.id === id) ?? null;
 }
 
-// The template a capability set matches EXACTLY, or null for a hand-picked set.
 export function presetIdFor(caps: Capability[]): TokenPresetId | null {
   const set = new Set(caps);
   return (

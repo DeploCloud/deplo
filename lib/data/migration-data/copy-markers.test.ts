@@ -116,8 +116,6 @@ test("accepting the loss unblocks the app, and says so in the trail", async () =
   assert.equal(trail.rows.length, 1);
 });
 
-// For a service RUNNING over there, "never started" is a claim about the source Deplo never
-// checked - the app came up on empty storage with nothing holding it back.
 test("a volume missing from a RUNNING service holds the deploy", async () => {
   await seedMigrationHostServer();
   state.notFoundVolumes.add("blink-web-abc_uploads");

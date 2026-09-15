@@ -1,4 +1,3 @@
-// FolderColor - a curated accent colour offered for a folder tile.
 export interface FolderColor {
   name: string;
   value: string;

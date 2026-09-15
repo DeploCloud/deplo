@@ -46,20 +46,17 @@ test("a Coolify answers as a Coolify", async (t) => {
   reset(t);
   const seen = only("/api/v1/projects");
   assert.equal(await detectMigrationSource(BASE, COOLIFY_TOKEN), "coolify");
-  // Sanctum's `<id>|<random>` put Coolify first, so one call was enough.
   assert.equal(seen.length, 1);
 });
 
 test("the token's shape only chooses the order, never the answer", async (t) => {
   reset(t);
-  // A Coolify whose token does not look like one: Dokploy is asked first and refuses.
   const seen = only("/api/v1/projects");
   assert.equal(await detectMigrationSource(BASE, DOKPLOY_KEY), "coolify");
   assert.equal(seen.length, 2);
   assert.ok(seen[0].includes("/api/project.all"));
 });
 
-// Two timeouts are thirty seconds of spinner for an address that answered neither time.
 test("a machine that does not answer is asked exactly once", async (t) => {
   reset(t);
   let calls = 0;
@@ -77,7 +74,6 @@ test("a machine that does not answer is asked exactly once", async (t) => {
 });
 
 test("Cloudflare's 521 stops the detection instead of quoting its page", async (t) => {
-  // A 52x is the PROXY talking, so the second guess is never tried: it would answer the same.
   reset(t);
   const seen: string[] = [];
   __setMigrationFetchForTest(async (url) => {
@@ -109,7 +105,6 @@ test("both refusing names both refusals", async (t) => {
       ),
   );
   await assert.rejects(detectMigrationSource(BASE, DOKPLOY_KEY), (e: Error) => {
-    // One sentence, then a log: the wizard shows the first line and puts the rest behind View logs.
     const [headline, ...log] = e.message.split("\n");
     assert.match(headline, /^Deplo could not read https:\/\/panel\.test/);
     assert.doesNotMatch(headline, /request failed|refused/);
@@ -124,7 +119,6 @@ test("both refusing names both refusals", async (t) => {
 test("a Coolify that refuses the token is named as one", async (t) => {
   reset(t);
   __setMigrationFetchForTest(async (url) => {
-    // The unauthenticated healthcheck, which only chooses the words.
     if (url.endsWith("/api/health")) return new Response("OK", { status: 200 });
     return new Response(JSON.stringify({ message: "API is disabled." }), {
       status: 403,
@@ -141,7 +135,6 @@ test("a Coolify that refuses the token is named as one", async (t) => {
   );
 });
 
-// A reverse proxy can answer 200 on /api/health, so a front page must not turn a mystery into a confident wrong answer.
 test("somebody's front page on /api/health decides nothing", async (t) => {
   reset(t);
   __setMigrationFetchForTest(async (url) => {
@@ -158,7 +151,6 @@ test("somebody's front page on /api/health decides nothing", async (t) => {
   );
 });
 
-// Deplo's own health is `{"ok":true}`, Dokploy's word for word: read by that alone, somebody's own panel came back a Dokploy.
 test("Deplo's own address is named as Deplo, not as a Dokploy", async (t) => {
   reset(t);
   __setMigrationFetchForTest(async (url) => {
@@ -199,6 +191,5 @@ test("a Dokploy that refuses the token is still a Dokploy", async (t) => {
     detectMigrationSource(BASE, DOKPLOY_KEY),
     /That is a Dokploy panel/,
   );
-  // Asked, and it answered nothing yoga would: the Deplo probe decides nothing here.
   assert.ok(seen.some((u) => u.endsWith("/api/graphql")));
 });

@@ -98,7 +98,6 @@ async function assembleApps(db: DbReader, rows: AppRow[]): Promise<App[]> {
   return rows.map((r) => assembleApp(r, children.get(r.id)!));
 }
 
-// One project + all its children in a bounded query set, or null if absent. NOT team-scoped.
 export async function loadAppGraph(
   id: string,
   db: DbReader = getDb(),
@@ -109,7 +108,6 @@ export async function loadAppGraph(
   return p ?? null;
 }
 
-/** Same as {@link loadAppGraph} but by slug. */
 export async function loadAppGraphBySlug(
   slug: string,
   db: DbReader = getDb(),
@@ -120,7 +118,6 @@ export async function loadAppGraphBySlug(
   return p ?? null;
 }
 
-/** Every project in a team, fully assembled (children batch-loaded). */
 export async function loadAppsByTeam(
   teamId: string,
   db: DbReader = getDb(),
@@ -129,7 +126,6 @@ export async function loadAppsByTeam(
   return assembleApps(db, rows);
 }
 
-/** A specific set of apps, fully assembled (children batch-loaded). */
 export async function loadAppsByIds(
   ids: string[],
   db: DbReader = getDb(),
@@ -139,13 +135,11 @@ export async function loadAppsByIds(
   return assembleApps(db, rows);
 }
 
-// The per-team data `summarize` needs as a PURE function: latest deployment + domain count.
 export interface SummaryPreload {
   latestDeployments: Map<string, Deployment>;
   domainCounts: Map<string, number>;
 }
 
-/** Batch-load the latest deployment + domain count for a set of apps. */
 export async function preloadSummaries(
   proj: App[],
   db: DbReader = getDb(),
@@ -181,7 +175,6 @@ export async function preloadSummaries(
   return { latestDeployments, domainCounts };
 }
 
-/** A single deployment by id (null if absent). */
 export async function loadDeployment(
   id: string,
   db: DbReader = getDb(),
@@ -194,7 +187,6 @@ export async function loadDeployment(
   return rows[0] ? assembleDeployment(rows[0]) : null;
 }
 
-// A project's deployments, newest-first with the `seq` tie-break; `limit` is pushed into SQL.
 export async function loadDeploymentsForApp(
   appId: string,
   opts: { limit?: number } = {},
@@ -229,7 +221,6 @@ async function assembleDomains(
   return rows.map((r) => assembleDomain(r, byDomain.get(r.id) ?? []));
 }
 
-/** All domains for a project (with middlewares), insertion order. */
 export async function loadDomainsForApp(
   appId: string,
   db: DbReader = getDb(),
@@ -238,7 +229,6 @@ export async function loadDomainsForApp(
   return assembleDomains(db, rows);
 }
 
-/** A single domain by id (with middlewares), null if absent. */
 export async function loadDomain(
   id: string,
   db: DbReader = getDb(),
@@ -252,7 +242,6 @@ export async function loadDomain(
   return d ?? null;
 }
 
-/** Insert a {@link Domain} + its ordered middleware rows (the shared write seam). */
 export async function insertDomain(
   db: DbReader,
   domain: Domain,
@@ -262,7 +251,6 @@ export async function insertDomain(
   if (mw.length > 0) await db.insert(domainMiddlewares).values(mw);
 }
 
-/** Every domain across a set of apps, batch-loaded (for listDomains). */
 export async function loadDomainsForApps(
   appIds: string[],
   db: DbReader = getDb(),
@@ -294,7 +282,6 @@ async function assembleEnvVars(
   return rows.map((r) => assembleEnvVar(r, byVar.get(r.id) ?? []));
 }
 
-/** All env vars for a project (with targets). */
 export async function loadEnvVarsForApp(
   appId: string,
   db: DbReader = getDb(),
@@ -303,7 +290,6 @@ export async function loadEnvVarsForApp(
   return assembleEnvVars(db, rows);
 }
 
-/** Env vars across a set of apps, batch-loaded (for the global Variables tab + deploy env). */
 export async function loadEnvVarsForApps(
   appIds: string[],
   db: DbReader = getDb(),
@@ -316,7 +302,6 @@ export async function loadEnvVarsForApps(
   return assembleEnvVars(db, rows);
 }
 
-/** A single env var by id (with targets), null if absent. */
 export async function loadEnvVar(
   id: string,
   db: DbReader = getDb(),
@@ -330,7 +315,6 @@ export async function loadEnvVar(
   return e ?? null;
 }
 
-// Insert the EnvVars + their target junction rows (one multi-row insert each).
 export async function insertEnvVars(
   db: DbReader,
   vars: EnvVar[],
@@ -341,7 +325,6 @@ export async function insertEnvVars(
   if (targets.length > 0) await db.insert(envVarTargets).values(targets);
 }
 
-// The scope predicate for any query over `apps`, or undefined when the caller isn't narrowed.
 export function appScopeWhere(): SQL | undefined {
   const scope = narrowedScope();
   if (!scope) return undefined;
@@ -351,12 +334,10 @@ export function appScopeWhere(): SQL | undefined {
   if (scope.folderIds.length > 0)
     clauses.push(inArray(apps.folderId, scope.folderIds));
   if (scope.appIds.length > 0) clauses.push(inArray(apps.id, scope.appIds));
-  // Fail closed: `inArray(col, [])` has changed behaviour across Drizzle versions.
   if (clauses.length === 0) return sql`false`;
   return clauses.length === 1 ? clauses[0] : or(...clauses)!;
 }
 
-// Load a project only if it belongs to `teamId`: the assembled App, or null.
 export async function loadTeamApp(
   appId: string,
   teamId: string,
@@ -366,7 +347,6 @@ export async function loadTeamApp(
   return p && p.teamId === teamId && inAppScope(p) ? p : null;
 }
 
-// What the app deploys from, or null when it isn't this team's or is outside the caller's scope.
 export async function appSourceInTeam(
   appId: string,
   teamId: string,
@@ -380,7 +360,6 @@ export async function appSourceInTeam(
   return (rows[0]?.source as DeploySource) ?? null;
 }
 
-/** True if a project belongs to a team, and is in the caller's scope. */
 export async function appInTeam(
   appId: string,
   teamId: string,
@@ -393,5 +372,3 @@ export async function appInTeam(
     .limit(1);
   return rows.length > 0;
 }
-
-// Shared env GROUPS are gone: the unified model lives in lib/data/shared-vars/ (ADR-0010).

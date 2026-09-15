@@ -4,7 +4,6 @@ function octal(value: number, length: number): string {
   return value.toString(8).padStart(length - 1, "0") + "\0";
 }
 
-// tarHeader - one 512-byte header block with a correct checksum.
 export function tarHeader(opts: {
   name: string;
   size: number;
@@ -32,7 +31,6 @@ export function tarHeader(opts: {
   return block;
 }
 
-// tarEntry - a header + its body, padded to whole 512-byte blocks.
 export function tarEntry(
   name: string,
   data: Buffer | string,
@@ -47,10 +45,8 @@ export function tarEntry(
   ]);
 }
 
-// TAR_END - the two zero blocks that close an archive.
 export const TAR_END = Buffer.alloc(BLOCK * 2, 0);
 
-// buildTar - a complete archive from `[name, data]` pairs.
 export function buildTar(files: [string, Buffer | string][]): Buffer {
   return Buffer.concat([
     ...files.map(([name, data]) => tarEntry(name, data)),
@@ -58,7 +54,6 @@ export function buildTar(files: [string, Buffer | string][]): Buffer {
   ]);
 }
 
-// tarStream - feed a buffer as an async stream, optionally sliced into small chunks.
 export async function* tarStream(
   buf: Buffer,
   chunkSize = buf.length,
@@ -68,7 +63,6 @@ export async function* tarStream(
   }
 }
 
-// paxRecord - a PAX record `"<len> <key>=<value>\n"`, where <len> counts its own bytes.
 export function paxRecord(key: string, value: string): Buffer {
   const kv = `${key}=${value}\n`;
   let size = Buffer.byteLength(kv) + 2;

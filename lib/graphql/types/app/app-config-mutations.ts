@@ -57,8 +57,6 @@ builder.mutationFields((t) => ({
         buildServerId: input.buildServerId ?? null,
         composeUpArgs: input.composeUpArgs ?? null,
         sharedVarIds: input.sharedVarIds ?? null,
-        // Remap `settings` to the stored `methodSettings` shape so method
-        // settings chosen at create time aren't silently dropped.
         build: input.build
           ? (remapBuildInput(input.build) as never)
           : undefined,
@@ -67,8 +65,6 @@ builder.mutationFields((t) => ({
         env: input.env?.map((e) => ({
           key: e.key,
           value: e.value,
-          // Anything but the two names lets the key heuristic decide, which is
-          // what omitting it does.
           type: e.type === "secret" || e.type === "plain" ? e.type : undefined,
         })),
         composeService: input.composeService ?? null,
@@ -109,9 +105,6 @@ builder.mutationFields((t) => ({
   }),
   reorderApps: t.field({
     type: "Boolean",
-    // Team-wide setting: an instance admin OR a member with manage_team. The
-    // data layer re-checks the same gate (defense-in-depth): `move_apps` moves
-    // ONE app between containers, it does not define the team's grid order.
     authScopes: { $any: { instanceAdmin: true, capability: "manage_team" } },
     description: "Set the team-wide display order of apps in Overview.",
     args: { appIds: t.arg.idList({ required: true }) },
@@ -257,9 +250,7 @@ builder.mutationFields((t) => ({
           type:
             v.type === "host"
               ? ("host" as const)
-              : // "service" is the wire spelling the volume editor has always
-                // sent for a files-dir bind; "app" is the domain-object one.
-                v.type === "app" || v.type === "service"
+              : v.type === "app" || v.type === "service"
                 ? ("app" as const)
                 : ("named" as const),
           name: v.name ?? "",

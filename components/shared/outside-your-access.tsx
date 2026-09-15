@@ -3,7 +3,6 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 
-// OutsideYourAccess renders a page a member on a limited role cannot have, rather than throwing.
 export function OutsideYourAccess({
   title,
   description,

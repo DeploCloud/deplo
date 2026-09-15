@@ -4,10 +4,8 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-// Kept in step with the `duration-300` below.
 const TRANSITION_MS = 300;
 
-// AnimatedHeight - a dialog body that is the height of its content and eases between sizes.
 export function AnimatedHeight({
   children,
   className,
@@ -29,7 +27,6 @@ export function AnimatedHeight({
   React.useLayoutEffect(() => {
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
-      // borderBoxSize: the dialog's `zoom-in-95` transform makes a rect read 95% of the real height.
       const h = entry.borderBoxSize?.[0]?.blockSize ?? el.offsetHeight;
       if (measured.current === h) return;
       const first = measured.current === undefined;
@@ -38,7 +35,6 @@ export function AnimatedHeight({
       setScrolls(scroll && h > window.innerHeight * 0.75);
       if (first) return;
       setGrowing(true);
-      // `transitionend` never fires under reduced motion, so the clip needs a way out that needs no animation.
       clearTimeout(settle.current);
       settle.current = setTimeout(() => setGrowing(false), TRANSITION_MS + 50);
     });

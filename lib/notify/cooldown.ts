@@ -17,7 +17,6 @@ const store = ((globalThis as Record<symbol, unknown>)[KEY] ??= new Map<
   Seen
 >()) as Map<string, Seen>;
 
-// How long the SAME state stays quiet; one-shot events pass no dedupe and never reach here.
 const COOLDOWN_MS: Partial<Record<AlertKey, number>> = {
   server_offline: 30 * 60_000,
   server_online: 30 * 60_000,
@@ -28,10 +27,8 @@ const COOLDOWN_MS: Partial<Record<AlertKey, number>> = {
   server_disk_low: 60 * 60_000,
   cleanup_failed: 6 * 60 * 60_000,
   agent_certificate_failed: 6 * 60 * 60_000,
-  // The dedupe state is the VERSION, so a new release re-fires instead of waiting out the week.
   deplo_update_available: 7 * 24 * 60 * 60_000,
   certificate_expiring: 24 * 60 * 60_000,
-  // Only fixable on the provider's own settings page, so a half-hourly nag just gets muted.
   git_access_missing: 24 * 60 * 60_000,
   domain_dns_drift: 24 * 60 * 60_000,
   failed_logins: 15 * 60_000,
@@ -39,7 +36,6 @@ const COOLDOWN_MS: Partial<Record<AlertKey, number>> = {
 
 const DEFAULT_COOLDOWN_MS = 30 * 60_000;
 
-// Emitters report every observation, good or bad, unconditionally; this decides who is told.
 export function shouldFire(
   key: AlertKey,
   id: string,
@@ -55,7 +51,6 @@ export function shouldFire(
   return true;
 }
 
-// Unref'd like `lib/security.ts`'s own sweeper: it must never be what keeps the process alive.
 const MAX_COOLDOWN_MS = Math.max(
   DEFAULT_COOLDOWN_MS,
   ...Object.values(COOLDOWN_MS).filter((v): v is number => v !== undefined),
@@ -70,7 +65,6 @@ if (typeof setInterval === "function" && process.env.NEXT_RUNTIME !== "edge") {
   (t as unknown as { unref?: () => void }).unref?.();
 }
 
-// Test hook - the map outlives a single test file otherwise.
 export function __resetCooldowns(): void {
   store.clear();
 }

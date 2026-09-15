@@ -5,11 +5,8 @@ import { useRouter } from "@/lib/nav";
 import { gqlSubscribe } from "@/lib/graphql-client";
 import type { DeploymentStatus } from "@/lib/types/deployment";
 
-// IN_PROGRESS deployments are still owned by the queue and the build job, so they
-// can only be CANCELED, never selected for deletion.
 export const IN_PROGRESS = new Set<DeploymentStatus>(["queued", "building"]);
 
-// STATUS_ORDER is the fixed lifecycle order the Status filter reads in.
 export const STATUS_ORDER: DeploymentStatus[] = [
   "queued",
   "building",
@@ -18,7 +15,6 @@ export const STATUS_ORDER: DeploymentStatus[] = [
   "canceled",
 ];
 
-// STATUS_LABELS is the one spelling of each deployment status in the UI.
 export const STATUS_LABELS: Record<DeploymentStatus, string> = {
   queued: "Queued",
   building: "Building",
@@ -27,8 +23,6 @@ export const STATUS_LABELS: Record<DeploymentStatus, string> = {
   canceled: "Canceled",
 };
 
-// Reuses the app-keyed `appStatus` stream: its `latestDeployment` carries the
-// in-flight build's current status.
 const DEPLOYMENT_STATUS_SUB = /* GraphQL */ `
   subscription DeploymentRowStatus($slug: String!) {
     appStatus(slug: $slug) {
@@ -47,7 +41,6 @@ type StatusSub = {
   } | null;
 };
 
-// useLiveDeploymentStatuses keeps the deployment Status chips live without a reload.
 export function useLiveDeploymentStatuses(
   rows: { id: string; appSlug: string; status: DeploymentStatus }[],
 ): (id: string, serverStatus: DeploymentStatus) => DeploymentStatus {
@@ -62,8 +55,6 @@ export function useLiveDeploymentStatuses(
     [overlay],
   );
 
-  // Distinct app slugs with an in-progress row, by EFFECTIVE status - the only apps
-  // whose deployment status can still change.
   const slugKey = React.useMemo(() => {
     const s = new Set<string>();
     for (const r of rows)
@@ -86,11 +77,8 @@ export function useLiveDeploymentStatuses(
             next.set(dep.id, dep.status);
             return next;
           });
-          // A settled build flips its actions/selectability too - pull fresh
-          // server data. Bounded: fires once, on the in-progress→terminal edge.
           if (!IN_PROGRESS.has(dep.status)) router.refresh();
         },
-        // A slug we can no longer watch (deleted/renamed app) must not spam.
         () => {},
       ),
     );

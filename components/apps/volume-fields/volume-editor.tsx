@@ -13,7 +13,6 @@ import { ComposeMountList } from "./compose-mount-list";
 import { AddMenu, EmptyPicker } from "./kind-picker";
 import { MountRow } from "./mount-row";
 
-// VolumeFields is the Storage editor: one collapsed line per entry, expanding into its form.
 export function VolumeFields({
   slug,
   volumes,
@@ -31,8 +30,6 @@ export function VolumeFields({
   composeMounts?: ComposeMount[];
   composeServices?: string[];
   defaultComposeService?: string | null;
-  // COSMETIC only - the authoritative gate is `requireMountHostVolumes()` inside
-  // `setAppVolumes`. A Bind stays selectable either way.
   canMountHostVolumes?: boolean;
   containerWorkdir?: string | null;
   revealProblems?: boolean;
@@ -63,8 +60,6 @@ export function VolumeFields({
     const id = `vol_${shortId()}`;
     onChange([
       ...volumes,
-      // Client-only draft id (never imports the server-only newId); the data
-      // layer keeps it or re-mints a vol_ id on save.
       { id, type: kind, name: "", mountPath: "", readOnly: false },
     ]);
     setExpandedId(id);

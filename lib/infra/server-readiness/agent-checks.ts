@@ -8,7 +8,6 @@ import {
 } from "./messages";
 import type { ReadinessCheck } from "./types";
 
-// BuildMethodSpec - a build method an operator can select, and the Hello flag it needs.
 export interface BuildMethodSpec {
   id: string;
   capability: string;
@@ -65,7 +64,6 @@ export const BUILD_METHODS: readonly BuildMethodSpec[] = [
   },
 ] as const;
 
-// PLATFORM_FEATURES - one row for all of them: a missing one means the agent predates it.
 export const PLATFORM_FEATURES: readonly {
   capability: string;
   name: string;
@@ -81,10 +79,6 @@ export const PLATFORM_FEATURES: readonly {
   { capability: "deploy.registry-auth", name: "private image registries" },
 ] as const;
 
-/**
- * The ONE failed row a dead / untrusted / broken agent produces. A TRUST failure is never
- * reported as "did not answer": the peer answered, it just isn't the agent we pinned.
- */
 export function helloFailure(err: unknown): ReadinessCheck {
   const row = (detail: string, hint: string): ReadinessCheck => ({
     id: "agent.hello",
@@ -104,11 +98,9 @@ export function helloFailure(err: unknown): ReadinessCheck {
   return row(READINESS_MESSAGES.agentError, READINESS_HINTS.agentLogs);
 }
 
-/** Deliberately local: lib/version.ts has no exported "is this comparable?" predicate. */
 const AGENT_SEMVER_RE = /^v?\d+\.\d+\.\d+/;
 const stripV = (v: string) => v.replace(/^v/i, "");
 
-// versionCheck - which version the agent runs, as a NEUTRAL fact.
 export function versionCheck(agentVersion: string): ReadinessCheck {
   const base = {
     id: "agent.version",

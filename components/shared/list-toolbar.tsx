@@ -7,7 +7,6 @@ import { ViewToggle, type ListView } from "@/components/shared/view-toggle";
 
 export type { ListView };
 
-// ListToolbar is the one search / filter / view / create row every list wears.
 export function ListToolbar({
   query,
   onQuery,

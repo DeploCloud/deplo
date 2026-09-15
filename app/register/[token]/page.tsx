@@ -26,8 +26,6 @@ export default async function RegisterPage(
             prefill={{ name: one(sp.name, 80), email: one(sp.email, 254) }}
           />
         ) : (
-          // The chrome stays outside the animated box: its `filter` would become
-          // the containing block and strand both fixed corners mid-screen.
           <>
             <AuthChrome />
             <div className="deplo-stagger w-full max-w-sm text-center">
@@ -51,7 +49,6 @@ export default async function RegisterPage(
   );
 }
 
-// A form default carried by the link (a migration fills these in), nothing the server acts on.
 function one(v: string | string[] | undefined, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }

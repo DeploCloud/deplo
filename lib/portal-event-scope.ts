@@ -1,6 +1,5 @@
 import type * as React from "react";
 
-// scopeListenersToSubtree - runs each listener only for events that started inside the element it is spread on.
 export function scopeListenersToSubtree<L extends object>(listeners: L): L {
   const scoped: Record<string, unknown> = {
     ...(listeners as Record<string, unknown>),

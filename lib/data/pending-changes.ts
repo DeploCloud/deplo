@@ -12,7 +12,6 @@ import {
 import { nowIso } from "../ids";
 import { requireAppCapability } from "./node-access";
 
-// markPendingChanges stamps apps whose config is not live yet; not a gate, callers already checked.
 export async function markPendingChanges(appIds: string[]): Promise<void> {
   if (appIds.length === 0) return;
   await getDb()
@@ -21,7 +20,6 @@ export async function markPendingChanges(appIds: string[]): Promise<void> {
     .where(inArray(appsTable.id, appIds));
 }
 
-// markPendingChangesForSharedVar stamps a var's per-app links (ADR-0012) plus its auto-inject teams.
 export async function markPendingChangesForSharedVar(
   varId: string,
 ): Promise<void> {
@@ -58,7 +56,6 @@ export async function markPendingChangesForSharedVar(
     );
 }
 
-// dismissPendingChanges clears the stamp without deploying.
 export async function dismissPendingChanges(appId: string): Promise<void> {
   const { teamId } = await requireAppCapability(appId, "manage_env");
   await getDb()

@@ -60,7 +60,6 @@ const ServerCertificateInputType = builder.inputType("ServerCertificateInput", {
 });
 
 builder.mutationFields((t) => ({
-  // MUTATIONS, not queries: they dial the host over the network, and the GraphQL route serves GET.
   serverCertificates: t.field({
     type: [ServerCertificateRef],
     authScopes: { instanceAdmin: true },

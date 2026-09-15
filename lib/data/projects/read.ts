@@ -18,7 +18,6 @@ import type { ProjectSummary } from "./rows";
 import type { AppStatus } from "../../types/app";
 import type { Project } from "../../types/team";
 
-// Team-wide manual container order (`team_project_order`), id→rank.
 async function projectOrderRank(teamId: string): Promise<Map<string, number>> {
   const rows = await getDb()
     .select({
@@ -30,23 +29,17 @@ async function projectOrderRank(teamId: string): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.projectId, r.position] as const));
 }
 
-// listProjects - containers in the active team, manual order then newest-first.
 export const listProjects = cache(async function listProjects(): Promise<
   ProjectSummary[]
 > {
   const teamId = await requireActiveTeamId();
-  // Both reaches, because a project list assembles its own rows instead of
-  // resolving them through `node-access.ts`, which is where a role scope is applied.
   const roleScope = await currentMemberScope();
   const rows = (
     await getDb()
       .select()
       .from(projectsTable)
       .where(eq(projectsTable.teamId, teamId))
-  )
-    // A narrowed API token, or a member on a limited role, sees ONLY the
-    // containers it reaches - wholly given, or holding a node given individually.
-    .filter((p) => inProjectScope(p.id) && projectInScope(roleScope, p.id));
+  ).filter((p) => inProjectScope(p.id) && projectInScope(roleScope, p.id));
   const rank = await projectOrderRank(teamId);
   const { folders, apps, environments } = await counts(teamId);
   return rows
@@ -60,15 +53,12 @@ export const listProjects = cache(async function listProjects(): Promise<
     });
 });
 
-// projectContents - a container's directly-contained folders and apps.
 export async function projectContents(projectId: string): Promise<{
   folders: { id: string; name: string; color: string | null }[];
   apps: { id: string; name: string; slug: string; status: AppStatus }[];
 }> {
   const teamId = await requireActiveTeamId();
   const scope = await currentMemberScope();
-  // Out of scope reads exactly like a container that isn't there, never a
-  // different answer that would confirm it exists.
   if (!inProjectScope(projectId)) return { folders: [], apps: [] };
   if (!projectInScope(scope, projectId)) return { folders: [], apps: [] };
   const folders = (
@@ -121,7 +111,6 @@ export async function projectContents(projectId: string): Promise<{
   return { folders, apps };
 }
 
-// getProjectBySlug - a single container by its team-scoped slug, or null.
 export async function getProjectBySlug(slug: string): Promise<Project | null> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
@@ -129,8 +118,6 @@ export async function getProjectBySlug(slug: string): Promise<Project | null> {
     .from(projectsTable)
     .where(and(eq(projectsTable.teamId, teamId), eq(projectsTable.slug, slug)))
     .limit(1);
-  // Both reaches, and null either way: a point lookup answers as if the id did
-  // not exist, so the refusal is never an oracle for which projects there are.
   return rows[0] &&
     inProjectScope(rows[0].id) &&
     projectInScope(await currentMemberScope(), rows[0].id)

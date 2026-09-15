@@ -36,7 +36,6 @@ async function setLogoIfUnset(
   if (updated.length > 0) publishAppChanged(appId);
 }
 
-// autoDetectLogoFromTree sets a logo from the tree an upload build just extracted.
 export async function autoDetectLogoFromTree(
   appId: string,
   currentLogo: string | null,
@@ -49,7 +48,6 @@ export async function autoDetectLogoFromTree(
   } catch {}
 }
 
-// autoDetectRepoLogo sets a logo from a GitHub repo's own files via the API.
 export function autoDetectRepoLogo(
   appId: string,
   currentLogo: string | null,
@@ -62,7 +60,6 @@ export function autoDetectRepoLogo(
     .catch(() => {});
 }
 
-// setFramework stores the framework recognised in an app's source.
 export async function setFramework(
   appId: string,
   framework: FrameworkId | null,
@@ -82,7 +79,6 @@ export async function setFramework(
   if (updated.length > 0) publishAppChanged(appId);
 }
 
-// canRecognizeFramework says whether THIS deploy can recognise a framework at all.
 export function canRecognizeFramework(app: {
   source: string;
   build: { buildMethod: BuildMethod };
@@ -91,7 +87,6 @@ export function canRecognizeFramework(app: {
   return app.source !== "docker-image" && app.source !== "compose";
 }
 
-// autoDetectRepoFramework recognises the framework in a GitHub repo and stores it.
 export function autoDetectRepoFramework(
   appId: string,
   repo: GitRepo,
@@ -102,7 +97,6 @@ export function autoDetectRepoFramework(
     .catch(() => {});
 }
 
-// autoDetectFrameworkFromTree recognises the framework in the extracted tree and stores it.
 export async function autoDetectFrameworkFromTree(
   appId: string,
   root: string,
@@ -113,11 +107,8 @@ export async function autoDetectFrameworkFromTree(
   } catch {}
 }
 
-// `compose up` returns once the containers are RUNNING, which is well before an app
-// is SERVING: a migration, a first-boot setup or a JIT warm-up sits between the two.
 const ICON_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
 
-// autoDetectComposeLogo sets a compose stack's logo from its files, then from what it serves.
 export function autoDetectComposeLogo(
   appId: string,
   currentLogo: string | null,

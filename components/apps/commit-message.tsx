@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 
-// CommitMessage - three lines of a commit message, with "Read more" when longer.
 export function CommitMessage({
   message,
   sha,
@@ -26,7 +25,6 @@ export function CommitMessage({
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // 1px of slack: sub-pixel line heights round scrollHeight up with nothing hidden.
     const measure = () => setClamped(el.scrollHeight - el.clientHeight > 1);
     measure();
     const observer = new ResizeObserver(measure);

@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/data/backups-and-restore
-
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -39,12 +37,8 @@ import { filterBackupsToScope, requireBackupCapability } from "./target-access";
 import type { Backup, BackupTargetKind } from "../../types/backup";
 import type { DatabaseType } from "../../types/database";
 
-// The ceiling on how many backups one schedule may keep, so a typo in a number
-// field can't ask a bucket to hold a decade of hourly dumps.
 const MAX_RETENTION_COUNT = 365;
 
-// At least one (a schedule that keeps nothing deletes its own work), and a
-// blank/zero field means the default rather than "none".
 function clampRetention(count: number): number {
   return Math.min(MAX_RETENTION_COUNT, Math.max(1, count || 7));
 }
@@ -53,16 +47,11 @@ export interface BackupDTO extends Backup {
   databaseName: string | null;
   serviceName: string | null;
   destinationName: string;
-  // Size of the newest artifact this schedule still holds. Null until one succeeds.
   lastSizeBytes: number | null;
-  // The target's own logo and, for a database, its engine.
   databaseType: DatabaseType | null;
   databaseLogo: string | null;
   serviceLogo: string | null;
-  // The app's slug, the address of its own Backups tab. Null if it is gone.
   serviceSlug: string | null;
-  // The server the backed-up app/database runs on, so the edit dialog can flag
-  // a destination sitting on that same disk. Null if the target is gone.
   targetServerId: string | null;
 }
 
@@ -97,8 +86,6 @@ export async function listBackups(): Promise<BackupDTO[]> {
     .from(backupsTable)
     .where(eq(backupsTable.teamId, teamId))
     .orderBy(desc(backupsTable.createdAt));
-  // A project-scoped caller sees the schedules of its own apps only: a database
-  // schedule belongs to no Project.
   const scoped = await filterBackupsToScope(rows.map(assembleBackup));
   const sizes = await newestArtifactSizes(
     teamId,
@@ -107,8 +94,6 @@ export async function listBackups(): Promise<BackupDTO[]> {
   return Promise.all(scoped.map((b) => toDTO(b, sizes.get(b.id) ?? null)));
 }
 
-// newestArtifactSizes - the newest surviving artifact of each schedule, in one
-// read. Ranked on `seq` rather than `finished_at`, which is nullable.
 async function newestArtifactSizes(
   teamId: string,
   ids: string[],
@@ -133,12 +118,9 @@ async function newestArtifactSizes(
   return out;
 }
 
-// Trim an incoming cron and REJECT it when it can't be parsed, never repair it.
 function normalizeSchedule(schedule: string): string {
   const expr = (schedule || DEFAULT_SCHEDULE).trim();
   if (!isValidSchedule(expr)) throw new Error(invalidScheduleMessage(expr));
-  // A dump every minute of a big volume pins the host's disk and the whole
-  // instance's backup scheduler behind it: at most every 15 minutes.
   if (backupTooFrequent(expr))
     throw new Error(
       'A backup can run at most every 15 minutes - pick specific minutes, e.g. "0,30 * * * *".',
@@ -146,8 +128,6 @@ function normalizeSchedule(schedule: string): string {
   return expr;
 }
 
-// The zone a schedule's cron is read in. Empty falls back to UTC, which is what
-// every schedule made before this was askable already meant.
 function normalizeTimezone(tz: string | null | undefined): string {
   const raw = (tz ?? "").trim();
   if (!raw) return "UTC";
@@ -167,8 +147,6 @@ export async function createBackup(input: {
   timezone?: string | null;
   retentionCount: number;
 }): Promise<BackupDTO> {
-  // The capability is asked ONCE, on the right thing: a database target has no
-  // node dimension and stays team-gated, an app target answers to its own node.
   const { membership } =
     (input.targetKind ?? "database") === "app" && input.appId
       ? await requireAppCapability(input.appId, "manage_backups")
@@ -184,13 +162,10 @@ export async function createBackup(input: {
   const appId = input.appId ?? null;
   const databaseId = input.databaseId ?? null;
 
-  // Destination and target both belong to this team; exactly one target is set.
   if (!(await destinationExists(input.destinationId, teamId)))
     throw new Error("Select a destination");
   if (targetKind === "database") {
     if (!databaseId) throw new Error("Select a database to back up");
-    // A principal who reaches only part of the team can't see any database, so
-    // it can't schedule a dump of one either - the answer its own reads give.
     if (!(await reachesWholeTeam()) || !(await databaseFor(databaseId, teamId)))
       throw new Error("Database not found");
   } else {
@@ -232,7 +207,6 @@ export async function toggleBackup(
   enabled: boolean,
 ): Promise<void> {
   const teamId = await requireActiveTeamId();
-  // Load first so the gate can be asked about the target, not just the team.
   const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
   await requireBackupCapability(b, "manage_backups");
@@ -242,8 +216,6 @@ export async function toggleBackup(
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));
 }
 
-// updateBackup - edit a schedule's name, destination, cron and retention. The
-// target binding is fixed at creation, and the scheduler re-reads every tick.
 export async function updateBackup(
   id: string,
   input: {
@@ -262,7 +234,6 @@ export async function updateBackup(
   const schedule = normalizeSchedule(input.schedule);
   const timezone = normalizeTimezone(input.timezone);
 
-  // The (possibly changed) destination must belong to this team.
   if (!(await destinationExists(input.destinationId, teamId)))
     throw new Error("Select a destination");
 

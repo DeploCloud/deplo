@@ -8,20 +8,16 @@ import { deployments as deploymentsTable } from "../db/schema/control-plane/depl
 import { dispatchAlert } from "./dispatch";
 import { shouldFire } from "./cooldown";
 
-// Kept in RAM: another writer on a 30s clock would start a write-war with the deploy pipeline.
 const KEY = Symbol.for("deplo.notify.crashloop");
-// App ids seen restarting on the PREVIOUS reconcile, per server.
 const lastSeen = ((globalThis as Record<symbol, unknown>)[KEY] ??= new Map<
   string,
   Set<string>
 >()) as Map<string, Set<string>>;
 
 const ALERTED_KEY = Symbol.for("deplo.notify.crashloop.alerted");
-// Recovery is announced ONLY for these, or every healthy app reports "running again" after a restart.
 const alerted = ((globalThis as Record<symbol, unknown>)[ALERTED_KEY] ??=
   new Set<string>()) as Set<string>;
 
-// Both lists are needed: the healthy one is what closes an open alert.
 export async function reportAppHealth(
   serverId: string,
   crashing: string[],
@@ -30,7 +26,6 @@ export async function reportAppHealth(
   const previous = lastSeen.get(serverId) ?? new Set<string>();
   lastSeen.set(serverId, new Set(crashing));
 
-  // Recovered: an app we ACTUALLY warned about that the frame now says is up.
   const recovered = healthy.filter(
     (id) =>
       alerted.delete(id) && shouldFire("app_crash_loop", `app:${id}`, "ok"),
@@ -66,12 +61,10 @@ export async function reportAppHealth(
       });
     }
   } catch (e) {
-    // Best-effort like the reconcile that calls us: a DB blip must not take down the telemetry stream.
     console.error("[deplo] app health alerting failed:", e);
   }
 }
 
-// Same guards as the status reconcile: this host owns it, no migration, no deploy in flight.
 async function appRows(serverId: string, ids: string[]) {
   if (ids.length === 0) return [];
   return getDb()

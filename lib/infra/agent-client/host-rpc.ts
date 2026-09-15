@@ -30,8 +30,6 @@ import {
 import { toAgentError } from "./errors";
 import { unary, type AgentChannel } from "./mtls-channel";
 
-// hostRpc - what a connection can ask of the HOST itself: its ports, its disk, its
-// clock, its Traefik and the panel it runs.
 export function hostRpc(
   channel: AgentChannel,
 ): Pick<
@@ -90,9 +88,6 @@ export function hostRpc(
       });
     },
     dockerCleanup(req: DockerCleanupRequest) {
-      // The response IS the DTO (per-scope results and all): the caller reads the
-      // whole report, so re-mapping it field by field would only risk dropping a
-      // scope the agent did report.
       return new Promise<DockerCleanupResponse>((resolve, reject) => {
         client.dockerCleanup(
           req,
@@ -102,8 +97,6 @@ export function hostRpc(
         );
       });
     },
-    // The four host-ops calls are plain unary calls whose response IS the DTO, so
-    // they share one helper rather than four near-identical Promise wrappers.
     hostInfo(req: HostInfoRequest) {
       return unary<HostInfoRequest, HostInfoResponse>(
         (r, md, opts, cb) => client.hostInfo(r, md, opts, cb),
@@ -136,8 +129,6 @@ export function hostRpc(
       return unary<UpdateControlPlaneRequest, UpdateControlPlaneResponse>(
         (r, md, opts, cb) => client.updateControlPlane(r, md, opts, cb),
         req,
-        // The agent downloads the installer before it answers; everything after
-        // that outlives the call.
         CONTROL_PLANE_UPDATE_DEADLINE_MS,
       );
     },

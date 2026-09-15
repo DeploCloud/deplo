@@ -6,14 +6,12 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 
-// Column widths, shared by the header and every row so they line up.
 const COL = {
   status: "w-32",
   build: "w-32",
   run: "w-36",
 };
 
-// Row is one line of the tree: a project, an environment or a service.
 export function Row({
   id,
   depth,
@@ -53,8 +51,6 @@ export function Row({
         "flex items-center gap-2 py-2 pr-3",
         depth === 0 && "bg-surface",
       )}
-      // Indent by depth rather than a class per level, exactly as the scope
-      // picker does - the two trees have to line up visually.
       style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
     >
       {expandable ? (
@@ -107,8 +103,6 @@ export function Row({
           )}
         </span>
       </label>
-      {/* Fixed-width cells on every row, empty ones included: the tree indents
-          only on the left, so this is what keeps the columns a column. */}
       <div className={cn("flex shrink-0 items-center justify-end", COL.status)}>
         {status}
       </div>

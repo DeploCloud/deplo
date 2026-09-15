@@ -26,7 +26,6 @@ import { CreateFolderDialog } from "@/components/apps/create-folder-dialog";
 import { CreateProjectDialog } from "@/components/apps/create-project-dialog";
 import { newAppHref, type OverviewPlacement } from "@/lib/overview-links";
 
-// AddNewMenu - the Overview "Add new" menu: one entry point to create an app, database, folder or project.
 export function AddNewMenu({
   canCreateApp,
   canCreateDatabase,
@@ -54,7 +53,6 @@ export function AddNewMenu({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Disabled buttons swallow pointer events; the focusable span keeps the tooltip reachable. */}
           <span tabIndex={0}>
             <Button size="sm" disabled>
               <Plus className="size-4" />
@@ -80,7 +78,6 @@ export function AddNewMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          {/* Flat, not a submenu: the wizard's own first step offers the sources and the catalogue. */}
           {canCreateApp && (
             <DropdownMenuItem asChild>
               <Link href={newAppHref(placement)} className="cursor-pointer">
@@ -91,7 +88,6 @@ export function AddNewMenu({
           )}
           {canCreateDatabase && (
             <DropdownMenuItem asChild>
-              {/* ?new=database opens the create-database modal on the Storage page. */}
               <Link href="/storage?new=database" className="cursor-pointer">
                 <Database className="size-4" />
                 Database

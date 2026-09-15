@@ -21,8 +21,6 @@ import {
   isFirstDeployment,
 } from "./deployments/deployment-queries";
 
-// `isFirstDeployment` is what gates the confetti on the deployment page.
-
 let db: TestDb;
 let pg: PGlite;
 

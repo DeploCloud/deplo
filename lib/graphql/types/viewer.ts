@@ -1,8 +1,6 @@
 import { builder } from "../builder";
 import type { PublicUser } from "@/lib/types/identity";
 
-// ViewerRef - the principal for the current request, same shape for a session
-// cookie or an `Authorization: Bearer deplo_…` token.
 export const ViewerRef = builder.objectRef<PublicUser>("Viewer").implement({
   description: "The authenticated principal for the current request.",
   fields: (t) => ({

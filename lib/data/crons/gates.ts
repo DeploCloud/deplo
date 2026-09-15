@@ -16,11 +16,6 @@ import { requireFolderCapabilityForApp } from "../folder-access";
 import { requireAppCapability } from "../node-access";
 import type { JobRow } from "./dto";
 
-/**
- * The gate for an APP's cron jobs: team, folder and per-node grants together,
- * which all answer "App not found" so the check is never an oracle for which ids
- * exist.
- */
 export async function gateApp(appId: string) {
   await requireAppCapability(appId, "manage_crons");
   await requireFolderCapabilityForApp(appId, "manage_crons");
@@ -30,11 +25,6 @@ export async function gateApp(appId: string) {
   return { app, teamId };
 }
 
-/**
- * Running as root on an app whose compose reaches the server (a bind of a host
- * folder, the docker socket) is the host grant by another door: the console runs
- * as the image's user, a job must not run as more.
- */
 export async function assertRunAsAllowed(
   app: { id: string } | null,
   user: string | null | undefined,
@@ -55,8 +45,6 @@ export async function assertRunAsAllowed(
     );
 }
 
-/** The gate for a DATABASE's cron jobs. Both capabilities: `manage_crons` alone
- *  is seeded from app-console access too. */
 export async function gateDatabase(databaseId: string) {
   const { teamId } = await requireCapability("manage_crons");
   await requireCapability("open_database_console");
@@ -71,7 +59,6 @@ export async function gateDatabase(databaseId: string) {
   return { teamId, database: rows[0] };
 }
 
-/** The gate for an existing job, resolved through whichever target it hangs off. */
 export async function gateJob(jobId: string): Promise<{
   job: JobRow;
   teamId: string;

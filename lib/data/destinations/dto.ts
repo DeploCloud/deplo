@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/data/backups-and-restore
-
 import { and, count, eq, inArray, sum } from "drizzle-orm";
 
 import { listAllServers } from "../servers/roster";
@@ -14,33 +12,27 @@ import type {
   DestinationStatus,
 } from "../../types/backup";
 
-// DestinationDTO is a destination as a client may see it - masked, never a credential.
 export interface DestinationDTO extends Omit<
   BackupDestination,
   "accessKeyEnc" | "secretKeyEnc" | "ageIdentityEnc"
 > {
   accessKeyMasked: string | null;
   serverName: string | null;
-  // A pruned artifact takes its run row with it, so a `success` row is a file that still exists.
   storedBytes: number;
   storedCount: number;
 }
 
-// DestinationOption is a destination as a PICKER needs it.
 export interface DestinationOption {
   id: string;
   name: string;
   kind: DestinationKind;
-  // The bucket endpoint, or `<server> · <path>` - what tells two apart.
   where: string;
   status: DestinationStatus;
-  // Which server holds it, so a caller can spot a same-disk backup.
   serverId: string | null;
   encrypted: boolean;
   recoveryKeySavedAt: string | null;
 }
 
-// toDestinationOption projects a destination down to DestinationOption.
 export function toDestinationOption(d: DestinationDTO): DestinationOption {
   return {
     id: d.id,
@@ -54,7 +46,6 @@ export function toDestinationOption(d: DestinationDTO): DestinationOption {
   };
 }
 
-// destinationWhere is the one-line "where does this point" string, for every picker and card.
 export function destinationWhere(d: DestinationDTO): string {
   if (d.kind === "s3") return d.endpoint ?? "";
   const server = d.serverName ?? "a removed server";
@@ -86,7 +77,6 @@ interface Stored {
 
 const EMPTY_STORED: Stored = { bytes: 0, count: 0 };
 
-// storedPerDestination reports what each destination holds, in one grouped read.
 export async function storedPerDestination(
   teamId: string,
   ids: string[],
@@ -109,7 +99,6 @@ export async function storedPerDestination(
     )
     .groupBy(backupRunsTable.destinationId);
   for (const r of rows) {
-    // `sum` comes back as a string (bigint), and as null for a group of NULLs.
     out.set(r.destinationId, {
       bytes: Number(r.bytes ?? 0),
       count: Number(r.runs ?? 0),
@@ -118,7 +107,6 @@ export async function storedPerDestination(
   return out;
 }
 
-// withServerNames attaches each `server` destination's host name in one lookup, not N.
 export async function withServerNames(
   destinations: BackupDestination[],
   stored: Map<string, Stored> = new Map(),
@@ -137,7 +125,6 @@ export async function withServerNames(
   );
 }
 
-// withServerName is withServerNames for the single-destination case.
 export async function withServerName(
   d: BackupDestination,
 ): Promise<DestinationDTO> {

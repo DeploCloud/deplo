@@ -19,7 +19,6 @@ test("an Environment owns the network; without one the team does", () => {
     appNetwork({ environmentId: null, teamId: "team_x" }),
     "deplo-team-team_x",
   );
-  // A folder never reaches this function, so it cannot change the answer.
   assert.equal(
     appNetwork({ teamId: "team_x" }),
     appNetwork({ environmentId: null, teamId: "team_x" }),
@@ -52,7 +51,6 @@ test("a platform network is never a tenant one", () => {
     "deplo-preview-shop__pr-1",
   ])
     assert.equal(isTenantNetwork(n), true);
-  // Not ours at all.
   assert.equal(isTenantNetwork("bridge"), false);
   assert.equal(isTenantNetwork("deplo-something-else"), false);
 });
@@ -67,8 +65,6 @@ test("an exhausted address pool is explained, everything else is passed through"
 });
 
 test("an exhausted pool is explained on the OLD docker wording too", () => {
-  // The hosts that hit the ~31 ceiling are precisely the ones running an older
-  // docker, so matching only the current phrasing would miss all of them.
   for (const raw of [
     "all predefined address pools have been fully subnetted",
     "could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network",

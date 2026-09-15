@@ -16,8 +16,6 @@ const LogLineRef = builder.objectRef<LogLine>("LogLine").implement({
   }),
 });
 
-// DeploymentRef takes `canRollback` from the caller when a list read already
-// computed it for the whole history; the field falls back to the single-row read.
 export const DeploymentRef = builder
   .objectRef<Deployment & { canRollback?: boolean }>("Deployment")
   .implement({
@@ -62,8 +60,6 @@ export const DeploymentRef = builder
       readyAt: t.exposeString("readyAt", { nullable: true }),
       buildDurationMs: t.exposeInt("buildDurationMs", { nullable: true }),
       creator: t.exposeString("creator"),
-      // Null for a webhook push (a GitHub login, not a Deplo user) and for rows
-      // predating it - both show the bare string with no picture.
       creatorUser: t.field({
         type: VarAuthorRef,
         nullable: true,
@@ -93,12 +89,9 @@ export const DeploymentRef = builder
       }),
       logs: t.field({
         type: [LogLineRef],
-        // A build log prints the app's build-time variables; `view_logs` is the
-        // permission that names exactly this read (re-checked in `getLogs`).
         authScopes: { capability: "view_logs" },
         description:
           "Build logs for this deployment (most recent lines, capped).",
-        // Capped so `apps { deployments { logs } }` can't amplify into unbounded memory.
         resolve: (d) => getLogs(d.id).then((lines) => lines.slice(-5000)),
       }),
       queuePosition: t.field({

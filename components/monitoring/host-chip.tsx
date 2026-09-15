@@ -3,7 +3,6 @@ import { Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// ManageServerButton - the link to a server's own page: agent, cleanup, teams, uninstall.
 export function ManageServerButton({
   id,
   className,
@@ -23,7 +22,6 @@ export function ManageServerButton({
   );
 }
 
-// HostChip - a stack's monitoring reads the same on any host, so a saturated chart without this sends you to the wrong server.
 export function HostChip({
   serverId,
   serverName,
@@ -31,7 +29,6 @@ export function HostChip({
 }: {
   serverId: string;
   serverName: string;
-  // The server pages are instance-admin only, so the link is hidden rather than 404ing.
   canManage: boolean;
 }) {
   return (

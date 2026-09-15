@@ -239,8 +239,6 @@ services:
 });
 
 test("`internal: yes` seals a network too - compose reads it as true", () => {
-  // The renderer parses YAML 1.2, where `yes` is the STRING "yes" while compose decodes it
-  // as a bool: an `=== true` check handed a sealed service its Environment's network back.
   const sealed = networksOf(`
 networks:
   priv:

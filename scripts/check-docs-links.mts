@@ -1,8 +1,3 @@
-/**
- * Verifies every entry of `lib/docs.ts` against the manual: page exists, and the
- * `#anchor` matches a real heading. Run it after the manual moves.
- *   bunx tsx scripts/check-docs-links.mts [path-to-DeploCloud/docs clone]
- */
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { DOCS, docsUrl, type DocsTopic } from "../lib/docs";
@@ -15,7 +10,6 @@ if (!existsSync(root)) {
   process.exit(1);
 }
 
-// github-slugger's character class, which is what fumadocs' remark-heading uses.
 const PUNCTUATION = /[ -⁯⸀-⹿\\'!"#$%&()*+,./:;<=>?@[\]^`{|}~]/g;
 
 function slugify(heading: string) {
@@ -36,7 +30,6 @@ function walk(dir: string, out: string[] = []) {
   return out;
 }
 
-/** A route group `(docs)` is stripped from the URL, `index` is its folder. */
 function urlFor(file: string) {
   let p = relative(root, file).replace(/\.mdx$/, "");
   p = p

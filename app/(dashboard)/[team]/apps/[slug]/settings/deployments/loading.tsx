@@ -7,11 +7,8 @@ import {
 } from "@/components/ui/card";
 import { SectionLabel } from "@/components/apps/settings/settings-skeletons";
 
-// Varied bar widths so the repo list placeholder reads like a real list
-// (mirrors GithubRepoPicker's own loading skeleton).
 const REPO_WIDTHS = ["w-1/2", "w-2/3", "w-2/5", "w-3/5", "w-1/3", "w-1/2"];
 
-/** Deployment settings (deploy source + build + automatic deployments). */
 export default function Loading() {
   return (
     <section
@@ -22,20 +19,17 @@ export default function Loading() {
     >
       <SectionLabel width="w-24" />
       <div className="space-y-6">
-        {/* Deploy Source */}
         <Card>
           <CardHeader>
             <Skeleton className="h-5 w-32" />
             <Skeleton className="h-4 w-80" />
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Source picker (GitHub · Git · Docker Image · Upload · Compose) */}
             <div className="flex flex-wrap items-center gap-2">
               {["w-24", "w-16", "w-32", "w-24", "w-28"].map((w, i) => (
                 <Skeleton key={i} className={`h-8 ${w} rounded-md`} />
               ))}
             </div>
-            {/* GitHub repo picker (default source) */}
             <div className="space-y-3">
               <Skeleton className="h-9 w-full rounded-md" />
               <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
@@ -49,7 +43,6 @@ export default function Loading() {
                 ))}
               </div>
             </div>
-            {/* Server select */}
             <div className="max-w-md space-y-2">
               <Skeleton className="h-4 w-16" />
               <Skeleton className="h-9 w-full rounded-md" />
@@ -60,7 +53,6 @@ export default function Loading() {
           </CardFooter>
         </Card>
 
-        {/* Build & Output Settings */}
         <Card>
           <CardHeader>
             <Skeleton className="h-5 w-44" />
@@ -91,7 +83,6 @@ export default function Loading() {
           </CardFooter>
         </Card>
 
-        {/* Automatic deployments */}
         <Card>
           <CardHeader>
             <Skeleton className="h-5 w-40" />

@@ -2,7 +2,6 @@
 
 import * as React from "react";
 
-// useNestedLayerDismissGuard guards a modal Dialog/Sheet against the same pointer gesture that dismisses a Radix popper nested inside it.
 export function useNestedLayerDismissGuard() {
   const openAtPointerDownRef = React.useRef<Element[]>([]);
 
@@ -19,7 +18,6 @@ export function useNestedLayerDismissGuard() {
     () =>
       openAtPointerDownRef.current.some(
         (content) =>
-          // Unmounted outright, or still mounted for an exit animation.
           !content.isConnected || content.getAttribute("data-state") !== "open",
       ),
     [],

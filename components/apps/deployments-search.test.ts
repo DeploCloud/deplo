@@ -27,8 +27,6 @@ const row: DeploymentRow = {
   url: "https://my-api.example.com",
 };
 
-// The search box has to find a row by the things a person actually copies out of
-// GitHub - a deployment id, a sha, a PR number, a branch - not just its name.
 test("a deployment is findable by id, sha, PR number, branch and app", () => {
   const hay = searchHaystack(row);
   for (const needle of [
@@ -56,7 +54,6 @@ test("the Created windows split at their edge, and 'older' is the complement", (
   assert.ok(matchesDateWindow(at(25), "7d", now));
   assert.ok(!matchesDateWindow(at(24 * 8), "7d", now));
   assert.ok(matchesDateWindow(at(24 * 8), "30d", now));
-  // Past 30 days only "older" matches - the windows and it partition the set.
   assert.ok(!matchesDateWindow(at(24 * 31), "30d", now));
   assert.ok(matchesDateWindow(at(24 * 31), "older", now));
   assert.ok(!matchesDateWindow(at(1), "older", now));

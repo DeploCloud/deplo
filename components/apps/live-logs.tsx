@@ -51,7 +51,6 @@ type LogsInfoResponse = {
   } | null;
 };
 
-// LiveLogs is the Logs page body: an App runtime logs, and nothing else.
 export function LiveLogs({
   appId,
   title,
@@ -114,7 +113,6 @@ export function LiveLogs({
           <PaneTitleLink title={title} />
           {toolbar}
         </div>
-        {/* Centred in what is left of the full-bleed frame. */}
         <div className="flex min-h-0 flex-1 items-center justify-center p-6">
           <EmptyState
             graphic={<LogsGraphic />}
@@ -154,7 +152,6 @@ export function LiveLogs({
   );
 }
 
-// runtimeNotice is what the log pane notice chip says when the container is not healthy.
 export function runtimeNotice(
   runtime: AppRuntimeView | null,
 ): LogNotice | null {

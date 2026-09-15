@@ -5,9 +5,7 @@ import { readConnectState } from "@/lib/github/manifest";
 import { upsertInstallation } from "@/lib/data/github";
 import { resolvePublicBaseUrl } from "@/lib/public-url";
 
-// GET is GitHub's post-install redirect, carrying `installation_id`.
 export async function GET(request: NextRequest) {
-  // Behind a reverse proxy request.nextUrl.origin is the internal origin, so a redirect built on it lands on the wrong host.
   const origin = resolvePublicBaseUrl(request.headers);
   const settings = new URL("/settings/git", origin);
 
@@ -34,7 +32,6 @@ export async function GET(request: NextRequest) {
       accountType: resolved.account.accountType,
       avatarUrl: resolved.account.avatarUrl,
     });
-    // The toast lives in the app shell, so the one-shot flag fires on whatever page the connect started from.
     const back =
       readConnectState(request.nextUrl.searchParams.get("state"), user.id)
         ?.returnTo ?? null;

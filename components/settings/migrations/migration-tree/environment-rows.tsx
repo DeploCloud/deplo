@@ -14,7 +14,6 @@ import { Row } from "./row";
 import { countLabel, tristate } from "./selection";
 import { ServiceRows } from "./service-rows";
 
-// EnvironmentRows is one environment of a project, with its services under it.
 export function EnvironmentRows({
   environment,
   hidden,
@@ -31,7 +30,6 @@ export function EnvironmentRows({
   showPorts,
 }: {
   environment: PlanEnvironment;
-  // The service ids a search left standing, or null when nothing is filtered.
   hidden: Set<string> | null;
   chosen: Set<string>;
   expanded: boolean;
@@ -45,8 +43,6 @@ export function EnvironmentRows({
   portConflicts: Record<string, PortConflict>;
   showPorts: boolean;
 }) {
-  // Counted over every service in the environment, not over the ones a search
-  // happens to be showing.
   const pickable = environment.services.filter(isImportable);
   const on = pickable.filter((s) => chosen.has(s.sourceId)).length;
   return (

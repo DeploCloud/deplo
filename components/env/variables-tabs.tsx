@@ -9,7 +9,6 @@ import {
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
 
-// Legacy deep links fold into the two tabs: `instance` is now a Teams scope (ADR-0027).
 const LEGACY: Record<string, string> = {
   service: "app",
   environments: "app",
@@ -17,7 +16,6 @@ const LEGACY: Record<string, string> = {
   instance: "shared",
 };
 
-// VariablesTabs - the Variables page's two tabs, with `?tab=shared` in the URL.
 export function VariablesTabs({
   all,
   shared,
@@ -45,7 +43,6 @@ export function VariablesTabs({
   return (
     <Tabs value={active} onValueChange={selectTab}>
       <UnderlineTabsList>
-        {/* The value stays `app` - what every ?tab= deep link carries. */}
         <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
       </UnderlineTabsList>

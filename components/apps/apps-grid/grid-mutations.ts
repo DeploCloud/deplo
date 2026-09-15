@@ -16,13 +16,9 @@ const MOVE_SERVICE_TO_PROJECT = `mutation($appId: ID!, $projectId: ID) { moveApp
 const DELETE_FOLDER = `mutation($id: ID!, $deleteApps: Boolean) { deleteFolder(id: $id, deleteApps: $deleteApps) }`;
 const DELETE_PROJECT = `mutation($id: ID!, $deleteApps: Boolean) { deleteProject(id: $id, deleteApps: $deleteApps) }`;
 const MOVE_FOLDER = `mutation($id: ID!, $parentId: ID) { moveFolder(id: $id, parentId: $parentId) }`;
-// Bulk variants: each is ONE server round-trip + ONE store write for the whole
-// selection (instead of N fanned-out per-id mutations).
 const BULK_MOVE = `mutation($ids: [ID!]!, $folderId: ID) { moveAppsToFolder(appIds: $ids, folderId: $folderId) }`;
 const BULK_DELETE = `mutation($ids: [ID!]!) { deleteApps(ids: $ids) }`;
 
-// useGridMutations is every server write the grid performs, each with its own
-// optimistic hide and the revert that puts a refused card back.
 export function useGridMutations({
   arrangement,
   openFolder,
@@ -71,8 +67,6 @@ export function useGridMutations({
     });
   }
 
-  // `onCreated` for the "New folder with selection" flow: move the selected
-  // apps into the folder the dialog just created (one bulk call).
   async function moveSelectionInto(folderId: string) {
     const ids = selectedAppIds;
     if (ids.length) await gqlAction(BULK_MOVE, { ids, folderId });
@@ -84,12 +78,7 @@ export function useGridMutations({
     const folderIds = selectedFolderIds;
     const projectIds = selectedProjectIds;
     const all = [...appIds, ...folderIds, ...projectIds];
-    // Every card goes on the CLICK, like a single delete does. A partial
-    // failure puts them all back and the refresh below re-hides whatever really
-    // went - the same contract `moveAppsToProject` uses for a batch.
     onDeleted(all);
-    // Apps go through ONE bulk mutation (one server write, bounded-
-    // concurrency teardown); folders and projects (usually few) delete per id.
     const results = await Promise.all([
       ...(appIds.length ? [gqlAction(BULK_DELETE, { ids: appIds })] : []),
       ...folderIds.map((id) =>
@@ -101,9 +90,6 @@ export function useGridMutations({
     ]);
     router.refresh();
     const failed = results.find((r) => !r.ok);
-    // Clear only on FULL success: a partial failure keeps the still-selected
-    // items so re-confirming retries them and the error stays meaningful, and
-    // keeps their cards, for the same reason.
     if (!failed) clearSelection();
     else onRestored(all);
     return failed ?? { ok: true as const, data: undefined };
@@ -138,8 +124,6 @@ export function useGridMutations({
     });
   }
 
-  // Move nested SUB-FOLDERS out one level - to the open folder's own parent, or to
-  // the top level when that parent is a root. One call each (no bulk endpoint).
   function moveFoldersOut(ids: string[]) {
     if (ids.length === 0) return;
     const dest = openFolder?.parentId ?? null;
@@ -172,8 +156,6 @@ export function useGridMutations({
     });
   }
 
-  // Move an app into a project container (or out, when projectId is null),
-  // with the same optimistic hide + refresh contract as moveApp.
   function moveAppToProject(appId: string, projectId: string | null) {
     setMovedIds((prev) => new Set(prev).add(appId));
     startTransition(async () => {
@@ -197,8 +179,6 @@ export function useGridMutations({
     });
   }
 
-  // The multi-selection variant: one mutation per app (no bulk endpoint),
-  // fired together and settled with a single refresh.
   function moveAppsToProject(ids: string[], projectId: string | null) {
     if (ids.length === 0) return;
     setMovedIds((prev) => {
@@ -218,22 +198,16 @@ export function useGridMutations({
         clearSelection();
       } else {
         toast.error(failed.error);
-        // Revert the whole batch's optimistic hide (like the single-item move): if EVERY
-        // mutation failed the refresh returns identical props, the sig never changes, and
-        // un-reverted ids would stay invisible forever.
         setMovedIds((prev) => {
           const next = new Set(prev);
           ids.forEach((id) => next.delete(id));
           return next;
         });
       }
-      // Refresh either way: a partial failure re-reveals whatever didn't move.
       router.refresh();
     });
   }
 
-  // The three reorders share one rule: the lifted card carries its whole
-  // multi-selection (`block`), and moves alone when it isn't part of one.
   function reorderAppList(activeId: string, overId: string, block: string[]) {
     const next = reorderBlock(order, activeId, overId, block);
     if (!next) return;

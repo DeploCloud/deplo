@@ -76,7 +76,6 @@ test("one line per neighbour, not per variable that names it", () => {
   assert.equal(refs.length, 1);
 });
 
-// A Docker network is local to its host: one Environment on two servers does not connect.
 test("a neighbour in the same environment on another server is reported", () => {
   const refs = crossNetworkRefs({ DB_HOST: "orders-db" }, [
     {

@@ -11,7 +11,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-// NoTeamAccessScreen - same answer as a team that does not exist, so the address leaks nothing.
 export function NoTeamAccessScreen({
   teams,
 }: {

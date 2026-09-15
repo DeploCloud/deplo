@@ -114,7 +114,6 @@ const ServerRestartReportRef = builder
   });
 
 builder.mutationFields((t) => ({
-  // Each takes an opaque serverId resolved through the pinned dial target, never an address.
   checkServerHostInfo: t.field({
     type: ServerHostInfoRef,
     authScopes: { instanceAdmin: true },

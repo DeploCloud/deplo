@@ -25,7 +25,6 @@ import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-// SharedVarEditDialog - edits one shared variable's value, never who receives it.
 export function SharedVarEditDialog(props: SharedVarEditDialogProps) {
   if (props.editing.type === "secret") return null;
   return <SharedVarEditForm {...props} />;
@@ -72,7 +71,6 @@ function SharedVarEditForm({
             teamIds: editing.teamIds,
             environmentIds: editing.environmentIds,
             projectIds: editing.projectIds,
-            // `appIds` is deliberately absent: an edit must never widen who the variable reaches.
           },
         },
       );
@@ -136,7 +134,6 @@ function SharedVarEditForm({
                 >
                   Value
                 </FieldLabel>
-                {/* Focus lands on the value: the key is disabled. */}
                 <Textarea
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
@@ -147,7 +144,6 @@ function SharedVarEditForm({
               </div>
               <SecretRow secret={secret} onChange={setSecret} />
 
-              {/* The scope, shown but not editable. */}
               <div className="space-y-2 rounded-lg border border-border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium">Shared with</p>

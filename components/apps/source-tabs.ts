@@ -10,12 +10,10 @@ export interface SourceTab {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   blurb: string;
-  // Literal hexes, not tokens: a brand colour is not themeable.
   brand: { bg: string; fg: string };
   veil: LogoAccent;
 }
 
-// SOURCE_TABS - the five deploy sources, in the order the wizard and settings show them.
 export const SOURCE_TABS: SourceTab[] = [
   {
     id: "github",

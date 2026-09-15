@@ -1,11 +1,8 @@
 import "server-only";
 
-// https://deplo.build/docs/operations/servers/container-registries
-
 import { parseImageRef, DOCKER_HUB_REGISTRY } from "./image-ref";
 import { assertSafeOutboundHost } from "../outbound-url";
 
-// Advertised so a multi-arch (index / manifest list) tag resolves on a HEAD instead of 404/406-ing.
 const MANIFEST_ACCEPT = [
   "application/vnd.oci.image.index.v1+json",
   "application/vnd.docker.distribution.manifest.list.v2+json",
@@ -16,7 +13,6 @@ const MANIFEST_ACCEPT = [
 const UA = "Deplo-Registry-Client";
 const DEFAULT_TIMEOUT = 8000;
 
-// SSRF guard for every outbound registry fetch: https only, through the ONE outbound host rule.
 async function isPublicHttpsUrl(url: string): Promise<boolean> {
   let parsed: URL;
   try {
@@ -33,7 +29,6 @@ async function isPublicHttpsUrl(url: string): Promise<boolean> {
   }
 }
 
-// Per-segment, so a repository path's parts cannot rewrite the URL.
 function encodeRepoPath(repository: string): string {
   return repository.split("/").map(encodeURIComponent).join("/");
 }
@@ -42,7 +37,6 @@ async function fetchJson<T>(
   url: string,
   init?: RequestInit & { timeoutMs?: number },
 ): Promise<{ status: number; body: T | null }> {
-  // Every target derives from user input or a probed host's own response (SSRF guard).
   if (!(await isPublicHttpsUrl(url))) return { status: 0, body: null };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), init?.timeoutMs ?? DEFAULT_TIMEOUT);
@@ -52,7 +46,6 @@ async function fetchJson<T>(
       signal: ctrl.signal,
       headers: { "User-Agent": UA, ...(init?.headers ?? {}) },
       cache: "no-store",
-      // A 302 out of a checked URL lands on a private/metadata target the guard never saw.
       redirect: "manual",
     });
     if (res.status >= 300 && res.status < 400) return { status: 0, body: null };
@@ -69,7 +62,6 @@ async function fetchJson<T>(
 }
 
 export interface ImageSuggestion {
-  /** Canonical reference to insert, e.g. "postgres", "grafana/grafana". */
   name: string;
   description?: string;
   official?: boolean;
@@ -87,7 +79,6 @@ interface HubSearchResponse {
   }[];
 }
 
-// Suggest image names for a query fragment; [] for non-Hub registries, which have no search API.
 export async function searchImages(
   query: string,
   limit = 8,
@@ -110,7 +101,6 @@ export async function searchImages(
 
 export interface TagSuggestion {
   name: string;
-  /** ISO timestamp when known (Docker Hub provides it; OCI tags/list does not). */
   lastUpdated?: string;
 }
 
@@ -123,7 +113,6 @@ async function dockerHubTags(
   limit: number,
   filter?: string,
 ): Promise<TagSuggestion[]> {
-  // Hub expects the namespaced path; image-ref already expands bare → library/.
   const params = new URLSearchParams({
     page_size: String(Math.min(limit, 100)),
     ordering: "last_updated",
@@ -155,7 +144,6 @@ async function ociToken(
   repository: string,
 ): Promise<string | null | "none"> {
   const probeUrl = `https://${registry}/v2/`;
-  // `registry` is user input, never probe a non-public target.
   if (!(await isPublicHttpsUrl(probeUrl))) return null;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
@@ -165,11 +153,10 @@ async function ociToken(
       headers: { "User-Agent": UA },
       signal: ctrl.signal,
       cache: "no-store",
-      // Never follow a 3xx off the checked host (SSRF: 302 → private target).
       redirect: "manual",
     });
     if (probe.status >= 300 && probe.status < 400) return null;
-    if (probe.ok) return "none"; // open registry, no auth needed
+    if (probe.ok) return "none";
     challenge = parseBearerChallenge(probe.headers.get("www-authenticate"));
   } catch {
     return null;
@@ -177,7 +164,6 @@ async function ociToken(
     clearTimeout(t);
   }
   if (!challenge) return null;
-  // The realm URL comes from the probed host's response, so it is re-checked like any input.
   if (!(await isPublicHttpsUrl(challenge.realm))) return null;
   const params = new URLSearchParams();
   if (challenge.service) params.set("service", challenge.service);
@@ -194,7 +180,6 @@ function ociAuthHeaders(token: string | null | "none"): Record<string, string> {
 
 export type CredentialCheck = "ok" | "rejected" | "unknown";
 
-// Does the credential authenticate here? "unknown" on an unreachable registry, so an outage cannot block a save.
 export async function checkRegistryCredential(
   registry: string,
   username: string,
@@ -209,7 +194,6 @@ export async function checkRegistryCredential(
       ? "registry-1.docker.io"
       : bare;
   const probeUrl = `https://${host}/v2/`;
-  // `registry` is user input, never probe a non-public target.
   if (!(await isPublicHttpsUrl(probeUrl))) return "unknown";
 
   const basic = {
@@ -230,7 +214,6 @@ export async function checkRegistryCredential(
   } finally {
     clearTimeout(t);
   }
-  // A Basic-only registry answers the probe itself; a token one 401s and ignores the header sent.
   if (probe.ok) return "ok";
   const challenge = parseBearerChallenge(probe.headers.get("www-authenticate"));
   if (!challenge) return probe.status === 401 ? "rejected" : "unknown";
@@ -244,7 +227,6 @@ export async function checkRegistryCredential(
     { headers: basic },
   );
   if (status === 200) return "ok";
-  // ghcr answers a bad credential 403, the Hub and GitLab 401.
   return status === 401 || status === 403 ? "rejected" : "unknown";
 }
 
@@ -252,7 +234,6 @@ interface OciTagsResponse {
   tags?: string[] | null;
 }
 
-// The OCI spec has no server-side name filter, so the whole list comes back and is filtered here.
 async function ociTags(
   registry: string,
   repository: string,
@@ -272,7 +253,6 @@ async function ociTags(
   return tags.slice(0, limit).map((name) => ({ name }));
 }
 
-// `filter` is forwarded so a specific version surfaces even when it is not among the newest tags.
 export async function listTags(
   imageRef: string,
   limit = 30,
@@ -291,11 +271,9 @@ export type ImageExistence = "exists" | "absent" | "private" | "unknown";
 
 export interface ExistenceResult {
   status: ImageExistence;
-  /** Resolved digest from the manifest HEAD, when the image exists. */
   digest?: string;
 }
 
-// Manifest HEAD on the v2 API: 200 exists, 404 absent, 401/403 after a token private.
 export async function checkImageExists(
   imageRef: string,
 ): Promise<ExistenceResult> {
@@ -312,7 +290,6 @@ export async function checkImageExists(
   const manifestUrl = `https://${registryHost}/v2/${encodeRepoPath(
     parsed.repository,
   )}/manifests/${encodeURIComponent(reference)}`;
-  // `registryHost` is user input, never HEAD a non-public target.
   if (!(await isPublicHttpsUrl(manifestUrl))) return { status: "unknown" };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
@@ -326,7 +303,6 @@ export async function checkImageExists(
       },
       signal: ctrl.signal,
       cache: "no-store",
-      // Never follow a 3xx off the checked host (SSRF: 302 to a private target).
       redirect: "manual",
     });
     if (res.status >= 300 && res.status < 400) return { status: "unknown" };
@@ -346,7 +322,6 @@ export async function checkImageExists(
   }
 }
 
-// A manifest, an index and the config blob - only the fields read here.
 interface ManifestDoc {
   config?: { digest?: string };
   manifests?: {
@@ -358,8 +333,6 @@ interface ConfigBlob {
   config?: { ExposedPorts?: Record<string, unknown> };
 }
 
-// The port the image declares in EXPOSE, else null - a guessed 3000 routes to a 502.
-// Read from the registry, never a pull: two small GETs, no layers.
 export async function imageExposedPort(
   imageRef: string,
 ): Promise<number | null> {
@@ -378,7 +351,6 @@ export async function imageExposedPort(
   let doc = (
     await fetchJson<ManifestDoc>(at(parsed.digest ?? parsed.tag), { headers })
   ).body;
-  // A multi-arch tag answers with an index; the declared port lives on the linux/amd64 entry.
   if (doc?.manifests?.length) {
     const pick =
       doc.manifests.find(
@@ -398,11 +370,8 @@ export async function imageExposedPort(
   return singleExposedPort(blob?.config?.ExposedPorts);
 }
 
-// Real config blobs are a few KB; this is the bound on an untrusted one.
 const CONFIG_BLOB_MAX = 256 * 1024;
 
-// Registries hand blobs to a CDN (Hub answers 307), so ONE redirect is followed, re-checked
-// against the same SSRF rule and WITHOUT the token - a CDN URL is pre-signed.
 async function fetchConfigBlob(
   url: string,
   headers: Record<string, string>,
@@ -443,7 +412,6 @@ async function fetchConfigBlob(
   }
 }
 
-// `{"80/tcp":{}}` -> 80; several ports is not an answer, so the app keeps its default.
 export function singleExposedPort(
   exposed: Record<string, unknown> | undefined | null,
 ): number | null {

@@ -17,8 +17,6 @@ import { setFolderGrant } from "./folder-access";
 import { writeAppFile, readAppStorageFile } from "./app-files";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 
-// A File volume's body is written under `configure_apps`, per team and per folder grant, at the data layer and not only in the field's authScopes.
-
 let db: TestDb;
 let pg: PGlite;
 

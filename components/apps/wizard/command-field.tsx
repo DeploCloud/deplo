@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 
-// CommandField - empty is a real answer (the builder decides), so Reset clears the field.
 export function CommandField({
   id,
   label,

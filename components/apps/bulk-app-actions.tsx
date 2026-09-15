@@ -67,7 +67,6 @@ const COPY: Record<
 
 const plural = (n: number) => `${n} app${n === 1 ? "" : "s"}`;
 
-// useBulkAppActions - the shared "Actions" submenu: one server-side mutation over every app inside.
 export function useBulkAppActions({
   scope,
   name,

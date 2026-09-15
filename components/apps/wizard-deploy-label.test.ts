@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-// Regression: with `deploy=false` the last step still offered a rocket labelled Deploy.
 test("the wizard's last step says what it will actually do", async () => {
   const steps = await Promise.all(
     ["details-step.tsx", "configure-step.tsx"].map((f) =>

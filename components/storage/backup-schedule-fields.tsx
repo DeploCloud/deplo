@@ -15,22 +15,18 @@ import {
 } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
-// The presets `createBackup` refuses, derived from its own rule so the two cannot drift.
 const TOO_FREQUENT = SCHEDULE_OPTIONS.filter((o) =>
   backupTooFrequent(cronFromParts({ ...DEFAULT_PARTS, mode: o.mode })),
 ).map((o) => o.mode);
 
-// DEFAULT_RETENTION mirrors the server's own default for an empty field.
 export const DEFAULT_RETENTION = 7;
 
-// suggestScheduleName derives "Backup every day" from the frequency itself.
 export function suggestScheduleName(cron: string): string {
   const mode = partsFromCron(cron)?.mode;
   const label = SCHEDULE_OPTIONS.find((o) => o.mode === mode)?.label;
   return label ? `Backup ${label.toLowerCase()}` : "Scheduled backup";
 }
 
-// BackupScheduleFields edits when a backup runs and how many are kept.
 export function BackupScheduleFields({
   idPrefix,
   schedule,
@@ -40,7 +36,6 @@ export function BackupScheduleFields({
   retention,
   onRetentionChange,
 }: {
-  // Prefix for the generated control ids, so two forms on one page still bind.
   idPrefix: string;
   schedule: string;
   onScheduleChange: (cron: string) => void;
@@ -49,7 +44,6 @@ export function BackupScheduleFields({
   retention: number;
   onRetentionChange: (count: number) => void;
 }) {
-  // Read once: the zone list ticks a live clock, and a fresh Date each render restarts it on every keystroke.
   const [pickerNow] = React.useState(() => Date.now());
   const dstWarning = dstSkipWarning(schedule, timezone);
 
@@ -91,7 +85,6 @@ export function BackupScheduleFields({
         >
           Keep
         </FieldLabel>
-        {/* The unit lives inside the field: "7" alone is unguessable, and it used to be days. */}
         <div className="relative">
           <Input
             id={`${idPrefix}-retention`}
@@ -117,7 +110,6 @@ export function BackupScheduleFields({
   );
 }
 
-// browserTimezone is the reader's own zone, the default for a new schedule.
 export function browserTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";

@@ -97,7 +97,6 @@ const COPY: Record<
 
 const APPS = ["1Password", "Bitwarden", "Google Authenticator", "Aegis"];
 
-// The `secret` an authenticator reads out of the otpauth:// URI.
 function secretOf(uri: string): string {
   try {
     return new URL(uri).searchParams.get("secret") ?? "";
@@ -106,7 +105,6 @@ function secretOf(uri: string): string {
   }
 }
 
-// TwoFactorWizard - turn two-factor on in four steps: password, scan, verify, recovery codes.
 export function TwoFactorWizard({
   open,
   onOpenChange,
@@ -141,7 +139,6 @@ export function TwoFactorWizard({
 
   function close() {
     onOpenChange(false);
-    // Deferred so the close animation does not play over an already-blanked form.
     setTimeout(reset, 200);
   }
 
@@ -170,7 +167,6 @@ export function TwoFactorWizard({
     setPending(false);
     if (!res.ok) {
       setError(res.error);
-      // A rejected code is never worth re-submitting.
       setCode("");
       return;
     }
@@ -225,12 +221,10 @@ export function TwoFactorWizard({
       <DialogContent
         selfManaged
         className="sm:max-w-lg"
-        // Once shown, the codes exist nowhere else: a stray click outside must not lose them.
         hideClose={locked}
         onInteractOutside={(e) => locked && e.preventDefault()}
         onEscapeKeyDown={(e) => locked && e.preventDefault()}
       >
-        {/* pr-8 keeps the rail clear of the absolutely-positioned close X. */}
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">
             Turn on two-factor authentication
@@ -241,14 +235,12 @@ export function TwoFactorWizard({
           <WizardStepper
             steps={STEPS}
             current={step}
-            // Strictly forward: every step depends on the response of the one before it.
             reachable={(s) => s === step}
             onSelect={setStep}
           />
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-4">
-          {/* Measured per step: padded to the tallest step, the QR step scrolled. */}
           <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
             <div className="flex flex-col items-center gap-2 text-center">
               <span
@@ -320,21 +312,18 @@ export function TwoFactorWizard({
 
             {step === "scan" && (
               <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-                {/* Black on white regardless of theme, or it will not scan. */}
                 <div className="mx-auto w-fit rounded-2xl border border-border bg-white p-3 shadow-sm ring-1 ring-black/5">
                   <QRCodeSVG
                     value={totpUri}
                     size={180}
                     bgColor="#ffffff"
                     fgColor="#0a0a0a"
-                    // "H" (30% recovery) pays for the excavated middle; any lower and the logo breaks the code - see lib/two-factor-qr.test.ts.
                     level="H"
                     marginSize={0}
                     imageSettings={{
                       src: deploMarkDataUri(),
                       height: 44,
                       width: 44,
-                      // Excavate rather than paint over: half a module under the badge reads as noise, not a gap.
                       excavate: true,
                     }}
                   />
@@ -418,7 +407,6 @@ export function TwoFactorWizard({
               type="button"
               variant="ghost"
               onClick={() => setStep(STEPS[index - 1].id)}
-              // Nothing before "scan" can be revisited (the enrolment happened) and nothing after "verify" undone.
               disabled={step !== "verify" || pending}
               className={cn(step !== "verify" && "invisible")}
             >

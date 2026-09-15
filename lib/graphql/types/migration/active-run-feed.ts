@@ -18,9 +18,6 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-// activeMigrationStream - live "is a migration running in this team".
-// Cookie-free: cookies() is not callable across the iteration ticks of a
-// long-lived SSE response, so the team is passed in from the GraphQL context.
 export async function* activeMigrationStream(
   teamId: string | null,
 ): AsyncGenerator<ImportRunDTO | null> {
@@ -31,8 +28,6 @@ export async function* activeMigrationStream(
     "migrationActivity",
     MIGRATION_ACTIVITY_TOPIC,
   )) {
-    // The channel is instance-wide (a team-wide feed has no per-resource key),
-    // so the payload says nothing this team cares about - re-read instead.
     void ping;
     const next = await headerMigrationForTeam(teamId);
     if (sameRun(last, next)) continue;
@@ -51,9 +46,6 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
     a.doneSteps === b.doneSteps &&
     a.totalSteps === b.totalSteps &&
     a.stepLabel === b.stepLabel &&
-    // A beat is a CHANGE: it is what tells a watching panel that somebody is
-    // still driving this, and a feed that swallowed it would leave every tab
-    // holding the last heartbeat before a silent phase.
     a.heartbeatAt === b.heartbeatAt &&
     a.created === b.created &&
     a.skipped === b.skipped &&

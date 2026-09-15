@@ -18,8 +18,6 @@ export default async function DatabaseBackupsPage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  // Backup/restore are infra ops (overwrite-in-place); gate on manage_backups. The
-  // tab is hidden without it, but guard the page too against a direct link.
   if (!(await hasCapability("manage_backups"))) {
     return (
       <EmptyState
@@ -31,8 +29,6 @@ export default async function DatabaseBackupsPage(
     );
   }
 
-  // Same lazy default as the Storage page: a database's Backups tab should not
-  // be the place someone discovers they have nowhere to put a backup.
   await ensureDefaultDestination();
   const [
     allBackups,
@@ -49,13 +45,11 @@ export default async function DatabaseBackupsPage(
     hasCapability("delete_backups"),
     hasCapability("manage_backup_destinations"),
   ]);
-  // Only this database's schedules - listBackups returns the whole team's.
   const schedules = allBackups.filter(
     (b) => b.targetKind === "database" && b.databaseId === db.id,
   );
 
   return (
-    // Same panel as an app's Backups tab, header included.
     <BackupsPanel
       target={{
         kind: "database",

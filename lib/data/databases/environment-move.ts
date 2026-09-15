@@ -13,8 +13,6 @@ import { environmentInTeam } from "../environments";
 import { mountsFor, requireDatabase } from "./rows";
 import { rerouteDatabase } from "./stack";
 
-// moveDatabaseToEnvironment - the twin of `moveAppToEnvironment`: the placement
-// IS the network, so the container is brought up again on it before this returns.
 export async function moveDatabaseToEnvironment(
   id: string,
   environmentId: string | null,
@@ -57,8 +55,6 @@ export async function moveDatabaseToEnvironment(
   );
 }
 
-// reapplyDatabaseNetwork - put moved databases onto the network their new
-// placement owns. The CALLER has gated the move. Best-effort.
 export async function reapplyDatabaseNetwork(ids: string[]): Promise<number> {
   let failed = 0;
   for (const id of ids) {
@@ -71,9 +67,6 @@ export async function reapplyDatabaseNetwork(ids: string[]): Promise<number> {
       const row = rows[0];
       if (!row) continue;
       const cur = assembleDatabase(row, await mountsFor(row.id));
-      // A stopped or still-provisioning database follows the move when it next
-      // starts, and COUNTS as not moved: the sweep's banner reads this number,
-      // and a silent skip is what let it claim a success it had not got.
       if (!cur) continue;
       if (cur.status !== "running") {
         failed++;

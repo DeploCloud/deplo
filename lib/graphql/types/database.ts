@@ -67,7 +67,6 @@ export const DatabaseRef = builder
       }),
       type: t.field({ type: DatabaseTypeEnum, resolve: (d) => d.type }),
       version: t.exposeString("version"),
-      // The password is NEVER a field - reveal it only via the revealConnection mutation.
       username: t.exposeString("username"),
       dbName: t.exposeString("dbName"),
       status: t.field({ type: DatabaseStatusEnum, resolve: (d) => d.status }),
@@ -156,7 +155,6 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     version: t.string({ required: true }),
     serverId: t.id({ required: false }),
     environmentId: t.id({ required: false }),
-    // Custom credentials apply ONLY at first init: the images honor POSTGRES_USER/DB and friends on first boot.
     username: t.string({ required: false }),
     dbName: t.string({ required: false }),
     password: t.string({ required: false }),
@@ -552,7 +550,6 @@ builder.subscriptionFields((t) => ({
       "Emits the database whenever its status changes (provisioning → running, " +
       "start/stop, redeploy, …). Fires once immediately with the current " +
       "snapshot, then on every change; ends when the database is deleted.",
-    // `loggedIn` opens the stream; the generator enforces team ownership.
     authScopes: { loggedIn: true },
     args: { id: t.arg.string({ required: true }) },
     subscribe: (_root, { id }, ctx) =>
@@ -561,14 +558,12 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-// databaseStatusStream must stay cookie-free: the iterator runs after the streaming Response returned.
 export async function* databaseStatusStream(
   id: string,
   teamId: string | null,
   userId: string | null,
 ): AsyncGenerator<DatabaseDTO> {
   if (!teamId || !userId) throw new Error("Database not found");
-  // The REACH check, resolved from the principal the context carries, not the request.
   if (await memberScopeFor(userId, teamId))
     throw new Error("Database not found");
   const first = await getDatabaseForTeam(id, teamId);

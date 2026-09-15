@@ -313,7 +313,6 @@ const UpdateUserAdminInputType = builder.inputType("UpdateUserAdminInput", {
   }),
 });
 
-// All optional and all defaulting to FALSE: an omitted flag must never be read as "destroy that too".
 const DeleteUserInputType = builder.inputType("DeleteUserInput", {
   fields: (t) => ({
     userId: t.string({ required: true }),
@@ -490,7 +489,6 @@ builder.mutationFields((t) => ({
       "Edit a user's instance-admin flag, suspended state, and password.",
     args: { input: t.arg({ type: UpdateUserAdminInputType, required: true }) },
     resolve: async (_r, { input }) => {
-      // An omitted (null) grant preserves the user's current value rather than clearing it.
       const current = await getUserDetail(input.userId);
       await updateUserAdmin({
         userId: input.userId,
@@ -541,7 +539,6 @@ builder.mutationFields((t) => ({
   }),
   transferInstanceOwner: t.field({
     type: "Boolean",
-    // instanceAdmin is the FLOOR: the data layer additionally requires the caller to BE the owner.
     authScopes: { instanceAdmin: true },
     description:
       "Hand instance ownership to another instance admin. Owner-only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.",

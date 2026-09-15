@@ -6,7 +6,6 @@ import { ProjectContainerCard } from "../project-container-card";
 import { FolderTrail } from "./folder-trail";
 import { gridClass, type GridProps } from "./grid-contract";
 
-// StaticGrid renders the grid without drag: search results, or no permission.
 export function StaticGrid({
   services,
   folders,
@@ -26,14 +25,11 @@ export function StaticGrid({
 }: GridProps) {
   return (
     <div className="relative min-h-[40vh] space-y-6">
-      {/* px-1 py-1 mirrors the DroppableBreadcrumb padding so the trail sits
-          in the same spot whether or not the grid is drag-reorderable. */}
       {(openFolder || openProject) && (
         <div className="px-1 py-1">
           <FolderTrail path={folderPath} view={view} />
         </div>
       )}
-      {/* Projects and folders share one grid, on the same level (ADR-0009). */}
       {(projects.length > 0 || folders.length > 0) && (
         <div className={gridClass(view)}>
           {projects.map((p) => (
@@ -59,7 +55,6 @@ export function StaticGrid({
           ))}
         </div>
       )}
-      {/* Ungrouped apps always get their own separate grid, same size. */}
       {services.length > 0 && (
         <div className={gridClass(view)}>
           {services.map((p) => (

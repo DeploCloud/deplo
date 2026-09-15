@@ -7,7 +7,6 @@ import { Tabs } from "@/components/ui/tabs";
 const TABS = ["databases", "destinations", "backups"] as const;
 export type StorageTabId = (typeof TABS)[number];
 
-// StorageTabs - the three sections of Storage, with the open one in the address bar.
 export function StorageTabs({
   defaultTab,
   children,
@@ -25,12 +24,10 @@ export function StorageTabs({
 
   function selectTab(tab: string) {
     const next = new URLSearchParams(params.toString());
-    // "New ▸ …" is what put us on a tab; picking one by hand overrules it.
     next.delete("new");
     if (tab === "databases") next.delete("tab");
     else next.set("tab", tab);
     const s = next.toString();
-    // Native History API, not `router.replace`: moving an underline must not re-run the page's server reads.
     window.history.replaceState(
       null,
       "",

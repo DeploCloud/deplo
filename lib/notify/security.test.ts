@@ -17,13 +17,11 @@ import { captureFetch, type FetchCapture } from "./fetch-capture-test-helpers";
 import { __resetCooldowns } from "./cooldown";
 import { noteFailedLogin } from "./security";
 
-// Driven as an attacker drives it, through a PUBLIC mutation: an address matching no account tells NOBODY.
 let db: TestDb;
 let pg: PGlite;
 let capture: FetchCapture | null = null;
 
 const USER_2 = "user_2";
-// `rateLimit`'s buckets are process-global and outlive one test, so every case gets its own address.
 const USER_3 = "user_3";
 
 before(async () => {
@@ -40,7 +38,6 @@ beforeEach(async () => {
   await pg.exec(
     `truncate table notification_alerts, notification_channels, users, teams restart identity cascade;`,
   );
-  // TEAM_A is the OLDEST team - the one the old fallback would have picked.
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -72,7 +69,6 @@ afterEach(() => {
   capture = null;
 });
 
-// Awaited one at a time: six concurrent increments against one bucket is a race.
 async function burst(subject: string) {
   for (let i = 0; i < 6; i++) await noteFailedLogin(subject);
 }
@@ -101,8 +97,6 @@ test("a burst under the limit says nothing at all", async () => {
 });
 
 test("the burst reaches the account's own team, not the oldest one", async () => {
-  // USER_2 is in TEAM_B, which has no channel. TEAM_A has one and is older, so
-  // a fallback to "the first team" would show up here as a call.
   await burst("user_2@example.io");
   assert.deepEqual(capture!.calls, []);
 });

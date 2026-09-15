@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/observability/cron-jobs
-
 import { and, eq, ne } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -36,11 +34,9 @@ async function hasOtherRunningRun(
 export interface ClaimOptions {
   trigger: "schedule" | "manual";
   actor: string;
-  // Overrides the derived key - a manual run is not a scheduled minute.
   dedupeKey?: string;
 }
 
-// claimRun inserts the run row for one fire, or null when this fire already has one.
 export async function claimRun(
   { job, target }: SchedulableJob,
   scheduledFor: Date,
@@ -63,8 +59,6 @@ export async function claimRun(
         dedupeKeyFor(job.schedule, scheduledFor, job.timezone),
       startedAt: now,
       attempt: 0,
-      // Frozen at insert: editing the job mid-flight must not move the deadline
-      // the reaper enforces, and the history must record what actually ran.
       command: job.command,
       timeoutSeconds: job.timeoutSeconds,
       maxAttempts: job.maxAttempts,
@@ -75,24 +69,16 @@ export async function claimRun(
   return run ? { run, job, target } : null;
 }
 
-// fireDueJobs starts every job due in this window. A job matching several of them fires
-// ONCE, on the last - late rather than not at all. Reap must precede fire: the overlap
-// rule reads the `running` rows.
 export async function fireDueJobs(
   minutes: Date[],
   heartbeat: () => Promise<boolean> = async () => true,
 ): Promise<void> {
-  // The replay window always ENDS with the tick's own minute, so its last entry
-  // is `now` - the deadlines a run is judged against come from one clock.
   const now = minutes[minutes.length - 1] ?? new Date();
   const jobs = await listSchedulableJobs();
   for (const schedulable of jobs) {
     if (!(await heartbeat())) return;
     const { job } = schedulable;
     try {
-      // A bad timezone throws out of `cronMatchesInZone`. Contained per job: one
-      // row written by something that bypassed validation must not stop the
-      // instance's other jobs from running.
       const fireAt = minutes
         .filter((m) => cronMatchesInZone(job.schedule, m, job.timezone))
         .pop();
@@ -104,7 +90,7 @@ export async function fireDueJobs(
         { trigger: "schedule", actor: "Scheduler" },
         now,
       );
-      if (!r) continue; // already fired for this minute
+      if (!r) continue;
 
       if (
         job.overlap === "skip" &&
@@ -137,8 +123,6 @@ export async function fireDueJobs(
   }
 }
 
-// runJobNow runs a job outside its schedule. "Skip this run" is a statement about the
-// COMMAND, so a button press cannot be the one caller allowed to start the second copy.
 export async function runJobNow(
   schedulable: SchedulableJob,
   actor: string,
@@ -168,9 +152,6 @@ export async function runJobNow(
   try {
     conn = await connectFn(schedulable.target.serverId);
   } catch (e) {
-    // Settle before rethrowing. A `running` row nobody is running starves every later
-    // fire under overlap=skip, and the next reap would LAUNCH the command - minutes
-    // after a button press that answered with an error.
     await settle(r, "failed", { error: agentMessage(e) }, at);
     throw new Error(agentMessage(e));
   }
@@ -182,7 +163,6 @@ export async function runJobNow(
   return r;
 }
 
-// cancelRun stops an in-flight run. Best-effort on the agent, authoritative in the store.
 export async function cancelRun(r: InFlightRun, actor: string): Promise<void> {
   if (r.run.agentJobId) {
     try {
@@ -192,11 +172,7 @@ export async function cancelRun(r: InFlightRun, actor: string): Promise<void> {
       } finally {
         conn.close();
       }
-    } catch {
-      // An unreachable agent must not block the cancel: the row is what the
-      // scheduler reads, and leaving it `running` would starve every later fire
-      // under overlap=skip. The command may outlive this; the message says so.
-    }
+    } catch {}
   }
   await settle(r, "failed", { error: `Stopped by ${actor}.` });
 }

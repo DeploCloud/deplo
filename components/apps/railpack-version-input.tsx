@@ -6,7 +6,6 @@ import {
   type VersionItem,
 } from "@/components/apps/version-combobox";
 
-// RailpackVersionInputProps - the list comes from `/api/railpack-versions`, the railpack GitHub releases cached server-side.
 export interface RailpackVersionInputProps {
   value: string;
   onChange: (value: string) => void;

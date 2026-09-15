@@ -4,7 +4,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// No DEPLO_DATABASE_URL: the store runs in its test-only in-memory mode.
 process.env.DEPLO_DATA_DIR = mkdtempSync(
   join(tmpdir(), "deplo-folder-access-"),
 );
@@ -56,7 +55,6 @@ test("withView always includes view, in canonical order", async () => {
 test("a granter can never hand out a capability they lack (double-bound)", async () => {
   const { boundedBy, withView } = await import("./folder-access");
   const { NODE_GRANTABLE_CAPABILITIES } = await import("../membership-shared");
-  // The double bound ADR-0016 kept: requested ∩ the granter's own caps ∩ NODE_GRANTABLE.
   const requested = ["deploy_apps", "manage_backups"] as const;
   const granterCaps = ["view", "deploy_apps"] as const;
   const result = withView(
@@ -75,7 +73,6 @@ test("a granter can never hand out a capability they lack (double-bound)", async
 test("a node grant can never name a team-wide capability", async () => {
   const { NODE_GRANTABLE_CAPABILITIES, PROJECT_SCOPED_CAPABILITIES } =
     await import("../membership-shared");
-  // A node grant must never be a route back to team administration.
   for (const cap of [
     "manage_members",
     "manage_roles",

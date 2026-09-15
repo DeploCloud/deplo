@@ -10,7 +10,6 @@ import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
-// DatabaseConnectionString shows one database's connection string in a `RevealChip`, covered by default.
 export function DatabaseConnectionString({
   id,
   masked,
@@ -19,7 +18,6 @@ export function DatabaseConnectionString({
 }: {
   id: string;
   masked: string;
-  // The viewer holds `manage_infra`; false drops the affordances entirely.
   canReveal?: boolean;
   className?: string;
 }) {
@@ -37,7 +35,6 @@ export function DatabaseConnectionString({
     );
     setPending(false);
     if (!res.ok) {
-      // Surface the server's own message verbatim: permission and not-found mean different things.
       toast.error(res.error);
       return null;
     }
@@ -98,7 +95,7 @@ function CopyConnection({
     setBusy(true);
     const v = await resolve();
     setBusy(false);
-    if (v === null) return; // resolve() already reported why
+    if (v === null) return;
     if (!(await copyText(v))) return;
     setCopied(true);
     window.clearTimeout(timer.current);

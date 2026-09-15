@@ -14,7 +14,6 @@ import { executeBackup } from "./execute-backup";
 import { MAX_RUNS_PER_TARGET } from "./retention";
 import type { Backup, BackupRun, BackupTargetKind } from "../../types/backup";
 
-// runBackup - run a backup SCHEDULE now (manual "Run now"). Real dump + upload + history.
 export async function runBackup(id: string): Promise<void> {
   const { membership } = await requireMembership();
   const teamId = membership.teamId;
@@ -32,8 +31,6 @@ export async function runBackup(id: string): Promise<void> {
   });
 }
 
-// runScheduledBackup - run a backup SCHEDULE unattended (the scheduler), the
-// session-free twin of runBackup.
 export async function runScheduledBackup(backup: Backup): Promise<void> {
   try {
     await executeBackup(backup.teamId, "Scheduler", {
@@ -44,14 +41,9 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
       destinationId: backup.destinationId,
       retentionCount: backup.retentionCount,
     });
-  } catch {
-    // executeBackup already recorded the run `failed` + logged the activity; the
-    // re-thrown error is for the interactive callers, not the scheduler.
-  }
+  } catch {}
 }
 
-// runAdHocBackup - "Back up now": one run with no owning schedule, sharing the
-// executor with `backupId: null`.
 async function runAdHocBackup(
   kind: BackupTargetKind,
   targetId: string,
@@ -67,8 +59,6 @@ async function runAdHocBackup(
     if (!(await loadTeamApp(targetId, teamId)))
       throw new Error("App not found");
   } else if (
-    // A principal who reaches only part of the team can't see any database, so
-    // they can't dump one either - the same answer their own reads give.
     !(await reachesWholeTeam()) ||
     !(await databaseFor(targetId, teamId))
   ) {
@@ -86,7 +76,6 @@ async function runAdHocBackup(
   });
 }
 
-// runAppBackup - ad-hoc "Back up now" for an app.
 export function runAppBackup(
   appId: string,
   destinationId: string,
@@ -94,7 +83,6 @@ export function runAppBackup(
   return runAdHocBackup("app", appId, destinationId);
 }
 
-// runDatabaseBackup - ad-hoc "Back up now" for a database.
 export function runDatabaseBackup(
   databaseId: string,
   destinationId: string,

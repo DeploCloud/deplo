@@ -54,7 +54,6 @@ async function revoke(capability: string) {
   await db
     .delete(membershipCapabilities)
     .where(eq(membershipCapabilities.membershipId, m.id));
-  // Re-seed everything except the one under test, so the caller still reaches the team at the `view` floor.
   const { ALL_CAPABILITIES } = await import("../types/identity");
   await db.insert(membershipCapabilities).values(
     ALL_CAPABILITIES.filter((c) => c !== capability).map((c) => ({
@@ -65,7 +64,6 @@ async function revoke(capability: string) {
 }
 
 test("a NEW team starts with MCP on", async () => {
-  // The COLUMN default is the whole test: no creation path writes this field, so the migration decides it.
   await db.insert(teamsTable).values({
     id: "team_fresh",
     name: "Fresh",
@@ -104,14 +102,12 @@ test("setMcpSettings turns it off and back on", async () => {
 });
 
 test("changing the policy needs manage_team, not manage_mcp", async () => {
-  // `manage_mcp` is a member's own permission to connect THEIR agents; the switch is a team setting.
   await revoke("manage_team");
   await assert.rejects(
     () => asUser1(() => setMcpSettings({ enabled: false })),
     /manage_team|permission|not allowed|capability/i,
     "a member without manage_team must be refused",
   );
-  // Reading is deliberately ungated: /api/mcp reads its own kill switch as whatever principal the token carries.
   const still = await asUser1(() => getMcpSettings());
   assert.equal(still.enabled, true, "and the switch did not move");
 });
@@ -119,7 +115,6 @@ test("changing the policy needs manage_team, not manage_mcp", async () => {
 test("the switch is per team, not per instance", async () => {
   await asUser1(() => setMcpSettings({ enabled: false }));
 
-  // Asserted on the row, not through `getMcpSettings`, which is `cache()`d for the request.
   const rows = await db
     .select({ id: teamsTable.id, enabled: teamsTable.mcpEnabled })
     .from(teamsTable);

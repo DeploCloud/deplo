@@ -88,7 +88,6 @@ export const BackupDestinationRef = builder
       serverName: t.exposeString("serverName", { nullable: true }),
       path: t.exposeString("path", { nullable: true }),
       resolvedPath: t.exposeString("resolvedPath", { nullable: true }),
-      // Float, not Int: a modern disk is well past 2^31 bytes.
       freeBytes: t.float({ nullable: true, resolve: (d) => d.lastFreeBytes }),
       totalBytes: t.float({ nullable: true, resolve: (d) => d.lastTotalBytes }),
       recoveryKeySavedAt: t.exposeString("recoveryKeySavedAt", {
@@ -136,7 +135,6 @@ const DestinationRemovalImpactRef = builder
     }),
   });
 
-// Mirror of `destinationWhere` in the data layer: the schema must not import a `server-only` module.
 function destinationWhereField(d: DestinationDTO): string {
   if (d.kind === "s3") return d.endpoint ?? "";
   const server = d.serverName ?? "a removed server";
@@ -242,10 +240,8 @@ const CreateDestinationInputType = builder.inputType("CreateDestinationInput", {
     bucket: t.string({ required: false }),
     accessKey: t.string({ required: false }),
     secretKey: t.string({ required: false }),
-    // Instance-admin only, checked in the data layer.
     allowPrivateEndpoint: t.boolean({ required: false }),
     s3ExtraArgs: t.string({ required: false }),
-    // `path` is instance-admin only; null means the agent's own managed store.
     serverId: t.string({ required: false }),
     path: t.string({ required: false }),
   }),

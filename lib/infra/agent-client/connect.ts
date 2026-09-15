@@ -20,7 +20,6 @@ import {
 } from "./mtls-channel";
 import { stackRpc } from "./stack-rpc";
 
-// dial builds a typed connection over an mTLS channel to the given target.
 export function dial(target: DialTarget): AgentConnection {
   const channel = openChannel(target);
   return {
@@ -42,7 +41,6 @@ export function dial(target: DialTarget): AgentConnection {
   };
 }
 
-/** Test-only: answer `connectAgent` with a stand-in. */
 let connector: ((serverId: string) => Promise<AgentConnection>) | null = null;
 
 export function __setAgentConnectorForTest(
@@ -51,16 +49,12 @@ export function __setAgentConnectorForTest(
   connector = fn ?? null;
 }
 
-// connectAgent opens a connection to the agent owning `serverId`; the caller must
-// `close()` it. An unreachable agent throws - there is no in-process fallback.
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
   if (connector) return connector(serverId);
   const target = await resolveTarget(serverId);
   return dial(target);
 }
 
-// connectAgentAt dials `serverId`'s agent at an OVERRIDDEN address (the verify-first
-// probe behind the address edit): same identity, same PINNED fingerprint.
 export async function connectAgentAt(
   serverId: string,
   overrides: { ip?: string; host?: string; agentPort?: number },

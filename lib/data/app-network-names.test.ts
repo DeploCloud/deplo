@@ -60,7 +60,6 @@ const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: "member_1", teamId: TEAM_A }, fn);
 
 test("an app named after the proxy keeps its name and takes another deploy key", async () => {
-  // `deplo-traefik` is the proxy's own DNS name on every tenant network, so the slug is taken.
   const app = await asUser1(() =>
     createApp({
       name: "Traefik",
@@ -76,7 +75,6 @@ test("an app named after the proxy keeps its name and takes another deploy key",
 });
 
 test("two creates racing for one service name: exactly one takes it", async () => {
-  // The check and the insert are two statements, so they run under one lock.
   const compose = "services:\n  db:\n    image: postgres:16\n";
   const results = await Promise.allSettled([
     asUser1(() =>

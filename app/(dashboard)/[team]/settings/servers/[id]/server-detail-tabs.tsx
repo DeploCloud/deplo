@@ -59,9 +59,7 @@ export type ServerSummary = {
   id: string;
   name: string;
   ip: string;
-  // The dial address as typed by the operator (usually identical to ip).
   host: string;
-  // The agent's gRPC port; null while the server is still provisioning.
   agentPort: number | null;
   status: string;
   cpuCores: number;
@@ -70,18 +68,12 @@ export type ServerSummary = {
   dockerVersion: string;
   allTeams: boolean;
   deployConcurrency: number;
-  // What this server is for; a host installed without Docker stays "storage" until its install command is re-run.
   role: "everything" | "build" | "storage";
-  // Whether this host compiles for an app whose own build server is down.
   buildFallback: boolean;
   isDeploHost: boolean;
   provisioning: boolean;
-  // null when the agent has never reported one.
   agentVersion: string | null;
-  // The version "Update agent" would install - the latest agent release.
   expectedAgentVersion: string;
-  // Computed server-side; true when the reported version is unknown or unparseable, so the repair path never
-  // disappears on the hosts that need it.
   agentUpdateAvailable: boolean;
 };
 
@@ -117,7 +109,6 @@ export function ServerDetailTabs({
     if (tab === "overview") next.delete("tab");
     else next.set("tab", tab);
     const s = next.toString();
-    // replace, not push: the back button should not have to walk through every tab flip.
     window.history.replaceState(
       null,
       "",
@@ -212,7 +203,6 @@ function OverviewTab({ server }: { server: ServerSummary }) {
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
   const [name, setName] = React.useState(server.name);
 
-  // Stored capacity from the agent: 0 means never measured, so it prints a dash, not a confident "0 cores".
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
   const num = (n: number) => (n > 0 ? String(n) : "—");
 
@@ -230,7 +220,6 @@ function OverviewTab({ server }: { server: ServerSummary }) {
         toast.error(res.error);
         return;
       }
-      // The field shows what was STORED, not what was typed.
       setName(next);
       toast.success(`Server renamed to ${next}`);
       router.refresh();
@@ -325,7 +314,6 @@ function OverviewTab({ server }: { server: ServerSummary }) {
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
           <AgentVersionBadge version={server.agentVersion} />
-          {/* Only when there is something to install. */}
           {server.agentUpdateAvailable ? (
             <Button
               size="sm"
@@ -424,7 +412,6 @@ function AccessTab({
           },
         },
       );
-      // Surfaces the "these teams still have apps/databases here" refusal verbatim.
       if (!res.ok) {
         toast.error(res.error);
         return;

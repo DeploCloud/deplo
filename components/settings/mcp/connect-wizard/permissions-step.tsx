@@ -21,7 +21,6 @@ import type { AgentDef } from "../agents";
 import { ToolsDialog, type McpToolSummary } from "../tools-dialog";
 import { StepShell } from "./step-shell";
 
-// PermissionsStep names the token and summarises what it may do, then mints it.
 export function PermissionsStep({
   agent,
   tools,

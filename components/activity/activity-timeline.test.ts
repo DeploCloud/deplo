@@ -30,14 +30,12 @@ function row(over: Partial<ActivityItem> & { id: string }): ActivityItem {
 test("stamp reads the ISO string in UTC, so no clock can disagree with it", () => {
   assert.equal(stamp("2026-08-26T14:32:11.000Z"), "26 Aug, 14:32");
   assert.equal(stamp("2026-01-02T00:05:00.000Z"), "2 Jan, 00:05");
-  // The month heading above the row carries the year, so the row does not.
   assert.equal(stamp("2025-12-31T23:59:00.000Z"), "31 Dec, 23:59");
   assert.equal(stamp("not a date"), "");
 });
 
 test("mentionAt finds the app's name only as a whole word", () => {
   assert.equal(mentionAt("Deployed api to production", "api"), 9);
-  // The one that matters: a short name must not light up inside a longer one.
   assert.equal(mentionAt("Deployed api-gateway to production", "api"), -1);
   assert.equal(mentionAt("Deployed api-gateway", "api-gateway"), 9);
   assert.equal(mentionAt("Updated build settings", "api"), -1);
@@ -76,7 +74,6 @@ test("foldRuns keeps a different person, message, app or database apart", () => 
 });
 
 test("foldRuns keeps two databases apart under one message", () => {
-  // "Restarted database x" is one sentence for every database: without the id two would collapse into a row naming only the first.
   const dbRow = (id: string, databaseId: string) =>
     row({
       id,
@@ -135,7 +132,6 @@ function headerClass(item: ActivityItem, repeats?: string[]): string {
 }
 
 test("the header line is the same height folded, unfolded or alone", () => {
-  // Regression: the geometry hung off `:not([open])`, so unfolding a run shifted its first line off the marker's centre.
   const one = headerClass(row({ id: "a" }));
   const run = headerClass(row({ id: "b" }), [
     "2026-08-26T14:32:11.000Z",

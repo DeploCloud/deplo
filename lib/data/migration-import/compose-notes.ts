@@ -18,8 +18,6 @@ import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
 import type { SourcePlatformShape } from "../../migration/map/source-platform";
 
-// What the compose adapter needs to know about the platform this service is on: the
-// name a note says, and the networks that are the platform's, not the stack's.
 export function composePlatform(
   c: SourceCredential,
   svc: { kind: string; id: string },
@@ -28,7 +26,6 @@ export function composePlatform(
   return { name: src.displayName, networks: src.platformNetworks(svc) };
 }
 
-// How many services a compose file declares, or null when it is not valid YAML.
 export function composeServiceCount(compose: string): number | null {
   let doc: unknown;
   try {
@@ -43,29 +40,19 @@ export function composeServiceCount(compose: string): number | null {
     : 0;
 }
 
-// Compose warnings worth a REPORT line, borrowed from the editor's own linter.
 export function composeAdvice(compose: string): string[] {
   return lintCompose(compose)
     .filter(
       (d) =>
         d.rule === "reserved-service-name" ||
         d.rule === "network-aliases-dropped" ||
-        // A service sharing another namespace (the host's, or a sidecar's) is not
-        // reachable through Deplo's proxy, so its address - if it had one over
-        // there - is now a host port and nothing else.
         d.rule === "network-mode-host" ||
         d.rule === "network-mode-conflict" ||
-        // A network the stack pins by name still deploys, so it is never a
-        // blocker - but the report is the only place it is ever mentioned to
-        // someone who holds the grant.
         d.rule === "foreign-network",
     )
     .map((d) => d.message);
 }
 
-// Which of Deplo's compose gates this file would trip, as sentences. Deliberately the
-// SAME predicates `createApp` runs, because the preview has no business disagreeing
-// with the write path.
 export function composeBlockers(
   compose: string,
   grants: { mayMountHost: boolean; mayExposePorts: boolean },
@@ -93,8 +80,6 @@ export function composeBlockers(
   return out;
 }
 
-// Why this compose cannot be created by the person running the import, or null. A
-// report that names a permission has to say who turns it on.
 export async function composeGrantRefusal(
   compose: string,
   name: string,

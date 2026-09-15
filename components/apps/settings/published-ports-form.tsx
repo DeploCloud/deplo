@@ -47,7 +47,6 @@ function toRows(ports: PublishedPort[]): Row[] {
   }));
 }
 
-// What is wrong with the set, in the words the server would use.
 function problemOf(rows: Row[]): string | null {
   const seen = new Set<string>();
   for (const r of rows) {
@@ -71,7 +70,6 @@ export function PublishedPortsForm({
 }: {
   appId: string;
   ports: PublishedPort[];
-  // COSMETIC: the real gate is `requireExposePorts()` inside `setAppPorts`.
   canExposePorts: boolean;
 }) {
   const router = useRouter();

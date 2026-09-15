@@ -23,14 +23,12 @@ import { cn } from "@/lib/utils";
 const dangerButton =
   "self-start border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive";
 
-// TransferCandidate - a member this team could be handed to.
 export interface TransferCandidate {
   userId: string;
   username: string;
   name: string;
 }
 
-// TeamDangerZone - `onlyTeam` disables the delete: a user must always keep at least one team.
 export function TeamDangerZone({
   teamId,
   teamName,
@@ -48,7 +46,6 @@ export function TeamDangerZone({
   canDelete: boolean;
   sharedVars: number;
   sharedVarsOtherTeamsUse: number;
-  // Only the team's primary owner may hand it over (lib/data/team-ownership.ts).
   canTransfer: boolean;
   candidates: TransferCandidate[];
   viewerTwoFactorEnabled: boolean;
@@ -115,13 +112,11 @@ export function TeamDangerZone({
               successMessage="Team deleted"
               confirmText={teamName}
               onConfirm={async () => {
-                // Echo back the id the user confirmed - the server fails closed if the active team changed in another tab.
                 const res = await gqlAction(
                   `mutation($teamId: String!) { deleteTeam(teamId: $teamId) }`,
                   { teamId },
                 );
                 if (res.ok) {
-                  // A full navigation, not the router: the router re-prefixes the team that no longer exists.
                   window.location.assign("/");
                 }
                 return res;
@@ -221,7 +216,6 @@ function TransferOwnership({
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            {/* Only when the account has one: asking everyone for a code they may not have is a dead end. */}
             {viewerTwoFactorEnabled && (
               <div className="space-y-2">
                 <Label htmlFor="transfer-code">

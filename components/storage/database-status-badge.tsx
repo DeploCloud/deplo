@@ -13,7 +13,6 @@ import {
 } from "@/lib/databases/display-status";
 import type { DatabaseStatus } from "@/lib/types/database";
 
-// Folds the live subscription (what the control plane last did) with a poll of the agent (what the container is doing).
 function useDisplayStatus(
   fallback: DatabaseStatus,
   id: string,
@@ -49,7 +48,6 @@ function detailFor(runtime: DatabaseRuntimeView | null): string | null {
   return null;
 }
 
-// DatabaseStatusBadge - the DB twin of AppStatusBadge.
 export function DatabaseStatusBadge({
   id,
   status,
@@ -72,7 +70,6 @@ export function DatabaseStatusBadge({
   );
 }
 
-// DatabaseStatusDot - the dot form, for the /storage list cards.
 export function DatabaseStatusDot({
   id,
   status,

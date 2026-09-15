@@ -1,6 +1,5 @@
 import { resolveLatestAgentRelease } from "@/lib/agent/release";
 
-// GET redirects to the agent binary on GitHub Releases (DeploCloud/deplo-agent).
 export async function GET(req: Request) {
   const arch =
     new URL(req.url).searchParams.get("arch") === "arm64" ? "arm64" : "amd64";

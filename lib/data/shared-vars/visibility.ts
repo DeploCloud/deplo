@@ -14,8 +14,6 @@ import {
 } from "../../db/schema/control-plane/env-vars";
 import type { EnvTarget, SharedVar } from "../../types/env";
 
-// visibleTo - a team SEES a variable it owns, or one shared into it. Every READ uses
-// this; a write keeps its own eq(teamId), because seeing is not editing (ADR-0027).
 export function visibleTo(teamId: string) {
   return or(
     eq(varsTable.teamId, teamId),
@@ -33,16 +31,12 @@ export function visibleTo(teamId: string) {
   );
 }
 
-// loadVisibleToTeam - the variables one team SEES: owned by it, or shared into it.
 export async function loadVisibleToTeam(teamId: string): Promise<SharedVar[]> {
   return stitch(
     await getDb().select().from(varsTable).where(visibleTo(teamId)),
   );
 }
 
-// visibleSharedVarIdsByKey - every shared variable the team SEES, by key.
-// No auth gate: the only caller is a migration import, already gated, and it needs the
-// keys a team would DUPLICATE - including one another team shared in under that name.
 export async function visibleSharedVarIdsByKey(
   teamId: string,
 ): Promise<Map<string, string>> {
@@ -120,7 +114,6 @@ async function stitch(
   }));
 }
 
-// appPlacement - the project and environment an app sits in, for the reachability test.
 export async function appPlacement(appId: string): Promise<{
   projectId: string | null;
   environmentId: string | null;
@@ -141,8 +134,6 @@ export async function appPlacement(appId: string): Promise<{
   };
 }
 
-// reachableFromApp - whether one shared var pertains to one app: linked to it, or
-// suggested by a project or environment the app lives in.
 export function reachableFromApp(
   v: {
     appIds: string[];
@@ -163,9 +154,6 @@ export function reachableFromApp(
     (app.projectId != null && v.projectIds.includes(app.projectId)) ||
     (app.environmentId != null &&
       v.environmentIds.includes(app.environmentId)) ||
-    // A variable that lands in this container with no link of its own must not be
-    // invisible to the one person allowed to see the app's variables. A team-wide one
-    // that does NOT auto-inject stays hidden on purpose - see authz-escape.test.
     (v.autoInject && v.teamIds.includes(app.teamId))
   );
 }

@@ -23,12 +23,9 @@ builder.mutationFields((t) => ({
     description: "Render the docker-compose stack an app would deploy.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: async (_r, { appId }) => {
-      // Team-scope the request before rendering (the render fn is unscoped).
       const project = await getAppById(appId);
       if (!project) throw new Error("App not found");
       const yaml = await renderAppStack(project.id);
-      // Served at the `view` floor: mask every env VALUE and the basic-auth
-      // htpasswd label, which rides a Traefik label rather than `environment:`.
       return yaml === null ? null : redactComposeForDisplay(yaml);
     },
   }),
@@ -69,9 +66,6 @@ builder.mutationFields((t) => ({
   }),
   setAppRollbackKeep: t.field({
     type: AppRef,
-    // `configure_apps`, not `rollback_apps`: how many rollbacks an app keeps is
-    // how much disk its images hold on the server, which is a setting, not the
-    // act of going back.
     authScopes: { capability: "configure_apps" },
     description:
       "How many previous deployments this app can be rolled back to (0-20, " +
@@ -92,7 +86,6 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "deploy_apps" },
     args: { id: t.arg.string({ required: true }) },
-    // Returns false if the deployment had already finished (nothing to stop).
     resolve: (_r, { id }) => cancelDeployment(id),
   }),
   cancelAllDeployments: t.field({

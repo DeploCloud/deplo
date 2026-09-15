@@ -26,19 +26,14 @@ import { planMembers } from "./source-people";
 export interface MigrationInvite {
   email: string;
   name: string;
-  // The single-use registration link, or null when they were added directly.
   link: string | null;
   outcome: string;
   message: string | null;
-  // What they were on the panel, for the note that says to grant it here.
   sourceRole?: string;
-  // Whether that address already has an account here.
   hasAccount?: boolean;
   avatarUrl?: string | null;
 }
 
-// listMigrationRunMembers - read from the RUN, never from the panel: the token is
-// wiped when a run ends, and the People step is often opened long after.
 export async function listMigrationRunMembers(
   runId: string,
 ): Promise<MigrationInvite[]> {
@@ -47,7 +42,6 @@ export async function listMigrationRunMembers(
   return runMembersOf(runId);
 }
 
-// The same list, with no gate - for a caller that has already checked.
 export async function runMembersOf(runId: string): Promise<MigrationInvite[]> {
   const rows = await getDb()
     .select()
@@ -76,9 +70,6 @@ export async function runMembersOf(runId: string): Promise<MigrationInvite[]> {
   const out: MigrationInvite[] = [];
   for (const r of rows) {
     const account = byEmail.get(r.email) ?? null;
-    // The token itself lives encrypted on the link row; this is the one reader.
-    // A link that has been used, revoked or has expired answers nothing, and the
-    // card then says what became of them instead.
     const link = r.linkId
       ? await revealRegistrationLink(r.linkId).catch(() => null)
       : null;
@@ -96,9 +87,6 @@ export async function runMembersOf(runId: string): Promise<MigrationInvite[]> {
   return out;
 }
 
-// Bring the source team's people over, once: everyone else gets ONE single-use link
-// per address for the whole migration, because a person on two teams of the panel is
-// one person and a second link is a second account the unique email would refuse.
 async function bringOverRunMembers(
   runId: string,
   c: SourceCredential,
@@ -107,13 +95,9 @@ async function bringOverRunMembers(
   await requireInstanceAdmin();
   if (!(await ownRun(runId, teamId)))
     throw new Error("That import run does not belong to this team.");
-  // Written down means done: the run brings its people over as it finishes, and
-  // a wizard asking again must not mint everybody a second link.
   const already = await runMembersOf(runId);
   if (already.length > 0) return already;
 
-  // The name, not the placeholder: these lines are handed back to the wizard as
-  // well as written to the report, and only the report resolves a `{panel}`.
   const panel = sourceClient(c).displayName;
   const report = new Report(runId, panel).at("Members");
   const people = await planMembers(c, teamId);
@@ -190,8 +174,6 @@ async function bringOverRunMembers(
         });
       } else {
         const mine = sessionLinks.get(p.email);
-        // Their link from an earlier team of this same panel, with this team
-        // added to it. Gone or spent, and they get a fresh one.
         const reused =
           mine != null &&
           (await addTeamToRegistrationLink(mine, teamId, "member"));
@@ -230,12 +212,9 @@ async function bringOverRunMembers(
   }
 
   await refreshCounts(runId, teamId);
-  // Read back rather than returned: one shape and one order for both doors into
-  // this - the run's own last act, and a client asking again afterwards.
   return out.length > 0 ? runMembersOf(runId) : out;
 }
 
-// Every address this migration has already minted a link for, and which link.
 async function linksMintedInSession(
   runId: string,
 ): Promise<Map<string, string>> {
@@ -258,9 +237,6 @@ async function linksMintedInSession(
   return new Map(rows.filter((r) => r.linkId).map((r) => [r.email, r.linkId!]));
 }
 
-// importMigrationMembers - the door for a client asking again after the run brought
-// its people over: it answers with what the run recorded rather than minting a second
-// set of links.
 export async function importMigrationMembers(
   input: ConnectInput & { runId: string },
 ): Promise<MigrationInvite[]> {
@@ -273,7 +249,6 @@ export async function importMigrationMembers(
   return bringOverRunMembers(input.runId, await credentialFor(input));
 }
 
-// importRunMembers - the run's own last act: its people, under the actor's identity.
 export async function importRunMembers(
   runId: string,
   c: SourceCredential,

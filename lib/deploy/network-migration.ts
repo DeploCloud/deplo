@@ -13,11 +13,8 @@ import { reapplyDatabaseNetwork } from "../data/databases/environment-move";
 import { usesAsHost } from "./cross-network";
 import { rerouteApp } from "./build/reroute";
 
-// Move every existing stack onto the network its placement owns, one host at a time.
-// https://deplo.build/docs/advanced/network-isolation
 export async function runNetworkIsolationSweep(): Promise<void> {
   const db = getDb();
-  // Claim the sweep: one UPDATE, so a second control plane finds no unclaimed row.
   const claimed = await db
     .update(instanceSettings)
     .set({ networkSweepAt: nowIso(), updatedAt: nowIso() })
@@ -55,7 +52,6 @@ export async function runNetworkIsolationSweep(): Promise<void> {
   for (const [, work] of byServer) {
     for (const id of work.apps) {
       try {
-        // `deferred` is NOT success: a stopped stack keeps its old network, and the sweep runs once.
         if ((await rerouteApp(id)) === "deferred") {
           failed++;
           await recordActivity(
@@ -95,7 +91,6 @@ export async function runNetworkIsolationSweep(): Promise<void> {
   );
 }
 
-// Give each placement-less database the Environment that uses it, when exactly one does.
 async function placeDatabasesByUsage(): Promise<number> {
   const db = getDb();
   const loose = await db
@@ -131,10 +126,8 @@ async function placeDatabasesByUsage(): Promise<number> {
 
   let placed = 0;
   for (const d of loose) {
-    // Every PLACEMENT that names this database, the team's top level ("") included.
     const places = new Set<string>();
     for (const app of users) {
-      // Same TEAM and same HOST, or one team's database lands in another team's Environment.
       if (app.teamId !== d.teamId || app.serverId !== d.serverId) continue;
       const h = haystack.get(app.id);
       if (!h) continue;
@@ -168,7 +161,6 @@ async function placeDatabasesByUsage(): Promise<number> {
   return placed;
 }
 
-/** The one placement that names a loose database, and only when that placement IS an Environment. */
 export function soleEnvironmentUsing(places: Set<string>): string | null {
   if (places.size !== 1) return null;
   return [...places][0] || null;
@@ -187,7 +179,6 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** What the Overview banner reads: how many stacks the sweep left behind. */
 export async function networkSweepFailures(): Promise<number> {
   const row = (
     await getDb()
@@ -199,9 +190,7 @@ export async function networkSweepFailures(): Promise<number> {
   return row?.failed ?? 0;
 }
 
-/** Re-run the sweep - the banner's "Try again". */
 export async function retryNetworkIsolationSweep(): Promise<void> {
-  // The field's authScopes are a contract, not the boundary: this touches every host in the instance.
   await requireInstanceAdmin();
   await getDb()
     .update(instanceSettings)

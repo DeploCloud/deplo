@@ -33,7 +33,6 @@ import { StepShell } from "../step-shell";
 import type { QueuedTeam, TeamTarget } from "../queue";
 import type { TargetTeam } from "../types";
 
-// ScanErrorLog - what each probe answered, out of the warning and behind one link.
 function ScanErrorLog({ log }: { log: string }) {
   const [open, setOpen] = React.useState(false);
   return (
@@ -61,7 +60,6 @@ function ScanErrorLog({ log }: { log: string }) {
   );
 }
 
-// ConnectStep - the panel address, the tokens, and the list of teams they read.
 export function ConnectStep({
   url,
   setUrl,

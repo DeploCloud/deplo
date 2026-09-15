@@ -42,7 +42,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { CronJobDTO } from "@/lib/data/crons/dto";
 
-// One scheduler tick to launch the run, plus the reap that settles a quick command.
 const AFTER_FIRE_MS = 8_000;
 
 const RUN_NOW = /* GraphQL */ `
@@ -62,7 +61,6 @@ const DELETE = /* GraphQL */ `
 `;
 
 function LastStatus({ job }: { job: CronJobDTO }) {
-  // `lastStatus` is written when a run settles, so it can never say a run is in flight.
   if (job.running) {
     return (
       <SimpleTooltip content="A run is in flight">
@@ -82,7 +80,6 @@ function LastStatus({ job }: { job: CronJobDTO }) {
     succeeded: { variant: "success", label: "Succeeded" },
     failed: { variant: "destructive", label: "Failed" },
     timedout: { variant: "destructive", label: "Timed out" },
-    // Grey, not red: nothing went wrong, it simply did not run.
     skipped: { variant: "muted", label: "Skipped" },
     lost: { variant: "warning", label: "Unknown" },
     running: { variant: "warning", label: "Running" },
@@ -127,7 +124,6 @@ function CronJobRow({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const { hide, restore } = useOptimisticRow(job.id);
   const [pending, startTransition] = React.useTransition();
-  // Bumped after a run starts: an already-open history would wait out its own poll.
   const [historyKey, setHistoryKey] = React.useState(0);
 
   function runNow() {
@@ -139,7 +135,6 @@ function CronJobRow({
         toast.error(res.error);
         return;
       }
-      // The run can already be over when the mutation answers (stopped container, overlap skip).
       const run = res.data?.runCronJobNow;
       if (run?.status === "skipped") {
         toast.warning(run.error ?? "Skipped");
@@ -191,7 +186,6 @@ function CronJobRow({
               </div>
               <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <ScheduleLabel cron={job.schedule} timezone={job.timezone} />
-                {/* Server and browser first paint can disagree by a second at hydration. */}
                 {nextRunAt !== null && (
                   <span suppressHydrationWarning>
                     · next {timeAgo(nextRunAt)}
@@ -262,7 +256,6 @@ function CronJobRow({
         )}
       </div>
 
-      {/* Mounted only while open, so the dialog seeds from `job` at mount, with no sync effect. */}
       {editing && (
         <CronJobDialog
           open
@@ -320,7 +313,6 @@ export function CronJobsList({
   const router = useRouter();
   const [creating, setCreating] = React.useState(false);
 
-  // One ticker: a server-rendered "next run" ages into the past, so times follow the reader's clock.
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -334,10 +326,7 @@ export function CronJobsList({
       : null,
   );
 
-  // A fire writes a run row and touches nothing this list renders from, so refresh on rollover.
   // ponytail: a fire is the only trigger, so a run somebody ELSE starts by hand
-  //   on a page whose next fire is hours away waits for a reload. Upgrade: poll
-  //   `appCronJobs` on a slow interval, which costs no RSC re-render.
   const soonest = Math.min(...nextRuns.filter((n): n is number => n !== null));
   const lastSoonest = React.useRef(soonest);
   React.useEffect(() => {
@@ -374,7 +363,6 @@ export function CronJobsList({
 
   return (
     <div className="space-y-4">
-      {/* A section title inside the app, not a page title. */}
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Cron jobs</h3>
@@ -399,7 +387,6 @@ export function CronJobsList({
       ) : (
         <Card>
           <CardContent className="space-y-2 pt-6">
-            {/* Rows hide themselves on delete - see `OptimisticList`. */}
             <OptimisticList>
               {jobs.map((job, i) => (
                 <CronJobRow
@@ -418,7 +405,6 @@ export function CronJobsList({
         </Card>
       )}
 
-      {/* Follow a run until it settles, then stop. */}
       <AutoRefresh active={jobs.some((j) => j.running)} intervalMs={10_000} />
 
       {creating && (

@@ -28,10 +28,8 @@ test("adaptComposeForDeplo points a stack's storage at its own volumes", () => {
 
   const { compose, changes } = adaptComposeForDeplo(source);
   const doc = yaml.load(compose) as { volumes: Record<string, unknown> };
-  // Both pointed off the stack, and the copy writes THIS app's volume: otherwise `compose up` fails on storage nobody wrote.
   assert.equal(doc.volumes.ext, null);
   assert.equal(doc.volumes.dopts, null);
-  // A volume the stack already owned is left exactly as it was.
   assert.equal(doc.volumes.mine, null);
   assert.equal(
     changes.filter((c) => c.includes("outside this stack")).length,
@@ -72,7 +70,6 @@ test("adaptComposeForDeplo declares a long-form volume, never a long-form bind",
 });
 
 test("adaptComposeForDeplo takes the slash off a volume NAME", () => {
-  // `memos/` has no leading ./ or /, so compose reads it as a volume name and refuses the stack for never declaring one.
   const source =
     "services:\n  memos:\n    image: memos\n    volumes:\n      - 'memos/:/var/opt/memos'\n";
   const { compose, changes } = adaptComposeForDeplo(source);

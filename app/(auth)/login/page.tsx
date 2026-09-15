@@ -56,7 +56,6 @@ const VERIFY_2FA = /* GraphQL */ `
   }
 `;
 
-// No open redirect: a fixed allowlist, not a same-origin check - two destinations legitimately land here signed out.
 function safeNext(raw: string | null): string {
   if (!raw) return "/";
   if (/^\/invite\/[A-Za-z0-9_-]+$/.test(raw)) return raw;
@@ -68,21 +67,17 @@ export default function LoginPage() {
   const next = useSearchParams().get("next");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // The 2FA challenge lives in a short-lived httpOnly cookie the server set, so no token is held in client state.
   const { step, leaving, go } = useStepSwap<"password" | "code">("password");
   const [useRecovery, setUseRecovery] = useState(false);
   const [code, setCode] = useState("");
 
   function done() {
-    // Mid-OAuth the provider redirects here with the WHOLE signed authorize query, not a `next` param.
     const sp = new URLSearchParams(window.location.search);
     if (sp.has("client_id") && sp.has("sig")) {
-      // Otherwise the provider sends us straight back here, forever.
       if (sp.get("prompt") === "login") sp.delete("prompt");
       window.location.assign(`/api/auth/oauth2/authorize?${sp}`);
       return;
     }
-    // A hard navigation, never the router: every payload it cached, `/` included (the logo prefetches it), was rendered signed out.
     window.location.assign(safeNext(next));
   }
 
@@ -119,7 +114,6 @@ export default function LoginPage() {
       try {
         if (!passkeysSupported())
           throw new Error("This browser can't use passkeys.");
-        // The server refuses the challenge on an instance that cannot have passkeys (no address, or plain http), with a message, so the button is always offered.
         const { passkeyChallenge } = await gql<{ passkeyChallenge: unknown }>(
           PASSKEY_CHALLENGE,
         );
@@ -189,7 +183,6 @@ export default function LoginPage() {
           )}
           {banner}
           <form
-            // POST so a pre-hydration native submit never puts the code in the URL, history or access logs.
             method="post"
             onSubmit={(e) => {
               e.preventDefault();
@@ -260,14 +253,12 @@ export default function LoginPage() {
         <>
           {title("Welcome back.", "Sign in to continue.")}
           {banner}
-          {/* `method="post"` is load-bearing security, not a formality. */}
           <form method="post" onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email or username</Label>
               <Input
                 id="email"
                 name="email"
-                // NOT type="email": the browser's own validation refused the `@handle` this product names everyone by.
                 type="text"
                 autoComplete="username"
                 placeholder="you@example.com"
@@ -289,7 +280,6 @@ export default function LoginPage() {
               Sign in
             </Button>
           </form>
-          {/* Outside the form so it can never submit it; the challenge is for a discoverable credential, so no email field. */}
           <Button
             variant="outline"
             className="mt-3 w-full"

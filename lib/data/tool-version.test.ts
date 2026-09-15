@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import { cleanToolVersion } from "./app-graph-rows/build";
 
-// The agent pastes this version into a download URL and runs what it fetched as root, so it must be a version and nothing else.
 test("a build tool version is x.y.z, latest, or nothing", () => {
   assert.equal(cleanToolVersion("1.2.3"), "1.2.3");
   assert.equal(cleanToolVersion(" v0.35.0 "), "0.35.0");

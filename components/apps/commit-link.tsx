@@ -3,7 +3,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-// CommitLink - the short commit SHA, linked to GitHub when the source is a repo.
 export function CommitLink({
   sha,
   url,

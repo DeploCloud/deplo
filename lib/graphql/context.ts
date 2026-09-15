@@ -18,9 +18,7 @@ export interface GraphQLContext {
   viewer: PublicUser | null;
   teamId: string | null;
   capabilities: Capability[];
-  // How this request authenticated - for docs/debugging, not security.
   via: "cookie" | "token" | "anonymous";
-  // Set for a valid bearer-token request.
   identity: RequestIdentity | null;
 }
 
@@ -31,7 +29,6 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     : null;
 
   if (bearer) {
-    // A token's scope can span teams; unset or unreachable falls back to its first, deterministically.
     const identity = await authenticateToken(
       bearer,
       request.headers.get(TEAM_HEADER),
@@ -53,7 +50,6 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     });
   }
 
-  // This endpoint is flat, so `x-deplo-team` is the only thing carrying the page's team.
   const viewer = await getCurrentUser();
   let teamId: string | null = null;
   let capabilities: Capability[] = [];
@@ -61,7 +57,6 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     teamId = await getActiveTeamId();
     capabilities = await reachableCapabilities();
   } catch (e) {
-    // A 2FA-locked member must still sign out and enrol; team-scoped reads refuse in lib/data.
     if (!(e instanceof TwoFactorRequiredError)) throw e;
     teamId = null;
     capabilities = [];

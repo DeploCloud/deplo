@@ -58,7 +58,6 @@ function fakeDom({ hostile = false } = {}) {
     activeElement: button as El,
     createElement: (tag: string) => el(tag),
     execCommand: (cmd: string) => {
-      // A browser answers true even when the selection is gone.
       if (cmd === "copy")
         copied.push(
           doc.activeElement.tag === "textarea"

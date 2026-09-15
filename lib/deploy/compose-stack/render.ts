@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/advanced/compose-apps
-
 import yaml from "../../yaml";
 
 import { keepAuthoredEnvText } from "../compose-lint/document";
@@ -24,7 +22,6 @@ import {
 } from "./service-stamp";
 import type { App, ComposeDoc, ComposeStackInput } from "./types";
 
-// The authored compose with its env values re-quoted. See `keepAuthoredEnvText`.
 function readComposeKeepingEnvText(compose: string): string {
   try {
     const doc = yaml.parseDocument(compose);
@@ -35,16 +32,10 @@ function readComposeKeepingEnvText(compose: string): string {
   }
 }
 
-// buildComposeStack turns a raw template/user docker-compose file into a
-// Deplo-deployable stack.
 export function buildComposeStack(input: ComposeStackInput): string {
   const { compose, name, deployKey, appId } = input;
   const trackingId = input.trackingId ?? appId;
-  // App settings env-var NAMES injected into every service as bare `- KEY`
-  // pass-throughs below (values stay in the env-file). Empty/absent ⇒ no env change.
   const envKeys = input.envKeys ?? [];
-  // One generated basicauth middleware for the whole project, prepended to every
-  // router below so all routed hostnames are gated.
   const basicAuth = input.basicAuthUsers
     ? { name: `${name}-basicauth`, users: input.basicAuthUsers }
     : undefined;
@@ -61,33 +52,22 @@ export function buildComposeStack(input: ComposeStackInput): string {
     throw new Error("Compose file has no services to deploy");
   }
 
-  // `version:` is obsolete in Compose v2 and only emits warnings.
   delete doc.version;
 
   const services = doc.services;
 
-  // Stamped on EVERY service so the whole stack (not just the routed ones) is
-  // discoverable by label - otherwise sidecars/databases are invisible to the
-  // container count, console, health wait and teardown.
   const tracking = [
     ...deploLabels(trackingId, deployKey),
     ...(trackingId === appId ? [] : [`deplo.app=${appId}`]),
   ];
-  // Off by default on EVERY service; the routing pass below turns it on for the routed
-  // ones. An image's own `traefik.*` labels ride into the container otherwise, and
-  // Traefik reads the container.
   const containerLabels = [...tracking, "traefik.enable=false"];
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
       assertNetworkModeIsNotANetwork(serviceName, (svc as App).network_mode);
       assertHostnameIsWritten(serviceName, (svc as App).hostname);
       delete (svc as App).container_name;
-      // A pull request preview publishes NOTHING on the host.
       if (input.stripPublishedPorts) delete (svc as App).ports;
       if (input.filesDir) rewriteAppVolumes(svc as App, input.filesDir);
-      // The `domains` table is the ONLY routing source: drop any user-authored
-      // `traefik.*` label before Deplo stamps its own, so a hand-written router rule
-      // can't claim another team's hostname on the shared network.
       stripTraefikLabels(svc as App);
       mergeLabels(svc as App, containerLabels);
       mergeBuildLabels(svc as App, serviceName, tracking);
@@ -101,8 +81,6 @@ export function buildComposeStack(input: ComposeStackInput): string {
   joinEveryService({ doc, services, input, wireApp });
   collapseOntoStackNetwork(doc, services, input.network);
 
-  // Storage-settings volumes → the service each one names. Done last so the
-  // existing-wins check sees the user's own `volumes:` exactly as authored.
   injectAppVolumes(doc, services, input);
 
   const body = yaml.dump(doc, { lineWidth: -1, noRefs: true });

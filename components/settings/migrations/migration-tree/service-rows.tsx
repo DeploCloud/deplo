@@ -17,14 +17,12 @@ import { BuildSelect, NothingToBuild, RunSelect } from "./placement-selects";
 import { PortConflictRow, type PortConflict } from "./port-conflict-row";
 import { Row } from "./row";
 
-// The status column says what is DIFFERENT about a row, so `new` says nothing.
 const STATUS_LABEL: Partial<Record<PlanService["status"], string>> = {
   exists: "Already here",
   unsupported: "Not supported",
   needs_grant: "Needs a permission",
 };
 
-// ServiceRows is a leaf of the tree, plus the port strip a clash opens under it.
 export function ServiceRows({
   service,
   checked,
@@ -49,7 +47,6 @@ export function ServiceRows({
   showPorts: boolean;
 }) {
   const placeable = isImportable(service) && placement != null;
-  // Absent means nobody decided anything, which is the source's own port.
   const port =
     placement?.exposedPort !== undefined
       ? placement.exposedPort
@@ -130,8 +127,6 @@ export function ServiceRows({
   );
 }
 
-// `engine` is resolved server-side because Dokploy's `mongo` is Deplo's
-// `mongodb`, and a second copy of that table in the browser is one that drifts.
 function ServiceMark({ service }: { service: PlanService }) {
   if (service.targetKind === "database")
     return (

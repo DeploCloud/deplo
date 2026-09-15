@@ -8,7 +8,6 @@ import type { DeploymentStatus } from "@/lib/types/deployment";
 
 const TICK_MS = 1000;
 
-// BuildDuration - build time, kept honest while the build is still running.
 export function BuildDuration({
   status,
   startedAt,

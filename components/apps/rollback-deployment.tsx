@@ -9,7 +9,6 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { CapabilityTip } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 
-// RollbackDialog - the shared confirm for putting an app back on a build it ran.
 export function RollbackDialog({
   open,
   onOpenChange,
@@ -71,7 +70,6 @@ export function RollbackDialog({
   );
 }
 
-// RollbackButton - the standalone Rollback button, beside Redeploy.
 export function RollbackButton({
   id,
   appSlug,
@@ -89,7 +87,6 @@ export function RollbackButton({
 }) {
   const [open, setOpen] = React.useState(false);
 
-  // Cosmetic only - the data layer is the real gate; disabled says why on hover.
   if (!can) {
     return (
       <CapabilityTip cap="rollback_apps">

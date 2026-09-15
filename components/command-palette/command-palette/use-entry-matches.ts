@@ -14,10 +14,8 @@ import {
 import { foldQuery } from "@/lib/match-query";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 
-// How many of one resource's pages are shown before the palette offers the rest.
 const OWNED_CAP = 6;
 
-// useEntryMatches - the in-bundle half of the palette: pages, settings, commands.
 export function useEntryMatches({
   query,
   teams,
@@ -45,8 +43,6 @@ export function useEntryMatches({
     [catalogue, query],
   );
 
-  // Built off the breadcrumb snapshot, so no extra request, and only once
-  // something has been typed, since this is a dozen rows per app.
   const typing = Boolean(foldQuery(query));
   const owned = React.useMemo(
     () =>
@@ -57,7 +53,6 @@ export function useEntryMatches({
     () => owned.filter((e) => canSee(e, caps, isAdmin)),
     [owned, caps, isAdmin],
   );
-  // Reset with the query, exactly like the highlight.
   const [expandedPages, setExpandedPages] = React.useState<string | null>(null);
   const pagesExpanded = expandedPages === query;
   const ownedTotal = React.useMemo(
@@ -75,9 +70,6 @@ export function useEntryMatches({
   );
   const hiddenPages = ownedTotal - ownedMatched.length;
 
-  // `caps` is the ACTIVE team's, so a page can be filtered by a capability held
-  // somewhere else - a UX approximation, like every other check here. The gate
-  // that counts is `requireCapability`, in the data layer, per team.
   const otherTeamPages = React.useMemo(
     () =>
       typing

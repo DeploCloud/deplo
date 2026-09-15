@@ -6,31 +6,23 @@ import { toast } from "sonner";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerStatus } from "@/lib/types/server";
 
-// STATUS_STALE_MS is how long an observation stays paintable before the chip ages it out to "Unknown"; the chip imports it so the two can't drift.
 export const STATUS_STALE_MS = 60_000;
 
 const SWEEP_INTERVAL_MS = 20_000;
 
 export interface ServerHealthState {
   status: ServerStatus;
-  // ISO instant of the last probe, or null if this server has never been probed.
   checkedAt: string | null;
-  // Why it isn't online (instance-admin-scoped in GraphQL). Null when online.
   message: string | null;
-  // Whether a Traefik proxy was running on the host, as of the same observation.
   traefikEnabled: boolean;
-  // When the agent last ANSWERED: dating a last-known value with `checkedAt` would re-tell the lie this state prevents.
   lastReachedAt: string | null;
 }
 
-// isObservationFresh reports whether an observation is recent enough to paint.
 export function isObservationFresh(
   checkedAt: string | null,
   now: number | null,
 ): boolean {
-  // "Never observed" does not depend on the clock, so server and client decide it the same way - no hydration risk.
   if (!checkedAt) return false;
-  // Pre-mount (now null) paints the seed; branching on the actual time is deferred to the client's tick.
   if (now === null) return true;
   const at = Date.parse(checkedAt);
   return Number.isFinite(at) && now - at < STATUS_STALE_MS;
@@ -38,18 +30,15 @@ export function isObservationFresh(
 
 interface HealthContext {
   health: (serverId: string) => ServerHealthState | undefined;
-  // True while a probe for this server, or the whole fleet, is in flight.
   isChecking: (serverId: string) => boolean;
   checkOne: (serverId: string) => void;
   checkAll: () => void;
   sweeping: boolean;
-  // The current time for freshness checks, or `null` until mounted.
   now: number | null;
 }
 
 const Ctx = React.createContext<HealthContext | null>(null);
 
-// The GraphQL shape both mutations return; `statusMessage` is admin-only server-side.
 interface ServerHealthRow {
   id: string;
   status: ServerStatus;
@@ -98,14 +87,12 @@ export function ServerHealthProvider({
   seed,
   children,
 }: {
-  // The stored observation for each server, straight from the RSC read.
   seed: Record<string, ServerHealthState>;
   children: React.ReactNode;
 }) {
   const [health, setHealth] = React.useState(seed);
   const [checking, setChecking] = React.useState<Record<string, boolean>>({});
   const [sweeping, setSweeping] = React.useState(true);
-  // Starts null (SSR-safe), becomes a ticking clock after mount - see `now` above.
   const [now, setNow] = React.useState<number | null>(null);
   React.useEffect(() => {
     const raf = requestAnimationFrame(() => setNow(Date.now()));
@@ -116,7 +103,6 @@ export function ServerHealthProvider({
     };
   }, []);
 
-  // Apply rows, watermarked on the observation time so a slow reply can't overwrite a newer one.
   const merge = React.useCallback((rows: ServerHealthRow[]) => {
     setHealth((prev) => {
       const next = { ...prev };
@@ -131,15 +117,12 @@ export function ServerHealthProvider({
     });
   }, []);
 
-  // Guards against a slow sweep stacking on top of the next tick's sweep.
   const sweepInFlight = React.useRef(false);
 
-  // Both sweeps are un-forced, so the data layer's throttle collapses a burst of tabs/reloads/ticks into one dial per server.
   React.useEffect(() => {
     let live = true;
 
     const sweep = async (quiet: boolean) => {
-      // A hidden tab is nobody watching; the visibility listener below re-verifies the instant it comes back.
       if (quiet && document.hidden) return;
       if (sweepInFlight.current) return;
       sweepInFlight.current = true;
@@ -153,7 +136,6 @@ export function ServerHealthProvider({
         if (!live) return;
         if (!quiet) setSweeping(false);
         if (!res.ok) {
-          // A failed sweep degrades to "we don't know": the chip ages the last observation out on its own.
           if (quiet)
             console.error(
               "[deplo] ambient server-health sweep failed:",
@@ -170,7 +152,6 @@ export function ServerHealthProvider({
 
     void sweep(false);
     const timer = setInterval(() => void sweep(true), SWEEP_INTERVAL_MS);
-    // Coming back to a backgrounded tab is exactly when a stale chip must not be on screen, so re-verify at once.
     const onVisibility = () => {
       if (!document.hidden) void sweep(true);
     };
@@ -185,7 +166,6 @@ export function ServerHealthProvider({
 
   const checkOne = React.useCallback(
     (serverId: string) => {
-      // The timestamp going in tells a real re-check from a throttled no-op: toasting off that would report a result we never observed.
       const before = health[serverId]?.checkedAt ?? null;
       setChecking((c) => ({ ...c, [serverId]: true }));
       (async () => {

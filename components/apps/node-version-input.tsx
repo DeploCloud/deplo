@@ -6,7 +6,6 @@ import {
   type VersionItem,
 } from "@/components/apps/version-combobox";
 
-// NodeVersionInputProps - the list comes from `/api/node-versions`, cached server-side from nodejs.org/dist.
 export interface NodeVersionInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -15,7 +14,6 @@ export interface NodeVersionInputProps {
   className?: string;
 }
 
-// The endpoint can answer a plain version string as well as a {value,label} pair.
 async function loadNodeVersions(): Promise<VersionItem[]> {
   const r = await fetch("/api/node-versions");
   const j = await r.json();

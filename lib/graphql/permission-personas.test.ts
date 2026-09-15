@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { and, eq } from "drizzle-orm";
 
-// The deploy hook and the domain checks read this at module load.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import {
@@ -151,7 +150,6 @@ test("a Member ships and configures apps, and stops at the team's administration
     }),
     "databases are infrastructure, not part of Member",
   );
-  // Member carries reveal_secrets: a connection string is what they paste into their variables.
   passed(await gql(MEMBER, M.revealConnection, { id: DB_1 }), "reveal");
   refused(
     await gql(MEMBER, M.addMember, {
@@ -275,7 +273,6 @@ test("a team administrator manages people within what they hold themselves", asy
 });
 
 test("the team can never lose its last administrator, through any door", async () => {
-  // HR is the only non-owner administrator, and OWNER is the untouchable founder.
   refused(await gql(OWNER, M.removeMember, { userId: OWNER }), "self-removal");
   refused(
     await gql(OWNER, M.updateMember, {
@@ -441,7 +438,6 @@ test("saving a member's page keeps the folders that were shared with them", asyn
   );
   passed(await gql(MEMBER, M.redeploy, { appId: APP_P }), "reachable");
 
-  // The member page sends along the shares it did not touch, exactly as this does.
   const roleId = lab.roles.get("member")!;
   const own = capabilitiesForRole("member").filter((c) => c !== "delete_apps");
   const saved = await gql(OWNER, M.setMemberAccess, {
@@ -456,7 +452,6 @@ test("saving a member's page keeps the folders that were shared with them", asyn
   assert.equal(saved.error, undefined, saved.error);
   passed(await gql(MEMBER, M.redeploy, { appId: APP_P }), "the share survived");
 
-  // No grants at all means leave them alone, not revoke every share the member has.
   const bare = await gql(OWNER, M.setMemberAccess, {
     input: { userId: MEMBER, roleId, granular: false, capabilities: own },
   });

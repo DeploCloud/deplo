@@ -15,14 +15,12 @@ import type { SharedVar } from "../../types/env";
 
 export const MASK = "••••••••••••";
 
-// SharedVarTeamRef - a team a variable reaches, drawn wherever it is named.
 export interface SharedVarTeamRef {
   id: string;
   name: string;
   avatarUrl: string | null;
 }
 
-// shownValue - what a DTO may carry: a secret is masked, there is no reveal path here.
 export function shownValue(v: {
   type: "plain" | "secret";
   valueEnc: string;
@@ -30,12 +28,10 @@ export function shownValue(v: {
   return v.type === "secret" ? MASK : decryptSecret(v.valueEnc);
 }
 
-// authorIds - every author id a set of vars references, for one batched lookup.
 export function authorIds(vars: SharedVar[]): (string | null)[] {
   return vars.flatMap((v) => [v.createdByUserId, v.updatedByUserId]);
 }
 
-// teamLookups - the team's projects/environments/apps keyed by id (DTO decorations).
 export async function teamLookups(teamId: string): Promise<{
   environments: Map<string, { id: string; name: string; projectName: string }>;
   projects: Map<string, { id: string; name: string; slug: string }>;
@@ -83,7 +79,6 @@ export async function teamLookups(teamId: string): Promise<{
   };
 }
 
-// teamNames - every team a set of vars names, for the owner badge and the Teams chips.
 export async function teamNames(
   vars: SharedVar[],
 ): Promise<Map<string, SharedVarTeamRef>> {

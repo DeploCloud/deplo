@@ -6,7 +6,6 @@ import { ChevronDown } from "lucide-react";
 import { Collapse } from "@/components/shared/collapse";
 import { cn } from "@/lib/utils";
 
-// SettingsDrawer - a shut-by-default drawer whose summary keeps its values readable while closed.
 export function SettingsDrawer({
   title,
   summary,
@@ -15,7 +14,6 @@ export function SettingsDrawer({
   children,
 }: {
   title: string;
-  // What the drawer holds right now, for the caller to summarise while it is shut.
   summary?: React.ReactNode;
   defaultOpen?: boolean;
   className?: string;

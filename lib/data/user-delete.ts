@@ -28,7 +28,6 @@ import { teardownTeamResources, type TeardownPlan } from "./team-delete";
 import { handOverFolders } from "./node-grants";
 import type { Capability } from "../types/identity";
 
-// DeleteUserTeamImpact - a team touched by the deletion, and what it takes down.
 export interface DeleteUserTeamImpact {
   teamId: string;
   name: string;
@@ -37,7 +36,6 @@ export interface DeleteUserTeamImpact {
   otherMemberCount: number;
 }
 
-// DeleteUserImpact - what deleting one account would do, computed before it runs.
 export interface DeleteUserImpact {
   userId: string;
   username: string;
@@ -54,14 +52,12 @@ export interface DeleteUserImpact {
   vacatedTeams: string[];
 }
 
-// DeleteUserOptions - the three "go deeper" choices the delete dialog offers.
 export interface DeleteUserOptions {
   deleteCreatedApps: boolean;
   deleteOwnedWorkspaces: boolean;
   deleteFoundedTeams: boolean;
 }
 
-// DeleteUserResult - what a completed deletion removed, for the confirmation toast.
 export interface DeleteUserResult {
   username: string;
   teamsDeleted: number;
@@ -69,9 +65,6 @@ export interface DeleteUserResult {
   databasesDeleted: number;
 }
 
-// A team left with zero holders of these can never manage members or itself again.
-// Keep in sync with members/assignment.ts, which enforces it for removeMember; a
-// cascaded membership can't be caught there.
 const CRITICAL_CAPABILITIES: Capability[] = [
   "manage_members",
   "manage_roles",
@@ -167,14 +160,12 @@ async function blockedReasonFor(
 ): Promise<string | null> {
   if (userId === actingUserId)
     return "You can't delete your own account. Ask another instance admin to do it.";
-  // Read in the delete's transaction under the same locks as the write it vetoes.
   const owner = await instanceOwnerUserId(tx);
   if (owner !== null && owner === userId)
     return "The instance owner's account can't be deleted. Transfer ownership first.";
   return null;
 }
 
-// getDeleteUserImpact - what deleting this account would take with it, computed live.
 export async function getDeleteUserImpact(
   userId: string,
 ): Promise<DeleteUserImpact> {
@@ -369,7 +360,6 @@ async function capabilityHolders(
   return rows.map((r) => r.userId);
 }
 
-// deleteUser - delete an account permanently, plus whatever the operator opted into.
 export async function deleteUser(
   userId: string,
   options: DeleteUserOptions,
@@ -391,8 +381,6 @@ export async function deleteUser(
 
       const blocked = await blockedReasonFor(userId, actingUserId, tx);
       if (blocked) throw new Error(blocked);
-
-      // No "keep one active admin" check needed: the caller is one and can't be the target.
 
       const teams = await teamsAroundUser(tx, userId);
       const teamsToDelete = teams.filter(
@@ -458,7 +446,6 @@ export async function deleteUser(
       ))
         looseApps.set(a.id, a);
 
-      // The FK cascade drops these rows, and with them the only record of the stacks.
       const doomedAppIds = [...teamApps.map((a) => a.id), ...looseApps.keys()];
       const previewStacks = doomedAppIds.length
         ? (
@@ -487,7 +474,6 @@ export async function deleteUser(
         await tx
           .delete(appsTable)
           .where(inArray(appsTable.id, [...looseApps.keys()]));
-      // Child folders re-parent to the team root via the FK's SET NULL; foreign apps orphan there.
       if (ownedFolders.length > 0)
         await tx
           .delete(foldersTable)
@@ -496,7 +482,6 @@ export async function deleteUser(
         await tx
           .delete(projectsTable)
           .where(inArray(projectsTable.id, ownedProjects));
-      // A folder left ownerless with the account would vanish for all but a super-user.
       const handed: string[] = [];
       for (const t of teams) {
         if (deletedTeamIds.includes(t.teamId)) continue;
@@ -506,12 +491,10 @@ export async function deleteUser(
         const n = await handOverFolders(tx, userId, t.teamId, heir);
         if (n > 0) handed.push(`${n} in ${t.name}`);
       }
-      // The FK CASCADEs drop everything team-scoped, exactly as deleteTeam does.
       if (deletedTeamIds.length > 0)
         await tx
           .delete(teamsTable)
           .where(inArray(teamsTable.id, deletedTeamIds));
-      // Memberships, grants and tokens CASCADE; crown, ownership and authorship SET NULL.
       await tx.delete(usersTable).where(eq(usersTable.id, userId));
 
       const healed = await healCriticalCapabilities(tx, survivingTeamIds);
@@ -605,7 +588,6 @@ async function healCriticalCapabilities(
       .insert(membershipCapabilitiesTable)
       .values(missing.map((c) => ({ membershipId: heir.id, capability: c })))
       .onConflictDoNothing();
-    // The heir now holds more than their role grants, so roleId NULL marks it "Custom".
     await tx
       .update(membershipsTable)
       .set({ roleId: null })

@@ -21,7 +21,6 @@ import { GitProviderMark } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
 import type { GitProviderChoice } from "@/lib/types/git";
 
-// ConnectGitProviderDialog - the provider was already picked in the Connect menu.
 export function ConnectGitProviderDialog({
   provider,
   isInstanceAdmin,
@@ -165,7 +164,6 @@ export function ConnectGitProviderDialog({
               )}
             </div>
 
-            {/* A self-hosted git server often sits on the fleet's private network, which the SSRF guard on the address refuses. */}
             {isInstanceAdmin && (
               <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
                 <Checkbox

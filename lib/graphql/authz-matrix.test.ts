@@ -55,7 +55,6 @@ after(async () => {
   await pg.close();
 });
 
-// The subject is NOT an instance admin, so an `$any` field is decided by the capability.
 async function reset(caps: Capability[]): Promise<void> {
   await truncateAll(pg);
   await seedIdentity(db, {
@@ -76,7 +75,6 @@ async function setCaps(caps: Capability[]): Promise<void> {
       capability,
     })),
   );
-  // The owner keeps everything: they mint the tokens the token half runs on.
   await db.insert(membershipCapabilitiesTable).values(
     ALL_CAPABILITIES.map((capability) => ({
       membershipId: `mem_${USER_1}`,
@@ -119,7 +117,6 @@ function gateOf(field: GraphQLField<unknown, unknown>): Gate {
   return { kind: "none" };
 }
 
-// Ids are deliberately unreachable: a wrong-permission caller is refused before an arg is read.
 function inputLiteral(type: GraphQLInputType, depth = 0): string {
   if (isNonNullType(type)) return inputLiteral(type.ofType, depth);
   if (isListType(type)) return `[${inputLiteral(type.ofType, depth)}]`;
@@ -142,7 +139,6 @@ function inputLiteral(type: GraphQLInputType, depth = 0): string {
   }
   if (isInputObjectType(type)) {
     if (depth > 3) return "{}";
-    // EVERY field: a resolver that validates before it authorizes would look like an open gate.
     return `{${Object.values(type.getFields())
       .map((f) => `${f.name}: ${inputLiteral(f.type, depth + 1)}`)
       .join(", ")}}`;
@@ -186,7 +182,6 @@ const ENDPOINTS: Endpoint[] = (
     : [],
 );
 
-// A subscription needs a live source, and none is gated on a capability.
 const EXECUTABLE = ENDPOINTS.filter((e) => e.kind !== "subscription");
 const byCapability = new Map<Capability, Endpoint[]>();
 for (const e of EXECUTABLE) {
@@ -239,7 +234,6 @@ const REFUSED =
 
 const EXEC_TIMEOUT_MS = 20_000;
 
-// A timeout counts as "the gate let it through".
 async function call(p: Principal, e: Endpoint): Promise<string[]> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<"timeout">((resolve) => {
@@ -254,7 +248,6 @@ async function call(p: Principal, e: Endpoint): Promise<string[]> {
     ]);
     if (result === "timeout") return [];
     const errors = result.errors ?? [];
-    // A document that doesn't validate would silently pass every assertion.
     const invalid = errors.filter((err) => !err.path);
     assert.equal(
       invalid.length,
@@ -272,14 +265,12 @@ async function call(p: Principal, e: Endpoint): Promise<string[]> {
 const refused = (messages: string[]): boolean =>
   messages.some((m) => REFUSED.test(m));
 
-// Endpoints that legitimately need MORE than their declared capability, listed one by one.
 const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["M.generateAvailableDbPort", /permission to publish ports/i],
   ["Q.hostPortsInUse", /permission to publish ports/i],
   ["Q.databaseCronJobs", /database.*console/i],
   ["M.createCronJob", /database.*console/i],
   ["M.setCronEnabled", /database.*console/i],
-  // The optional `sharedVarIds` is an env act; without it createApp needs only `create_apps`.
   ["M.createApp", /permission to manage environment variables/i],
 ]);
 
@@ -288,7 +279,6 @@ function refusedByGrant(e: Endpoint, messages: string[]): boolean {
   return Boolean(expected && messages.some((m) => expected.test(m)));
 }
 
-// Public on purpose: the passkey pair IS a sign-in, so requiring a session would be circular.
 const PUBLIC_FIELDS = new Set([
   "Q.me",
   "Q.apiContext",
@@ -318,7 +308,6 @@ test("every field of the API declares a gate, and only the auth surface is publi
 });
 
 test("every capability the catalogue offers is either enforced on the API or enforced below it", () => {
-  // These name no field: they are gated inside the data layer, or are the `view` floor.
   const enforcedBelow = new Set<Capability>([
     "view",
     "organize_folders",
@@ -431,7 +420,6 @@ test(`a member holding all ${ALL_CAPABILITIES.length} capabilities reaches none 
 
 test("an instance admin's token administers the instance only when it was granted that", async () => {
   await reset(ALL_CAPABILITIES);
-  // Every team capability, but not the instance-admin switch, which is opt-in per token.
   const raw = await mintToken(ALL_CAPABILITIES, USER_1);
   const principal = await asToken(raw);
   assert.ok(principal, "the token must authenticate");
@@ -451,7 +439,6 @@ test("an instance admin's token administers the instance only when it was grante
   );
 });
 
-// A subscription's generator never reaches `requireInstanceAdmin`: the field scope is its only gate.
 const ADMIN_SUBSCRIPTIONS = ENDPOINTS.filter(
   (e) => e.kind === "subscription" && e.gate.kind === "instanceAdmin",
 );
@@ -471,7 +458,6 @@ async function open(p: Principal, e: Endpoint): Promise<string[]> {
       (err: { message: string }) => err.message,
     );
   } finally {
-    // Close it so the pubSub listener doesn't outlive the test.
     await it.return?.(undefined as never);
   }
 }
@@ -492,7 +478,6 @@ test(`an instance admin's token can't open the ${ADMIN_SUBSCRIPTIONS.length} adm
     `a token that was never given instance administration opened: ${leaks.join(", ")}`,
   );
 
-  // The control: with the switch ON the same stream opens, so the gate is the token's grant.
   const admin = await asToken(
     await mintToken(ALL_CAPABILITIES, USER_1, { instanceAdmin: true }),
   );
@@ -509,7 +494,6 @@ test(`an instance admin's token can't open the ${ADMIN_SUBSCRIPTIONS.length} adm
 test("a token granted everything can do nothing its creator has since lost", async () => {
   await reset(ALL_CAPABILITIES);
   const raw = await mintToken(ALL_CAPABILITIES, USER_M);
-  // Cut back AFTER minting: nothing is materialised, so the clamp bites on the next request.
   await setCaps(["manage_tokens"]);
   const principal = await asToken(raw);
   assert.ok(
@@ -576,7 +560,6 @@ test("a token narrowed to one project loses every capability that has no per-pro
 test(`an anonymous caller is refused by all ${EXECUTABLE.length - PUBLIC_FIELDS.size} non-public fields`, async () => {
   await reset(ALL_CAPABILITIES);
   const principal: Principal = {
-    // No identity to run under: this is a request that arrived with nothing.
     identity: { userId: "", teamId: "" },
     ctx: {
       viewer: null,

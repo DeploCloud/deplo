@@ -132,13 +132,10 @@ builder.queryFields((t) => ({
 
 builder.mutationFields((t) => ({
   refreshTemplates: t.boolean({
-    // `loggedIn`, not a capability: it only drops the hour-long cache in front of a PUBLIC catalog.
     authScopes: { loggedIn: true },
     description:
       "Drop the cached template catalog so the next read hits the catalog service.",
     resolve: async () => {
-      // A drop costs the whole instance a catalog fetch, and the catalog service
-      // rate-limits per instance.
       const { id } = await assertUser();
       const limit = await rateLimit(`refresh-templates:${id}`, {
         limit: 3,
@@ -148,8 +145,6 @@ builder.mutationFields((t) => ({
         throw new Error(
           `Too many refreshes. Try again in ${limit.retryAfterSec}s.`,
         );
-      // The tag `templates/catalog.ts` stamps on every catalog fetch; `expire: 0`
-      // so a Refresh never answers from the stale copy.
       revalidateTag("templates", { expire: 0 });
       return true;
     },

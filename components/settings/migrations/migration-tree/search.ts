@@ -14,7 +14,6 @@ function hit(service: PlanService, path: string, terms: string[]): boolean {
 const nameHit = (name: string, terms: string[]) =>
   terms.every((t) => name.toLowerCase().includes(t));
 
-// visible is what a search leaves on screen, as three id sets rather than a pruned copy.
 export function visible(
   projects: PlanProject[],
   terms: string[],
@@ -43,10 +42,7 @@ export function visible(
   return out;
 }
 
-// useTreeSearch holds the query, what it hides, and which branches are open.
 export function useTreeSearch(projects: PlanProject[]) {
-  // Everything open on arrival: a migration is read top to bottom once, and a
-  // tree that hides the thing you came to check is a tree you fight.
   const [open, setOpen] = React.useState<Set<string>>(
     () =>
       new Set(
@@ -66,8 +62,6 @@ export function useTreeSearch(projects: PlanProject[]) {
     [projects, query],
   );
 
-  // While searching every surviving branch is open - a hit two levels down is
-  // useless if you still have to find and expand its ancestors.
   const isOpen = (id: string) => searching || open.has(id);
 
   function toggleOpen(id: string) {

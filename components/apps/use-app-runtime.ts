@@ -57,14 +57,11 @@ export function useAppRuntime(
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const tick = async () => {
-      // Skip the round trip while the tab is hidden; the timer stays alive so it resumes.
       if (document.visibilityState === "visible") {
         try {
           const data = await gql<Response>(APP_RUNTIME_QUERY, { appId });
           if (!cancelled) setRuntime(data.appRuntime);
-        } catch {
-          // A failed poll is not evidence about the container - keep the last answer.
-        }
+        } catch {}
       }
       if (!cancelled) timer = setTimeout(tick, POLL_MS);
     };
@@ -76,6 +73,5 @@ export function useAppRuntime(
     };
   }, [appId, enabled]);
 
-  // Disabled reports no probe rather than a stale one from before the app stopped.
   return enabled ? runtime : null;
 }

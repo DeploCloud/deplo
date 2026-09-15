@@ -56,9 +56,7 @@ export interface AppTransferTarget {
   id: string;
   name: string;
   avatarUrl: string | null;
-  // False when the app's server is restricted and NOT shared with that team: the move is refused.
   serverAvailable: boolean;
-  // That team has its own GitHub App on the repo's account, so the connection follows.
   githubFollows: boolean;
 }
 
@@ -66,12 +64,9 @@ export interface AppTransferInfo {
   appName: string;
   serverName: string;
   homeLabel: string | null;
-  // Shared variables linked to this app - links that do not survive the move.
   sharedVarCount: number;
-  // Backup schedules targeting this app - they point at the source team's destination.
   backupCount: number;
   githubConnected: boolean;
-  // A git connection can never follow: a token for the same host may not read this repo.
   gitConnectionLabel: string | null;
   targets: AppTransferTarget[];
 }
@@ -101,10 +96,8 @@ const appColumns = {
   autoDeploy: appsTable.autoDeploy,
 };
 
-// appTransferInfo - what the app is about to lose and which teams can take it, in one read.
 export const appTransferInfo = cache(
   async (appId: string): Promise<AppTransferInfo> => {
-    // The APP's gate, not the team's - the same one transferAppToTeam applies.
     const { userId, teamId } = await requireAppCapability(appId, "move_apps");
     const db = getDb();
     const app = (
@@ -116,7 +109,6 @@ export const appTransferInfo = cache(
     )[0];
     if (!app) throw new Error("App not found");
 
-    // From the capability junction: the role name is only a preset, never the authority.
     const candidates = await db
       .select({
         id: teamsTable.id,
@@ -258,7 +250,6 @@ async function homeLabelFor(app: {
   return null;
 }
 
-// transferAppToTeam - hand this app to another team the viewer holds move_apps in.
 export async function transferAppToTeam(
   appId: string,
   destTeamId: string,
@@ -279,14 +270,12 @@ export async function transferAppToTeam(
   if (destTeamId === teamId)
     throw new Error("That app is already in this team");
 
-  // A SCOPED token must not move an app into a team it only reaches through one project.
   const tokenScope = currentIdentity()?.token?.scope;
   if (tokenScope && !tokenScope.wholeTeamIds.includes(destTeamId))
     throw new Error("This API token can't move apps into that team.");
 
   const dest = await membershipFor(userId, destTeamId);
   if (!dest) throw new Error("You're not a member of that team");
-  // Team-wide, not the raw row: membershipFor never clamps to the token for another team.
   if (!(await holdsTeamWideCapability(destTeamId, "move_apps")))
     throw new Error("You don't have permission to manage apps in that team");
   const destTeam = (
@@ -337,7 +326,6 @@ export async function transferAppToTeam(
       );
   }
 
-  // The GitHub connection is a credential of the SOURCE team's App, so it cannot ride along.
   let installationId = app.repoInstallationId;
   if (installationId) {
     const owner = repoOwner(app.repoRepo, app.repoUrl);
@@ -361,16 +349,13 @@ export async function transferAppToTeam(
       : undefined;
     installationId = match?.id ?? null;
   }
-  // A git connection is the SOURCE team's token: no "same account" test can let it follow.
   const connectionDropped = Boolean(app.repoConnectionId);
   const githubDropped =
     Boolean(app.repoInstallationId) && installationId === null;
 
-  // Held for the check AND the write: two moves landing here would both read the name as free.
   await withNetworkLock(
     { teamId: destTeamId, environmentId: null },
     async () => {
-      // Its service names may already be taken there, and Docker would split the lookups.
       await assertNoNameClash({
         to: { teamId: destTeamId, environmentId: null, serverId: app.serverId },
         claims: claimSource?.compose?.trim()
@@ -386,7 +371,6 @@ export async function transferAppToTeam(
             .update(appsTable)
             .set({
               teamId: destTeamId,
-              // Folders, projects and environments are the SOURCE team's: it lands at the top level.
               folderId: null,
               projectId: null,
               environmentId: null,
@@ -398,24 +382,19 @@ export async function transferAppToTeam(
               updatedAt: nowIso(),
             })
             .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)));
-          // Per-environment runtime state of environments it no longer lives in.
           await tx
             .delete(appEnvironmentsTable)
             .where(eq(appEnvironmentsTable.appId, appId));
-          // Manual display order is per team; the app joins the destination's tail.
           await tx.delete(teamAppOrder).where(eq(teamAppOrder.appId, appId));
-          // Per-node access is a fact about the SOURCE team.
           await tx
             .delete(appGrantsTable)
             .where(eq(appGrantsTable.appId, appId));
           await tx
             .delete(teamRoleScopeApps)
             .where(eq(teamRoleScopeApps.appId, appId));
-          // ADR-0012: shared variables stay with the team that owns them; the links go.
           await tx
             .delete(sharedEnvVarAppsTable)
             .where(eq(sharedEnvVarAppsTable.appId, appId));
-          // A schedule points at the SOURCE team's destination; its runs stay that team's history.
           await tx
             .delete(backupsTable)
             .where(
@@ -424,7 +403,6 @@ export async function transferAppToTeam(
                 eq(backupsTable.teamId, teamId),
               ),
             );
-          // Cron jobs point at the SOURCE team and run its command in the container.
           await tx
             .delete(cronJobsTable)
             .where(
@@ -433,11 +411,9 @@ export async function transferAppToTeam(
                 eq(cronJobsTable.teamId, teamId),
               ),
             );
-          // A token scoped to this app is the source team's, and its reach derives from apps.teamId.
           await tx
             .delete(apiTokenAppsTable)
             .where(eq(apiTokenAppsTable.appId, appId));
-          // Nulling the pointer makes these ordinary orphans, which the sweep reclaims.
           await tx
             .update(backupRunsTable)
             .set({ appId: null })
@@ -447,7 +423,6 @@ export async function transferAppToTeam(
                 eq(backupRunsTable.teamId, teamId),
               ),
             );
-          // Keep the source team's entries, drop the pointer: no deep link into a foreign app.
           await tx
             .update(activitiesTable)
             .set({ appId: null })
@@ -457,7 +432,6 @@ export async function transferAppToTeam(
     },
   );
 
-  // New team, new network; outside the transaction because it is an agent call.
   await reapplyNetworkAfterMove([appId]);
 
   await recordActivity(

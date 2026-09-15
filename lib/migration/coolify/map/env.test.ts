@@ -19,7 +19,6 @@ test("coolifyEnvBlob takes the resolved value and leaves previews behind", () =>
     "APP_KEY=aB3k9\nPLAIN=yes\nBUILT=b\nSHARED={{team.SMTP_HOST}}",
   );
   assert.deepEqual(r.previewKeys, ["ONLY_PREVIEW"]);
-  // ...and their values ride along, for Deplo's own preview variables.
   assert.equal(r.previewBlob, "ONLY_PREVIEW=x");
   assert.deepEqual(r.buildOnlyKeys, ["BUILT"]);
   assert.deepEqual(r.sharedRefs, [
@@ -28,7 +27,6 @@ test("coolifyEnvBlob takes the resolved value and leaves previews behind", () =>
   assert.equal(r.masked, false);
 });
 
-// A token that can actually run an import gets `real_value`, the panel HAVING ALREADY RESOLVED the reference away, so refs read off it are empty on every real migration.
 test("a reference is read off the stored value, not the resolved one", () => {
   const r = coolifyEnvBlob([
     { key: "SMTP_HOST", value: "{{team.SMTP_HOST}}", real_value: "mail.acme" },
@@ -46,14 +44,12 @@ test("a reference is read off the stored value, not the resolved one", () => {
   ]);
 });
 
-// The single worst failure this adapter can have: a token without read:sensitive gets rows with NO value key at all, and importing them lands empty variables.
 test("coolifyEnvBlob says when the values never arrived", () => {
   const r = coolifyEnvBlob([{ key: "APP_KEY" }, { key: "PLAIN" }]);
   assert.equal(r.masked, true);
   assert.equal(coolifyEnvBlob([]).masked, false);
 });
 
-// One normal variable in the list is enough for `masked` to stay false, so the whole safety net used to miss a value the panel simply refuses to repeat.
 test("coolifyEnvBlob names the variables the panel would not answer for", () => {
   const r = coolifyEnvBlob([
     { key: "PLAIN", value: "yes" },
@@ -65,7 +61,6 @@ test("coolifyEnvBlob names the variables the panel would not answer for", () => 
   assert.equal(r.blob, "PLAIN=yes\nDB_PASSWORD=\nEMPTY_ON_PURPOSE=");
 });
 
-// The panel's own verdict is the only thing that types a variable secret: shown-once WITH a value lands write-only, one without stays plain, and the name means nothing.
 test("coolifyEnvBlob carries the panel's shown-once flag, and only that", () => {
   const r = coolifyEnvBlob([
     { key: "API_TOKEN", value: "t0k3n", is_shown_once: true },
@@ -125,6 +120,5 @@ test("Coolify's own bookkeeping never becomes a shared variable", () => {
     "SMTP_HOST=mail.acme.test",
   ].join("\n");
   assert.equal(withoutPanelInternals(blob), "SMTP_HOST=mail.acme.test");
-  // Nothing of ours is dropped with them.
   assert.equal(withoutPanelInternals("A=1\nB=2"), "A=1\nB=2");
 });

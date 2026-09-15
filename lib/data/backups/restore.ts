@@ -17,7 +17,6 @@ import { restoreFromDestination } from "../backup-transport";
 import { requireBackupCapability } from "./target-access";
 import { resolveTarget } from "./target-descriptor";
 
-// restoreBackup - restore a backup IN PLACE from one of its recorded runs.
 export async function restoreBackup(runId: string): Promise<void> {
   const { membership } = await requireMembership();
   const teamId = membership.teamId;
@@ -36,8 +35,6 @@ export async function restoreBackup(runId: string): Promise<void> {
     throw new Error(
       "This backup did not complete successfully and cannot be restored",
     );
-  // Restore is destructive (stop → wipe → untar), so it is gated exactly like the
-  // backup it replays - on the run's own target.
   await requireBackupCapability(run, "restore_backups");
 
   const creds = await getDestinationWithSecretsForTeam(
@@ -45,9 +42,6 @@ export async function restoreBackup(runId: string): Promise<void> {
     run.destinationId,
   );
   let failure: string | null = null;
-  // A restore must not interleave with a deploy, a delete, a transfer or a second
-  // restore of the same app: those all hold `app-lifecycle:<appId>`. The target is
-  // resolved UNDER the lock, so a transfer that commits first is seen.
   const withLifecycleLock = async <T>(fn: () => Promise<T>): Promise<T> =>
     run.targetKind === "app" && run.appId
       ? withKeyedLock(`app-lifecycle:${run.appId}`, fn)
@@ -72,9 +66,6 @@ export async function restoreBackup(runId: string): Promise<void> {
           project: target.project,
         },
         run.objectKey,
-        // The agent refuses an artifact that no longer hashes to what we recorded
-        // when we wrote it. Empty for a run older than integrity checking, which
-        // skips the check - see the warning the caller surfaces for those.
         run.sha256 ?? "",
       );
       if (!result.ok)
@@ -82,15 +73,11 @@ export async function restoreBackup(runId: string): Promise<void> {
     } catch (e) {
       failure = (mapBackupUnsupported(e) as Error).message;
     } finally {
-      // The agent's app restore ends in a Reroute, so a clean run leaves the stack up.
       if (run.targetKind === "app" && target.appId)
         await setAppStatus(target.appId, failure ? "error" : "active");
     }
   });
 
-  // The agent's restore ends on the network the ARCHIVE names: it prefers the
-  // archived compose once the digest proves it, and writes that YAML verbatim. So
-  // re-render, and OUTSIDE the lifecycle lock - `rerouteApp` takes the same one.
   if (!failure && run.targetKind === "app" && target.appId) {
     const { rerouteApp } = await import("../../deploy/build/reroute");
     await rerouteApp(target.appId).catch((e) => {

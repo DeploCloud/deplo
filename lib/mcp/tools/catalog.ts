@@ -1,5 +1,3 @@
-// https://deplo.build/docs/guides/mcp-server
-
 import { APPS_CONFIG } from "./apps-configure";
 import { APPS_OPS } from "./apps-operate";
 import { APPS_READ } from "./apps-read";
@@ -29,8 +27,6 @@ import { SERVERS } from "./servers";
 import { TEAM, TEAM_ADMIN } from "./team";
 import type { McpToolDef } from "./tool-def";
 
-// A secret that enters a model's context window has left Deplo for a third
-// party's logs and cannot be revoked from there.
 export const MCP_TOOLS: McpToolDef[] = [
   ...DIAGNOSTICS,
   ...APPS_READ,

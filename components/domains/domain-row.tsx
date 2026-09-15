@@ -54,7 +54,6 @@ import { DocsLink } from "@/components/ui/docs-link";
 
 type Row = Domain & { serviceName: string; appSlug: string };
 
-// Parsed in the browser (js-yaml is a client-safe dep); [] for a missing or malformed compose ⇒ single-image edit.
 function composeServices(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
   try {
@@ -78,19 +77,13 @@ export function DomainRow({
   siblings = [],
 }: {
   domain: Row;
-  // Every domain of the app: the `www` pairing is derived from the rows that exist, so a companion removed by hand can't leave a stored flag lying.
   siblings?: { name: string; redirectTo?: string | null }[];
-  // The app's compose YAML for the service selector; absent or null ⇒ a single-image project.
   compose?: string | null;
-  // NOT inferred from `compose`: an app can carry leftover compose text while deploying a repo or image.
   isCompose: boolean;
-  // A prop, not a per-row decision: the header count and the cells must agree.
   showContainer: boolean;
-  // The IPv4 of the server THIS app is on - server-specific, never a constant.
   serverIp?: string;
 }) {
   const router = useRouter();
-  // One capability covers every row action except Visit: they all change routing.
   const canManage = useAppCan("manage_domains");
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
@@ -101,14 +94,12 @@ export function DomainRow({
 
   const service = (domain.service ?? "").trim();
   const container = service || `deplo-${domain.appSlug}`;
-  // No service means the stack renderer has no target to wire, so the hostname reaches nothing until one is picked.
   const unrouted = isCompose && !service;
   const missing =
     isCompose &&
     Boolean(service) &&
     services.length > 0 &&
     !services.includes(service);
-  // A name the platform answers to on the shared network: the renderer refuses to route it, and older rows predate that refusal.
   const reserved = isCompose && isReservedSharedName(service);
 
   const www = React.useMemo(
@@ -122,14 +113,11 @@ export function DomainRow({
   );
 
   const effectiveProvider = domain.certProvider ?? "letsencrypt";
-  // A proxied host is visited AT the proxy, which serves its HTTPS.
   const scheme =
     domain.proxied || effectiveProvider !== "none" ? "https" : "http";
   const middlewares = domain.middlewares ?? [];
   const cloudflare = domain.status === "cloudflare";
-  // Detected (anycast) or declared by the owner: either way DNS cannot see the origin and the host is routed.
   const proxied = cloudflare || Boolean(domain.proxied);
-  // A proxied domain is put on the Cloudflare provider automatically, so both chips would read "Cloudflare".
   const oneCloudflareChip = cloudflare && effectiveProvider === "cloudflare";
 
   function call(
@@ -138,17 +126,14 @@ export function DomainRow({
   ) {
     startTransition(async () => {
       const res = await fn();
-      // The mutation's own message reports whether routing was applied instantly or deferred to the next deploy.
       if (res.ok) {
         toast.success(res.data ?? ok);
-        // No revalidatePath on the GraphQL API - refresh re-reads the RSC tree.
         router.refresh();
       } else toast.error(res.error);
     });
   }
 
   function openEdit() {
-    // Reset to the domain's current values so a cancelled edit never leaks stale input into the next open.
     setName(domain.name);
     setConfig(initialDomainConfig(domain, undefined, www));
     setEditOpen(true);
@@ -187,7 +172,6 @@ export function DomainRow({
           patch: {
             name: trimmedName,
             port: resolved.port,
-            // null ⇒ auto entrypoint (the data layer derives it); a value ⇒ manual.
             entrypoint: resolved.entrypoint,
             certProvider: resolved.certProvider,
             middlewares: resolved.middlewares,
@@ -195,13 +179,11 @@ export function DomainRow({
             stripPrefix: resolved.stripPrefix,
             service: resolved.service,
             proxied: resolved.proxied,
-            // Derived, so this is the current value unless the user changed it - the server no-ops on a match.
             www: resolved.www,
           },
         },
       );
       if (res.ok) {
-        // A rename re-checks the new hostname's DNS server-side, so the toast reports what that check found.
         const status = res.data?.updateDomain.status;
         if (trimmedName === domain.name || status === "valid")
           toast.success("Domain updated");
@@ -210,7 +192,6 @@ export function DomainRow({
             "Domain updated - Cloudflare is proxying it. Make sure its record points at this server.",
           );
         else if (resolved.proxied)
-          // A proxied host's DNS verdict says nothing; what matters is that it is still routed.
           toast.success("Domain updated - routed through your proxy");
         else if (status === "misconfigured")
           toast.warning(
@@ -224,13 +205,11 @@ export function DomainRow({
         setEditOpen(true);
         toast.error(res.error);
       }
-      // No revalidatePath on the GraphQL API - refresh re-reads the RSC tree.
       router.refresh();
     });
   }
 
   function verify() {
-    // Its own flag, not the row's shared `pending`, and set before the transition so the spin starts on the click.
     setVerifying(true);
     startTransition(async () => {
       try {
@@ -282,7 +261,6 @@ export function DomainRow({
     <TableRow>
       <TableCell>
         <div className="flex flex-wrap items-center gap-2">
-          {/* The name IS the way to visit it - the row needs no button of its own. */}
           <a
             href={`${scheme}://${domain.name}`}
             target="_blank"
@@ -299,7 +277,6 @@ export function DomainRow({
             </Badge>
           )}
           {domain.redirectTo && (
-            // This hostname serves nothing - it answers 301 to the canonical half of its www pair.
             <SimpleTooltip
               content={`Answers a permanent redirect (301) to ${domain.redirectTo}. Edit ${domain.redirectTo} to change or remove the pair.`}
             >
@@ -361,7 +338,6 @@ export function DomainRow({
             </SimpleTooltip>
           )}
           {cloudflare && !oneCloudflareChip && (
-            // Only when the certificate chip does not already say "Cloudflare"; otherwise the merged chip stands for both.
             <Badge
               variant="outline"
               className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
@@ -374,7 +350,6 @@ export function DomainRow({
         {!proxied &&
           (domain.status === "misconfigured" ||
             domain.status === "pending") && (
-            // A pending domain has no DNS record yet; a misconfigured one resolves somewhere other than this app's server.
             <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
               <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
               <DocsLink topic="domains.dnsStates" className="order-last" />
@@ -415,7 +390,6 @@ export function DomainRow({
                 </span>
               )}
               {domain.status === "misconfigured" && (
-                // The way out for a record that can't point here; the switch itself lives in Advanced settings.
                 <span>
                   Or turn on{" "}
                   <span className="font-medium text-foreground">
@@ -461,7 +435,6 @@ export function DomainRow({
       )}
       <TableCell>
         <span className="flex items-center gap-1">
-          {/* A declared proxy can never beat the DNS verdict, so it reads "Proxied" like a detected one. */}
           <StatusBadge
             status={
               domain.proxied && domain.status !== "valid"
@@ -469,7 +442,6 @@ export function DomainRow({
                 : domain.status
             }
           />
-          {/* Beside the chip it argues with: a domain that is not valid yet is when someone re-checks it. */}
           {domain.status !== "valid" && (
             <SimpleTooltip content="Check this domain's DNS again">
               <Button
@@ -489,7 +461,6 @@ export function DomainRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          {/* A redirecting hostname can never be primary - it serves nothing, and the server refuses it too. */}
           {!domain.primary && !domain.redirectTo && (
             <SimpleTooltip content="Make this the canonical host">
               <Button
@@ -507,7 +478,6 @@ export function DomainRow({
                     "Set as primary",
                   )
                 }
-                // No working DNS to this server, so it can't be the canonical host - the server rejects it too.
                 disabled={
                   pending || !canManage || domain.status === "misconfigured"
                 }
@@ -560,7 +530,6 @@ export function DomainRow({
               { id: domain.id },
             );
             if (!res.ok) restore();
-            // No revalidatePath on the GraphQL API - refresh re-reads the RSC tree.
             router.refresh();
             return res;
           }}

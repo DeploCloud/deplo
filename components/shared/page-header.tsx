@@ -2,7 +2,6 @@ import { cn } from "@/lib/utils";
 import { DocsLink } from "@/components/ui/docs-link";
 import type { DocsTopic } from "@/lib/docs";
 
-// titleClass holds the two title sizes, and the only two.
 export const titleClass = {
   page: "text-xl font-semibold tracking-tight",
   section: "text-base font-semibold tracking-tight lg:text-lg",
@@ -48,7 +47,6 @@ export function PageHeader({
           </p>
         )}
       </div>
-      {/* Wraps: three buttons is already wider than a phone. */}
       {actions && (
         <div className="flex flex-wrap items-center gap-2">{actions}</div>
       )}

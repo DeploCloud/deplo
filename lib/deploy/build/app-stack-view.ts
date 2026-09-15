@@ -16,8 +16,6 @@ import { composeFilesDir, takenNamesForApp } from "./compose-stack-deploy";
 import { appEnvKeys } from "./deploy-env";
 import { owningServerIdForDeployKey } from "./stack-lifecycle";
 
-// renderAppStack renders the full Deplo-generated stack for an app, for read-only display
-// (the "View full compose" button).
 export async function renderAppStack(appId: string): Promise<string | null> {
   const project = await loadAppGraph(appId);
   if (!project) return null;
@@ -39,19 +37,15 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       appId,
       network: deployNetwork(project),
       domainRoutes,
-      // So "View full compose" shows the stack the next deploy would write.
       takenNames: await takenNamesForApp(project, appId),
       filesDir: composeFilesDir(deployKey),
       basicAuthUsers: await basicAuthUsersValue(appId),
-      // Only NAMES appear - the values never enter the rendered YAML (they ride the env-file).
       envKeys: await appEnvKeys(appId),
       resources: project.resources,
       volumes: project.volumes,
     });
   }
 
-  // Single-image / built: the rendered stack only exists on the OWNING agent's disk after a
-  // deploy. Null when never deployed or the agent is unreachable.
   const serverId = await owningServerIdForDeployKey(deployKey);
   if (!serverId) return null;
   const conn = await connectAgent(serverId);

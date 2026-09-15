@@ -22,15 +22,12 @@ const GitRepoInput = builder.inputType("GitRepoInput", {
       description:
         "A git connection (any other host) that authenticates the clone and carries the push webhook.",
     }),
-    // Absent ⇒ historical defaults (push / no watch-path filter / no submodules).
     triggerType: t.string({ required: false, description: '"push" or "tag".' }),
     watchPaths: t.stringList({ required: false }),
     submodules: t.boolean({ required: false }),
   }),
 });
 
-// The provider values that mean something to the deploy path; everything else is
-// a plain git remote and is stored as one rather than trusted verbatim.
 const KNOWN_PROVIDERS = new Set<GitRepo["provider"]>([
   "github",
   "gitlab",
@@ -39,7 +36,6 @@ const KNOWN_PROVIDERS = new Set<GitRepo["provider"]>([
   "git",
 ]);
 
-// repoInputToGitRepo coerces the untrusted GraphQL `provider` / `triggerType` strings to their unions.
 export function repoInputToGitRepo(repo: {
   provider: string;
   url: string;
@@ -74,7 +70,6 @@ export const BuildConfigInput = builder.inputType("BuildConfigInput", {
   fields: (t) => ({
     buildMethod: t.string({ required: false }),
     rootDir: t.string({ required: false }),
-    // Same names as BuildConfig, so remapBuildInput forwards them untouched.
     includeFilesOutsideRoot: t.boolean({ required: false }),
     skipUnchangedDeployments: t.boolean({ required: false }),
     buildCache: t.boolean({
@@ -136,11 +131,8 @@ export const VolumeInput = builder.inputType("VolumeInput", {
     id: t.string({ required: false }),
     type: t.field({ type: VolumeKindEnum, required: false }),
     name: t.string({ required: false }),
-    // Path relative to the app's files dir (project mounts only).
     projectPath: t.string({ required: false }),
-    // Absolute host path to bind-mount (host mounts only).
     hostPath: t.string({ required: false }),
-    // Compose stacks: blank ⇒ the stack's default service. Ignored otherwise.
     service: t.string({ required: false }),
     mountPath: t.string({ required: true }),
     readOnly: t.boolean({ required: false }),
@@ -154,7 +146,6 @@ export const PublishedPortInput = builder.inputType("PublishedPortInput", {
     id: t.string({ required: false }),
     published: t.int({ required: true }),
     target: t.int({ required: true }),
-    // "tcp" (default) or "udp".
     protocol: t.string({ required: false }),
   }),
 });
@@ -197,8 +188,6 @@ export const CreateAppInputType = builder.inputType("CreateAppInput", {
       required: false,
       description: "Whether to start the first deployment. Defaults to true.",
     }),
-    // Template/compose deploys carry these so a one-click template keeps its
-    // env, routing, baked domain and config-file mounts.
     env: t.field({ type: [AppEnvInput], required: false }),
     composeService: t.string({ required: false }),
     composePort: t.int({ required: false }),
@@ -206,8 +195,6 @@ export const CreateAppInputType = builder.inputType("CreateAppInput", {
     autoDomain: t.string({ required: false }),
     autoDomainPath: t.string({ required: false }),
     mounts: t.field({ type: [MountInput], required: false }),
-    // Where the app is created (ADR-0009 - one home only). Omitted ⇒ top level.
-    // Authorized like a move into the same destination.
     folderId: t.string({ required: false }),
     projectId: t.string({ required: false }),
     environmentId: t.string({ required: false }),
@@ -228,6 +215,5 @@ export const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
     dockerImage: t.string({ required: false }),
     serverId: t.string({ required: false }),
     compose: t.string({ required: false }),
-    // Routing lives in the `domains` table, not in the deploy-source edit.
   }),
 });

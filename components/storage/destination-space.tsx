@@ -16,8 +16,6 @@ interface Shares {
   otherBytes: number;
 }
 
-// spaceShares splits a measured filesystem into backups / everything else / free.
-// The stored figure is the control plane's accounting and free is the host's, so clamp rather than trust the subtraction.
 export function spaceShares(
   storedBytes: number,
   freeBytes: number,
@@ -36,7 +34,6 @@ export function spaceShares(
   };
 }
 
-// measured is true when this destination has been measured at least once.
 export function measured(dest: DestinationCardView): boolean {
   return dest.freeBytes !== null && Boolean(dest.totalBytes);
 }
@@ -68,7 +65,6 @@ function Bar({ shares, className }: { shares: Shares; className?: string }) {
   );
 }
 
-// DestinationBar shows the disk a server destination sits on, as one bar.
 export function DestinationBar({ dest }: { dest: DestinationCardView }) {
   if (!measured(dest)) return null;
   const shares = spaceShares(
@@ -85,7 +81,6 @@ export function DestinationBar({ dest }: { dest: DestinationCardView }) {
   );
 }
 
-// spaceLabel: "331 GB free of 431 GB · 23% used", or why there is no figure yet.
 export function spaceLabel(dest: DestinationCardView): string {
   if (!measured(dest)) return "Measured when tested";
   const shares = spaceShares(
@@ -96,13 +91,11 @@ export function spaceLabel(dest: DestinationCardView): string {
   return `${formatBytes(dest.freeBytes!)} free of ${formatBytes(dest.totalBytes!)} · ${Math.round(shares.usedPct)}% used`;
 }
 
-// storedLabel: "412 MB in 1 backup" - what this destination is actually holding.
 export function storedLabel(dest: DestinationCardView): string {
   if (dest.storedCount === 0) return "None yet";
   return `${formatBytes(dest.storedBytes)} in ${dest.storedCount} ${dest.storedCount === 1 ? "backup" : "backups"}`;
 }
 
-// DestinationSpaceCell squeezes the same figure into a table cell: a short bar, or the stored size.
 export function DestinationSpaceCell({ dest }: { dest: DestinationCardView }) {
   if (dest.kind !== "server")
     return (

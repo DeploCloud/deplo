@@ -49,7 +49,6 @@ const KIND: Record<
   securityKey: { label: "Security key", icon: Usb },
 };
 
-// passkeyBlockedReason - from props, never `window.location`: that read disagrees with the server HTML and breaks hydration.
 export function passkeyBlockedReason(
   panelUrl: string | null,
   rpId: string | null,
@@ -68,18 +67,14 @@ export function PasskeysCard({
   onAddOpenChange,
 }: {
   passkeys: PasskeyDTO[];
-  // This instance's canonical address, or null if the operator never set one.
   panelUrl: string | null;
-  // The hostname passkeys are bound to, or null when this instance can't have any.
   rpId: string | null;
-  // Owned by the page, so the Account protection card can open it too.
   addOpen: boolean;
   onAddOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
   const blocked = passkeyBlockedReason(panelUrl, rpId);
 
-  // `sm` matches the card-header buttons: the default height is for rows that hold a form control.
   const addButton = (
     <Button size="sm" disabled={blocked !== null}>
       <Plus className="size-4" />
@@ -92,7 +87,6 @@ export function PasskeysCard({
       <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Passkeys
-          {/* The rpID is welded to the panel's address: moving it strands every passkey. */}
           <BetaChip />
           <InfoTip
             content="Sign in with your fingerprint, face or device PIN instead of a password, and it counts as your second factor."
@@ -170,7 +164,6 @@ export function PasskeysCard({
   );
 }
 
-// Password BEFORE the ceremony, so someone who cannot produce it is never asked for a fingerprint first.
 function AddPasskeyDialog({
   trigger,
   panelUrl,
@@ -188,7 +181,6 @@ function AddPasskeyDialog({
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
 
-  // Seeded in the handler, not an effect: `navigator` is a browser-only read.
   function onOpenChange(next: boolean) {
     if (next) setName(describeUserAgent(navigator.userAgent).label);
     else setPassword("");
@@ -196,7 +188,6 @@ function AddPasskeyDialog({
   }
 
   async function add() {
-    // The platform refuses the ceremony when the browser's host is not the rpID, so catch it before the password is spent.
     if (rpId && window.location.hostname !== rpId)
       return {
         ok: false as const,
@@ -266,7 +257,6 @@ function AddPasskeyDialog({
   );
 }
 
-// No password: a name is not a credential.
 function RenamePasskey({
   passkey,
   onDone,
@@ -286,7 +276,6 @@ function RenamePasskey({
       }
       open={open}
       onOpenChange={(next) => {
-        // Reset on OPEN, not on close: a half-typed name must not be what the field shows next time.
         if (next) setName(passkey.name);
         setOpen(next);
       }}
@@ -320,7 +309,6 @@ function RenamePasskey({
   );
 }
 
-// Password required: this is taking a sign-in credential away.
 function DeletePasskey({
   passkey,
   onDone,

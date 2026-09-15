@@ -6,7 +6,6 @@ import { ChevronDown } from "lucide-react";
 import { Collapse } from "@/components/shared/collapse";
 import { cn } from "@/lib/utils";
 
-// AdvancedSection - the wizard's one collapsed drawer, with its summary on the trigger.
 export function AdvancedSection({
   summary,
   children,
@@ -45,7 +44,6 @@ export function AdvancedSection({
   );
 }
 
-// AdvancedGroup - one titled block inside the drawer.
 export function AdvancedGroup({
   title,
   children,

@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 
 import { composePublishesPorts } from "./compose-lint/host-ports";
 
-// The `canExposePorts` grant gates exactly one thing: a service declaring host-mapped `ports:`.
-
 test("composePublishesPorts: true for a short-form host port", () => {
   const yaml = `services:
   app:
@@ -35,7 +33,6 @@ test("composePublishesPorts: true for a long-form port mapping", () => {
   assert.equal(composePublishesPorts(yaml), true);
 });
 
-// `expose:` binds nothing on the host, so it must not cost the grant.
 test("composePublishesPorts: false for an `expose:`-only stack", () => {
   const yaml = `services:
   app:
@@ -45,7 +42,6 @@ test("composePublishesPorts: false for an `expose:`-only stack", () => {
   assert.equal(composePublishesPorts(yaml), false);
 });
 
-// The real shape it used to be confused with: same stack, a `ports:` entry.
 test("composePublishesPorts: true when the same stack also binds a host port", () => {
   const yaml = `services:
   app:

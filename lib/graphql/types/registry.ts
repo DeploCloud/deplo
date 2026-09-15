@@ -27,7 +27,6 @@ const AddRegistryInputType = builder.inputType("AddRegistryInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     type: t.field({ type: RegistryTypeEnum, required: true }),
-    // Optional - the data layer defaults the host per registry type.
     registryUrl: t.string({ required: false }),
     username: t.string({ required: true }),
     password: t.string({ required: true }),

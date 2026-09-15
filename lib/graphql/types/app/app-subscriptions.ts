@@ -8,8 +8,6 @@ import type { AppSummary } from "@/lib/data/apps/summary";
 import { pubSub, APP_ACTIVITY_TOPIC } from "../../pubsub";
 import { countActiveDeploymentsForTeam } from "@/lib/data/deployments/deployment-queries";
 
-// Served over SSE on the same `/api/graphql` endpoint (Yoga negotiates
-// `text/event-stream` for subscriptions, no separate WebSocket server).
 builder.subscriptionType({});
 
 builder.subscriptionFields((t) => ({
@@ -18,13 +16,10 @@ builder.subscriptionFields((t) => ({
     description:
       "Emits the app whenever its status (power / deployment) changes. " +
       "Fires once immediately with the current snapshot, then on every change.",
-    // `loggedIn` (synchronous `!!ctx.viewer`, no cookie call) gates opening the
-    // stream; the generator enforces team ownership AND per-app access below.
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
     subscribe: (_root, { slug }, ctx) =>
       appStatusStream(slug, ctx.teamId, ctx.viewer?.id ?? null),
-    // The generator yields fully-resolved, team-scoped snapshots already.
     resolve: (project) => project,
   }),
   activeDeployments: t.int({
@@ -37,8 +32,6 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-// activeDeploymentsStream listens on the instance-wide `appActivity` channel
-// because a team-wide feed has no per-resource key to filter on.
 export async function* activeDeploymentsStream(
   teamId: string | null,
   userId: string | null,
@@ -50,8 +43,6 @@ export async function* activeDeploymentsStream(
     "appActivity",
     APP_ACTIVITY_TOPIC,
   )) {
-    // The payload names the app that moved; this answer is a team-wide count,
-    // so the id means nothing here beyond "re-read".
     void changedId;
     const next = await countActiveDeploymentsForTeam(teamId, userId);
     if (next === last) continue;
@@ -60,16 +51,12 @@ export async function* activeDeploymentsStream(
   }
 }
 
-// appStatusStream is exported for the SSE test: it must stay cookie-free across
-// iteration ticks (PLAN §6).
 export async function* appStatusStream(
   slug: string,
   teamId: string | null,
   userId: string | null,
 ): AsyncGenerator<AppSummary> {
   if (!teamId || !userId) throw new Error("App not found");
-  // Cookie-free: both lookups take the explicit `teamId` + `userId` and query
-  // Postgres directly, so they stay callable across the async-iteration ticks.
   const project = await findAppSummaryBySlugForTeam(slug, teamId, userId);
   if (!project) throw new Error("App not found");
   const appId = project.id;

@@ -7,7 +7,6 @@ export interface UserAgentInfo {
   label: string;
 }
 
-// Most specific first: every entry after the first match is unreachable.
 const BROWSERS: [RegExp, string][] = [
   [/\bEdg(?:e|A|iOS)?\//, "Edge"],
   [/\bOPR\/|\bOpera[\s/]/, "Opera"],
@@ -29,11 +28,9 @@ const BROWSERS: [RegExp, string][] = [
   [/\bnode(?:-fetch)?\//i, "Node"],
 ];
 
-// Also most specific first: "Android" strings contain "Linux".
 const OSES: [RegExp, string][] = [
   [/\biPhone\b|\biPod\b/, "iPhone"],
   [/\biPad\b/, "iPad"],
-  // iPadOS 13+ pretends to be a Mac; the touch hint is what gives it away.
   [/\bMacintosh\b(?=.*\bMobile\b)/, "iPad"],
   [/\bAndroid\b/, "Android"],
   [/\bCrOS\b/, "ChromeOS"],

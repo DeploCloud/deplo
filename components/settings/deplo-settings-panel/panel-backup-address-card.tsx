@@ -21,7 +21,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { InstanceSettings } from "@/lib/data/instance-settings/settings-store";
 import { hostPart } from "./panel-address-card";
 
-// PanelBackupAddressCard: the generated backup address, and the one switch that takes it away.
 export function PanelBackupAddressCard({
   settings,
 }: {
@@ -33,7 +32,6 @@ export function PanelBackupAddressCard({
 
   const url = settings.panelFallbackUrl;
   const off = settings.panelFallbackDisabled;
-  // Turning it off here would leave no route at all: it IS the address.
   const isOwnAddress = !!url && url === settings.panelUrl;
 
   async function apply(enabled: boolean) {

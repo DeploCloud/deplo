@@ -21,7 +21,6 @@ import { rateLimit } from "../security";
 import { isValidUserAvatarValue } from "../apps/avatar-shared";
 import { normalizeUsername, validateUsername } from "../username";
 
-/** Update the current user's display name, and their handle when one is given. */
 export async function updateProfile(input: {
   name: string;
   username?: string;
@@ -37,7 +36,6 @@ export async function updateProfile(input: {
     const invalid = validateUsername(username);
     if (invalid) throw new Error(invalid);
     if (username !== user.username) {
-      // `users_username_uq` is the real guard; this only makes it a sentence.
       const taken = await db
         .select({ id: usersTable.id })
         .from(usersTable)
@@ -57,7 +55,6 @@ export async function updateProfile(input: {
   if (updated.length === 0) throw new Error("User not found");
 }
 
-// updateMyAvatar sets or clears the current user's profile picture.
 export async function updateMyAvatar(image: string | null): Promise<void> {
   requirePersonalSession("your account settings");
   const user = await assertUser();
@@ -72,7 +69,6 @@ export async function updateMyAvatar(image: string | null): Promise<void> {
   if (updated.length === 0) throw new Error("User not found");
 }
 
-// Same budget as the 2FA step-up, so a stolen live session cannot brute-force it.
 const REAUTH_LIMIT = { limit: 6, windowMs: 5 * 60_000 };
 async function assertCurrentPassword(
   userId: string,
@@ -109,7 +105,6 @@ export async function updateEmail(input: {
   await db.update(usersTable).set({ email }).where(eq(usersTable.id, user.id));
 }
 
-/** Change the current user's password, after verifying the current one. */
 export async function changePassword(input: {
   currentPassword: string;
   newPassword: string;
@@ -118,21 +113,15 @@ export async function changePassword(input: {
   const user = await assertUser();
   assertPasswordPolicy(input.newPassword);
   await assertCurrentPassword(user.id, input.currentPassword);
-  // After the re-auth, not before: a wrong current password is answered locally.
   await assertPasswordNotPwned(input.newPassword);
   await setUserPassword(user.id, input.newPassword);
-  // Read BEFORE the revoke, else the replacement demotes a passkey session to a password one.
   const wasPasskeySession = (await currentSessionAuthMethod()) === "passkey";
-  // A changed password must log out every stolen or old cookie, the initiator's included.
   await revokeAllSessions(user.id);
-  // Best-effort: on failure the change still stands and the initiator re-authenticates.
   try {
     await startSessionFor(user.email, input.newPassword);
     if (wasPasskeySession) {
       const fresh = await replacementSessionIdFor(user.id);
       if (fresh) await markSessionAuthMethod(fresh, user.id, "passkey");
     }
-  } catch {
-    /* no request scope / cookie write unavailable - logged out is fine */
-  }
+  } catch {}
 }

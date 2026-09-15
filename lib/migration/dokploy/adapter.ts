@@ -34,8 +34,6 @@ import {
 } from "../map/volume-discovery";
 import type { HostMount, NamedVolume, SourceBackupSchedule } from "../model";
 
-// The panel attaches networks the compose file never names; Deplo puts every app on
-// its Environment's network, so this is a report line, not a setting to carry over.
 async function panelNetworkNotes(
   c: SourceCredential,
   row: unknown,
@@ -57,8 +55,6 @@ async function panelNetworkNotes(
   ];
 }
 
-// The panel's forms never produce one, so it is the one route setting an import
-// cannot read off the row - and, unsaid, it vanished. Dokploy's own two are left out.
 function customMiddlewareNotes(
   traefik: string | null,
   appName: string,
@@ -96,7 +92,6 @@ async function serviceRuntime(
   c: SourceCredential,
   svc: RuntimeQuery,
 ): Promise<ServiceRuntime> {
-  // A compose stack's containers are plain; an application or a database is a swarm service.
   const order: DokployRuntime[] =
     svc.kind === "compose" ? ["standalone", "swarm"] : ["swarm", "standalone"];
 
@@ -110,7 +105,6 @@ async function serviceRuntime(
     ).catch(() => []);
     if (containers.length > 0) break;
   }
-  // Dokploy stops a service by scaling it to 0 replicas, and the volume is still on the host.
   if (containers.length === 0)
     return {
       volumes: svc.declaredVolumes,
@@ -118,16 +112,12 @@ async function serviceRuntime(
       running: false,
       undetermined:
         svc.declaredVolumes.length + svc.declaredBindMounts.length === 0,
-      // Volumes AND host binds: a service with only a bind mount used to be told it
-      // "declares no volume", beside the bind mount the plan had already paired for it.
       notes:
         svc.declaredVolumes.length + svc.declaredBindMounts.length > 0
           ? [
               `${svc.appName} is stopped on Dokploy, so its data comes from what Dokploy says it mounts rather than from a live container.`,
             ]
-          : // Never "there is nothing to copy": somebody read that as a verdict and
-            // pressed Deploy over their own data.
-            [
+          : [
               `Dokploy has no container for ${svc.appName} and names nothing it mounts, so Deplo cannot tell what its data is. If it had any, start it again on Dokploy and run the copy from here - a running stack names its own volumes. Do not deploy this one until you have.`,
             ],
     };
@@ -161,7 +151,6 @@ async function serviceRuntime(
   return { volumes, hostMounts, running, notes };
 }
 
-// Every schedule the panel kept for an app or stack, its destination by NAME.
 async function volumeBackupsOf(
   c: SourceCredential,
   id: string,
@@ -193,18 +182,14 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     platform: "dokploy",
     baseUrl: c.baseUrl,
     displayName: DOKPLOY_PLATFORM.name,
-    // Dokploy's key either reads a service or answers 403 on the call itself, so there is nothing to probe.
     assertReadable: async () => {},
     listProjects: () => listProjects(c),
     getEnvironment: (id) => getEnvironment(c, id),
-    // Dokploy resolves `${{project.KEY}}` only at deploy time, so the refs are read off the blob here.
     getService: async (kind, id) => {
       const row = await getService(c, kind, id);
       const blob = (row as { env?: string | null }).env;
       const traefik =
         kind === "application" ? await readTraefikConfig(c, id) : null;
-      // The panel keeps volume backups OFF the service row, while a stack's own `backups`
-      // are its inside-the-stack dumps; both land here so no schedule is lost.
       const backups =
         kind === "application" || kind === "compose"
           ? await volumeBackupsOf(c, id, kind, row)
@@ -223,7 +208,6 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     listServers: () => listServers(c),
     listMembers: () => listMembers(c),
     sourceTeam: () => activeOrganization(c),
-    // A key names ONE organization; this is the list Dokploy itself shows when a key is minted.
     otherTeams: async () => {
       const [active, all] = await Promise.all([
         activeOrganization(c),
@@ -233,10 +217,8 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
       return all.filter((o) => o.id !== active.id).map((o) => o.name || o.id);
     },
     listSchedules: (kind, id) => listSchedules(c, kind, id),
-    // Dokploy shares variables at the project and the environment, never above.
     teamSharedEnv: async () => null,
     serverSharedEnv: async () => null,
-    // A row missing its secret is one the key may not read, and half a destination is worse than none.
     listBackupDestinations: async () =>
       (await listDestinations(c)).flatMap((d) => {
         const name = d.name?.trim();
@@ -260,7 +242,6 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),
     startService: (kind, id) => startService(c, kind, id),
-    // Dokploy puts every stack on one shared network, whatever the stack is.
     platformNetworks: () => [...DOKPLOY_PLATFORM.networks],
   };
 }

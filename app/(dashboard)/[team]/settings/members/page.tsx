@@ -11,8 +11,6 @@ import { MembersManager } from "@/components/members/members-manager";
 export const metadata = { title: "Settings · Members" };
 
 export default async function MembersPage() {
-  // `listMembers` is team-wide and throws for a limited role. Asked first, so
-  // the page says so instead of taking the error boundary.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess
@@ -29,8 +27,6 @@ export default async function MembersPage() {
     isInstanceAdmin(),
   ]);
 
-  // The page header lives inside the manager: "Add member" belongs in it, and
-  // only the manager can open the dialog it opens.
   return (
     <MembersManager
       members={members}

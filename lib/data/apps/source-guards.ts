@@ -24,14 +24,11 @@ import { gitConnectionInTeam } from "../git-connections";
 import type { DeploySource } from "../../types/app";
 import type { GitRepo } from "../../types/build";
 
-// A migration source has Docker but is another platform's host: nothing of ours runs or builds there.
 export const ON_IMPORT_SOURCE =
   "That server is a migration source - it only exists to import from another platform.";
 
-// An image ref rides into the compose `image:` scalar unquoted, so YAML metacharacters are refused.
 const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/;
 
-// assertImageRef refuses anything but a plain reference before it can inject compose keys.
 export function assertImageRef(
   source: DeploySource,
   dockerImage: string | null | undefined,
@@ -46,7 +43,6 @@ export function assertImageRef(
     );
 }
 
-// assertComposeSavable gates every compose save (host ports, host reach, reserved names) and answers its host reach.
 export async function assertComposeSavable(
   compose: string | null | undefined,
 ): Promise<string[]> {
@@ -67,7 +63,6 @@ export async function assertComposeSavable(
   return reach;
 }
 
-// scopeRepoCredentials drops a credential from another team rather than cloning a private repo with it.
 export async function scopeRepoCredentials(
   repo: GitRepo | null,
   teamId: string,

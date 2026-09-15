@@ -63,7 +63,6 @@ test("a trailing slash never changes the answer", () => {
 test("knowing no address at all is not a reason to mark cookies Secure", () => {
   delete process.env.DEPLO_PUBLIC_URL;
   assert.equal(publicBaseUrl(), null);
-  // Fails to the setting that still WORKS: a Secure cookie on http is dropped silently, locking everyone out.
   assert.equal(cookiesAreSecure(), false);
 });
 

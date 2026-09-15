@@ -65,14 +65,12 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-// The endpoints take headers as an argument, so the flow runs for real: `next/headers` does not exist under `node --test`.
 async function signIn(email: string, password: string): Promise<string> {
   const res = await requireAuth().api.signInEmail({
     body: { email, password },
     asResponse: true,
   });
   assert.equal(res.status, 200, "sign-in should succeed");
-  // getSetCookie(), not get(): a 2FA sign-in sets more than one cookie and `get` flattens them unparseably.
   return res.headers
     .getSetCookie()
     .map((c) => c.split(";")[0])
@@ -87,7 +85,6 @@ async function codeFor(totpURI: string): Promise<string> {
   return createOTP(secret, { digits: 6, period: 30 }).totp();
 }
 
-// Since Better Auth 1.7.0 the endpoint answers a DISCRIMINATED union, and an OTP enrolment carries no secret at all.
 async function enableTotp(
   headers: Headers,
 ): Promise<{ totpURI: string; backupCodes: string[] }> {
@@ -205,7 +202,6 @@ test("a backup code works exactly once", async () => {
   const { backupCodes } = await enrolUser1();
   const code = backupCodes[0]!;
 
-  // A backup code answers the LOGIN challenge: it needs the short-lived two-factor cookie, not a session cookie.
   const challenge = async () =>
     new Headers({ cookie: await signIn(EMAIL_1, PASSWORD) });
 
@@ -231,7 +227,6 @@ test("verifyTwoFactorCode reports the plugin's own message on a bad code", async
 });
 
 test("a team mandate blocks mutations, reads AND the bearer API", async () => {
-  // Mint the token BEFORE the mandate exists: the point is that an already-issued token stops working.
   const raw = await asUser(
     USER_1,
     async () => (await createToken({ name: "CI" })).raw,
@@ -246,7 +241,6 @@ test("a team mandate blocks mutations, reads AND the bearer API", async () => {
     );
   });
 
-  // The one a gate on `membershipFor` alone would miss: every read in lib/data scopes itself here instead.
   await asUser(USER_2, async () => {
     await assert.rejects(
       () => requireActiveTeamId(),
@@ -270,7 +264,6 @@ test("the mandate never blocks the way out", async () => {
       (e: unknown) => e instanceof TwoFactorRequiredError,
       "the gate itself stays shut",
     );
-    // The request still gets a context, or `logout` and the enrolment pair go with it and the lock screen is a dead end.
     const ctx = await buildContext(new Request("http://localhost/api/graphql"));
     assert.equal(ctx.viewer?.id, USER_2);
     assert.equal(ctx.teamId, null, "the team stays unresolved");
@@ -320,7 +313,6 @@ test("a role mandate blocks only the members who hold that role", async () => {
     .update(teamRolesTable)
     .set({ requireTwoFactor: true })
     .where(eq(teamRolesTable.id, memberRole.id));
-  // `ensureTeamRoles` only adopts exact capability matches, so pin each member to a role explicitly.
   await db
     .update(membershipsTable)
     .set({ roleId: memberRole.id })

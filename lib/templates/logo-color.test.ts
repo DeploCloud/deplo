@@ -14,7 +14,6 @@ async function logo(fill: number[], mark?: number[]): Promise<Buffer> {
     .toBuffer();
 }
 
-// Hues are circular: 359 and 1 are two degrees apart, not 358.
 function apart(a: number, b: number): number {
   const d = Math.abs(a - b) % 360;
   return d > 180 ? 360 - d : d;
@@ -27,7 +26,6 @@ test("a solid logo answers its own hue", async () => {
 });
 
 test("a small saturated mark outvotes the field it sits on", async () => {
-  // Weighted by chroma: 6% of the pixels carry the colour, the black must count for nothing.
   const { hue } = await analyseLogo(
     await logo([0, 0, 0, 255], [249, 115, 22, 255]),
   );
@@ -39,7 +37,6 @@ test("a small saturated mark outvotes the field it sits on", async () => {
 });
 
 test("transparent pixels do not vote", async () => {
-  // With alpha ignored, the zeroed RGB under a transparent logo reads as a real colour.
   assert.deepEqual(await analyseLogo(await logo([0, 0, 0, 0])), {});
   const { hue } = await analyseLogo(
     await logo([0, 0, 0, 0], [34, 197, 94, 255]),
@@ -52,12 +49,10 @@ test("transparent pixels do not vote", async () => {
 });
 
 test("a black wordmark asks for a plate on the dark theme", async () => {
-  // The whole reason `tone` exists: this logo is invisible on a #0a0a0a card.
   const black = await analyseLogo(await logo([0, 0, 0, 255]));
   assert.equal(black.hue, undefined, "black is not a hue");
   assert.equal(black.tone, "dark");
 
-  // Mostly transparent with black ink - the common shape in the catalogue.
   const ink = await analyseLogo(await logo([0, 0, 0, 0], [12, 12, 12, 255]));
   assert.equal(ink.tone, "dark");
 });
@@ -69,14 +64,12 @@ test("a white wordmark asks for a plate on the light theme instead", async () =>
 });
 
 test("a coloured logo never asks for a plate", async () => {
-  // A dark navy mark would be plated by any lightness-only rule; chroma carries it.
   const navy = await analyseLogo(await logo([0, 0, 0, 0], [24, 40, 120, 255]));
   assert.notEqual(navy.hue, undefined);
   assert.equal(navy.tone, undefined, "colour is visible on both surfaces");
 });
 
 test("bytes that are not an image degrade instead of throwing", async () => {
-  // The catalogue is remote input; a page must not 500 because it served HTML.
   assert.deepEqual(await analyseLogo(Buffer.from("<!doctype html>")), {});
   assert.deepEqual(await analyseLogo(Buffer.alloc(0)), {});
 });

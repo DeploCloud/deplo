@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The "catalog unreachable" illustration: a request leaving this instance, climbing toward the template service, and dying at a broken link. */
 export function CatalogOfflineGraphic({ className }: { className?: string }) {
   return (
     <svg

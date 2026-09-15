@@ -15,14 +15,12 @@ import { uploadRestore } from "@/lib/backups/restore-upload-client";
 import { formatBytes } from "@/lib/utils";
 import type { ActionResult } from "@/lib/result";
 
-// RestoreFromFile - restore an app or a database from an artifact on the operator's own machine.
 export function RestoreFromFile({
   target,
   open,
   onOpenChange,
 }: {
   target: { kind: "app" | "database"; id: string; name: string };
-  // Opened from the page's Back up menu, which carries the `restore_backups` gate.
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -44,7 +42,6 @@ export function RestoreFromFile({
       setEncrypted(false);
       return;
     }
-    // age announces itself in the clear at the very start of the file, so this costs 22 bytes.
     const head = new Uint8Array(
       await picked.slice(0, ARTIFACT_MAGIC_BYTES).arrayBuffer(),
     );

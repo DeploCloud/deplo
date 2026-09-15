@@ -1,7 +1,6 @@
 import { gqlAction } from "@/lib/graphql-client";
 import type { DestinationStatus } from "@/lib/types/backup";
 
-/** What a probe reports back per destination. */
 export interface DestinationProbe {
   id: string;
   status: DestinationStatus;
@@ -16,7 +15,6 @@ const PROBE_MIN_INTERVAL_MS = 30_000;
 let lastProbeAt = 0;
 let probeInFlight = false;
 
-// probeDestinations re-probes the active team's destinations; null when skipped or failed.
 export async function probeDestinations(): Promise<DestinationProbe[] | null> {
   if (probeInFlight) return null;
   if (Date.now() - lastProbeAt < PROBE_MIN_INTERVAL_MS) return null;

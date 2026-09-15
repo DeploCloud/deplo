@@ -1,4 +1,3 @@
-// TemplateScreenshots renders a template's screenshots; the catalogue publishes none today, so the caller mounts it only when images[] is non-empty.
 export function TemplateScreenshots({
   images,
   name,

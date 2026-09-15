@@ -9,7 +9,6 @@ import {
 import { COOLIFY_PLATFORM } from "./map-test-helpers";
 
 test("adaptComposeForDeplo maps Dokploy's file mounts onto Deplo's convention", () => {
-  // The platform writes the service's config next to the stack and the file binds it back in.
   const source = [
     "services:",
     "  ch:",
@@ -36,10 +35,8 @@ test("adaptComposeForDeplo maps Dokploy's file mounts onto Deplo's convention", 
   };
   assert.deepEqual(doc.services.ch.volumes, [
     "clickhouse_data:/var/lib/clickhouse",
-    // Dokploy's files dir becomes Deplo's, so the imported file mounts line up with the compose that reads them.
     "./clickhouse_config:/etc/clickhouse-server/config.d",
     ".:/everything",
-    // A real host path stays one, and goes on needing `canMountHostVolumes`.
     "/srv/real-host-path:/host",
     "../../elsewhere:/nope",
   ]);
@@ -49,7 +46,6 @@ test("adaptComposeForDeplo maps Dokploy's file mounts onto Deplo's convention", 
   assert.equal(changes.length, 3);
 });
 
-// `../files/x` is how Dokploy spells "a file next to this stack", and it appears in more than one place.
 test("adaptComposeForDeplo rewrites ../files everywhere a compose names a file", () => {
   const { compose, changes } = adaptComposeForDeplo(`services:
   app:
@@ -82,7 +78,6 @@ configs:
   assert.equal(doc.services.worker.env_file, "./worker.env");
   assert.equal(doc.secrets.api_key.file, "./api_key.txt");
   assert.equal(doc.configs.cfg.file, "./cfg.yml");
-  // Every rewrite is reported, and the platform's own `.env` is left alone: the agent writes one next to the stack.
   assert.equal(changes.filter((c) => c.includes("files directory")).length, 5);
 });
 
@@ -100,7 +95,6 @@ secrets:
   assert.deepEqual(changes, []);
 });
 
-// Every platform writes a service's variables into a file next to the compose, and they disagree on its name.
 test("retargetPlatformEnvFiles points a foreign env file at Deplo's own", () => {
   const { compose, changes } = retargetPlatformEnvFiles(
     `services:
@@ -119,7 +113,6 @@ test("retargetPlatformEnvFiles points a foreign env file at Deplo's own", () => 
     services: Record<string, { env_file?: unknown }>;
   };
   assert.equal(doc.services.web.env_file, "./.env");
-  // The one the app CARRIES is left exactly as the author wrote it.
   assert.deepEqual(doc.services.api.env_file, ["./.env", "./config/app.env"]);
   assert.equal(changes.length, 2);
   assert.match(changes[0], /stack\.env/);

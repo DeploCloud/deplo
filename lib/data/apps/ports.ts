@@ -22,7 +22,6 @@ import { requireAppCapability } from "../node-access";
 import { recordActivity } from "../activity";
 import type { PublishedPort } from "../../types/container";
 
-// validatePorts applies the published-port rules. Pure, so the settings form and the importer share the refusals.
 export function validatePorts(raw: PublishedPort[]): PublishedPort[] {
   const seen = new Set<string>();
   const out: PublishedPort[] = [];
@@ -52,14 +51,12 @@ export function validatePorts(raw: PublishedPort[]): PublishedPort[] {
   return out;
 }
 
-// setAppPorts replaces the published host ports (full set); they take effect on the next deploy.
 export async function setAppPorts(
   id: string,
   ports: PublishedPort[],
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
 
-  // A published port is reachable PAST the proxy and every gate it applies, so it needs its own grant.
   if (ports.length > 0) await requireExposePorts();
   const user = (await getCurrentUser())!;
   const validated = validatePorts(ports);
@@ -74,9 +71,7 @@ export async function setAppPorts(
       "A compose stack publishes its ports in its own compose file.",
     );
 
-  // A host port is a singleton on a shared machine: the row that would collide can belong to another team.
   // ponytail: rows only, no agent probe - a port something OUTSIDE Deplo holds
-  // surfaces as docker's own refusal on the deploy, like a compose stack's does.
   for (const p of validated)
     if (await hostPortClaimed(app.serverId, p.published, { appId: id }))
       throw new Error(

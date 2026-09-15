@@ -32,7 +32,6 @@ export default async function DeploSettingsPage() {
     getCurrentUser(),
   ]);
 
-  // Narrowed to exactly what the server accepts for an ownership transfer.
   const ownerCandidates = users
     .filter((u) => u.isInstanceAdmin && !u.isInstanceOwner && !u.suspended)
     .map((u) => ({
@@ -42,7 +41,6 @@ export default async function DeploSettingsPage() {
       avatarUrl: u.avatarUrl,
     }));
 
-  // A migration source takes its own agent off when done (ADR-0025), so it is not fleet.
   const fleetHosts = servers.filter((s) => !s.importOnly);
   const fleet = {
     total: fleetHosts.length,
@@ -66,7 +64,6 @@ export default async function DeploSettingsPage() {
         description={
           <>
             <span className="font-mono">v{settings.version}</span>
-            {/* Derived from the version, not a flag: the badge goes on its own at 1.0.0. */}
             {settings.version.startsWith("0.") ? (
               <Badge variant="secondary" className="ml-2 align-middle">
                 Beta

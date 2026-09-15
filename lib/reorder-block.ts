@@ -1,4 +1,3 @@
-// reorderBlock - drop activeId on overId carrying the whole multi-selection; null when it is a no-op.
 export function reorderBlock(
   order: string[],
   activeId: string,

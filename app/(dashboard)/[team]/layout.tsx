@@ -17,26 +17,20 @@ export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
   const { team: addressed } = await props.params;
   const children = props.children;
   const user = await requireUser();
-  // The machine's ports still belong to another panel. See lib/data/takeover.ts.
   if (await takeoverBlocksDashboard()) redirect("/takeover");
 
   const teams = await listMyTeams();
-  // Zero teams (last one deleted, or removed from it) would throw "No active team".
   if (teams.length === 0) redirect("/welcome");
-  // The URL segment is what every read below resolves (proxy.ts sets the header), and an unknown team and a forbidden team get the SAME answer.
   if (!teams.some((t) => t.slug === addressed)) {
     const byId = teams.find((t) => t.id === addressed);
     if (byId) redirect(`/${byId.slug}`);
     return <NoTeamAccessScreen teams={teams} />;
   }
 
-  // Every load below is team-scoped, so all refuse when the team requires 2FA the account lacks.
   let team, capabilities, isAdmin, breadcrumb;
   try {
-    // The IDENTITY, not the settings: `getTeam` is a team-wide read a partial-reach member is refused.
     team = await getTeamIdentity();
     [capabilities, isAdmin, breadcrumb] = await Promise.all([
-      // Reachable, not team-wide: a per-folder grant is how someone holds one corner of the fleet (ADR-0016).
       reachableCapabilities(),
       isInstanceAdmin(),
       getBreadcrumbGraph(),
@@ -46,7 +40,6 @@ export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
       return (
         <TwoFactorLockScreen
           reason={e.reason}
-          // A usable passkey plus a block means this session signed in with the password.
           hasPasskey={await userHasPasskey(user.id)}
           otherTeams={teams
             .filter((t) => t.id !== e.teamId)

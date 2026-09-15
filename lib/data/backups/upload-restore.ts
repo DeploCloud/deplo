@@ -13,18 +13,11 @@ import { resolveTarget, type ResolvedTarget } from "./target-descriptor";
 import type { RestoreEvent } from "../../agent/gen/agent";
 import type { BackupTargetKind } from "../../types/backup";
 
-// Targets with an upload restore streaming into them right now. Two at once would
-// untar into the same volumes while the other wipes them; the second is refused.
 const uploadRestoresInFlight = new Set<string>();
 
-// prepareUploadRestore - restore an app or a database from an artifact the operator
-// UPLOADS, the only recovery path that survives losing the control plane. Everything
-// that can refuse refuses BEFORE the agent is dialed, and the bytes never touch a disk.
 export async function prepareUploadRestore(input: {
   kind: BackupTargetKind;
   targetId: string;
-  // The destination's recovery key. Never stored, never logged, never written
-  // to the Activity trail.
   recoveryKey: string;
   body: ReadableStream<Uint8Array>;
 }): Promise<{
@@ -33,14 +26,10 @@ export async function prepareUploadRestore(input: {
 }> {
   const { membership } = await requireMembership();
   const teamId = membership.teamId;
-  // Resolved NOW, while the request context still exists: the generator below
-  // outlives the route handler, and `getCurrentUser()` reads cookies.
   const user = (await getCurrentUser())!;
   const appId = input.kind === "app" ? input.targetId : null;
   const databaseId = input.kind === "database" ? input.targetId : null;
 
-  // Same gate as restoring a recorded run, and for the same reason: this
-  // overwrites live data. For an app it also carries the folder grant.
   await requireBackupCapability(
     { targetKind: input.kind, appId },
     "restore_backups",
@@ -57,9 +46,6 @@ export async function prepareUploadRestore(input: {
   let opened: Awaited<ReturnType<typeof openUploadRestore>> | null = null;
   let target: ResolvedTarget;
   try {
-    // The artifact is judged FIRST, before the target is resolved: that resolution
-    // dials the owning agent, and a file that was never a backup should cost
-    // nobody a round trip, let alone reach a host.
     const reader = input.body.getReader();
     const head = await readUploadHead(reader);
     const { encrypted } = await sniffArtifact(head, {
@@ -82,8 +68,6 @@ export async function prepareUploadRestore(input: {
       wrapped.ageIdentity,
       wrapped.chunks,
     );
-    // Only once the agent has the request: a dial that fails must not leave an
-    // app parked on "restoring" with nothing running to move it off.
     if (target.appId) await setAppStatus(target.appId, "restoring");
   } catch (e) {
     opened?.close();
@@ -95,15 +79,10 @@ export async function prepareUploadRestore(input: {
   const resolved = target;
   const INTERRUPTED = "the restore was interrupted before it finished";
 
-  // Deliberately NOT inside the generator's `finally`: that only runs for a
-  // generator somebody pulled, and the ending most worth recording - the browser
-  // vanishing - is the one that may never pull.
   let closed = false;
   async function finish(problem: string | null): Promise<void> {
     if (closed) return;
     closed = true;
-    // An app left on "restoring" because nobody stayed to watch would never move
-    // off it again.
     if (resolved.appId)
       await setAppStatus(resolved.appId, problem ? "error" : "active");
     await recordActivity(
@@ -148,8 +127,6 @@ export async function prepareUploadRestore(input: {
       } catch (e) {
         failure = (mapBackupUnsupported(e) as Error).message;
       }
-      // Covers the endings the agent never got to report (a dropped connection),
-      // so the browser always reads a verdict as the last line.
       if (failure && !settled) yield { result: { ok: false, error: failure } };
     } finally {
       await finish(failure ?? (settled ? null : INTERRUPTED));
@@ -159,9 +136,6 @@ export async function prepareUploadRestore(input: {
   return { events: relay(), abandon: () => finish(INTERRUPTED) };
 }
 
-// uploadRestoreRefusal - why an UPLOADED artifact must not be restored into this
-// target, or null. NOT the security boundary (that is `untrusted_config`): an app
-// never deployed has no stack to land in, and its empty compose is the test.
 export function uploadRestoreRefusal(target: {
   kind: BackupTargetKind;
   project?: { composeYaml: string };
@@ -174,8 +148,6 @@ export function uploadRestoreRefusal(target: {
   );
 }
 
-// readUploadHead - read at most SNIFF_HEAD_BYTES from the upload, leaving the
-// reader positioned for the rest. Short reads are normal.
 async function readUploadHead(
   reader: ReadableStreamDefaultReader<Uint8Array>,
 ): Promise<Buffer> {
@@ -190,7 +162,6 @@ async function readUploadHead(
   return Buffer.concat(parts);
 }
 
-// uploadChunks - the upload as the agent pump wants it: the sniffed head, then the remainder.
 async function* uploadChunks(
   head: Buffer,
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -203,16 +174,10 @@ async function* uploadChunks(
       yield Buffer.from(value);
     }
   } finally {
-    // Whoever stops reading stops the upload. A restore that fails early (or an
-    // agent that drops) otherwise leaves the browser pushing gigabytes into a
-    // socket nobody drains; cancelling tears the request body down instead.
     void reader.cancel().catch(() => {});
   }
 }
 
-// wrapPlaintextUpload - wrap a plaintext upload for an agent that only restores
-// encrypted artifacts. The keypair lives for this request only - the shape
-// RestoreFrom insists on, not a secret to keep.
 async function wrapPlaintextUpload(source: AsyncIterable<Buffer>): Promise<{
   ageIdentity: string;
   chunks: AsyncIterable<Buffer>;

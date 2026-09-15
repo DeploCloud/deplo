@@ -9,10 +9,8 @@ import {
 export { isMap, isScalar, isSeq, visit, Scalar } from "yaml";
 export type { Document, YAMLMap, YAMLSeq } from "yaml";
 
-// Reads go through `yaml`: js-yaml refuses a tagged `!!merge <<:` and turns a bare date into a Date.
 const READ = { merge: true, logLevel: "error" } as const;
 
-// Callers already read js-yaml's error shape: a `.mark` with 0-based line/column.
 function asLoadError(e: unknown): unknown {
   if (!(e instanceof YAMLParseError)) return e;
   const at = e.linePos?.[0];
@@ -31,7 +29,6 @@ export function load(src: string): unknown {
   }
 }
 
-// parseDocument keeps anchors, merge keys, comments and layout, so a rewrite stays faithful.
 export function parseDocument(src: string): Document {
   return parseYamlDocument(src, READ);
 }

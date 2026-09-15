@@ -32,7 +32,6 @@ import { CertificatesCard } from "./certificates-card";
 const TABS = ["general", "advanced", "updates"] as const;
 type TabId = (typeof TABS)[number];
 
-// DeploSettingsPanel: Settings, Deplo - the instance itself.
 export function DeploSettingsPanel({
   settings,
   viewerIsOwner,
@@ -59,8 +58,6 @@ export function DeploSettingsPanel({
     if (tab === "general") next.delete("tab");
     else next.set("tab", tab);
     const s = next.toString();
-    // The native History API, not `router.replace`: re-running every server read
-    // would be a page load to move an underline.
     window.history.replaceState(
       null,
       "",
@@ -123,8 +120,6 @@ export function DeploSettingsPanel({
         </div>
       </TabsContent>
 
-      {/* forceMount: the changelog it fetched survives a flip to General and
-          back, and nothing is fetched until the tab is opened. */}
       <TabsContent
         value="updates"
         forceMount

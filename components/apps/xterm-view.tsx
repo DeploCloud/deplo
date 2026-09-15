@@ -6,7 +6,6 @@ import * as React from "react";
 import { Terminal, type ITerminalOptions } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
-// XtermApi is the imperative surface a parent drives a mounted terminal through.
 export interface XtermApi {
   write: (data: string) => void;
   reset: () => void;
@@ -25,7 +24,6 @@ const THEME: ITerminalOptions["theme"] = {
   brightBlack: "#52525b",
 };
 
-// xterm parses colours itself and does not understand var().
 function terminalBackground(node: HTMLElement): string {
   return getComputedStyle(node).getPropertyValue("--terminal").trim() || "#000";
 }
@@ -33,7 +31,6 @@ function terminalBackground(node: HTMLElement): string {
 const FONT_FAMILY =
   'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 
-// XtermView mounts an xterm terminal, fits it to its container, and pumps keystrokes out.
 export function XtermView({
   onData,
   onResize,
@@ -70,7 +67,6 @@ export function XtermView({
       lineHeight: 1.2,
       scrollback: 5000,
       theme: { ...THEME, background: terminalBackground(host) },
-      // A hyperlink in container output must not become a click in the panel.
       linkHandler: { activate: () => {} },
     });
     const fit = new FitAddon();
@@ -80,9 +76,7 @@ export function XtermView({
     const doFit = () => {
       try {
         fit.fit();
-      } catch {
-        /* zero-sized host (not laid out yet) - the ResizeObserver refits later */
-      }
+      } catch {}
       return { cols: term.cols, rows: term.rows };
     };
 
@@ -102,7 +96,6 @@ export function XtermView({
       fit: doFit,
       getSize: () => ({ cols: term.cols, rows: term.rows }),
       getText: () => {
-        // xterm has no buffer-to-string API; reading back a select-all is the supported way.
         term.selectAll();
         const text = term.getSelection();
         term.clearSelection();

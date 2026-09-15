@@ -84,20 +84,14 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     listFolders(),
     listProjects(),
     listActivity(6),
-    // `listDatabases` is team-wide and refuses a partial-reach role.
     reachesWholeTeam(),
     isInstanceAdmin(),
     hasCapability("manage_team"),
-    // A project or folder grant can hold this where the role does not.
     hasCapabilityAnywhere("create_apps"),
-    // The "Add New" menu's Database entry links to the Storage page's create dialog.
     hasCapability("create_databases"),
-    // `requireCapability` gives an instance admin no bypass, so ask exactly what createFolder/createProject ask.
     hasCapability("create_folders"),
     hasCapability("create_projects"),
-    // A folder or app grant can hand out move_apps on a single corner of the fleet.
     hasCapabilityAnywhere("move_apps"),
-    // The wizard's `?welcome=1` is lost on a reload, so the owner's first Overview shows it without the flag.
     welcomePending(),
   ]);
   const activityDatabases = teamWideReach ? await listDatabases() : [];
@@ -138,11 +132,9 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
             (p) =>
               (p.projectId ?? null) === openProject.id &&
               !p.folderId &&
-              // A pre-0020 row with no environment counts as the default env.
               (p.environmentId ?? defaultEnv?.id) === selectedEnv?.id,
           )
         : services.filter((p) => !p.folderId && !p.projectId);
-  // Folders nest among themselves only, never inside a project (ADR-0009).
   const visibleFolders = query
     ? []
     : openFolder
@@ -152,7 +144,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         : folders.filter((f) => (f.parentId ?? null) === null);
   const visibleProjects = query || openFolder || openProject ? [] : projects;
 
-  // Per-folder caps for the CURRENT caller: the folder cards gate their manage menu on these.
   const enrichedFolders = await Promise.all(
     visibleFolders.map(async (f) => ({
       ...f,
@@ -161,7 +152,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     })),
   );
 
-  // A project grant can hand out on its own what the caller may do to the apps inside.
   const enrichedProjects = await Promise.all(
     visibleProjects.map(async (p) => ({
       ...p,
@@ -169,7 +159,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     })),
   );
 
-  // Guarded against a stale parentId cycle so the walk always terminates.
   const folderById = new Map(folders.map((f) => [f.id, f]));
   const folderPath: { id: string; name: string }[] = [];
   {
@@ -200,15 +189,12 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
   const allFolders = folders.map((f) => ({ id: f.id, name: f.name }));
   const allAppIds = services.map((p) => p.id);
 
-  // Gated on permission, and off mid-search: reordering a filtered list would persist a partial order.
   const canReorder = canManageOrder && !query;
-  // Moving a card onto a folder or project is its own permission; it used to ride along with `manage_team`.
 
   const nothingToShow =
     visibleApps.length === 0 &&
     visibleFolders.length === 0 &&
     visibleProjects.length === 0;
-  // Re-seed only on a structural change, never on a pure reorder/move, so a drag survives its own drop.
   const gridKey = [
     view,
     query,
@@ -232,11 +218,9 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         show={welcome === "1" || firstRun}
         takeoverOf={takenOverFrom?.slice(0, 40) || null}
       />
-      {/* Drops a code archive into the wizard on Upload with the file in hand. */}
       {canDeploy && (
         <ArchiveDropZone href={newAppHref(placement, { source: "upload" })} />
       )}
-      {/* Right rail */}
       <div className="relative z-30 order-2 space-y-6 lg:order-2">
         <Card>
           <CardHeader className="pb-3">
@@ -274,7 +258,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         </Card>
       </div>
 
-      {/* Overview: projects, folders and apps */}
       <div className="order-1 space-y-5 lg:order-1">
         <PageHeader
           title="Overview"
@@ -284,7 +267,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
               canCreateDatabase={canCreateDatabase}
               canCreateFolder={canCreateFolder}
               canCreateProject={canCreateProject}
-              // Null inside a project: folders never live in a project (ADR-0009).
               parentFolder={
                 openFolder ? { id: openFolder.id, name: openFolder.name } : null
               }
@@ -293,12 +275,10 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
           }
         />
 
-        {/* Instance-wide count and remedy, so only an instance admin is shown it. */}
         {isAdmin && (
           <NetworkSweepNotice failed={networkSweepFailed} canRetry={isAdmin} />
         )}
 
-        {/* The project drill-in's environment dropdown sits inline in the toolbar (ADR-0009). */}
         <AppSearch
           initialQuery={query}
           initialView={view}
@@ -316,7 +296,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
                   isDefault: e.isDefault,
                 }))}
                 selectedId={selectedEnv.id}
-                // Every one of these actions is refused server-side for a project a migration is still writing.
                 canManage={
                   (canDeploy || isAdmin) && !openProject.migrationRunId
                 }
@@ -333,7 +312,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
               description={`Nothing found for “${query}”.`}
             />
           ) : openFolder ? (
-            // The breadcrumb is the only way back out of an empty folder.
             <div className="space-y-6">
               <div className="px-1 py-1">
                 <FolderTrail path={trailPath} view={view} />
@@ -348,7 +326,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
                 }
                 action={
                   <div className="flex gap-2">
-                    {/* Creating from inside the folder creates IN the folder: the drill-in rides along as ?folder=. */}
                     {canDeploy && (
                       <Button asChild>
                         <Link href={newAppHref(placement)}>
@@ -385,7 +362,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
                 }
                 action={
                   <div className="flex gap-2">
-                    {/* Created in the SELECTED environment of this project. */}
                     {canDeploy && (
                       <Button asChild>
                         <Link href={newAppHref(placement)}>
@@ -461,7 +437,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
             canMoveApps={canMoveApps}
             canCreateFolder={canCreateFolder}
             canManageAllFolders={canManageAllFolders}
-            // Each item has its own capability server-side, so this stays a wide proxy.
             canManageProjects={isAdmin || canDeploy}
             environments={
               openProject

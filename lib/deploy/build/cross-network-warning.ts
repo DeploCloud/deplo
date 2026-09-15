@@ -20,8 +20,6 @@ import {
 import { appNetwork } from "../network";
 import { log } from "./deployment-state";
 
-// warnCrossNetwork logs one line per neighbour this app names but can no longer reach,
-// and one per name it is about to share with a neighbour it CAN. Best-effort throughout.
 export async function warnCrossNetwork(
   depId: string,
   appId: string,
@@ -43,8 +41,6 @@ export async function warnCrossNetwork(
         .limit(1)
     )[0];
     if (!app) return;
-    // A neighbour's placement never goes in: this log outlives the request and is read
-    // later by anyone with `view_logs`, so deciding by the CALLER's scope protected nobody.
     const neighbours = redactNeighbours(await neighboursForApp(app));
     const foreign = neighbours.filter(
       (n): n is ForeignName => n.why !== "reachable" && n.network !== network,
@@ -66,15 +62,11 @@ export async function warnCrossNetwork(
     };
     for (const ref of crossNetworkRefs(named, foreign))
       log(depId, "warn", crossNetworkMessage(ref));
-    // A preview is sealed in a network of its own, so it shares a name with nobody.
     if (network === appNetwork(app))
       for (const clash of nameClashes(
         stackNamesOnNetwork(composeYaml),
         neighbours,
       ))
         log(depId, "warn", nameClashMessage(clash));
-  } catch {
-    // Nothing to say beats a deploy that fell over telling the user something it
-    // only suspected.
-  }
+  } catch {}
 }

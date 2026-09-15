@@ -157,14 +157,12 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
 
   return (
     <div className="space-y-4">
-      {/* 1 - the one decision. */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="flex items-center gap-2 text-sm font-medium">
                 Deploy pull requests
-                {/* A maturity note, not something wrong. */}
                 <Badge variant="info" className="text-[10px] font-normal">
                   Beta
                 </Badge>
@@ -186,10 +184,8 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
         </CardContent>
       </Card>
 
-      {/* display: contents keeps the layout while the fieldset disables every control. */}
       <fieldset disabled={!enabled} className="contents">
         <div className={enabled ? "space-y-4" : "space-y-4 opacity-50"}>
-          {/* 2 - what comes out. */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
@@ -288,7 +284,6 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
             </CardContent>
           </Card>
 
-          {/* 3 - the rest, folded away. */}
           <Card>
             <Accordion type="single" collapsible>
               <AccordionItem value="advanced" className="border-none">

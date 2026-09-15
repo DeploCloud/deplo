@@ -3,7 +3,6 @@ import { HardDrive, PlugZap } from "lucide-react";
 import { takeoverPreflight } from "@/lib/data/takeover";
 import { formatBytes } from "@/lib/utils";
 
-// TakeoverPreflight - the two things that otherwise only show up half way through a copy.
 export async function TakeoverPreflight() {
   const pre = await takeoverPreflight();
   if (!pre) return null;

@@ -82,7 +82,6 @@ const TRUNCATE = `truncate table
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // DNS already points at the host, which is what makes the domain row born `valid` and routable.
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   __setAgentConnectorForTest(agentStub);
 });
@@ -233,7 +232,6 @@ test("add_domain advertises the container it routes to", async () => {
     props?.service,
     `add_domain takes no container argument: ${Object.keys(props ?? {}).join(", ")}`,
   );
-  // Without a pointer to where the names come from, a model tries the port, then the service name, then both.
   assert.match(JSON.stringify(add), /get_app/);
 });
 
@@ -293,7 +291,6 @@ test("two domains reach two different containers of the same app", async () => {
   assert.ok(backend.some((l) => l.includes("Host(`api.acme.com`)")));
   assert.ok(!client.some((l) => l.includes("api.acme.com")));
   assert.ok(!backend.some((l) => l.includes("app.acme.com")));
-  // The second add must not have unrouted the first.
   assert.ok(client.some((l) => /loadbalancer\.server\.port=3002$/.test(l)));
   assert.ok(backend.some((l) => /loadbalancer\.server\.port=3001$/.test(l)));
 });
@@ -365,7 +362,6 @@ test("a single-image app refuses a container argument instead of ignoring it", a
 });
 
 test("a container named after Deplo's own infrastructure is refused", async () => {
-  // `postgres`, `traefik` and `deplo` are reserved on the shared network: a domain on one used to store, then throw on every later render.
   const { raw } = await mintToken();
   const res = await callTool(raw, "add_domain", {
     appId: "prj_analytics",
@@ -409,7 +405,6 @@ test("a token without manage_domains cannot add one", async () => {
     (t) => t.name,
   );
   assert.ok(!names.includes("add_domain"), "add_domain must be hidden");
-  // Hidden is not the gate: calling it by name anyway is refused.
   const body = await rpc(raw, "tools/call", {
     name: "add_domain",
     arguments: {
@@ -469,7 +464,6 @@ test("a second app cannot take a hostname this team already serves", async () =>
 });
 
 test("an argument the tool does not take is refused, not silently dropped", async () => {
-  // A model invents a plausible parameter, and a silent drop makes "I set the container" and "none was set" the same call.
   const { raw } = await mintToken();
   const res = await callTool(raw, "add_domain", {
     appId: "prj_analytics",
@@ -478,7 +472,6 @@ test("an argument the tool does not take is refused, not silently dropped", asyn
     port: 3002,
   });
   assert.equal(res.error, true, res.text);
-  // Refused for the ARGUMENT, not the missing container: "select the container" would read as the model's own mistake.
   assert.match(res.text, /takes no argument "container"/);
   assert.match(res.text, /service/, "the refusal must list the real arguments");
   assert.doesNotMatch(res.text, /Select the container this domain routes to/);
@@ -643,7 +636,6 @@ test("a container that is not in the stack says so", async () => {
 });
 
 test("a host that cannot be reached is reported as saved-but-not-applied", async () => {
-  // The row is committed before the agent is dialled, so "unreachable" alone makes an agent retry into "already added".
   __setAgentConnectorForTest(async () => {
     throw new Error("agent unreachable");
   });

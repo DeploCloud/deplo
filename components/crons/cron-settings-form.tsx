@@ -61,12 +61,10 @@ export function CronSettingsForm({
           <p className="flex items-center gap-2 text-sm font-medium">
             <Timer className="size-4 text-muted-foreground" />
             Cron jobs
-            {/* Beta is a maturity note, not something wrong: info, not warning. */}
             <Badge variant="info" className="text-[10px] font-normal">
               Beta
             </Badge>
           </p>
-          {/* Names what runs, and with what privileges. */}
           <p className="text-sm text-muted-foreground">
             Run a command inside {noun}&apos;s container on a schedule, as the
             container&apos;s own user and with no sandbox.
@@ -79,7 +77,6 @@ export function CronSettingsForm({
           aria-label="Cron jobs"
         />
       </div>
-      {/* Turning it off is reversible, so this informs instead of confirming. */}
       {!enabled && jobCount > 0 && (
         <p className="mt-3 text-sm text-muted-foreground">
           {jobCount === 1

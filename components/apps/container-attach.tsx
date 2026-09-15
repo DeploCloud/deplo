@@ -6,10 +6,8 @@ import { Button } from "@/components/ui/button";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 import type { ConsoleControls } from "@/components/console/console-controls";
 
-// AttachStatus tracks where the attach stream is.
 export type AttachStatus = "connecting" | "live" | "ended" | "error";
 
-// ContainerAttach attaches to a running container PID 1; detaching never kills it (--sig-proxy=false).
 export function ContainerAttach({
   appId,
   containerName,
@@ -57,7 +55,6 @@ export function ContainerAttach({
     )}&cols=${cols}&rows=${rows}`;
     const es = new EventSource(url);
 
-    // Not "open": that name collides with the reserved EventSource event.
     es.addEventListener("session", (e) => {
       sessionId.current = JSON.parse((e as MessageEvent).data);
       setStatus("live");

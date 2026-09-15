@@ -97,7 +97,6 @@ test("a project acts on every environment, and on nothing outside it", async () 
     await moveAppToEnvironment("svc_staging", staging.id);
     await moveAppToProject("svc_blog", other.id);
 
-    // A pre-ADR-0009 shape the project tile still counts: a folder with no project link.
     const legacy = await createFolder("Legacy");
     await seedApp(db, { id: "svc_legacy", teamId: TEAM_A, status: "idle" });
     await moveAppToFolder("svc_legacy", legacy.id);
@@ -117,7 +116,6 @@ test("a project acts on every environment, and on nothing outside it", async () 
 });
 
 test("another team's folder is empty, not an error", async () => {
-  // Not an existence oracle: an unseeable folder finds nothing rather than refusing.
   const foreign = "fld_beta";
   await db.insert(foldersTable).values({
     id: foreign,

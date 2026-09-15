@@ -178,7 +178,6 @@ function TeamRow({
       )}
       onSelect={onSelect}
     >
-      {/* Both controls fade rather than mount, so nothing moves under the pointer. */}
       <span className="flex w-full items-center gap-2">
         <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
         <span className="flex min-w-0 flex-col">

@@ -64,7 +64,6 @@ export async function seedCronJob(
   return opts.id;
 }
 
-// seedCronRun seeds a run row for the reads and gates that need one in flight.
 export async function seedCronRun(
   db: TestDb,
   opts: {
@@ -97,7 +96,6 @@ export async function seedCronRun(
   return opts.id;
 }
 
-// enableCrons flips a target's master switch (both start off, like production).
 export async function enableCrons(
   db: TestDb,
   kind: "app" | "database",
@@ -116,7 +114,6 @@ export async function enableCrons(
   }
 }
 
-// runsOf returns every run of a job, oldest first.
 export async function runsOf(db: TestDb, jobId: string) {
   return db
     .select()
@@ -125,7 +122,6 @@ export async function runsOf(db: TestDb, jobId: string) {
     .orderBy(cronRunsTable.seq);
 }
 
-// FakeJobState is what the fake agent answers for one job handle.
 export interface FakeJobState {
   found?: boolean;
   running?: boolean;
@@ -135,7 +131,6 @@ export interface FakeJobState {
   timedOut?: boolean;
 }
 
-// FakeAgent is a stand-in for a real agent connection.
 export class FakeAgent {
   instances: {
     name: string;
@@ -163,7 +158,6 @@ export class FakeAgent {
 
   nextState: FakeJobState = { found: true, running: true };
 
-  // An arrow property, so the RPC bodies close over `this` lexically.
   connection = (): AgentConnection => {
     const conn = {
       listInstances: async () =>

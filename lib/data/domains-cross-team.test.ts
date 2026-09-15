@@ -23,8 +23,6 @@ import {
 import { assertPreviewBaseNotAnotherTeams } from "./domains/hostname-claim";
 import { routableRoutes } from "./domains/routes";
 
-// A hostname belongs to ONE TEAM, and inside one team the shared-hostname feature must still work.
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -80,7 +78,6 @@ const asAttacker = <T>(fn: () => Promise<T>) =>
 
 test("another team cannot attach a path route to a hostname this team owns", async () => {
   const own = await asVictim(() => addDomain("prj_victim", HOST, {}));
-  // The precondition that makes the hijack land: the row is live, not pending.
   assert.equal(own.status, "valid");
 
   await assert.rejects(
@@ -158,7 +155,6 @@ test("the SAME path on the same hostname is not handed out twice", async () => {
       defaultPort: 3000,
     }),
   );
-  // The row would break the stored uniqueness, so the app gets an address of its own.
   assert.notEqual(name, HOST);
   assert.match(name, /\.nip\.io$/);
 });
@@ -182,7 +178,6 @@ test("the same row can still be edited without tripping over itself", async () =
   await asVictim(() => updateDomain(own.id, { port: 8080 }));
 });
 
-// A preview host never enters `domains`, so the guard above needs this twin or the takeover is reachable one level down.
 test("a preview base domain under another team's hostname is refused", async () => {
   await asVictim(() => addDomain("prj_victim", HOST, {}));
   await assert.rejects(

@@ -32,7 +32,6 @@ const MONTH_NAMES = [
 ];
 const DAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-// expandCronMacro - a `@macro` expanded to its five fields; anything else unchanged.
 export function expandCronMacro(expr: string): string {
   return MACROS[expr.trim().toLowerCase()] ?? expr;
 }
@@ -79,7 +78,6 @@ function parseField(
       const n = Number(num(rangePart));
       if (!Number.isInteger(n)) return null;
       lo = n;
-      // `5/15` is "from 5 to the end, every 15"; a bare number keeps meaning itself.
       hi = stepPart !== undefined ? max : n;
     }
     if (lo < min || hi > max || lo > hi) return null;
@@ -98,7 +96,6 @@ interface ParsedCron {
   dowAny: boolean;
 }
 
-// parseCron - parse a 5-field cron string or a `@daily`-style macro; null when malformed.
 export function parseCron(expr: string): ParsedCron | null {
   const fields = expandCronMacro(expr).trim().split(/\s+/);
   if (fields.length !== 5) return null;
@@ -127,14 +124,12 @@ export function parseCron(expr: string): ParsedCron | null {
 function dayMatches(c: ParsedCron, at: Date): boolean {
   const domMatch = c.dom.has(at.getUTCDate());
   const dowMatch = c.dow.has(at.getUTCDay());
-  // Vixie rule: with both day fields restricted, the day matches when EITHER does.
   if (c.domAny && c.dowAny) return true;
   if (c.domAny) return dowMatch;
   if (c.dowAny) return domMatch;
   return domMatch || dowMatch;
 }
 
-// cronMatches - does `expr` fire at that instant? Minute precision, in UTC.
 export function cronMatches(expr: string, at: Date): boolean {
   const c = parseCron(expr);
   if (!c) return false;
@@ -144,7 +139,6 @@ export function cronMatches(expr: string, at: Date): boolean {
   return dayMatches(c, at);
 }
 
-// nextCronRun - the first instant strictly after `from` at which `expr` fires, or null.
 export function nextCronRun(
   expr: string,
   from: Date,

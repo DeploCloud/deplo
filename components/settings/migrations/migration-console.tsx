@@ -32,16 +32,6 @@ import { FacetMenu } from "@/components/env/env-filters/facet-menu";
 import type { EnvFacet } from "@/components/env/env-filters/types";
 import type { ReportItem } from "./types";
 
-/**
- * What a migration did, line by line - while it runs, and ever after. This is the
- * surviving one, because chronology is what a log is.
- */
-
-/**
- * One document for the whole feature. `settleFinished` in the wizard reads the
- * run through it too - it wants `status` and `error`, which are on it already -
- * so a field renamed in the schema breaks one query rather than two.
- */
 const RUN_LOG = /* GraphQL */ `
   query MigrationLog($id: String!) {
     migrationRun(id: $id) {
@@ -74,7 +64,6 @@ interface RunLog {
   items: ReportItem[];
 }
 
-/** The five outcomes, and what each one looks like at a glance. */
 const LEVELS = {
   created: {
     label: "Created",
@@ -86,9 +75,6 @@ const LEVELS = {
     icon: SkipForward,
     tone: "text-muted-foreground",
   },
-  // Its own row, not folded into "Needs you": "Deplo has no equivalent for this"
-  // is a different sentence from "this came over, go and look at it", and the
-  // grouped report the console replaced said them apart.
   unsupported: {
     label: "No equivalent",
     icon: CircleSlash,
@@ -108,14 +94,10 @@ const LEVELS = {
 
 type Level = keyof typeof LEVELS;
 
-/** Anything the server sends that is not one of the five reads as "needs you". */
 function levelOf(outcome: string): Level {
   return outcome in LEVELS ? (outcome as Level) : "manual";
 }
 
-/**
- * The five outcomes as ONE multi-select menu, not five toggle pills.
- */
 const LEVEL_FACET: EnvFacet<ReportItem> = {
   id: "outcome",
   label: "Outcome",
@@ -124,13 +106,11 @@ const LEVEL_FACET: EnvFacet<ReportItem> = {
   options: (Object.keys(LEVELS) as Level[]).map((value) => ({
     value,
     label: LEVELS[value].label,
-    // The row reads in its own severity colour, the way the lines below do.
     labelClassName: LEVELS[value].tone,
   })),
   match: (row, value) => levelOf(row.outcome) === value,
 };
 
-/** `2026-08-25T00:14:09.123Z` -> `00:14:09`. Local time, seconds, nothing else. */
 function clock(at: string | null | undefined): string {
   if (!at) return "--:--:--";
   const d = new Date(at);
@@ -139,7 +119,6 @@ function clock(at: string | null | undefined): string {
     : d.toLocaleTimeString(undefined, { hour12: false });
 }
 
-/** One run to read, and the team it landed in when that is not the page's. */
 export interface ConsoleRun {
   id: string;
   teamId?: string;
@@ -151,21 +130,12 @@ export function MigrationConsole({
   onOpenChange,
   live,
 }: {
-  /** Every run the log covers, in the order they ran. One panel brought over as
-   *  several teams is several runs, and the badges above count them all. */
   runs: ConsoleRun[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Keep polling. False once the run is over: the list cannot change again. */
   live: boolean;
 }) {
-  // The list as one string, so re-opening the dialog on a DIFFERENT set never
-  // paints the previous one's lines while this one's are on the way - and
-  // `undefined` (nothing read yet) stays distinct from `null` (the server says there
-  // is no such run), which the empty state below tells apart.
   const key = runs.map((r) => `${r.id}@${r.teamId ?? ""}`).join(",");
-  // One array identity per distinct list, so the poll below restarts when the
-  // runs change and not every time the wizard re-renders around it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const list = React.useMemo(() => runs, [key]);
   const [fetched, setFetched] = React.useState<{
@@ -177,10 +147,7 @@ export function MigrationConsole({
   const [query, setQuery] = React.useState("");
   const [levels, setLevels] = React.useState<string[]>([]);
   const [follow, setFollow] = React.useState(true);
-  /** The one still moving, if any: what the header says it is doing. */
   const running = logs?.find((l) => l?.status === "running") ?? null;
-  // Whether lines are still arriving, by the freshest answer rather than the
-  // prop, which is only what was true when the dialog opened.
   const streaming = logs ? running != null : live;
   const bottom = React.useRef<HTMLDivElement | null>(null);
 
@@ -203,8 +170,6 @@ export function MigrationConsole({
         if (!alive) return;
         setError(null);
         setFetched({ key, logs: got });
-        // `live` was the answer when this opened. A run that ends while it is
-        // still open stops the poll with it, rather than asking forever.
         if (timer && !got.some((l) => l?.status === "running")) {
           clearInterval(timer);
           timer = null;
@@ -221,18 +186,10 @@ export function MigrationConsole({
     };
   }, [open, key, list, live]);
 
-  // Its own memo: a fresh `[]` on every render would re-run the filter below on
-  // every render too, which on a four-hundred-line log while polling is the
-  // difference between a console and a stutter. Run by run rather than by
-  // timestamp: the teams went one after the other, and each run's own order is
-  // the one the server wrote.
   const items = React.useMemo(
     () => (logs ?? []).flatMap((l) => l?.items ?? []),
     [logs],
   );
-  // The SEARCH pass on its own: the menu's counts have to say how many rows
-  // picking an outcome would leave, which means every other filter applied and
-  // that one not.
   const searched = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
@@ -252,17 +209,11 @@ export function MigrationConsole({
     [searched, levels],
   );
 
-  // Follow the tail, unless somebody scrolled away from it. Reading line 40 of
-  // 300 while the thing yanks itself to the bottom every second is the one way
-  // to make a live log worse than a static one.
   React.useEffect(() => {
     if (!follow || !open) return;
     bottom.current?.scrollIntoView({ block: "end" });
   }, [shown.length, follow, open]);
 
-  // Counted here rather than read off the run: the stored counters fold
-  // `unsupported` into `manual` (see `refreshCounts`), so a chip reading them
-  // would disagree with the rows its own filter shows.
   const counts = searched.reduce(
     (acc, i) => {
       acc[levelOf(i.outcome)] += 1;
@@ -275,8 +226,6 @@ export function MigrationConsole({
   );
 
   async function copyLog() {
-    // What is on screen, not the whole run: somebody who filtered to the four
-    // failures is copying four failures.
     const ok = await copyText(
       shown
         .map(
@@ -291,11 +240,6 @@ export function MigrationConsole({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/**
-       * `selfManaged`: the shell wraps its children in a scrolling GRID, where the log
-       * pane's `flex-1` means nothing - so the pane grew with the log and pushed the line
-       * count and the buttons down out of reach.
-       */}
       <DialogContent
         selfManaged
         className="flex h-[85dvh] max-w-4xl flex-col gap-3"
@@ -320,8 +264,6 @@ export function MigrationConsole({
               className="pl-8"
             />
           </div>
-          {/* Its own width rather than `FacetMenu`'s `flex-1`, which would eat
-              the row it shares with the search box. */}
           <div className="flex w-44 shrink-0 items-center">
             <FacetMenu
               facet={LEVEL_FACET}
@@ -330,8 +272,6 @@ export function MigrationConsole({
               onChange={setLevels}
             />
           </div>
-          {/* Nothing left to follow once the run is over: the log is whole, and
-              a toggle that cannot change what you see is a control to explain. */}
           {streaming && (
             <Button
               type="button"
@@ -348,16 +288,12 @@ export function MigrationConsole({
         <div
           className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-surface font-mono text-xs"
           onWheel={(e) => {
-            // Scrolling UP is the signal, and it is the only one that is never
-            // ambiguous: a wheel down at the bottom means nothing.
             if (e.deltaY < 0 && follow) setFollow(false);
           }}
         >
           {error && <p className="p-3 text-destructive">{error}</p>}
           {!error && shown.length === 0 && (
             <p className="p-3 text-muted-foreground">
-              {/* A run that is gone is a row somebody deleted out from under
-                  this list; saying so beats an empty console. */}
               {logs?.every((l) => l === null)
                 ? "That migration is no longer here."
                 : items.length === 0

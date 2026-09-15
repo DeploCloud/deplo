@@ -34,7 +34,6 @@ test("what GitHub is missing is named, split by feature", () => {
     withPreviews.map((r) => r.key),
     ["pull_requests:write", "event:pull_request"],
   );
-  // The label is the provider's own, not ours: it has to match the screen.
   assert.equal(withPreviews[0]!.label, "Pull requests: Read and write");
 
   assert.deepEqual(
@@ -44,12 +43,10 @@ test("what GitHub is missing is named, split by feature", () => {
 });
 
 test("a provider that reports nothing is never accused", () => {
-  // Bitbucket and Gitea do not expose their token's scopes: null in, empty out, so the UI shows a checklist and never a warning.
   assert.equal(grantedFromScopes("gitea", ""), null);
   assert.equal(grantedFromScopes("bitbucket", "   "), null);
   assert.deepEqual(missingAccess("gitea", null), []);
   assert.deepEqual(missingAccess("bitbucket", null, { previews: true }), []);
-  // But an EMPTY set is a real answer: the token genuinely has none of them.
   assert.equal(missingAccess("gitea", new Set()).length, 2);
 });
 
@@ -59,7 +56,6 @@ test("GitLab's api scope is the superset it claims to be", () => {
     missingAccess("gitlab", grantedFromScopes("gitlab", "api")),
     [],
   );
-  // read_repository alone still cannot register the webhook.
   assert.deepEqual(
     missingAccess("gitlab", gitlabGranted(["read_repository"])).map(
       (r) => r.key,
@@ -69,7 +65,6 @@ test("GitLab's api scope is the superset it claims to be", () => {
 });
 
 test("the manifest asks for exactly what the check requires", () => {
-  // The drift this stops: an App created without something Deplo then warns about, or a warning about something it never asked for.
   const { permissions, events } = githubManifestAccess();
   const granted = githubGranted(permissions, events);
   assert.deepEqual(missingAccess("github", granted, { previews: true }), []);

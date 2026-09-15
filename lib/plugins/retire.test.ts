@@ -14,8 +14,6 @@ import {
 } from "../data/leaf-test-helpers";
 import { retireInstalledPlugins } from "./retire";
 
-// The retirement sweep (ADR-0013).
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -91,7 +89,6 @@ test("a legacy row with no stored slug derives the one the container actually ha
     torn.push(s);
   });
 
-  // `pluginSlug("relay", "alpha")` - the value the installer would have frozen.
   assert.deepEqual(torn, ["relay__alpha"]);
   assert.deepEqual(await remaining(), []);
 });

@@ -36,7 +36,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { BackupDTO } from "@/lib/data/backups/schedules";
 import type { DestinationOption } from "@/lib/data/destinations/dto";
 
-// shadcn `SelectItem` can't hold "", so "any" needs a sentinel of its own.
 const ALL = "__all__";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -46,7 +45,6 @@ const STATUS_LABELS: Record<string, string> = {
   never: "Never run",
 };
 
-// BackupsView is the Backups tab: filters plus a table or a grid of cards.
 export function BackupsView({
   backups,
   destinations,
@@ -82,7 +80,6 @@ export function BackupsView({
 
   const rowProps = { destinations, canManage, canRestore, canTestDestinations };
 
-  // Only what is ON SCREEN is selectable, in display order, so a shift-click range reads as the list does.
   const visibleIds = filtered.map((b) => b.id);
   const selection = useCardSelection(visibleIds);
   const {
@@ -105,7 +102,6 @@ export function BackupsView({
 
   const selectionNoun = `${selectionCount} schedule${selectionCount === 1 ? "" : "s"}`;
 
-  // One mutation per schedule - no bulk endpoint; the selection survives a refusal, so re-confirming retries.
   async function bulkRun(
     mutation: string,
     vars: (id: string) => Record<string, unknown>,

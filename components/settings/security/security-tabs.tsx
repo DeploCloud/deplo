@@ -48,7 +48,6 @@ export function SecurityTabs({
   rpId: string | null;
 }) {
   const params = useSearchParams();
-  // Owned here, not in the cards: the hero's one recommendation opens them.
   const [wizard, setWizard] = React.useState(false);
   const [addPasskey, setAddPasskey] = React.useState(false);
 
@@ -62,7 +61,6 @@ export function SecurityTabs({
     if (tab === "signin") next.delete("tab");
     else next.set("tab", tab);
     const s = next.toString();
-    // The native History API, not `router.replace`: a tab change must not re-run every server read.
     window.history.replaceState(
       null,
       "",
@@ -90,7 +88,6 @@ export function SecurityTabs({
       </div>
 
       <TabsContent value="signin">
-        {/* Direct grid children, so the two cards of a row share one height. */}
         <div className="grid gap-4 lg:grid-cols-2">
           <SecurityHero
             twoFactorEnabled={twoFactorEnabled}

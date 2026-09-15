@@ -6,7 +6,6 @@ import { TeamAvatar } from "@/components/shared/user-avatar";
 import type { TeamRef } from "./types";
 import { PickerSearch } from "./picker-search";
 
-// TeamsSection - details for the "Teams" scope: every team the author may share with.
 export function TeamsSection({
   teams,
   locked = [],
@@ -14,7 +13,6 @@ export function TeamsSection({
   onChange,
 }: {
   teams: TeamRef[];
-  /** Teams the variable reaches that this author may not change. */
   locked?: TeamRef[];
   selected: string[];
   onChange: (next: string[]) => void;
@@ -36,8 +34,6 @@ export function TeamsSection({
         <p className="mt-1 text-xs text-muted-foreground">
           Pick one and each app adds it explicitly. Pick two or more and it is
           added to every app in all of them.{" "}
-          {/* Search hides rows, never selections - the count is the only thing
-              that can vouch for a team the current needle filtered out of view. */}
           {selected.length > 0 && `${selected.length} selected.`}
         </p>
       </div>
@@ -52,8 +48,6 @@ export function TeamsSection({
           No team matches &ldquo;{q.trim()}&rdquo;.
         </p>
       )}
-      {/* No scroller of its own: the dialog's body is the ONE scrolling region,
-          so a long team list never traps the wheel in a nested box. */}
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
         {shownLocked.map((t) => (
           <div

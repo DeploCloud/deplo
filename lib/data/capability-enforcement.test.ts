@@ -6,7 +6,6 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
-// Set BEFORE the modules load: the deploy hook then never reaches for request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -171,8 +170,6 @@ async function outcome(
     return "allowed";
   } catch (e) {
     const m = (e as Error).message;
-    // `only ` catches refusals that name WHO may act ("Only the folder owner can share
-    // this folder"); same set the sibling helper in authz-escape.test.ts recognises.
     if (/permission|not found|Unauthorized|can't|cannot|only /i.test(m))
       return "refused";
     throw e;
@@ -529,8 +526,6 @@ test("instance-admin is per-token: a plain token minted by an admin is not an ad
     setFolderGrant("fld_private", CREATOR, ["deploy_apps"]),
   );
 
-  // Everything EXCEPT manage_team, which makes any member a folder super-user in its own
-  // right and would mask the question being asked.
   await asToken(OWNER, allBut("manage_team"), async () => {
     assert.equal(
       await outcome(() =>

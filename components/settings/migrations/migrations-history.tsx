@@ -22,12 +22,6 @@ import { SOURCE_COPY, SourceMark } from "./sources";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 
-/**
- * Every migration this instance has run, the team each landed in, and the report
- * each one left behind. The wizard next door is where you start one, so this
- * tab never offers to.
- */
-
 export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
   const [open, setOpen] = React.useState<ImportRun | null>(null);
 
@@ -83,8 +77,6 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
                   </div>
                 </TableCell>
                 <TableCell className="text-sm whitespace-nowrap">
-                  {/* No seconds: nobody has two migrations in the same minute,
-                      and the column is read for "which run", not for timing. */}
                   {new Date(r.startedAt).toLocaleString(undefined, {
                     dateStyle: "medium",
                     timeStyle: "short",
@@ -133,8 +125,6 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
         runs={open ? [{ id: open.id, teamId: open.teamId }] : []}
         open={open !== null}
         onOpenChange={(o) => !o && setOpen(null)}
-        // A run still moving is watchable from here too - History is just
-        // another door onto the same console.
         live={open?.status === "running"}
       />
     </>

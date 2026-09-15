@@ -56,8 +56,6 @@ const AUTHORIZE = /* GraphQL */ `
   }
 `;
 
-// Better Auth's authorizeEndpoint throws without ctx.request, so this POSTs from the browser.
-// Refusals arrive in error_description, not message.
 async function postConsent(body: {
   accept: boolean;
   scope?: string;
@@ -111,7 +109,6 @@ export function ConsentForm({
   const [capabilities, setCapabilities] = useState<Capability[]>(
     mcpPreset?.capabilities ?? ["view"],
   );
-  // Empty means unscoped: resolved live on each call, so a team joined later needs no re-approval.
   const [selection, setSelection] = useState<ScopeSelection>({
     teamIds: [],
     projectIds: [],
@@ -120,7 +117,6 @@ export function ConsentForm({
   });
   const [editing, setEditing] = useState<null | "access" | "permissions">(null);
 
-  // Better Auth refuses a cookie-carrying POST whose Origin is not the published address (CSRF defence).
   const wrongOrigin =
     typeof window !== "undefined" &&
     !!publicOrigin &&
@@ -140,7 +136,6 @@ export function ConsentForm({
     () => Object.fromEntries(tree.map((t) => [t.id, t.name])),
     [tree],
   );
-  // Same wording as token-editor.tsx's summary rows: "Access" is reach, "Permissions" is capabilities.
   const accessLabel = scoped
     ? scopeLabel({ scoped: true, ...selection }, teamNames)
     : {
@@ -161,7 +156,6 @@ export function ConsentForm({
     .filter((t): t is ScopeTreeTeam => !!t)
     .slice(0, 3);
 
-  // Consent first, mint second, navigate last: minting first answered to a URL.
   async function onApprove(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
@@ -182,7 +176,6 @@ export function ConsentForm({
       projectIds: selection.projectIds,
       folderIds: selection.folderIds,
       appIds: selection.appIds,
-      // The server decides the team; this only lets it refuse when the two have drifted apart.
       expectedTeamId: activeTeamId,
     });
     if (!minted.ok) {
@@ -190,16 +183,13 @@ export function ConsentForm({
       toast.error(minted.error || "Deplo refused the connection");
       return;
     }
-    // Full-page navigation, not router.push: the destination is the client's own site.
     window.location.assign(done.url);
   }
 
-  // The minted token acts as whoever is signed in here.
   async function onSwitchAccount() {
     setPending(true);
     await gqlAction(`mutation { logout }`, {});
     const here = window.location.pathname + window.location.search;
-    // Hard, not the router: what it cached belongs to the session just ended.
     window.location.assign(`/login?next=${encodeURIComponent(here)}`);
   }
 
@@ -226,10 +216,8 @@ export function ConsentForm({
       ) : null}
 
       <Card>
-        {/* One column, centred: the app, then what it gets, then the choice. */}
         <form className="grid gap-6 p-6" onSubmit={onApprove}>
           <div className="grid justify-items-center gap-4 text-center">
-            {/* CSP is img-src 'self' blob: data:, so a remote icon never renders and src only serves a data: one. */}
             <Avatar className="size-14">
               <AvatarImage src={client.icon ?? undefined} alt="" />
               <AvatarFallback className="bg-muted text-base font-semibold">
@@ -264,7 +252,6 @@ export function ConsentForm({
             >
               What it gets
             </FieldLabel>
-            {/* One row per half of the sentence, each opening its own dialog. */}
             <div className="divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
               <SummaryRow
                 label="Access"
@@ -327,14 +314,12 @@ export function ConsentForm({
         </button>
       </p>
 
-      {/* Where the app may work, opened on demand. */}
       <Dialog
         open={editing === "access"}
         onOpenChange={(open) => setEditing(open ? "access" : null)}
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            {/* Not titled "Access": the picker below brings its own heading, so the word would print twice. */}
             <DialogTitle>What {client.name} can reach</DialogTitle>
             <DialogDescription className="mt-1">
               Nothing ticked means every team you can connect, now and later.
@@ -348,7 +333,6 @@ export function ConsentForm({
               setEditing(null);
             }}
           >
-            {/* One control for "where". */}
             <ScopePicker
               tree={tree}
               selection={selection}
@@ -364,7 +348,6 @@ export function ConsentForm({
         </DialogContent>
       </Dialog>
 
-      {/* What it may do once it is in there. */}
       <Dialog
         open={editing === "permissions"}
         onOpenChange={(open) => setEditing(open ? "permissions" : null)}
@@ -421,7 +404,6 @@ export function ConsentForm({
                   </p>
                 ) : null}
               </div>
-              {/* scroll: forty-odd permissions grew the dialog past its cap and put Done below the fold. */}
               <PermissionPicker
                 capabilities={capabilities}
                 onChange={setCapabilities}
@@ -440,7 +422,6 @@ export function ConsentForm({
   );
 }
 
-// Radix needs a value for the "matches no preset" state; it is never chosen.
 const CUSTOM = "custom";
 
 function SummaryRow({

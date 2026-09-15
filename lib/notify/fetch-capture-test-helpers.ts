@@ -7,11 +7,9 @@ export interface CapturedCall {
 
 export interface FetchCapture {
   calls: CapturedCall[];
-  // Put the real fetch back. Always call this in `after`.
   restore: () => void;
 }
 
-// `respond` decides the response per URL - default 200 `{}`; return one to refuse as a provider would.
 export function captureFetch(
   respond: (url: string) => Response = () =>
     new Response("{}", { status: 200 }),
@@ -24,9 +22,7 @@ export function captureFetch(
     if (typeof body === "string") {
       try {
         body = JSON.parse(body);
-      } catch {
-        // Not JSON - keep the raw string, which is itself worth asserting on.
-      }
+      } catch {}
     }
     calls.push({
       url,

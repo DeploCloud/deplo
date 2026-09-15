@@ -4,25 +4,19 @@ import { composeTruthy } from "../../deploy/compose-lint/document";
 
 import type { HostMount, NamedVolume } from "../model";
 
-/** Trailing slashes and a missing leading slash are not a difference. */
 export function normalizePath(p: string): string {
   const s = p.trim().replace(/\/+$/, "");
   return s.startsWith("/") ? s : `/${s}`;
 }
 
-/** Is `child` strictly inside `parent`? (`/a/b` is under `/a`, `/ab` is not.) */
 export function isUnderPath(child: string, parent: string): boolean {
   return parent !== "/" ? child.startsWith(`${parent}/`) : child !== "/";
 }
 
-/**
- * The named volumes a `docker inspect` says a container is using.
- */
 export function sourceVolumesFrom(inspect: {
   Mounts?: {
     Type?: string;
     Name?: string;
-    /** Present on a bind mount; ignored, but part of what docker sends. */
     Source?: string;
     Destination?: string;
   }[];
@@ -37,15 +31,11 @@ export function sourceVolumesFrom(inspect: {
     seen.add(name);
     out.push({ name, mountPath: normalizePath(dest) });
   }
-  // Drop a mount whose path is an ANCESTOR of another mount's.
   return out.filter(
     (v) => !out.some((o) => o !== v && isUnderPath(o.mountPath, v.mountPath)),
   );
 }
 
-/**
- * The BIND MOUNTS a `docker inspect` says a container is using.
- */
 export function sourceBindMountsFrom(inspect: {
   Mounts?: { Type?: string; Source?: string; Destination?: string }[];
 }): HostMount[] {
@@ -65,8 +55,6 @@ export function sourceBindMountsFrom(inspect: {
   return out;
 }
 
-/** The bind mounts a Dokploy service DECLARES - the fallback for a stopped service,
- *  exactly like `declaredSourceVolumes` is for its named ones. */
 export function declaredSourceBindMounts(
   mounts?:
     | {
@@ -75,9 +63,7 @@ export function declaredSourceBindMounts(
         mountPath?: string | null;
       }[]
     | null,
-  /** A stack binds host directories in its own YAML, where no mount row exists. */
   composeFile?: string | null,
-  /** Where that YAML lives on the source machine, so its `./x` binds resolve. */
   stackDir?: string | null,
 ): HostMount[] {
   const out: HostMount[] = [];
@@ -100,19 +86,12 @@ export function declaredSourceBindMounts(
   return out;
 }
 
-/**
- * A `./x` bind source resolved against the directory the stack itself lives in,
- * or null when the source is not one. The SAME rule the renderer applies
- * (`rewriteMountSource`), so the two sides of a copy name the same path.
- */
 export function stackRelativePath(
   source: string,
   baseDir: string,
 ): string | null {
   const s = source.trim();
-  if (s.includes("..")) return null; // an escape - the grant gates it, not this
-  // `./x` or a bare `.`, never `.env`: a leading dot is not a separator, and
-  // inventing `<dir>/env` for it would report a path that is not there.
+  if (s.includes("..")) return null;
   const m = /^\.(?:\/(.*))?$/.exec(s);
   if (!m) return null;
   const base = baseDir.replace(/\/+$/, "");
@@ -120,12 +99,6 @@ export function stackRelativePath(
   return rel ? `${base}/${rel}` : base;
 }
 
-/**
- * The host directories a compose file binds ITSELF - neither the panel's mount
- * rows nor `app_volumes` saw one, so `- /etc/app:/cfg` arrived byte for byte with
- * an empty directory behind it. A `./x` source counts too: only the FILE came
- * over, never its directory. Resolved against `baseDir`, skipped without one.
- */
 export function composeHostMounts(
   compose: string,
   baseDir?: string | null,
@@ -169,18 +142,8 @@ export function composeHostMounts(
   return out;
 }
 
-/**
- * Host paths that hold no DATA: a socket the runtime owns (`/var/run/docker.sock`
- * above all) and the kernel's pseudo-filesystems. The agent refuses to read one as
- * a directory, and the refusal used to reach the report as a lost volume.
- */
 const NOT_DATA_HOST_PATH = /^\/(proc|sys|dev)(\/|$)|\.sock$/;
 
-/**
- * The host's own identity, clock and resolver, which half the compose files in the
- * world bind read-only. They belong to the MACHINE, the target already has its own,
- * and copying one would overwrite it.
- */
 const HOST_OWNED_FILES = new Set([
   "/etc/localtime",
   "/etc/timezone",
@@ -196,25 +159,14 @@ const HOST_OWNED_FILES = new Set([
   "/etc/ssl/certs/ca-certificates.crt",
 ]);
 
-/**
- * Whether a file's content can be carried as a CONFIG FILE. Postgres refuses a NUL
- * in a text column, so a binary file written into `app_mounts` took the whole
- * import down; its bytes belong to the data phase, which copies bind mounts.
- */
 export function isTextFileContent(content: string): boolean {
   return !content.includes("\u0000");
 }
 
-/** Whether a host path is one a copy has any business reading. */
 export function isDataHostPath(hostPath: string): boolean {
   return !NOT_DATA_HOST_PATH.test(hostPath) && !HOST_OWNED_FILES.has(hostPath);
 }
 
-/**
- * The volumes a Dokploy service DECLARES, for when there is no container to
- * inspect. Dokploy's own API still answers with the mounts it declared, so that is
- * the fallback.
- */
 export function declaredSourceVolumes(input: {
   kind: string;
   appName: string;
@@ -240,8 +192,6 @@ export function declaredSourceVolumes(input: {
       push(m.volumeName?.trim() ?? "", m.mountPath?.trim() ?? "");
 
   if (input.kind === "compose") {
-    // A volume the FILE names is not the project-prefixed one - and the prefix is
-    // all a stopped stack has, so an unpinned volume still needs the stack's name.
     const pinned = composeVolumeHostNames(input.composeFile ?? "");
     const project = input.appName.trim();
     for (const v of composeVolumeMounts(input.composeFile ?? ""))
@@ -254,9 +204,6 @@ export function declaredSourceVolumes(input: {
   return out;
 }
 
-/**
- * The on-disk name of one of an app's volumes.
- */
 export function deploVolumeName(
   slug: string,
   alias: string,
@@ -265,16 +212,10 @@ export function deploVolumeName(
   return managed ? `deplo-${slug}-${alias}` : `deplo-${slug}_${alias}`;
 }
 
-/** The data volume of a Deplo database, whose stack slug is its host name. */
 export function deploDatabaseVolumeName(host: string): string {
   return `deplo-${host}_${host}-data`;
 }
 
-/**
- * The volumes whose real name on the host the compose FILE decides: a pinned
- * `name:` takes that, `external: true` takes the key as written. Neither gets the
- * project prefix, so deriving one from the key names a volume that is not there.
- */
 export function composeVolumeHostNames(compose: string): Map<string, string> {
   const out = new Map<string, string>();
   let doc: { volumes?: unknown } | null;
@@ -291,7 +232,6 @@ export function composeVolumeHostNames(compose: string): Map<string, string> {
   )) {
     if (!body || typeof body !== "object" || Array.isArray(body)) continue;
     const { name, external } = body as { name?: unknown; external?: unknown };
-    // `external: {name: x}` is the deprecated spelling of a pinned name.
     const asMap =
       external && typeof external === "object"
         ? (external as { name?: unknown })
@@ -306,9 +246,6 @@ export function composeVolumeHostNames(compose: string): Map<string, string> {
   return out;
 }
 
-/**
- * The volumes a compose file declares, with the path each is mounted at.
- */
 export function composeVolumeMounts(compose: string): NamedVolume[] {
   let doc: {
     volumes?: unknown;

@@ -16,38 +16,26 @@ import {
   projects as projectsTable,
 } from "../../db/schema/control-plane/projects";
 import { requireInstanceAdmin } from "../../membership";
-// Lives in the leaf module so the ROLE scope that reuses this shape and this
-// side never have to import each other (`node-scope.ts` explains why).
 import { expandFolders } from "../node-scope";
 import { cache } from "../../request-cache";
 import { currentIdentity, type TokenScope } from "../../auth/request-context";
 import { tokenReach } from "./reach";
 
 export interface TokenScopeInput {
-  /** Whole teams. */
   teamIds?: string[];
-  /** Whole projects. */
   projectIds?: string[];
-  /** Whole folders (their subtrees come with them). */
   folderIds?: string[];
-  /** Individual apps. */
   appIds?: string[];
 }
 
-// ResolvedScope - the ticked-node lists, validated and de-duplicated.
 export interface ResolvedScope {
   teamIds: string[];
   projectIds: string[];
   folderIds: string[];
   appIds: string[];
-  // Every team the ticked nodes put in reach - the whole teams plus the owning
-  // team of each project, folder and app.
   teamsReached: string[];
 }
 
-// validateScope - decide the two orthogonal switches, refusing the combination
-// that cannot mean what it says: instance-admin gates read the user's admin flag
-// and nothing else, so a scope could not narrow one.
 export async function validateScope(
   input: { instanceAdmin?: boolean } & TokenScopeInput,
 ): Promise<{ scoped: boolean; instanceAdmin: boolean }> {
@@ -62,12 +50,10 @@ export async function validateScope(
     throw new Error(
       "A token limited to teams, projects or apps can't administer the instance. Pick one.",
     );
-  // Only an instance admin can hand out instance administration.
   if (instanceAdmin) await requireInstanceAdmin();
   return { scoped, instanceAdmin };
 }
 
-// resolveScopeInput - validate every ticked node against what the ACTOR can reach.
 export async function resolveScopeInput(
   input: TokenScopeInput,
   userId: string,
@@ -92,9 +78,6 @@ export async function resolveScopeInput(
   for (const id of teamIds)
     if (!mine.has(id))
       throw new Error("You can't use API tokens in one of those teams");
-  // A SCOPED token minting (or re-authoring) one: every ticked node has to sit
-  // INSIDE its own scope. Breadth alone is not enough - a token holding one project
-  // of a team reaches that team, and could otherwise tick the whole of it.
   const acting = currentIdentity()?.token?.scope;
   const withinActing = (ok: boolean) => {
     if (acting && !ok)
@@ -105,9 +88,6 @@ export async function resolveScopeInput(
   for (const id of teamIds)
     withinActing(!acting || acting.wholeTeamIds.includes(id));
   const reached = new Set<string>(teamIds);
-  // Refused rather than reinterpreted: `loadScope` lets the narrower tick win, so
-  // accepting both would hand back a token that reads as whole-team and behaves
-  // as one app. Say which one they meant.
   const whole = new Set(teamIds);
   const narrower = (teamId: string) => {
     if (whole.has(teamId))
@@ -154,7 +134,6 @@ export async function resolveScopeInput(
     for (const r of rows) {
       narrower(r.teamId);
       reached.add(r.teamId);
-      // The acting scope's folders are already the expanded subtree.
       withinActing(
         !acting ||
           acting.wholeTeamIds.includes(r.teamId) ||
@@ -191,7 +170,6 @@ export async function resolveScopeInput(
   return { teamIds, projectIds, folderIds, appIds, teamsReached: [...reached] };
 }
 
-// writeScope - persist the ticked nodes of a token, one junction per list.
 export async function writeScope(
   tx: DbTx,
   tokenId: string,
@@ -215,7 +193,6 @@ export async function writeScope(
       .values(scope.appIds.map((appId) => ({ tokenId, appId })));
 }
 
-// loadScope - flatten a stored scope for the request identity.
 export const loadScope = cache(async function loadScope(
   tokenId: string,
 ): Promise<TokenScope> {
@@ -256,7 +233,6 @@ export const loadScope = cache(async function loadScope(
   ]);
 
   const projectIds = projRows.map((r) => r.id);
-  // A team is WHOLE only when nothing narrower inside it is named.
   const narrowedTeamIds = new Set(
     [...projRows, ...folderRows, ...appRows].map((r) => r.teamId),
   );

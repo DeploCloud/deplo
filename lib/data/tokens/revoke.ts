@@ -14,15 +14,10 @@ import { requireOwnOrSession } from "./acting-token";
 import { teamsReachedByTokens, tokenReach } from "./reach";
 import { trail } from "./activity-trail";
 
-// revokeToken - the credential is gone, everywhere. Only its owner can: a team
-// takes access away by changing the member, not the token.
 export async function revokeToken(id: string): Promise<void> {
   const { id: userId } = await assertUser();
   requireOwnOrSession(id);
 
-  // Read the reach BEFORE the row goes: afterwards there is nothing left to ask.
-  // (Also before any transaction - this helper queries on its own connection and
-  // pglite deadlocks if that happens inside one.)
   const row = (
     await getDb()
       .select({ scoped: apiTokens.scoped })
@@ -48,8 +43,6 @@ export async function revokeToken(id: string): Promise<void> {
   await forgetOauthGrant(gone[0].userId, gone[0].oauthClientId);
 
   const mcp = gone[0].oauthClientId != null;
-  // The type follows the message: `mcp-clients.ts` files the connect under
-  // `mcp`, and filing the revoke elsewhere would split one story in two.
   await trail(
     reach,
     mcp
@@ -60,9 +53,6 @@ export async function revokeToken(id: string): Promise<void> {
   );
 }
 
-// Tear down the OAuth half of a connection when its token is revoked.
-// Best-effort: the credential is already gone, and a failed cleanup must not turn
-// a successful revoke into an error.
 async function forgetOauthGrant(
   userId: string,
   clientId: string | null,
@@ -92,8 +82,6 @@ async function forgetOauthGrant(
         ),
       );
   } catch (e) {
-    // Not fatal: a leftover consent or refresh row grants nothing - the join that
-    // resolves an access token has no `api_tokens` row to land on.
     console.warn(
       `[deplo] could not clear the OAuth rows for a revoked connection (client ${clientId}):`,
       e,

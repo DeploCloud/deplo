@@ -5,10 +5,6 @@ import { composeTruthy } from "../../deploy/compose-lint/document";
 import { DOKPLOY_NETWORK } from "./source-platform";
 import { stringScalar } from "./compose-yaml";
 
-/**
- * Every top-level network KEY in this compose that resolves to one of the
- * platform's own networks - which is not only the key that spells its name.
- */
 export function platformNetworkKeys(
   doc: { networks?: unknown },
   names: readonly string[],
@@ -21,9 +17,6 @@ export function platformNetworkKeys(
   for (const [key, raw] of Object.entries(
     declared as Record<string, unknown>,
   )) {
-    // Dokploy's fixed name speaks for itself. Any other name has to say
-    // `external:` or point with `name:`: an internal network someone happened to
-    // call `coolify` is theirs, not the platform's.
     if (key === DOKPLOY_NETWORK && wanted.has(key)) keys.add(key);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const n = raw as Record<string, unknown>;
@@ -40,12 +33,6 @@ export function platformNetworkKeys(
   return keys;
 }
 
-/**
- * Top-level network keys this compose does not create itself: `external: true`, or
- * `external: {name: x}`. The network was made on the SOURCE host - by hand or by
- * the panel - so the destination has no such network and `compose up` refuses the
- * whole stack with "declared as external, but could not be found".
- */
 export function externalNetworkKeys(doc: { networks?: unknown }): Set<string> {
   const keys = new Set<string>();
   const declared = doc.networks;
@@ -63,12 +50,8 @@ export function externalNetworkKeys(doc: { networks?: unknown }): Set<string> {
   return keys;
 }
 
-/** `network_mode:` values that are NOT a docker network name. Every other value
- *  names one, and a network made on the source host is not on the destination. */
 const NETWORK_MODE_KEYWORDS = new Set(["none", "host", "bridge", "default"]);
 
-/** Drop a `network_mode:` that names a network off the source host. `networks:` is
- *  empty while it is set, so the service would join nothing and resolve nothing. */
 export function stripHostNetworkMode(
   service: string,
   holder: YAMLMap,
@@ -85,7 +68,6 @@ export function stripHostNetworkMode(
   );
 }
 
-/** Take those networks off one `networks:` value, in either of its two shapes. */
 export function stripNetworks(holder: YAMLMap, keys: Set<string>): void {
   const node = holder.get("networks", true);
   if (isSeq(node)) {

@@ -45,10 +45,6 @@ export async function volumesOnHost(
   }
 }
 
-/**
- * Write down that the SOURCE service is now stopped over there. Backing out of a
- * takeover reads exactly these rows to start them again.
- */
 export async function recordSourceStopped(
   runId: string,
   serviceId: string,
@@ -62,14 +58,8 @@ export async function recordSourceStopped(
     );
 }
 
-/**
- * Every machine behind the panel answers Deplo, or nothing starts. A LIVE hello -
- * the stored status goes green on the agent's own call-home and says nothing
- * about the direction a copy needs.
- */
 export async function assertMigrationMachinesReady(
   c: SourceCredential,
-  /** The services this run moves: only THEIR machines have to answer. */
   serviceIds: Iterable<string>,
 ): Promise<void> {
   const teamId = await requireActiveTeamId();
@@ -91,11 +81,6 @@ export async function assertMigrationMachinesReady(
     );
 }
 
-/**
- * Start again, on the source panel, every service this run stopped to copy it.
- * Best effort and said per service: a source that will not start is a line, not
- * a throw, because whoever is backing out still needs the rest to happen.
- */
 export async function restartSourcesStoppedByRun(
   runId: string,
   c: SourceCredential,
@@ -134,10 +119,6 @@ export async function restartSourcesStoppedByRun(
   return { restarted, left };
 }
 
-/**
- * The Deplo server that can read a given source host's volumes. Derived from the
- * ADDRESS, and never accepted from the caller.
- */
 export async function resolveSourceServer(
   c: SourceCredential,
   teamId: string,

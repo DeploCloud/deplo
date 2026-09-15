@@ -23,8 +23,6 @@ export const MountPropagationEnum = builder.enumType("MountPropagation", {
   values: MOUNT_PROPAGATIONS,
 });
 
-// An enum, not a free String: unknown values used to fall through to a managed
-// volume, so a client asking for a `bind` silently got something else, no error.
 export const VolumeKindEnum = builder.enumType("VolumeKind", {
   description:
     'What the mount is: "named" is a Volume Deplo creates and keeps, "app" a ' +
@@ -40,12 +38,10 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
     "app-files bind, or a host bind mount.",
   fields: (t) => ({
     id: t.exposeID("id"),
-    // The UI re-derives its source control from this, so it must round-trip on read.
     type: t.string({ resolve: (v) => v.type ?? "named" }),
     name: t.exposeString("name"),
     projectPath: t.exposeString("projectPath", { nullable: true }),
     hostPath: t.exposeString("hostPath", { nullable: true }),
-    // Null ⇒ the stack's default service; always null for a single-container app.
     service: t.string({ nullable: true, resolve: (v) => v.service ?? null }),
     mountPath: t.exposeString("mountPath"),
     readOnly: t.exposeBoolean("readOnly"),
@@ -206,7 +202,6 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
   }),
 });
 
-// reloadApp reads an app by id after a void mutation so the field can return the entity.
 export async function reloadApp(id: string): Promise<AppSummary> {
   const all = await listApps();
   const found = all.find((p) => p.id === id);

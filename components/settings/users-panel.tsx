@@ -80,7 +80,6 @@ export function UsersPanel({
     restore,
   } = useOptimisticRemove(links, (l) => l.id);
   const pendingLinks = liveLinks.filter((l) => l.status === "pending");
-  // `?user=<id>` opens that account's editor on arrival: a member page links here.
   const focusUserId = useSearchParams().get("user");
 
   const q = query.trim().toLowerCase();
@@ -119,7 +118,6 @@ export function UsersPanel({
           </>
         }
       />
-      {/* One account needs no search box. */}
       {users.length > 1 && (
         <ListToolbar
           query={query}
@@ -284,10 +282,8 @@ function UserRow({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
-  // Nobody may demote or suspend the owner, themselves included: ownership leaves only via transfer.
   const ownerLocked = user.isInstanceOwner;
 
-  // updateUserAdmin replaces the whole set, so every flag is resent; the guards are server-side.
   function flip(patch: { isInstanceAdmin?: boolean; suspended?: boolean }) {
     startTransition(async () => {
       const res = await gqlAction(
@@ -341,7 +337,6 @@ function UserRow({
               <span className="ml-1 text-xs text-muted-foreground">(you)</span>
             )}
           </p>
-          {/* Owner supersedes Admin: the owner is an admin. */}
           {user.isInstanceOwner ? (
             <Badge variant="secondary" className="gap-1 px-1.5 py-0">
               <Crown className="size-3" />
@@ -440,7 +435,6 @@ function UserRow({
             {user.suspended ? "Reactivate account" : "Suspend account"}
           </DropdownMenuItem>
         </SimpleTooltip>
-        {/* Permanent deletion sits below the reversible actions, past a separator. */}
         <DropdownMenuSeparator />
         <SimpleTooltip
           content={
@@ -467,7 +461,6 @@ function UserRow({
 
   return (
     <>
-      {/* Left-click opens the editor; the ⋯ menu carries the quick actions. */}
       {view === "list" ? (
         <TableRow className={cn(user.suspended && "opacity-60")}>
           <TableCell>

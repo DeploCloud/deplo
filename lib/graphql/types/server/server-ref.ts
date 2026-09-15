@@ -8,11 +8,9 @@ import {
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { reportedAgentVersion } from "@/lib/version";
-// resolveExpectedAgentVersion is awaited per-request; it is cached so the agent fields don't each hit GitHub.
 import { resolveExpectedAgentVersion } from "@/lib/agent/release";
 import type { Server } from "@/lib/types/server";
 
-// ServerStatusEnum is also read by the search results, which describe a server without owning its type.
 export const ServerStatusEnum = builder.enumType("ServerStatus", {
   values: ["online", "warning", "error", "offline", "provisioning"] as const,
 });
@@ -21,7 +19,6 @@ const ServerTypeEnum = builder.enumType("ServerType", {
   values: ["remote"] as const,
 });
 
-// ServerRef is the Server object type.
 export const ServerRef = builder.objectRef<Server>("Server").implement({
   description: "A connected host running deployments (reached via its agent).",
   fields: (t) => ({
@@ -69,14 +66,11 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     teams: t.field({
       type: [TeamRef],
-      // The granted-team NAMES are cross-team info, so gate them to infra managers;
-      // `allTeams` above stays readable by all for the count-only badge.
       authScopes: { capability: "manage_team" },
       description:
         "Teams explicitly granted access when `allTeams` is false (empty otherwise - every team has access). Requires manage_infra.",
       resolve: (s) => getServerTeams(s.id),
     }),
-    // Never expose secret-shaped material: only the agent VERSION, a "is it provisioned" signal and the heartbeat cache.
     provisioned: t.boolean({
       description:
         "True once the server's agent has called home and been trusted.",

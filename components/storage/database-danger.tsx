@@ -17,7 +17,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 import { DocsLink } from "@/components/ui/docs-link";
 
-// DatabaseDanger - the database's Danger Zone: rebuild (wipe and re-provision) and delete.
 export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = React.useState(false);

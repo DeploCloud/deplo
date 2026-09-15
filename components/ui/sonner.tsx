@@ -4,9 +4,7 @@ import * as React from "react";
 import { useTheme } from "@/components/theme-provider";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
-// sonner's `richColors` palette is rebranded INLINE on the toaster element: an inline declaration beats its stylesheet rule regardless of injection order.
 const TOAST_VARS = {
-  // sonner calls plain and loading toasts the "normal" type.
   "--normal-bg": "var(--popover)",
   "--normal-border": "var(--border)",
   "--normal-text": "var(--popover-foreground)",
@@ -39,7 +37,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className="toaster group"
       style={TOAST_VARS}
       toastOptions={{
-        // Shape only: the per-type colours come from richColors + TOAST_VARS, so pinning a background or text colour here would flatten them.
         classNames: {
           toast:
             "group toast group-[.toaster]:items-start group-[.toaster]:gap-2.5 group-[.toaster]:rounded-xl group-[.toaster]:border group-[.toaster]:p-4 group-[.toaster]:text-[13px] group-[.toaster]:shadow-lg",

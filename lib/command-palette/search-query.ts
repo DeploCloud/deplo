@@ -1,4 +1,3 @@
-// Kept out of the component so a test can validate it against `schema.graphql`.
 export const SEARCH_QUERY = /* GraphQL */ `
   query PaletteSearch($q: String!) {
     search(q: $q) {

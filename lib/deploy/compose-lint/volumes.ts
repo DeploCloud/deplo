@@ -5,13 +5,10 @@ import {
   type ComposeDocShape,
 } from "./document";
 
-// Source side of a volume entry (short `src:dst` form or long `{source}`).
 export function volumeSource(v: unknown): string | null {
   if (typeof v === "string") {
     const idx = v.indexOf(":");
     if (idx > 0) return v.slice(0, idx);
-    // No ":" is a named/anonymous volume, UNLESS compose fills the whole entry in
-    // from a variable: `- ${MOUNT}` is `/:/host` once the env-file is read.
     return interpolates(v) ? v : null;
   }
   if (v && typeof v === "object") {
@@ -27,26 +24,16 @@ export function volumeSource(v: unknown): string | null {
   return null;
 }
 
-// The app-files `./<x>` convention, rewritten to the project's isolated files
-// directory at deploy time. Matches `./x`, `./folder/`, bare `.`/`./`; never `../`.
 export function isFilesConventionSource(src: string): boolean {
   return /^\.(?:\/|$)/.test(src) && !isEscapingSource(src);
 }
 
-// True if a source climbs out of the project sandbox via a `..` path segment. Such
-// a source is a host bind (gated behind `canMountHostVolumes`) so a rename can't
-// repoint it at another project's data.
 export function isEscapingSource(src: string | null | undefined): boolean {
   return Boolean(src && src.split(/[\\/]/).includes(".."));
 }
 
-// True if a single compose volume entry bind-mounts a real HOST path. Shared by the
-// editor lint and the server-side gate so the two never disagree.
 export function isHostBindSource(src: string | null | undefined): boolean {
   if (!src) return false;
-  // Compose reads the value AFTER the env-file, so nothing here can tell where an
-  // interpolated path points - and `./${X}` is rewritten into the files dir and
-  // then climbs out of it. Fail closed: the grant holder can still write one.
   if (interpolates(src)) return true;
   return (
     (src.startsWith("/") || isEscapingSource(src)) &&
@@ -54,9 +41,6 @@ export function isHostBindSource(src: string | null | undefined): boolean {
   );
 }
 
-// Whether ANY service bind-mounts a host path - the server-side gate for
-// `canMountHostVolumes`. Tolerant of malformed input: the deploy-time parse is
-// the authoritative check.
 export function composeHasHostBindMount(composeYaml: string): boolean {
   const doc = loadComposeDoc<ComposeDocShape>(composeYaml);
   const services = doc?.services;
@@ -71,19 +55,13 @@ export function composeHasHostBindMount(composeYaml: string): boolean {
   return false;
 }
 
-// Where a stack's own compose file binds one of its config files.
 export interface ComposeFileBinding {
-  // The path inside the app's files dir, as `./<x>` names it.
   filePath: string;
-  // The compose service that mounts it.
   service: string;
-  // The absolute path it lands on inside that container.
   mountPath: string;
   readOnly: boolean;
 }
 
-// Every `./<x>` bind a stack's services declare. The compose is the ONLY thing that
-// knows where a config file is mounted, which is what lets Storage show it as a File.
 export function composeFileBindings(composeYaml: string): ComposeFileBinding[] {
   const doc = loadComposeDoc<ComposeDocShape>(composeYaml);
   const services = doc?.services;
@@ -95,8 +73,6 @@ export function composeFileBindings(composeYaml: string): ComposeFileBinding[] {
     for (const v of vols) {
       const src = volumeSource(v);
       if (!src || !isFilesConventionSource(src)) continue;
-      // The whole files dir bound as one (`.` / `./`) is not a FILE - there is
-      // no single path to show, and Storage has no row shape for it.
       const filePath = src.replace(/^\.\/?/, "").replace(/\/+$/, "");
       if (!filePath) continue;
       const { mountPath, readOnly } = volumeTarget(v);
@@ -107,7 +83,6 @@ export function composeFileBindings(composeYaml: string): ComposeFileBinding[] {
   return out;
 }
 
-// Target side of a volume entry: the container path and whether it is read-only.
 export function volumeTarget(v: unknown): {
   mountPath: string;
   readOnly: boolean;
@@ -126,9 +101,6 @@ export function volumeTarget(v: unknown): {
   return { mountPath: "", readOnly: false };
 }
 
-// Every TOP-LEVEL `volumes:` entry pointing at storage Deplo did not create for this
-// app: `external:`/a pinned `name:` attaches an existing volume by its deterministic
-// host name, `driver_opts: {device: /}` is a bind one level up.
 export function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
   const out: string[] = [];
   for (const [key, raw] of Object.entries(volumes)) {
@@ -147,8 +119,6 @@ export function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
   return out;
 }
 
-// Top-level `secrets:`/`configs:` keys sourced from a file on the SERVER - the same
-// host-file read an `env_file` is, one level up, so the same grant.
 export function fileSourcedKeys(entries: Record<string, unknown>): string[] {
   const out: string[] = [];
   for (const [key, raw] of Object.entries(entries)) {
@@ -160,9 +130,6 @@ export function fileSourcedKeys(entries: Record<string, unknown>): string[] {
   return out;
 }
 
-// The volumes DEPLO itself creates for a stack: every top-level entry that is
-// neither `external:` nor pinned to its own `name:`. Named for the teardown, which
-// a `down -v` cannot reach on a stack that was never deployed.
 export function composeOwnVolumeKeys(composeYaml: string): string[] {
   const doc = loadComposeDoc<{ volumes?: Record<string, unknown> }>(
     composeYaml,
@@ -172,7 +139,7 @@ export function composeOwnVolumeKeys(composeYaml: string): string[] {
     return [];
   return Object.entries(declared as Record<string, unknown>)
     .filter(([, v]) => {
-      if (v == null) return true; // `vol:` with no body - compose creates it
+      if (v == null) return true;
       if (typeof v !== "object") return false;
       const spec = v as { external?: unknown; name?: unknown };
       return !spec.external && typeof spec.name !== "string";
@@ -180,8 +147,6 @@ export function composeOwnVolumeKeys(composeYaml: string): string[] {
     .map(([k]) => k);
 }
 
-// Whether a compose points at storage or host FILES this app does not own. Gated
-// server-side behind `canMountHostVolumes`. Tolerant of malformed input.
 export function composeMountsForeignStorage(composeYaml: string): boolean {
   const doc = loadComposeDoc<{
     volumes?: Record<string, unknown>;

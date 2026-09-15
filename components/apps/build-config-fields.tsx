@@ -12,7 +12,6 @@ import type {
   BuildMethodSettings,
 } from "@/lib/types/build";
 
-// BuildConfigFields - the new-app wizard's Build & Output section.
 export function BuildConfigFields({
   build,
   onBuildChange,
@@ -45,7 +44,6 @@ export function BuildConfigFields({
     method === "nixpacks" || method === "railpack" || method === "static";
   const showCommands = commands && (showBuildCommand || showStartCommand);
 
-  // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const portText = portDraft ?? String(build.port);
 

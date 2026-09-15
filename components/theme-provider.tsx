@@ -30,22 +30,17 @@ function applyClass(resolved: Resolved) {
   el.style.colorScheme = resolved;
 }
 
-// The server paints <html> from this cookie on the next load - the zero-flash mechanism.
 function writeCookie(resolved: Resolved) {
   try {
     document.cookie = `${STORAGE_KEY}=${resolved}; path=/; max-age=${COOKIE_MAX_AGE}; samesite=lax`;
-  } catch {
-    /* cookies unavailable */
-  }
+  } catch {}
 }
 
-// ThemeProvider - replaces `next-themes`: React 19.2 never runs an inline <script> rendered through React.
 export function ThemeProvider({
   children,
   defaultTheme = "dark",
 }: {
   children: React.ReactNode;
-  // SSR-resolved from the cookie - the deterministic initial value.
   defaultTheme?: Theme;
 }) {
   const [theme, setThemeState] = React.useState<Theme>(defaultTheme);
@@ -53,14 +48,11 @@ export function ThemeProvider({
     defaultTheme === "light" ? "light" : "dark",
   );
 
-  // Reconcile to the persisted preference after mount; the server already painted the cookie's value.
   React.useEffect(() => {
     let pref: string | null = null;
     try {
       pref = localStorage.getItem(STORAGE_KEY);
-    } catch {
-      /* storage unavailable */
-    }
+    } catch {}
     const next: Theme =
       pref === "light" || pref === "dark" || pref === "system"
         ? pref
@@ -91,9 +83,7 @@ export function ThemeProvider({
     const resolved = next === "system" ? systemResolved() : next;
     try {
       localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      /* storage unavailable */
-    }
+    } catch {}
     writeCookie(resolved);
     setThemeState(next);
     setResolvedTheme(resolved);
@@ -110,7 +100,6 @@ export function ThemeProvider({
   );
 }
 
-// useTheme - the current theme + setter; falls back permissively so it never crashes outside a provider.
 export function useTheme(): ThemeContextValue {
   return (
     React.useContext(ThemeContext) ?? {

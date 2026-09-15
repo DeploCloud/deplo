@@ -33,7 +33,6 @@ const T0 = "2026-01-01T00:00:00.000Z";
 export interface SeedTeam {
   id: string;
   slug: string;
-  // The team's founder; defaults to the first seeded `owner` user of the team.
   founderUserId?: string | null;
   mcpEnabled?: boolean;
 }
@@ -41,11 +40,9 @@ export interface SeedUser {
   id: string;
   teamId: string;
   role?: Role;
-  /** Override the capability set (defaults to the role preset). */
   capabilities?: Capability[];
   isInstanceAdmin?: boolean;
   suspended?: boolean;
-  /** Plaintext password - hashed on seed. Defaults to "password1". */
   password?: string;
   email?: string;
 }
@@ -58,13 +55,11 @@ const DEFAULT_USERS: SeedUser[] = [
   { id: USER_1, teamId: TEAM_A, role: "owner" },
 ];
 
-// Truncate every identity table (call in `beforeEach` before seeding).
 export const TRUNCATE_IDENTITY = `truncate table
   registration_links, membership_capabilities, memberships, users, teams,
   instance_settings
   restart identity cascade;`;
 
-// seedIdentity seeds identity tables; defaults to two teams and one owner user.
 export async function seedIdentity(
   db: TestDb,
   opts: { teams?: SeedTeam[]; users?: SeedUser[] } = {},
@@ -72,7 +67,6 @@ export async function seedIdentity(
   const seedTeams = opts.teams ?? DEFAULT_TEAMS;
   const seedUsers = opts.users ?? DEFAULT_USERS;
 
-  // Users BEFORE teams: `teams.founder_user_id` FKs `users.id`.
   await db.insert(users).values(
     seedUsers.map((u) => {
       const role = u.role ?? "owner";
@@ -90,7 +84,6 @@ export async function seedIdentity(
       };
     }),
   );
-  // The credential lives on the Better Auth `account` row since migration 0055.
   await db.insert(account).values(
     await Promise.all(
       seedUsers.map(async (u) => ({
@@ -137,7 +130,6 @@ export async function seedIdentity(
   if (caps.length > 0) await db.insert(membershipCapabilities).values(caps);
 }
 
-// seedRegistrationLink inserts a pending link; returns the raw token.
 export async function seedRegistrationLink(
   db: TestDb,
   opts: { id?: string; createdBy?: string; expiresAt?: string } = {},

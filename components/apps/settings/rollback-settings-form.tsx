@@ -21,7 +21,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { MAX_ROLLBACK_KEEP } from "@/lib/types/app";
 
-// RollbackSettingsForm - how many previous deployments this app can be put back on.
 export function RollbackSettingsForm({
   appId,
   rollbackKeep,
@@ -35,7 +34,6 @@ export function RollbackSettingsForm({
   const [pending, startTransition] = React.useTransition();
   const dirty = value.trim() !== saved;
 
-  // Empty reads as 0 ("keep none"), not NaN, which is what the field shows mid-edit.
   const parsed = Math.min(
     MAX_ROLLBACK_KEEP,
     Math.max(0, Math.trunc(Number(value) || 0)),
@@ -83,7 +81,6 @@ export function RollbackSettingsForm({
             info="Each one is a copy of the app kept on its server, so more rollbacks means more disk. Older ones are removed after each deploy. 0 keeps none."
             docs="releases.rollbackRetention"
           >
-            {/* The unit rides inside the field: a bare "3" reads as days. */}
             <div className="relative w-full">
               <Input
                 id="rollback-keep"

@@ -4,7 +4,6 @@ export const MIN_LOG_SIZE = 11;
 export const MAX_LOG_SIZE = 20;
 
 export interface LogsDisplay {
-  /** Pixels. */
   size: number;
   leading: number;
 }
@@ -20,7 +19,6 @@ export const LOG_LEADINGS = [
 export const clampLogSize = (n: number) =>
   Math.min(MAX_LOG_SIZE, Math.max(MIN_LOG_SIZE, Math.round(n)));
 
-// parseLogsDisplay re-validates every field: the stored value is user-writable.
 export function parseLogsDisplay(raw: string | null): LogsDisplay {
   if (!raw) return LOGS_DISPLAY_DEFAULTS;
   try {

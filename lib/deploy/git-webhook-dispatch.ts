@@ -11,7 +11,6 @@ import { parseWatchPaths } from "../data/app-graph-rows/app";
 import { startDeployment } from "./build/deploy-start";
 import { shouldAutoDeploy, type GitPushEvent } from "./git-webhook";
 
-// Turns one verified push into deployments; runs with no session, so nothing here may call a capability gate.
 export async function dispatchPushEvent(opts: {
   match: SQL;
   repoFullName: string;
@@ -80,7 +79,6 @@ export async function dispatchPushEvent(opts: {
         creator: opts.creator,
         creatorProvider: opts.provider,
         commitMessage: opts.commitMessage,
-        // A tag trigger checks out the tag itself; for a push this is the tracked branch.
         branch: event.refName,
       });
       started++;

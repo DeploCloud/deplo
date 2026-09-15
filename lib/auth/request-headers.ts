@@ -1,32 +1,14 @@
-/**
- * The header set Deplo hands to Better Auth's server API. Pure (no `next/headers`)
- * so the selection can be tested, and it needs to be, because BOTH directions of
- * this list are load-bearing and both fail silently.
- */
-
-/** Exactly what Better Auth reads off the request when creating a session. */
 export const SESSION_METADATA_HEADERS = [
   "user-agent",
-  // The IP chain, in the order `advanced.ipAddress.ipAddressHeaders` lists them.
   "cf-connecting-ip",
   "x-forwarded-for",
   "x-real-ip",
 ] as const;
 
-/**
- * Build the headers for a Better Auth server call: the session metadata from the
- * live request, plus the cookie string the caller resolved.
- */
 export function authRequestHeaders(
   request: Headers | null | undefined,
   cookie: string,
   opts: {
-    /**
-     * Offer each cookie under its twin name too (see {@link withBothCookieNames}).
-     * Off on an https request: there the `__Secure-` name is the only one the
-     * browser could have been given, and honouring a plain twin would let a cookie
-     * planted over http sign somebody in on the https address.
-     */
     twinCookieNames?: boolean;
   } = {},
 ): Headers {
@@ -44,15 +26,9 @@ export function authRequestHeaders(
   return out;
 }
 
-/** Better Auth's cookie prefix on this instance (`advanced.cookiePrefix`). */
 const AUTH_COOKIE_PREFIX = "deplo.";
 const SECURE_PREFIX = "__Secure-";
 
-/**
- * Offer every Better Auth cookie under BOTH the plain and the `__Secure-` name. A
- * Deplo answers on more than one address: its panel address, its generated backup
- * host, and `http://127.0.0.1:3000` on the machine itself.
- */
 export function withBothCookieNames(cookie: string): string {
   if (!cookie.includes(AUTH_COOKIE_PREFIX)) return cookie;
   const pairs = cookie.split("; ").filter(Boolean);

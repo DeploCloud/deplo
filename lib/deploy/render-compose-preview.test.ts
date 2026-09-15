@@ -49,8 +49,6 @@ test("a production render names everything after the app slug, and nothing else"
   assert.match(yaml, /files\/blog\//);
   assert.match(yaml, /deplo\.slug=blog/);
   assert.match(yaml, /deplo\.project=prj_1/);
-  // The extra ownership label exists ONLY for previews: emitting it here would change
-  // every production stack's labels and force a needless restart.
   assert.doesNotMatch(yaml, /deplo\.app=/);
 });
 
@@ -89,8 +87,6 @@ test("a preview shares no container, volume or files dir with production", () =>
 });
 
 test("a preview's telemetry label is its OWN id, with the app kept discoverable", () => {
-  // Telemetry buckets container stats by `deplo.project`: the app id here would let a
-  // preview satisfy the app's live-status check and land in its monitoring charts.
   const yaml = renderCompose({
     network: "deplo-team-team_test",
     ...BASE,

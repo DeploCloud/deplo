@@ -15,7 +15,6 @@ import {
   RestoreRunDialog,
 } from "./run-dialogs";
 
-// PendingRunRow - a run started here that has not surfaced yet: it pulses, its actions are dead.
 export function PendingRunRow({
   destinationName,
   canRestore,
@@ -42,7 +41,6 @@ export function PendingRunRow({
   );
 }
 
-// RunRow - one restore point: what it is, what it weighs, and what can be done with it.
 export function RunRow({
   run,
   target,
@@ -87,15 +85,12 @@ export function RunRow({
           suppressHydrationWarning
         >
           {formatDateTime(run.startedAt)} · {destinationName}
-          {/* See RestoreRunsDialog: only the runs from before checksums say so. */}
           {ok && !run.sha256 && (
             <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
               <span> · not checksummed</span>
             </SimpleTooltip>
           )}
         </p>
-        {/* Wrapped and clamped, never `truncate`: a nowrap line in an auto-width
-            cell has nothing to truncate against and widens the whole table. */}
         {run.error && (
           <SimpleTooltip content={run.error}>
             <p className="mt-1 line-clamp-2 text-xs text-destructive">

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { CommandLine } from "@/components/shared/code-block";
 
-// TokenCreated - the one time a token's secret is ever shown.
 export function TokenCreated({
   raw,
   name,

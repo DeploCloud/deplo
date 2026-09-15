@@ -7,8 +7,6 @@ import {
 } from "@/app/(dashboard)/[team]/settings/members/[id]/member-detail-tabs";
 import type { Capability } from "./types/identity";
 
-// Save is a WHOLE-SET REPLACE: a node left out of the payload is a node
-// revoked, so a bug here destroys grants rather than misreporting them.
 const node = (
   kind: "project" | "folder" | "app",
   nodeId: string,

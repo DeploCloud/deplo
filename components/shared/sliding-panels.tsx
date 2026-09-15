@@ -2,13 +2,10 @@
 
 import * as React from "react";
 
-// PANEL_BODY_MAX - a panel body caps here so its footer stays inside the modal's 85vh box (chrome ~14rem).
 export const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
 
-// PANEL_BODY_MAX_NESTED - the same for a nested track, whose chrome measures 276px, not 14rem.
 export const PANEL_BODY_MAX_NESTED = "max-h-[calc(85vh-18rem)]";
 
-// SlidingPanels - panels on one horizontal track; all stay mounted, the off-screen ones `inert`.
 export function SlidingPanels<T extends string>({
   panels,
   current,
@@ -26,7 +23,6 @@ export function SlidingPanels<T extends string>({
   const [heights, setHeights] = React.useState<Partial<Record<T, number>>>({});
   const height = heights[current] || undefined;
 
-  // Lazy state init, so `new ResizeObserver` never runs on the server.
   const [observer] = React.useState<ResizeObserver | null>(() =>
     typeof ResizeObserver === "undefined"
       ? null

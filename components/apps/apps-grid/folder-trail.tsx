@@ -8,14 +8,12 @@ import { folderHref } from "../folder-card";
 import { cn } from "@/lib/utils";
 import type { FolderRef, TrailSeg } from "./grid-contract";
 
-// UNGROUP_DROP_ID is the sentinel droppable id of the breadcrumb's "move out" zone.
 export const UNGROUP_DROP_ID = "__ungroup__";
 
 function allAppsHref(view: "grid" | "list"): string {
   return view === "list" ? "/?view=list" : "/";
 }
 
-// FolderTrail is the drill-in breadcrumb: "Overview / A / B / Current".
 export function FolderTrail({
   path,
   view,
@@ -54,7 +52,6 @@ export function FolderTrail({
   );
 }
 
-// DroppableBreadcrumb is the trail doubling as a "move out one level" drop target.
 export function DroppableBreadcrumb({
   path,
   view,

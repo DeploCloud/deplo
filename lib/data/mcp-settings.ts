@@ -12,12 +12,10 @@ import {
 import { assertUser } from "../auth/current-user";
 import { recordActivity } from "./activity";
 
-// McpSettings is the active team's MCP policy - the one switch on Settings → MCP Server.
 export interface McpSettings {
   enabled: boolean;
 }
 
-// getMcpSettings reads the active team's MCP policy.
 export const getMcpSettings = cache(async (): Promise<McpSettings> => {
   const teamId = await requireActiveTeamId();
   const row = (
@@ -27,17 +25,13 @@ export const getMcpSettings = cache(async (): Promise<McpSettings> => {
       .where(eq(teamsTable.id, teamId))
       .limit(1)
   )[0];
-  // Fail closed: "off" is the right way to be wrong about a kill switch.
   return { enabled: row?.enabled ?? false };
 });
 
-// setMcpSettings turns MCP access on or off for the active team.
 export async function setMcpSettings(input: {
   enabled: boolean;
 }): Promise<McpSettings> {
-  // manage_team, not manage_mcp: this is a team policy, not a member's own connection.
   const { teamId } = await requireCapability("manage_team");
-  // A narrowed token reaches part of the team; this switch governs all of it.
   await requireTeamWide("the team's MCP settings");
 
   const before = (

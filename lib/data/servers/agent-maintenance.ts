@@ -9,20 +9,12 @@ import { assertNotMigrationSource, requireAdminServer } from "./roster";
 
 export interface UpdateServerAddressInput {
   id: string;
-  // The new dial address (IP or DNS name) - written to BOTH `host` and `ip`,
-  // unless `keepHost` says otherwise.
   address: string;
-  // New agent gRPC port; omit to keep the current one.
   agentPort?: number | null;
-  // Skip the reachability check - for a host not up at the new address yet.
   force?: boolean;
-  // Write only `ip` and leave `host` alone - the MIGRATION WIZARD's flag, and the
-  // one case where the two are meant to diverge.
   keepHost?: boolean;
 }
 
-// updateServerAddress rewrites where Deplo dials a server's agent - the migration
-// verb: a VPS got a new IP, or the whole instance moved hosts.
 export async function updateServerAddress(
   input: UpdateServerAddressInput,
 ): Promise<{ warning: string | null }> {
@@ -52,7 +44,6 @@ export async function updateServerAddress(
     ];
     try {
       const { renewAgentCert } = await import("../../agent/cert-renewal");
-      // The NEW address first.
       try {
         await renewAgentCert(server.id, sans, {
           ip: address,
@@ -60,13 +51,9 @@ export async function updateServerAddress(
           agentPort: port,
         });
       } catch {
-        // The current dial, for the orderly move this was written for - and for
-        // `force`, where the new address is not expected to answer yet.
         await renewAgentCert(server.id, sans);
       }
     } catch (e) {
-      // Soft on purpose: the force path exists precisely because the old address may
-      // already be dead, and an IP-dialed host never consults these SANs.
       warning =
         (input.force
           ? `The address was saved without checking it (force). `
@@ -96,19 +83,14 @@ export async function updateServerAddress(
   const updated = await getDb()
     .update(serversTable)
     .set({
-      // `keepHost` leaves `host` as the address the row was BORN with - see the
-      // field's own doc. Everywhere else the two stay identical.
       ...(input.keepHost ? {} : { host: address }),
       ip: address,
-      // Meaningless before an agent exists - bootstrap sets it when one calls home.
       ...(server.agent && input.agentPort != null
         ? { agentPort: input.agentPort }
         : {}),
     })
     .where(eq(serversTable.id, input.id))
     .returning({ id: serversTable.id });
-  // The probe window is real: a concurrent removeServer between the read above
-  // and this write must surface as a refusal, not as success + phantom activity.
   if (updated.length === 0) throw new Error("Server not found");
   await recordActivity(
     "server",
@@ -120,29 +102,20 @@ export async function updateServerAddress(
   return { warning };
 }
 
-// updateServerAgent updates a server's agent binary in place to the latest
-// released version WITHOUT reissuing its certificates.
 export async function updateServerAgent(
   id: string,
 ): Promise<{ version: string }> {
   const { teamId, user, server } = await requireAdminServer(id);
-  // Not on a migration source: upgrading the agent on another platform's machine
-  // is maintenance of a host we do not run. Reachable from MCP, so the refusal
-  // lives here.
   assertNotMigrationSource(server);
   if (!server.agent?.certFingerprint)
     throw new Error(
       "This server is not provisioned yet - finish provisioning before updating its agent",
     );
 
-  // Lazy-import to keep the grpc agent-client (and its deps) out of modules that
-  // never reach an agent.
   const { selfUpdateServerAgent } =
     await import("../../infra/agent-client/agent-lifecycle");
   const result = await selfUpdateServerAgent(id);
 
-  // The next Hello (markServerSeen) refreshes it from the live agent regardless,
-  // so this is just a faster echo.
   await getDb()
     .update(serversTable)
     .set({ agentVersion: result.version })

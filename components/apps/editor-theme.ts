@@ -15,7 +15,6 @@ import { tags as t } from "@lezer/highlight";
 import { yaml as yamlLang } from "@codemirror/lang-yaml";
 import { classifyYamlScalar, type YamlScalarKind } from "./editor-language";
 
-// A content: image cannot read a CSS variable, so these severity colours are spelled out.
 function markerSvg(content: string): string {
   return `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">${encodeURIComponent(content)}</svg>')`;
 }
@@ -34,10 +33,8 @@ const INFO_MARKER =
   '<circle cx="20" cy="12.5" r="2.2" fill="#000"/>' +
   '<path fill="#000" d="M17.9 17.5h4.2v12h-4.2z"/>';
 
-// EDITOR_MAX_HEIGHT caps the editor itself, not the scroller, so the box never grows.
 export const EDITOR_MAX_HEIGHT = "60vh";
 
-// deploTheme is the shared CodeMirror chrome for the dashboard editors.
 export const deploTheme = EditorView.theme({
   "&": {
     backgroundColor: "var(--background)",
@@ -174,7 +171,6 @@ export const deploTheme = EditorView.theme({
   },
 });
 
-// deploHighlight styles only the tags @lezer/yaml emits.
 export const deploHighlight = HighlightStyle.define([
   {
     tag: [t.definition(t.propertyName), t.propertyName],
@@ -208,11 +204,9 @@ function scalarDecorations(view: EditorView): DecorationSet {
       from,
       to,
       enter(node) {
-        // A key is a Literal too, and keeps the property colour instead.
         if (node.name === "Key") return false;
         if (node.name !== "Literal" && node.name !== "BlockLiteralContent")
           return;
-        // Straddling nodes come back once per visible range.
         if (node.from <= lastFrom) return;
         const text = view.state.doc.sliceString(node.from, node.to);
         builder.add(node.from, node.to, scalarMarks[classifyYamlScalar(text)]);
@@ -242,7 +236,6 @@ const yamlScalarHighlighter = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
-// yamlExtensions is YAML parsing plus the plain-scalar colouring the parser cannot give.
 export function yamlExtensions(): Extension[] {
   return [yamlLang(), yamlScalarHighlighter];
 }

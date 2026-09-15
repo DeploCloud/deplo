@@ -76,7 +76,6 @@ async function seedAll(): Promise<void> {
       { id: INTRUDER, teamId: TEAM_A, role: "member", isInstanceAdmin: false },
     ],
   });
-  // `manage_team` is excluded: its holder is a folder super-user, which would mask the question.
   await db.delete(membershipCapabilitiesTable);
   await db.insert(membershipCapabilitiesTable).values([
     ...ALL_CAPABILITIES.map((capability) => ({

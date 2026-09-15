@@ -10,7 +10,6 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { isoTimestampParser } from "./timestamp-parser";
 import { schema } from "./schema";
 
-// TestDb is a pglite Drizzle client over the full aggregated schema.
 export type TestDb = PgliteDatabase<typeof schema>;
 
 const MIGRATIONS = path.join(process.cwd(), "lib", "db", "migrations");
@@ -31,7 +30,6 @@ function cachePath(): string {
 
 let cacheFile: string | undefined;
 
-// makeTestDb builds an isolated in-memory Postgres with every migration applied.
 export async function makeTestDb(): Promise<{ db: TestDb; pg: PGlite }> {
   cacheFile ??= cachePath();
   if (fs.existsSync(cacheFile)) {
@@ -42,9 +40,7 @@ export async function makeTestDb(): Promise<{ db: TestDb; pg: PGlite }> {
       });
       await pg.query("select 1");
       return { db: drizzle(pg, { schema }), pg };
-    } catch {
-      // A truncated or unreadable cache is not worth diagnosing: migrate instead.
-    }
+    } catch {}
   }
 
   const pg = new PGlite({ parsers: PARSERS });
@@ -55,14 +51,11 @@ export async function makeTestDb(): Promise<{ db: TestDb; pg: PGlite }> {
     const dump = await pg.dumpDataDir("none");
     const tmp = `${cacheFile}.${process.pid}`;
     fs.writeFileSync(tmp, Buffer.from(await dump.arrayBuffer()));
-    fs.renameSync(tmp, cacheFile); // atomic: concurrent test processes may race here
-  } catch {
-    // Caching is an optimisation; a read-only or full tmpdir just costs time.
-  }
+    fs.renameSync(tmp, cacheFile);
+  } catch {}
   return { db, pg };
 }
 
-// truncateAll empties every table and restarts every sequence.
 export async function truncateAll(pg: PGlite): Promise<void> {
   await pg.exec(RESET_ALL);
 }

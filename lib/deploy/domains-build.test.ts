@@ -103,7 +103,6 @@ test("different apps and different pull requests get different preview hosts", (
 });
 
 test("a nip.io preview host asks for NO certificate", () => {
-  // nip.io shares one Let's Encrypt issuance budget with the whole internet, so a cert there never issues.
   assert.equal(
     previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP })
       .certProvider,

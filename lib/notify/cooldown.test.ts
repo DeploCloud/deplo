@@ -45,7 +45,6 @@ test("an update nag uses the version as its state, so a new release re-fires", (
     shouldFire("deplo_update_available", "deplo-update", "1.2.0", 0),
     true,
   );
-  // Same version, next day: still quiet (the nag is weekly).
   assert.equal(
     shouldFire("deplo_update_available", "deplo-update", "1.2.0", 86_400_000),
     false,

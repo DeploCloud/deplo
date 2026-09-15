@@ -4,7 +4,6 @@ import { GitHubIcon } from "@/components/shared/brand-icons";
 import { usesComposeStack } from "@/lib/utils";
 import type { GitRepo } from "@/lib/types/build";
 
-// AppSourceLike - the app fields needed to identify its source.
 export type AppSourceLike = {
   source: string;
   compose: string | null;
@@ -18,7 +17,6 @@ export interface AppSourceDescriptor {
   isGit: boolean;
 }
 
-// describeAppSource - describe where an app's code/image comes from, for display.
 export function describeAppSource(project: AppSourceLike): AppSourceDescriptor {
   if (usesComposeStack(project)) {
     return { Icon: Layers, label: "Compose", isGit: false };

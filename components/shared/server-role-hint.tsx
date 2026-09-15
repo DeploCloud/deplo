@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-// ServerRoleHint - said on BOTH states, so the contrast is the message rather than a lone badge.
 export function ServerRoleHint({
   isDeploHost,
   className,

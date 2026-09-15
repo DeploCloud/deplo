@@ -45,18 +45,14 @@ export default async function AppOverview(
   if (!project) notFound();
 
   const deployments = await listDeployments({ appId: project.id });
-  // Cosmetic: the mutation gates itself, this only decides whether "Deploy anyway" is shown.
   const canDeploy = await hasAppCapability(project.id, "deploy_apps");
-  // Only the list resolves `creatorUser`; the app graph's copy shows "by <name>" with no face.
   const prod =
     deployments.find((d) => d.id === project.latestDeployment?.id) ??
     project.latestDeployment;
-  // Same source of truth as the Overview card, so no "main" branch is invented for a compose app.
   const src = describeAppSource(project);
 
   return (
     <div className="space-y-6">
-      {/* First on the page: while it is set Deploy is refused, so it explains a dead button. */}
       <DataCopyNotice
         kind="app"
         id={project.id}
@@ -66,7 +62,6 @@ export default async function AppOverview(
         move={Boolean(project.migrateFromServerId)}
       />
 
-      {/* No credential to clone with: the deploy fails with nothing but `exit status 128`. */}
       {repoCredentialMissing(project) && project.repo && (
         <RepoLinkNotice
           slug={slug}
@@ -74,7 +69,6 @@ export default async function AppOverview(
         />
       )}
 
-      {/* Production hero */}
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Production Deployment</CardTitle>
@@ -146,7 +140,6 @@ export default async function AppOverview(
                     </p>
                   )}
                 </div>
-                {/* effectiveFramework settles detection against the user's correction. */}
                 {effectiveFramework(project) &&
                   supportsFrameworkDetection(project.build.buildMethod) && (
                     <div>
@@ -197,7 +190,6 @@ export default async function AppOverview(
               <p className="text-sm text-muted-foreground">
                 No production deployment yet.
               </p>
-              {/* The source, before there is a production row to describe. */}
               <div>
                 <p className="text-xs text-muted-foreground">Source</p>
                 <p className="mt-1 flex items-center gap-1.5 text-sm">
@@ -210,7 +202,6 @@ export default async function AppOverview(
         </CardContent>
       </Card>
 
-      {/* Deployments */}
       <div id="deployments" className="space-y-3">
         <div className="flex flex-row items-center justify-between">
           <h2 className={titleClass.section}>Deployments</h2>

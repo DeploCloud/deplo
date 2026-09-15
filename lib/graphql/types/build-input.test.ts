@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 
 import { remapBuildInput } from "./build-input";
 
-// Regression for the "build settings don't save" bug: BuildConfigInput names
-// rootDir/outputDir/settings differently from the stored BuildConfig, and
-// updateAppBuild merges shallowly on the stored keys.
-
 test("remapBuildInput re-keys rootDir → rootDirectory", () => {
   const out = remapBuildInput({ rootDir: "apps/web" });
   assert.equal(out.rootDirectory, "apps/web");
@@ -45,8 +41,6 @@ test("remapBuildInput passes matching fields through untouched", () => {
 });
 
 test("remapBuildInput only re-keys fields that are present (partial input)", () => {
-  // The Edit dialog sends partial input: an absent key must NOT appear in the
-  // output, or the downstream merge loses the stored value for it.
   const out = remapBuildInput({ rootDir: "src" });
   assert.deepEqual(Object.keys(out), ["rootDirectory"]);
   assert.ok(!("outputDirectory" in out));
@@ -54,14 +48,12 @@ test("remapBuildInput only re-keys fields that are present (partial input)", () 
 });
 
 test("remapBuildInput keeps an explicit empty-string edit (clearing a field)", () => {
-  // Clearing Root Directory back to "" is a real edit, not an absent field.
   const out = remapBuildInput({ rootDir: "", outputDir: "" });
   assert.equal(out.rootDirectory, "");
   assert.equal(out.outputDirectory, "");
 });
 
 test("remapBuildInput end-to-end: the merge persists the edited rootDirectory", () => {
-  // Mirrors the shallow merge in updateAppBuild: { ...existing, ...remapped }.
   const existing = {
     buildMethod: "nixpacks",
     methodSettings: {},

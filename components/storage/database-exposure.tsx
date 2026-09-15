@@ -20,7 +20,6 @@ import {
 } from "@/lib/databases/ports";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-// useDatabaseExposure - the port-publishing rules shared by Overview and Settings. https://deplo.build/docs/guides/data/databases
 export function useDatabaseExposure(db: DatabaseDTO) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -91,7 +90,6 @@ export function useDatabaseExposure(db: DatabaseDTO) {
 
 export type DatabaseExposure = ReturnType<typeof useDatabaseExposure>;
 
-// ExposureSwitch - two gates in one control: the Capability, then the instance grant.
 export function ExposureSwitch({
   checked,
   onCheckedChange,
@@ -114,7 +112,6 @@ export function ExposureSwitch({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {/* A disabled control fires no pointer events, so the tooltip hangs off a focusable wrapper. */}
         <span tabIndex={0}>
           <Switch checked={checked} disabled />
         </span>
@@ -134,7 +131,6 @@ export function ExposurePortRow({
   exposure: DatabaseExposure;
   canExposePorts: boolean;
   canConfigure: boolean;
-  // Settings passes the (possibly changed) move target so Generate asks it.
   serverId?: string;
   extraInfo?: React.ReactNode;
 }) {

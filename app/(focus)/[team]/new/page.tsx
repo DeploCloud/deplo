@@ -81,7 +81,6 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
     placementFromSearchParams(params),
   );
 
-  // The Overview hides its button without this Capability, but the URL is still typeable (a template's Deploy lands here).
   if (!(await hasCapabilityAnywhere("create_apps")))
     return (
       <FocusFrame exitHref={placementHref(placement)}>
@@ -106,7 +105,6 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const shouldDeploy = one(params.deploy) !== "false";
   const presetSource = SOURCES.find((s) => s === sourceParam) ?? null;
 
-  // The catalog is a remote service: an unknown slug or a bad day must not take the wizard down.
   const template =
     templateId && variantId
       ? await getTemplateVariant(templateId, variantId).catch(() => null)
@@ -130,14 +128,12 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
       </FocusFrame>
     );
 
-  // productionDomain bakes in random words, so this exact string is threaded on: createApp stores it as the app's `preferred` auto domain and re-deriving it would give another host.
   const autoDomain = template
     ? productionDomain(template.slug, instanceHost())
     : null;
   const blueprint = template
     ? getTemplateBlueprint(template, { domain: autoDomain ?? undefined })
     : null;
-  // Stored inline on the app, so the icon survives the catalog going away.
   const logo = template
     ? await templateLogoDataUri(template.variant.logo)
     : null;
@@ -160,7 +156,6 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
     listBuildServerChoices(),
     listGithubInstallations(),
     listGitConnections(),
-    // `manage_env`-gated: a creator without it gets no Shared tab, never a refused page.
     listSharedVars().catch(() => []),
     isInstanceAdmin(),
   ]);

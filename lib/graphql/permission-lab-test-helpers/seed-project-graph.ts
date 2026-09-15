@@ -36,7 +36,6 @@ import {
   TEAM,
 } from "./fixture-ids";
 
-// seedProjectGraph fills the lab's host, projects, environments, folders, apps and database.
 export async function seedProjectGraph(db: TestDb): Promise<void> {
   await seedServer(db);
 

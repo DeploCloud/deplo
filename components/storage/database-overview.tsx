@@ -10,7 +10,6 @@ import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
 import type { DatabaseBackupSummary } from "@/lib/data/backups/run-listing";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-// DatabaseOverview - what the database is and how to reach it. https://deplo.build/docs/guides/data/databases
 export function DatabaseOverview({
   db,
   serverName,
@@ -27,16 +26,13 @@ export function DatabaseOverview({
   db: DatabaseDTO;
   serverName: string;
   serverHost: string;
-  // Where the database lives; null = the team's top level. It decides which apps its internal address answers for.
   environmentLabel?: string | null;
   environments?: { id: string; label: string }[];
-  // The viewer holds `reveal_secrets` - what `revealConnection` needs.
   canReveal: boolean;
   canConfigure: boolean;
   canExposePorts: boolean;
   canViewBackups: boolean;
   backups: DatabaseBackupSummary;
-  // Streamed in its own boundary: measuring a volume walks it.
   dataStat: React.ReactNode;
 }) {
   const creds = ENGINE_CREDS[db.type];
@@ -56,7 +52,6 @@ export function DatabaseOverview({
             />
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <Field label="Engine">
-                {/* Not the raw id: `capitalize` rendered "Mysql · V8.4", title-casing the version's "v". */}
                 <span>
                   {DB_NAMES[db.type] ?? db.type} · v{db.version}
                 </span>

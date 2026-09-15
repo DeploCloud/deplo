@@ -26,14 +26,12 @@ test("coolifyMounts splits volumes, binds and files", () => {
       ["file", "nginx.conf"],
     ],
   );
-  // A directory and a file whose bytes did not come are both said out loud.
   assert.equal(notes.length, 2);
   assert.match(notes[0], /mounted DIRECTORY/);
   assert.match(notes[1], /did not come with its contents/);
 });
 
 test("coolifyMounts sends each storage down the channel that can carry it", () => {
-  // Coolify files EVERY bind mount as a "file storage" and `fs_path` is the only column saying where it is on the host: unread, a directory and a binary file were dropped by BOTH channels.
   const { mounts, notes } = coolifyMounts({
     file_storages: [
       {
@@ -61,7 +59,6 @@ test("coolifyMounts sends each storage down the channel that can carry it", () =
         content: "TZif2\u0000\u0000",
       },
       { uuid: "f5", fs_path: "/srv/site/big.bin", mount_path: "/app/big.bin" },
-      // No fs_path at all: nothing can carry it, and that has to be said.
       { uuid: "f6", mount_path: "/app/orphan", is_directory: true },
     ],
   });
@@ -75,13 +72,11 @@ test("coolifyMounts sends each storage down the channel that can carry it", () =
       ["bind", "/srv/site/big.bin"],
     ],
   );
-  // The machine's own file is not worth a line; the one nothing can carry is.
   assert.deepEqual(notes, [
     "/app/orphan is a mounted DIRECTORY on {panel} and it named no path on the host, so nothing of it could be copied.",
   ]);
 });
 
-// The name on the host has to stay whole - it is what the data copy reads - and the name the owner sees has to lose the panel's own id.
 test("a volume keeps its host name and loses the panel's id", () => {
   const uuid = "q70abqiwnol18hhjwtxp1hnf";
   const { mounts } = coolifyMounts(
@@ -103,7 +98,6 @@ test("a volume keeps its host name and loses the panel's id", () => {
     ],
   );
 
-  // And it is the alias that becomes the volume this app mounts here.
   const { value } = mapMounts(mounts, { isCompose: false });
   assert.deepEqual(
     value.volumes.map((v) => v.name),

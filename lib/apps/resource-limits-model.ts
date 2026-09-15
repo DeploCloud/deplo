@@ -1,6 +1,5 @@
 import type { ResourceLimits } from "../types/container";
 
-// ResourceLimitsForm is the Resources settings form, every field held as a string.
 export interface ResourceLimitsForm {
   memoryMb: string;
   memoryReservationMb: string;
@@ -34,7 +33,6 @@ export const EMPTY_RESOURCE_FORM: ResourceLimitsForm = {
 const numStr = (n: number | null | undefined): string =>
   n == null ? "" : String(n);
 
-// resourcesToForm maps the saved limits to the editable form (null ⇒ everything blank).
 export function resourcesToForm(r: ResourceLimits | null): ResourceLimitsForm {
   if (!r) return { ...EMPTY_RESOURCE_FORM };
   return {
@@ -60,7 +58,6 @@ function intOrNull(s: string): number | null {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
-// formToLimitsInput maps the form to the `ResourceLimitsInput` GraphQL variables.
 export function formToLimitsInput(
   f: ResourceLimitsForm,
 ): Record<string, number | string | null> {
@@ -85,11 +82,9 @@ export function formToLimitsInput(
   };
 }
 
-// serializeResourceForm is a stable key for dirty-tracking.
 export const serializeResourceForm = (f: ResourceLimitsForm): string =>
   JSON.stringify(formToLimitsInput(f));
 
-// RESOURCE_PRESETS are the quick-pick sizes filling Memory + CPU.
 export const RESOURCE_PRESETS: {
   label: string;
   memoryMb: number;
@@ -102,7 +97,6 @@ export const RESOURCE_PRESETS: {
   { label: "Large", memoryMb: 4096, cpuCores: 4 },
 ];
 
-// activeResourcePreset is the preset whose Memory+CPU exactly matches the form, if any.
 export function activeResourcePreset(
   f: ResourceLimitsForm,
 ): (typeof RESOURCE_PRESETS)[number] | undefined {
@@ -112,16 +106,13 @@ export function activeResourcePreset(
   );
 }
 
-// ResourceSize is a Memory + CPU pair in the form's units.
 export interface ResourceSize {
   memoryMb: number;
   cpuCores: number;
 }
 
-// HostCapacity is the owning machine's capacity; 0 on an axis means not reported yet.
 export type HostCapacity = ResourceSize;
 
-// sizeFitsHost is false only when the host is known and too small on some axis.
 export function sizeFitsHost(
   size: ResourceSize,
   host: HostCapacity | null,
@@ -133,7 +124,6 @@ export function sizeFitsHost(
   );
 }
 
-// usagePeak is the highest memory (bytes) and CPU (% of one core) in a metrics window.
 export function usagePeak(
   samples: readonly { memUsed: number; cpu: number }[],
 ): ResourceSize | null {
@@ -151,7 +141,6 @@ const HEADROOM = 1.5;
 const roundUp = (n: number, step: number) =>
   Math.max(step, Math.ceil(n / step) * step);
 
-// suggestedSize is the size to suggest for a peak, or null when the host has no headroom.
 export function suggestedSize(
   peak: ResourceSize,
   host: HostCapacity | null,
@@ -171,12 +160,10 @@ export function suggestedSize(
   return sizeFitsHost(custom, host) ? custom : null;
 }
 
-// fmtMemMb formats a memory figure in the form's own unit.
 export function fmtMemMb(mb: number): string {
   return mb >= 1024 ? `${Number((mb / 1024).toFixed(2))} GB` : `${mb} MB`;
 }
 
-// fmtCpu formats a core count.
 export function fmtCpu(cores: number): string {
   const n = Number(cores.toFixed(2));
   return `${n} CPU${n > 1 ? "s" : ""}`;

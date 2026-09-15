@@ -3,26 +3,21 @@ import type {
   ScopeTreeTeam,
 } from "@/lib/data/tokens/scope-tree";
 
-// ScopeNode - one node, as ScopePicker.renderMeta sees it.
 export interface ScopeNode {
   kind: "team" | "project" | "folder" | "app";
   id: string;
   name: string;
-  // Ticked, or covered by a ticked ancestor.
   checked: boolean;
 }
 
 export interface ScopeSelection {
   teamIds: string[];
   projectIds: string[];
-  // Environments of a project. Absent on a token, which cannot name one.
   environmentIds?: string[];
   folderIds: string[];
   appIds: string[];
 }
 
-// everythingSelection - every top-level node of the tree, ticked: "all of it",
-// said in the only vocabulary a picker with no team checkbox has.
 export function everythingSelection(tree: ScopeTreeTeam[]): ScopeSelection {
   return {
     teamIds: [],
@@ -32,8 +27,6 @@ export function everythingSelection(tree: ScopeTreeTeam[]): ScopeSelection {
   };
 }
 
-// coversEverything - whether a selection leaves nothing out, which is what gets
-// STORED as unrestricted, so that a project created tomorrow is included too.
 export function coversEverything(
   tree: ScopeTreeTeam[],
   selection: ScopeSelection,
@@ -48,8 +41,6 @@ export function coversEverything(
   );
 }
 
-// openForSelection - open whatever already holds a selection, so an edit lands
-// on what it edits - plus every TEAM, always.
 export function openForSelection(
   tree: ScopeTreeTeam[],
   selection: ScopeSelection,

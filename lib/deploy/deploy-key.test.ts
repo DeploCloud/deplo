@@ -14,7 +14,6 @@ test("a preview key is the app slug plus a pr-<n> suffix", () => {
 });
 
 test("a preview key can never collide with another app's production stack", () => {
-  // A slug is `[a-z0-9-]`, so it can never hold the `__` separator: provably distinct.
   const preview = stackName(previewDeployKey("blog", 42));
   const adversarialApp = stackName("blog-pr-42");
   assert.notEqual(preview, adversarialApp);
@@ -35,7 +34,6 @@ test("two previews collide only when they are the same app and the same PR", () 
   }
 });
 
-// ADR-0008 Phase 3b: the default environment MUST keep the bare slug, so live stacks are untouched.
 test("suffixed keys are recognisable, bare ones are not", () => {
   assert.equal(isSuffixedDeployKey("blog"), false);
   assert.equal(isSuffixedDeployKey("blog-pr-42"), false);

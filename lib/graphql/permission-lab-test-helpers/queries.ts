@@ -1,4 +1,3 @@
-// Q holds every read document the persona suites send.
 export const Q = {
   apps: /* GraphQL */ `
     {

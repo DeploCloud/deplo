@@ -13,7 +13,6 @@ import { authHeaders } from "./session-cookies";
 import { getAuth, SESSION_MAX_AGE_MS } from "./better-auth";
 import { isSetupNeeded } from "./setup";
 
-// Columns projected for a PublicUser, never a credential.
 const PUBLIC_USER_COLS = {
   id: usersTable.id,
   email: usersTable.email,
@@ -26,7 +25,6 @@ const PUBLIC_USER_COLS = {
   twoFactorEnabled: usersTable.twoFactorEnabled,
 } as const;
 
-// Async only because of `avatarUrl`: resolving it reads the instance's Gravatar flag.
 async function toPublic(u: {
   id: string;
   email: string;
@@ -51,7 +49,6 @@ async function toPublic(u: {
   };
 }
 
-// This request's Better Auth session, resolved AT MOST ONCE.
 const currentSession = cache(async () => {
   if (currentIdentity()) return null;
   const auth = getAuth();
@@ -59,7 +56,6 @@ const currentSession = cache(async () => {
   const s = await auth.api
     .getSession({ headers: await authHeaders() })
     .catch(() => null);
-  // The absolute lifetime, on top of Better Auth's rolling one.
   if (
     s &&
     Date.now() - new Date(s.session.createdAt).getTime() > SESSION_MAX_AGE_MS
@@ -68,10 +64,7 @@ const currentSession = cache(async () => {
   return s;
 });
 
-// getCurrentUser resolves the current user from the Better Auth session (ADR-0014).
 export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
-  // A bearer-token request (the public GraphQL API) supplies its principal via
-  // the request-context override and carries no session cookie.
   const override = currentIdentity();
   let uid = override?.userId;
   if (!uid) uid = (await currentSession())?.user?.id;
@@ -82,15 +75,11 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
     .where(eq(usersTable.id, uid))
     .limit(1);
   const user = rows[0];
-  // A suspended account loses access immediately, even with a live session.
   if (!user || user.suspended) return null;
   return toPublic(user);
 });
 
-// currentSessionId is the id of the session row this request is authenticated by, or null.
 export const currentSessionId = cache(async (): Promise<string | null> => {
-  // An identity that names its session wins: see `RequestIdentity.sessionId`.
-  // A bearer token never names one, so it still falls through to null.
   return (
     currentIdentity()?.sessionId ??
     (await currentSession())?.session?.id ??
@@ -98,7 +87,6 @@ export const currentSessionId = cache(async (): Promise<string | null> => {
   );
 });
 
-// currentSessionAuthMethod is how the CURRENT request's session proved itself, or null.
 export const currentSessionAuthMethod = cache(
   async (): Promise<string | null> => {
     const id = await currentSessionId();
@@ -112,14 +100,12 @@ export const currentSessionAuthMethod = cache(
   },
 );
 
-// requireUser redirects to the setup wizard on a fresh install, otherwise to /login.
 export async function requireUser(): Promise<PublicUser> {
   const user = await getCurrentUser();
   if (!user) redirect((await isSetupNeeded()) ? "/setup" : "/login");
   return user;
 }
 
-// assertUser is the throwing variant for server actions / route handlers.
 export async function assertUser(): Promise<PublicUser> {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");

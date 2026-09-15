@@ -87,7 +87,6 @@ const CreateRoleInputType = builder.inputType("CreateRoleInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     description: t.string({ required: false }),
-    // Omitted / empty ⇒ a view-only role. `view` is added server-side either way.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
     requireTwoFactor: t.boolean({ required: false }),
     scope: t.field({ type: RoleScopeInputType, required: false }),
@@ -101,7 +100,6 @@ const UpdateRoleInputType = builder.inputType("UpdateRoleInput", {
     description: t.string({ required: false }),
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
     requireTwoFactor: t.boolean({ required: false }),
-    // Absent leaves the reach alone and `{}` reaches nothing; clearing is `clearScope`, so absent can never widen.
     scope: t.field({ type: RoleScopeInputType, required: false }),
     clearScope: t.boolean({ required: false }),
   }),
@@ -152,7 +150,6 @@ builder.mutationFields((t) => ({
         description: input.description ?? null,
         capabilities: (input.capabilities ?? undefined) as never,
         requireTwoFactor: input.requireTwoFactor ?? false,
-        // Absent must never mean "widen", or a client predating this field unlimits every role it renames.
         scope: input.clearScope
           ? null
           : input.scope

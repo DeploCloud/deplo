@@ -40,7 +40,6 @@ function TargetMark({ target, size }: { target: LogTarget; size: number }) {
   );
 }
 
-// Applied inline, because Tailwind has no dynamic `pl-`.
 const INDENT = 14;
 
 const HEADING_ICON = {
@@ -52,7 +51,6 @@ const HEADING_ICON = {
 
 function TreeRowContent({ row }: { row: LogTreeRow }) {
   if (row.target) {
-    // The option button already pads the row; this only adds the depth.
     return (
       <span
         className="flex items-center gap-2"
@@ -64,7 +62,6 @@ function TreeRowContent({ row }: { row: LogTreeRow }) {
       </span>
     );
   }
-  // A heading is not a button, so it carries the row padding itself.
   const Icon = HEADING_ICON[row.kind as keyof typeof HEADING_ICON] ?? Folder;
   const tinted = row.kind === "project" || row.kind === "folder";
   return (
@@ -82,7 +79,6 @@ function TreeRowContent({ row }: { row: LogTreeRow }) {
   );
 }
 
-// LogTreePicker - the target tree, drawn twice: in the chooser and in the toolbar.
 export function LogTreePicker({
   rows,
   value,
@@ -122,7 +118,6 @@ export function LogTreePicker({
   );
 }
 
-// A new tab, so the stream being watched stays put; it replaced an "Open <name>" row that read as one more app to pick.
 function OpenTargetLink({ row }: { row: LogTreeRow }) {
   const label = `Open ${row.name} in a new tab`;
   return (
@@ -131,9 +126,7 @@ function OpenTargetLink({ row }: { row: LogTreeRow }) {
       target="_blank"
       rel="noreferrer"
       aria-label={label}
-      // Native tooltip, not `SimpleTooltip`: the menu is `z-[60]` and the tooltip `z-50`, so it renders behind the list.
       title={label}
-      // The row underneath picks on mousedown; without this the click lands on a menu that already closed.
       onMouseDown={(e) => e.stopPropagation()}
       className="flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
     >
@@ -142,12 +135,10 @@ function OpenTargetLink({ row }: { row: LogTreeRow }) {
   );
 }
 
-// LogChooser - step one of the Logs page: which thing's logs are we here for.
 export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
   const router = useRouter();
   const hasTargets = rows.some((r) => r.target);
 
-  // The route is full-bleed, so the frame has no padding: this screen owns its padding and centring.
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-6 pb-24">
       {hasTargets ? (
@@ -181,25 +172,20 @@ export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
   );
 }
 
-// LogTargetPicker - the toolbar's first cell on the general Logs page, which IS the title.
 export function LogTargetPicker({
   rows,
   value,
 }: {
   rows: LogTreeRow[];
-  // Confirmed by the server, which is why this and not the URL is what gets remembered.
   value: string;
 }) {
   const router = useRouter();
 
-  // Written after the server resolved it, so a stale or forbidden target is never stored.
   React.useEffect(() => {
     if (!value) return;
     try {
       document.cookie = `${LOG_TARGET_COOKIE}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
-    } catch {
-      // storage blocked: nothing to remember, and nothing to break
-    }
+    } catch {}
   }, [value]);
 
   return (

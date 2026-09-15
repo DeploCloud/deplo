@@ -2,7 +2,6 @@ import "server-only";
 
 import { analyseLogo } from "@/lib/templates/logo-color";
 
-// logoToneFromDataUri reads a logo's own pixels: "dark" for a black-only mark (invisible on the dark theme), "light" for white-only, null otherwise.
 export async function logoToneFromDataUri(
   value: string | null,
 ): Promise<"dark" | "light" | null> {

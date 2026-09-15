@@ -15,7 +15,6 @@ import { requireAppCapability } from "../node-access";
 import { recordActivity } from "../activity";
 import { publishAppChanged } from "../../graphql/pubsub";
 
-// updateAppLogo stores the logo INLINE (data-URI or /templates path), never a remote URL, so it renders under the strict CSP.
 export async function updateAppLogo(
   id: string,
   logo: string | null,
@@ -27,7 +26,6 @@ export async function updateAppLogo(
     throw new Error("Unsupported logo image");
   }
 
-  // Conditional UPDATE: an unchanged logo bumps no `updatedAt` and reorders no dashboard.
   const updated = await getDb()
     .update(appsTable)
     .set({ logo: next, logoTone: null, updatedAt: nowIso() })
@@ -42,7 +40,6 @@ export async function updateAppLogo(
     )
     .returning({ id: appsTable.id });
 
-  // Tell "not found / not owned" from "unchanged": verify existence only when nothing changed.
   if (updated.length === 0) {
     const exists = await appInTeam(id, membership.teamId);
     if (!exists) throw new Error("App not found");
@@ -51,7 +48,6 @@ export async function updateAppLogo(
   await recordActivity("app", `Updated app logo`, user.name, id);
 }
 
-// A compose app is read twice - its own files AND the running app - so the empty-handed message says which.
 function noIconFoundMessage(
   app: Parameters<typeof detectAppFavicon>[0],
 ): string {
@@ -61,7 +57,6 @@ function noIconFoundMessage(
   return "No file named favicon (SVG, PNG or ICO) found in this app's files";
 }
 
-// redetectAppLogo overwrites the current logo on demand; the automatic hooks still only fill a NULL one.
 export async function redetectAppLogo(id: string): Promise<string> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
@@ -80,7 +75,6 @@ export async function redetectAppLogo(id: string): Promise<string> {
   const primaryHost =
     domains.find((d) => d.primary)?.name ?? domains[0]?.name ?? "";
 
-  // The server not answering must not be reported as "your app has no icon".
   const logo = await detectAppFavicon(project, routes, primaryHost).catch(
     (e) => {
       if (e instanceof AgentUnreachableError) {

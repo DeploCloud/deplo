@@ -15,7 +15,6 @@ import {
 } from "./dto";
 import type { BackupDestination } from "../../types/backup";
 
-// loadDestination reads one team-scoped destination row, assembled, or null (NO auth gate).
 export async function loadDestination(
   id: string,
   teamId: string,
@@ -28,7 +27,6 @@ export async function loadDestination(
   return rows[0] ? assembleDestination(rows[0]) : null;
 }
 
-// listDestinationOptions returns the destinations as a picker needs them, for ANY member.
 export async function listDestinationOptions(): Promise<DestinationOption[]> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
@@ -44,7 +42,6 @@ export async function listDestinationOptions(): Promise<DestinationOption[]> {
 export async function listDestinations(): Promise<DestinationDTO[]> {
   await requireTeamWide("backup destinations");
   const teamId = await requireActiveTeamId();
-  // Newest-first sort pushed into SQL (matches backup_destination_team_created_idx).
   const rows = await getDb()
     .select()
     .from(destTable)

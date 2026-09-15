@@ -6,7 +6,6 @@ import { gql } from "@/lib/graphql-client";
 import { SEARCH_QUERY } from "@/lib/command-palette/search-query";
 import { toHits, type Hit, type SearchData } from "./search-hits";
 
-// useSearchResults - the server half of the palette, debounced and split by team.
 export function useSearchResults(
   query: string,
   typing: boolean,
@@ -29,8 +28,6 @@ export function useSearchResults(
           controller.signal,
         );
         setResult({ q: query, rows: toHits(data) });
-        // Without this a query that failed once kept its error row for the
-        // whole session, underneath the results of a later retry.
         setFailedQuery((q) => (q === query ? null : q));
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -46,8 +43,6 @@ export function useSearchResults(
 
   const answered = result?.q === query;
   const failed = failedQuery === query;
-  // The previous query's rows stay while the next one is in flight: swapping
-  // them for skeletons on every keystroke makes the list strobe.
   const loading = typing && !answered && !failed;
 
   const [here, elsewhere] = React.useMemo(() => {

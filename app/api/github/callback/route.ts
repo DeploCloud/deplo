@@ -8,9 +8,7 @@ import {
 import { createGithubApp } from "@/lib/data/github";
 import { resolvePublicBaseUrl } from "@/lib/public-url";
 
-// GET is GitHub's App-manifest callback: a one-time `code` plus the `state` we issued.
 export async function GET(request: NextRequest) {
-  // Not request.nextUrl.origin: behind a reverse proxy that is the internal origin, so redirects would leave the public host.
   const origin = resolvePublicBaseUrl(request.headers);
   const settings = new URL("/settings/git", origin);
 

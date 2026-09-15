@@ -35,9 +35,6 @@ import {
 } from "./teardown-queue";
 import { removeUploads } from "../deploy/upload";
 
-// Deleting a team removes every membership INCLUDING the founder's, so the gate is
-// founder-or-instance-admin, not `manage_team` - otherwise an assigned owner sidesteps
-// the "founder is unremovable" invariant (lib/data/members/removal.ts).
 interface DeleteTeamContext {
   userId: string;
   teamId: string;
@@ -47,7 +44,6 @@ interface DeleteTeamContext {
 
 async function deleteTeamContext(): Promise<DeleteTeamContext> {
   const { userId, teamId, membership } = await requireMembership();
-  // Fail CLOSED on a rescoped bearer token: a stale token must never destroy another team.
   const override = currentIdentity();
   if (override && override.teamId !== teamId) {
     throw new Error(
@@ -61,7 +57,6 @@ async function deleteTeamContext(): Promise<DeleteTeamContext> {
     .limit(1);
   if (!rows[0]) throw new Error("No team");
   const founderId = rows[0].founderUserId;
-  // `isInstanceAdmin()` not the stored flag (it is opt-in per token), plus `delete_team`.
   const allowed =
     (await isInstanceAdmin()) ||
     ((founderId ? userId === founderId : membership.role === "owner") &&
@@ -70,11 +65,9 @@ async function deleteTeamContext(): Promise<DeleteTeamContext> {
   return { userId, teamId, allowed, onlyTeam };
 }
 
-// Whether the current user may delete the active team. Never throws.
 export async function canDeleteTeam(): Promise<{
   allowed: boolean;
   onlyTeam: boolean;
-  /** Shared variables this team OWNS - they die with it (ADR-0027). */
   sharedVars: number;
   sharedVarsOtherTeamsUse: number;
 }> {
@@ -114,7 +107,6 @@ export async function canDeleteTeam(): Promise<{
   }
 }
 
-// Everything the post-delete stack teardown needs, captured BEFORE the rows go.
 export interface TeardownPlan {
   services: { id: string; slug: string; serverId: string }[];
   previewStacks?: { id: string; deployKey: string; serverId: string }[];
@@ -127,7 +119,6 @@ export interface TeardownPlan {
   }[];
 }
 
-// Best-effort teardown of every stack the deleted team owned, DETACHED from the request.
 export function teardownTeamResources(
   plan: TeardownPlan,
   tag = "team-delete",
@@ -185,8 +176,6 @@ export function teardownTeamResources(
       await removeUploads(service.id).catch(() => {});
     });
     await mapLimit(dbs, 4, async (e) => {
-      // Same per-database lifecycle lock as deleteDatabase: a teardown must wait out an
-      // in-flight provision, or its `down -v` interleaves with the provision's `up -d`.
       await withKeyedLock(e.projectLabel, async () => {
         await teardownOrQueue(e).catch(() => false);
       });
@@ -203,7 +192,6 @@ export function teardownTeamResources(
   );
 }
 
-// Permanently delete a team.
 export async function deleteTeam(teamId: string): Promise<void> {
   const ctx = await deleteTeamContext();
   if (teamId !== ctx.teamId)
@@ -214,15 +202,12 @@ export async function deleteTeam(teamId: string): Promise<void> {
     throw new Error(
       "You don't have permission to delete this team - only its primary owner, with permission to delete the team, or an instance admin can",
     );
-  // Fast-path only - the enforcement re-check runs under the lock below.
   if (ctx.onlyTeam)
     throw new Error(
       "You can't delete your only team - create another team first",
     );
 
   const db = getDb();
-  // Serialized per USER: two concurrent deletes of the caller's two teams would each see
-  // the other still alive and strand the caller with zero teams.
   const plan = await withKeyedLock(
     `team-delete:${ctx.userId}`,
     async (): Promise<TeardownPlan | null> => {
@@ -277,8 +262,6 @@ export async function deleteTeam(teamId: string): Promise<void> {
         .from(installedPluginsTable)
         .where(eq(installedPluginsTable.teamId, ctx.teamId));
 
-      // Read BEFORE the delete: the destination rows cascade with the team. Any host will
-      // do for a BUCKET; a store destination routes to its own server regardless.
       const viaServerId = services[0]?.serverId ?? databases[0]?.serverId ?? "";
       const destinationIds = (
         await db

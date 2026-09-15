@@ -34,7 +34,6 @@ import { ConnectGitProviderDialog } from "@/components/settings/git-connect-dial
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
 import type { GitProviderChoice } from "@/lib/types/git";
 
-// GitSourceValue - what the Git source resolves to, ready to become a GitRepoInput.
 export interface GitSourceValue {
   provider: string;
   url: string;
@@ -60,7 +59,6 @@ function providerFromUrl(url: string): string {
   return "git";
 }
 
-// GitSourcePicker - which credential to clone with, then the repository.
 export function GitSourcePicker({
   connections,
   providers,
@@ -137,7 +135,6 @@ export function GitSourcePicker({
     setUrl("");
     setBranch("");
     const next = connections.find((c) => c.id === id) ?? null;
-    // The browsing arm emits only once a repo is chosen; clear it or Save keeps the old one.
     if (next?.hasApi) {
       emit({
         provider: next.provider,
@@ -242,7 +239,6 @@ export function GitSourcePicker({
               </>
             )}
             <DropdownMenuSeparator />
-            {/* Connected here: a missing provider is not a reason to leave the app. */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
                 <Plus className="size-4" />
@@ -261,7 +257,6 @@ export function GitSourcePicker({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            {/* Carries where we are, so the Settings detour hands the user back here. */}
             <DropdownMenuItem
               className="gap-2"
               onSelect={() =>

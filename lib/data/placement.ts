@@ -5,7 +5,6 @@ import { listProjects } from "./projects/read";
 import { listEnvironmentsForProject } from "./environments";
 import type { OverviewPlacement } from "../overview-links";
 
-// ResolvedPlacement is a display/preselect helper, NOT the gate: createApp re-validates.
 export interface ResolvedPlacement {
   label: string;
   folderId: string | null;

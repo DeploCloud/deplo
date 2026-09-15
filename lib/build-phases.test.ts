@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { buildPhases } from "./build-phases";
 import type { LogLine } from "./types/deployment";
 
-/** The real `dpl_cce7fdbd9565e3f3` shape: railpack, 79s, two clone lines. */
 const STARTED = "2026-08-27T19:39:14.522Z";
 const DURATION = 78_964;
 
@@ -146,7 +145,6 @@ test("a boundary replayed out of order is clamped, keeping the total exact", () 
   const phases = buildPhases({
     logs: [
       cmd("2026-08-27T19:39:16.000Z", "git clone https://github.com/o/r (dev)"),
-      // Re-stamped by a reattach: earlier than the clone, and past the end.
       cmd("2026-08-27T19:39:10.000Z", "docker build -f Dockerfile ."),
       cmd("2026-08-27T20:00:00.000Z", "docker compose up -d"),
     ],

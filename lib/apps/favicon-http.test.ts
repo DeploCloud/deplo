@@ -112,7 +112,6 @@ test("resolveIconHref: an absolute URL is kept only when it points back at this 
     kind: "path",
     path: "/i.png",
   });
-  // Keeping a foreign origin would turn the agent into a general-purpose fetcher.
   assert.equal(resolveIconHref("https://cdn.example.net/i.png", opts), null);
   assert.equal(resolveIconHref("//cdn.example.net/i.png", opts), null);
   assert.equal(resolveIconHref("javascript:alert(1)", opts), null);

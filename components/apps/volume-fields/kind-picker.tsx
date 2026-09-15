@@ -17,14 +17,12 @@ import {
 } from "@/lib/apps/volume-model";
 import { cn } from "@/lib/utils";
 
-// KIND_ICON is the icon each storage kind is drawn with.
 export const KIND_ICON: Record<VolumeKind, LucideIcon> = {
   named: HardDrive,
   app: FileText,
   host: FolderSymlink,
 };
 
-// KindCard is one of the three answers to "where should this data live?".
 export function KindCard({
   kind,
   selected,
@@ -80,7 +78,6 @@ export function KindCard({
   );
 }
 
-// EmptyPicker is the first add: each kind says what it is FOR, and clicking one creates an entry already set to it.
 export function EmptyPicker({
   onAdd,
   canMountHostVolumes,
@@ -148,7 +145,6 @@ export function EmptyPicker({
   );
 }
 
-// AddMenu adds another entry: the same three explained options, in a menu.
 export function AddMenu({
   onAdd,
   canMountHostVolumes,

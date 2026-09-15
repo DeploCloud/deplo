@@ -65,7 +65,6 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(TRUNCATE);
   await seedIdentity(db);
-  // USER_1 owns BOTH teams: without a second membership these tests would pass for the wrong reason.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
      values ('mem_user_1_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,
@@ -95,7 +94,6 @@ async function mcp(
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "application/json, text/event-stream",
-    // Both are REQUIRED on a 2026-07-28 POST (SEP-2243); the SDK refuses a mismatch rather than guessing.
     "mcp-method": "tools/call",
     "mcp-name": tool,
   };
@@ -122,7 +120,6 @@ async function mcp(
     }),
   );
   const text = await res.text();
-  // The handler answers either as one JSON body or as a single SSE frame.
   const payload = text.startsWith("data:")
     ? text.slice(text.indexOf("data:") + 5).split("\n")[0]
     : text;
@@ -152,7 +149,6 @@ function mintToken(capabilities: Capability[]) {
   );
 }
 
-// The real flow issues the credentials, then the `api_tokens` row is minted and linked as `mintMcpConnection` does.
 async function connect(
   capabilities: Capability[] = ["view"],
   teamIds: string[] = [TEAM_A],
@@ -174,7 +170,6 @@ async function connect(
 }
 
 test("register → sign in → authorize → mint → consent → exchange → a tool answers", async () => {
-  // The test that was missing, and the reason a broken flow shipped twice: every other test here exercises ONE seam.
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);
@@ -196,14 +191,12 @@ test("register → sign in → authorize → mint → consent → exchange → a
     "authorize must land on Deplo's own consent page",
   );
 
-  // What the consent page's browser fetch does FIRST: verify the provider's signature and record the approval.
   const approved = await consent(cookie, {
     accept: true,
     oauth_query: authorized.oauthQuery ?? "",
   });
   assert.equal(approved.status, 200, `consent refused (${approved.status})`);
 
-  // And only then the resolver, behind every gate, which requires that recorded approval to exist.
   await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     mintMcpConnection({ clientId, capabilities: ["view"] }),
   );
@@ -228,7 +221,6 @@ test("register → sign in → authorize → mint → consent → exchange → a
 });
 
 test("a refreshed access token keeps working, and the spent refresh token dies", async () => {
-  // An access token lives an hour.
   const conn = await connect(["view"]);
   assert.equal((await mcp(conn.accessToken)).status, 200);
   assert.ok(conn.refreshToken, "the flow should have issued a refresh token");
@@ -240,7 +232,6 @@ test("a refreshed access token keeps working, and the spent refresh token dies",
   const res = await mcp(again.body.access_token);
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal(toolJson(res.body).viewerTeam?.id, TEAM_A);
-  // A refresh must not mint a SECOND connection row.
   const rows = (
     await pg.query(`select id from api_tokens where oauth_client_id = $1`, [
       conn.clientId,
@@ -248,14 +239,12 @@ test("a refreshed access token keeps working, and the spent refresh token dies",
   ).rows as { id: string }[];
   assert.equal(rows.length, 1);
 
-  // The REFRESH token rotates and the spent one is dead - what a stolen refresh token would otherwise defeat.
   assert.notEqual(again.body.refresh_token, conn.refreshToken);
   const replayed = await refresh(conn.refreshToken!, conn.clientId, RESOURCE);
   assert.ok(!replayed.body.access_token, "a spent refresh token was reusable");
 });
 
 test("revoking the connection also kills its refresh token", async () => {
-  // Otherwise revocation is a one-hour inconvenience: the client just refreshes.
   const conn = await connect(["view"]);
   await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     revokeToken(conn.tokenId),
@@ -265,7 +254,6 @@ test("revoking the connection also kills its refresh token", async () => {
 });
 
 test("an access token with no user behind it authenticates nothing", async () => {
-  // The shape a machine-to-machine grant would have: it resolves only through a connection, which belongs to a person.
   const conn = await connect(["view"]);
   await pg.query(
     `insert into oauth_access_token
@@ -278,7 +266,6 @@ test("an access token with no user behind it authenticates nothing", async () =>
 });
 
 test("the same connection authenticates on the GraphQL API, with the same clamp", async () => {
-  // An OAuth grant IS an API token, so it reaches /api/graphql too: a divergence here would mean two principals.
   const conn = await connect(["view"]);
   const ctx = await buildContext(
     new Request("https://deplo.test/api/graphql", {
@@ -289,12 +276,10 @@ test("the same connection authenticates on the GraphQL API, with the same clamp"
   assert.equal(ctx.via, "token");
   assert.equal(ctx.viewer?.id, USER_1);
   assert.equal(ctx.teamId, TEAM_A);
-  // The clamp travels with it: `view` only, not the owner's whole set.
   assert.deepEqual(ctx.capabilities, ["view"]);
 });
 
 test("an unauthenticated authorize sends the signed query to the login page", async () => {
-  // The login page resumes the flow by re-running authorize, recognising that state by `client_id` + `sig` on ITS url.
   const reg = await registerClient();
   const res = await authorize("", {
     client_id: String(reg.body.client_id),
@@ -325,7 +310,6 @@ test("a deplo_ token still reaches its tools and resolves as its creator", async
 });
 
 test("a deplo_ token without the capability cannot reach the tool", async () => {
-  // The tool list is filtered per token, so a missing capability makes the tool unreachable, not merely refused.
   const { raw } = await mintToken(["view"]);
   const res = await mcp(raw, { tool: "delete_app" });
   assert.ok(res.body.error, JSON.stringify(res.body));
@@ -342,9 +326,6 @@ test("the team kill switch refuses with the sentence that names the setting", as
   assert.match(String(res.body.error), /Settings → MCP Server/);
 });
 
-// `mcp_last_used_at` is what makes a token visible on Settings → MCP Server, and what the connect wizard waits on.
-
-// The write is fire-and-forget, so poll rather than assume it landed.
 async function mcpStampOf(tokenId: string, tries = 40) {
   for (let i = 0; i < tries; i++) {
     const { rows } = await pg.query<{ mcp_last_used_at: string | null }>(
@@ -373,13 +354,11 @@ test("a served MCP call stamps the token as having spoken MCP", async () => {
 });
 
 test("a call the kill switch refuses does not stamp it", async () => {
-  // A token the team just turned away is not a connected client, and listing it as one puts an agent on that screen.
   const { raw, token } = await mintToken(["view"]);
   await pg.query(`update teams set mcp_enabled = false where id = $1`, [
     TEAM_A,
   ]);
   assert.equal((await mcp(raw)).status, 403);
-  // Long enough that a stamp taken before the gate would have landed by now.
   await new Promise((r) => setTimeout(r, 150));
   const { rows } = await pg.query<{ mcp_last_used_at: string | null }>(
     `select mcp_last_used_at from api_tokens where id = $1`,
@@ -408,7 +387,6 @@ test("OPTIONS preflights without a credential", async () => {
   const res = OPTIONS();
   assert.equal(res.status, 204);
   assert.equal(res.headers.get("access-control-allow-origin"), "*");
-  // Without this a browser client cannot read the challenge and never discovers the authorization server.
   assert.match(
     String(res.headers.get("access-control-expose-headers")),
     /www-authenticate/i,
@@ -455,7 +433,6 @@ test("an OAuth token holding only view cannot delete an app", async () => {
 });
 
 test("a refresh token presented as a bearer authenticates nothing", async () => {
-  // The plugin stores both on rows a sloppy `or` would match, and a refresh token outlives the access token's revocation.
   const conn = await connect(["view"]);
   assert.ok(conn.refreshToken, "the flow should have issued a refresh token");
   const res = await mcp(conn.refreshToken!);
@@ -469,7 +446,6 @@ test("an authorization code presented as a bearer authenticates nothing", async 
 });
 
 test("an id_token presented as a bearer authenticates nothing", async () => {
-  // id_tokens are HS256-signed with the CLIENT's own secret: accepting one lets any registered client forge an identity.
   const flow = await fullFlow({
     email: EMAIL,
     password: PASSWORD,
@@ -481,7 +457,6 @@ test("an id_token presented as a bearer authenticates nothing", async () => {
 });
 
 test("a session cookie alone reaches no tool", async () => {
-  // Cookie-authenticable, /api/mcp would put every signed-in browser one cross-site POST from driving the team.
   const conn = await connect(["view"]);
   const res = await mcp(null, { cookie: `__Secure-deplo.session_token=x` });
   assert.equal(res.status, 401);
@@ -499,7 +474,6 @@ test("an unknown token and a revoked token answer identically", async () => {
 
 test("an OAuth token for one client does not resolve another client's grant", async () => {
   const first = await connect(["view"]);
-  // `fullFlow` alone registers a client with no `api_tokens` connection behind it.
   const second = await fullFlow({
     email: EMAIL,
     password: PASSWORD,
@@ -519,7 +493,6 @@ test("deleting the minted token stops the NEXT request", async () => {
 });
 
 test("disabling the client stops the next request", async () => {
-  // The plugin's own token lookup never reads this column; Deplo's join does.
   const conn = await connect(["view"]);
   assert.equal((await mcp(conn.accessToken)).status, 200);
   await pg.query(
@@ -542,12 +515,10 @@ test("the team kill switch stops an OAuth connection too", async () => {
   await pg.query(`update teams set mcp_enabled = false where id = $1`, [
     TEAM_A,
   ]);
-  // The credential stops RESOLVING on every door: the same 401 losing the membership answers, not a 403.
   assert.equal((await mcp(conn.accessToken)).status, 401);
 });
 
 test("losing the membership stops an OAuth connection", async () => {
-  // ADR-0015's fail-closed promise: a token acts only in teams its minter is STILL in.
   const conn = await connect(["view"]);
   await pg.query(`delete from memberships where user_id = $1`, [USER_1]);
   assert.equal((await mcp(conn.accessToken)).status, 401);
@@ -565,7 +536,6 @@ test("turning on the team two-factor policy stops an issued connection", async (
 });
 
 test("X-Deplo-Team cannot move an OAuth connection to a team it was not granted", async () => {
-  // The approver owns BOTH teams, so nothing but the connection's own scope stands between the client and team B.
   const conn = await connect(["view"]);
   const res = await mcp(conn.accessToken, { team: "beta" });
   assert.equal(res.status, 200);
@@ -599,7 +569,6 @@ test("list_teams names every team, and says why one is off limits", async () => 
 });
 
 test("the team argument is advertised on every tool, even with one team in reach", async () => {
-  // The whole reason an agent once said it "had no way to change team".
   const conn = await connect(["view"], [TEAM_A]);
   const res = await POST(
     new Request(RESOURCE, {
@@ -678,7 +647,6 @@ test("losing manage_mcp everywhere refuses the door outright", async () => {
   const res = await mcp(raw);
   assert.equal(res.status, 403);
   assert.match(String(res.body.error), /Connect AI agents/);
-  // The same credential still drives the GraphQL API: `manage_mcp` gates agents, not tokens.
   const ctx = await buildContext(
     new Request("https://deplo.test/api/graphql", {
       headers: { authorization: `Bearer ${raw}` },
@@ -692,11 +660,9 @@ test("losing manage_tokens narrows the connection to the teams that still allow 
   await pg.query(
     `delete from membership_capabilities where membership_id = 'mem_user_1' and capability = 'manage_tokens'`,
   );
-  // The header keeps its documented lenient fallback (ADR-0022 §3).
   const viaHeader = await mcp(conn.accessToken, { team: "alpha" });
   assert.equal(viaHeader.status, 200, JSON.stringify(viaHeader.body));
   assert.equal(toolJson(viaHeader.body).viewerTeam?.id, TEAM_B);
-  // The tool argument is strict: an unreachable team is a refusal.
   const viaArg = await mcp(conn.accessToken, { toolArgs: { team: "alpha" } });
   assert.match(JSON.stringify(viaArg.body), /no access to the team/i);
   const teams = toolJson(
@@ -709,7 +675,6 @@ test("losing manage_tokens narrows the connection to the teams that still allow 
 });
 
 test("a tool works in another GRANTED team when the call names it", async () => {
-  // The team is an argument of the call, never a remembered setting: the protocol is stateless.
   const conn = await connect(["view"], [TEAM_A, TEAM_B]);
   const here = await mcp(conn.accessToken);
   assert.equal(toolJson(here.body).viewerTeam?.id, TEAM_A);
@@ -720,7 +685,6 @@ test("a tool works in another GRANTED team when the call names it", async () => 
 });
 
 test("a team the connection was NOT granted is refused, never swapped", async () => {
-  // The silent swap is how an app was created in a team nobody chose, leaving no trace at all.
   const conn = await connect(["view"], [TEAM_A]);
   const res = await mcp(conn.accessToken, { toolArgs: { team: "beta" } });
   const body = JSON.stringify(res.body);
@@ -729,7 +693,6 @@ test("a team the connection was NOT granted is refused, never swapped", async ()
 });
 
 test("a deplo_ token still honours X-Deplo-Team", async () => {
-  // The inverse, so the test above is about OAuth and not about a header that quietly stopped working for everyone.
   const { raw } = await runWithIdentity(
     { userId: USER_1, teamId: TEAM_A },
     () => createToken({ name: "both", capabilities: ["view"] }),
@@ -743,7 +706,6 @@ test("a deplo_ token still honours X-Deplo-Team", async () => {
 });
 
 test("a tool that runs outside GraphQL resolves the same identity", async () => {
-  // `logs` runs no GraphQL document, so it misses `runGraphql`'s `runWithIdentity`, and the SDK handler runs outside the route's scope.
   const conn = await connect(["view", "view_logs"]);
   const res = await mcp(conn.accessToken, {
     tool: "logs",
@@ -755,7 +717,6 @@ test("a tool that runs outside GraphQL resolves the same identity", async () => 
 });
 
 test("the MCP route contains no authorization check of its own", async () => {
-  // ADR-0021 §2 made mechanical: a capability check here is a bug, because the dashboard would not get it.
   const { readFileSync } = await import("node:fs");
   const src = readFileSync("app/api/mcp/route.ts", "utf8");
   for (const forbidden of [
@@ -767,8 +728,6 @@ test("the MCP route contains no authorization check of its own", async () => {
 });
 
 test("better-auth's own MCP helpers are imported nowhere", async () => {
-  // `withMcpAuth` / `getMcpSession` bypass Deplo's identity resolution, never read `client.disabled`,
-  // and return the row including the refresh token: four holes in one import.
   const { execSync } = await import("node:child_process");
   const hits = execSync(
     "grep -rl 'withMcpAuth\\|getMcpSession' --include=*.ts --include=*.tsx app lib components " +

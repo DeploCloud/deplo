@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 
 const CONFETTI = 12;
 
-// ConfettiBurst - the one-shot celebration for something that actually happened.
 export function ConfettiBurst({
   className,
   count = CONFETTI,

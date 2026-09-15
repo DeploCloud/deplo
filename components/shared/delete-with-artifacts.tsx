@@ -6,7 +6,6 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ActionResult } from "@/lib/result";
 
-// DeleteWithArtifacts - delete confirmation for an app or database, which takes its backups with it.
 export function DeleteWithArtifacts({
   trigger,
   open,
@@ -87,7 +86,6 @@ export function DeleteWithArtifacts({
         ) : undefined
       }
       onConfirm={async () => {
-        // Sweep FIRST, while the target row still resolves to the server to dial for it.
         const sweep = await gqlAction(
           `mutation($targetKind: BackupTargetKind!, $targetId: String!) {
             deleteBackupArtifacts(targetKind: $targetKind, targetId: $targetId)

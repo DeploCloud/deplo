@@ -14,23 +14,16 @@ import { loadDeployment } from "../app-graph-load";
 import { hasAppCapability, requireAppCapability } from "../node-access";
 import type { Deployment } from "../../types/deployment";
 
-// elapsedBuildMs freezes how long the build had been running onto the row.
 const elapsedBuildMs = sql`case when ${deploymentsTable.startedAt} is null then null else greatest(0, (extract(epoch from (now() - ${deploymentsTable.startedAt})) * 1000)::bigint) end`;
 
-// IN_PROGRESS rows are still referenced by the deploy queue and the build job, so
-// they must be CANCELED, never deleted.
 export const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
 
-// cancelDeployment stops a queued/building deployment.
 export async function cancelDeployment(id: string): Promise<boolean> {
   await requireMembership();
   const user = (await getCurrentUser())!;
   const dep = await loadDeployment(id);
   if (!dep) throw new Error("Deployment not found");
   await requireAppCapability(dep.appId, "deploy_apps");
-  // The queued/building state is part of the WHERE, not just a pre-check: a build
-  // that finished between the read above and this write must NOT be retroactively
-  // flipped from ready/error to canceled (0 rows → no-op).
   const stopped = await getDb()
     .update(deploymentsTable)
     .set({ status: "canceled", buildDurationMs: elapsedBuildMs })
@@ -42,7 +35,6 @@ export async function cancelDeployment(id: string): Promise<boolean> {
     )
     .returning({ id: deploymentsTable.id });
   if (stopped.length === 0) return false;
-  // Settle the app off "building" BEFORE the publish, so the badge flips at once.
   await settleAppAfterCancel(dep.appId);
   publishAppChanged(dep.appId);
   await recordActivity(
@@ -57,7 +49,6 @@ export async function cancelDeployment(id: string): Promise<boolean> {
 const onServer = (serverId: string) =>
   sql`coalesce(${deploymentsTable.serverId}, ${appsTable.serverId}) = ${serverId}`;
 
-// Joined through `apps` so a foreign/stale id is simply absent (team isolation).
 async function terminalDeploymentRows(
   teamId: string,
   filter: {
@@ -101,8 +92,6 @@ async function removeDeploymentRows(
     )
     .returning({ id: deploymentsTable.id, appId: deploymentsTable.appId });
   const apps = new Set(deleted.map((d) => d.appId));
-  // Deleting the latest deployment NULLs the app's pointer (FK set-null), so
-  // the live status/latest-deployment reads must refresh.
   for (const sid of apps) publishAppChanged(sid);
   if (deleted.length > 0)
     await recordActivity(
@@ -115,8 +104,6 @@ async function removeDeploymentRows(
   return deleted.length;
 }
 
-// Non-throwing companion to `requireAppCapability`: an unreachable app is skipped
-// rather than fatal in the broad sweeps.
 async function mayManageAppFolder(
   appId: string,
   cap: "deploy_apps" | "delete_apps",
@@ -124,7 +111,6 @@ async function mayManageAppFolder(
   return hasAppCapability(appId, cap);
 }
 
-// deleteDeployments removes finished deployments by id; in-progress ids are left alone.
 export async function deleteDeployments(ids: string[]): Promise<number> {
   const { membership } = await requireMembership();
   const user = (await getCurrentUser())!;
@@ -137,8 +123,6 @@ export async function deleteDeployments(ids: string[]): Promise<number> {
   return removeDeploymentRows(rows, membership.teamId, user.name);
 }
 
-// Keeps only rows whose app's folder the caller holds `cap` on - the team-wide
-// sweep guard shared by delete-all and cancel-all.
 async function folderPermittedRows(
   rows: { id: string; appId: string }[],
   cap: "deploy_apps" | "delete_apps",
@@ -153,7 +137,6 @@ async function folderPermittedRows(
   return permitted;
 }
 
-// deleteAllDeployments deletes every finished deployment of one app, or of the whole team.
 export async function deleteAllDeployments(
   appId?: string | null,
   serverId?: string | null,
@@ -207,7 +190,6 @@ async function inProgressDeploymentRows(
     .where(and(...conds));
 }
 
-// No publish here - the caller emits one snapshot after settling.
 async function settleAppAfterCancel(appId: string): Promise<void> {
   const remaining = await getDb()
     .select({ id: deploymentsTable.id })
@@ -251,8 +233,6 @@ async function cancelDeploymentRows(
     )
     .returning({ id: deploymentsTable.id, appId: deploymentsTable.appId });
   const apps = new Set(stopped.map((d) => d.appId));
-  // Settle each app BEFORE publishing so the emitted snapshot carries the
-  // settled status, not the stale "building".
   for (const sid of apps) await settleAppAfterCancel(sid);
   for (const sid of apps) publishAppChanged(sid);
   if (stopped.length > 0)
@@ -266,7 +246,6 @@ async function cancelDeploymentRows(
   return stopped.length;
 }
 
-// cancelAllDeployments cancels every in-progress deployment of one app, or of the whole team.
 export async function cancelAllDeployments(
   appId?: string | null,
   serverId?: string | null,

@@ -12,8 +12,6 @@ import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { nodeCapabilities } from "./node-access";
 import type { Capability } from "../types/identity";
 
-// The API-token intersection at the NODE level (ADR-0016 §8).
-
 let db: TestDb;
 let pg: PGlite;
 

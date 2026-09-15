@@ -7,8 +7,6 @@ import {
   redactComposeForDisplay,
 } from "./compose-redact";
 
-// "View full compose" is served at the `view` floor, so every resolved value is masked.
-
 const HTPASSWD =
   "alice:$$2y$$10$$abcdefghijklmnopqrstuvABCDEFGHIJKLMNOPQRSTUVWXYZ012345";
 

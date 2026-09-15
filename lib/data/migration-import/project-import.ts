@@ -60,21 +60,12 @@ export interface ImportProjectResult {
 
 export interface ImportProjectInput extends ConnectInput {
   runId: string;
-  // The source `projectId` to import.
   projectId: string;
-  // Source server id (or "") to Deplo server id. Unmapped falls back to default.
   servers?: ServerChoice[];
-  // The source service ids to import, out of the project's own. Absent imports
-  // everything, so a client that cannot express a selection still gets the whole project.
   serviceIds?: string[];
-  // Where each service lands, by its source id. A service with no entry falls back to
-  // `servers`, the per-HOST mapping, so a caller that cannot place one is unaffected.
   placements?: ServicePlacement[];
 }
 
-// importMigrationProject - import ONE source project into the active team. The source
-// is re-read here rather than taken from the scan: app configuration must never arrive
-// from a browser. `runAsMigration` exempts the run's own writes from the marker it sets.
 export async function importMigrationProject(
   input: ImportProjectInput,
 ): Promise<ImportProjectResult> {
@@ -103,8 +94,6 @@ async function runImportMigrationProject(
     report,
     source.name,
   );
-  // Per SERVICE, and it wins over the per-host mapping: the review screen places
-  // apps one by one, and the host mapping is what a caller falls back to.
   const placed = await resolvePlacements(
     teamId,
     input.placements ?? [],
@@ -112,13 +101,8 @@ async function runImportMigrationProject(
     source.name,
   );
 
-  // Read ONCE, up here: without the grant a database's port cannot be published at all,
-  // and knowing that BEFORE the create is what lets the report say the true reason.
   const mayExposePorts = await canExposePorts();
 
-  // Which of OUR servers each source machine IS, as an address match rather than the
-  // caller's `servers` mapping: that one falls back to the Deplo host, the right default
-  // for "where does this land" and the wrong answer to "is this the same box".
   let machineHosts: Map<string, string | null> | null = null;
   const hostOfMachine = async (sourceServerId: string) => {
     if (!machineHosts)
@@ -131,7 +115,6 @@ async function runImportMigrationProject(
     return machineHosts.get(sourceServerId) ?? null;
   };
 
-  // Where a service lands when nobody named a host.
   let soleServer: string | null | undefined;
   const targetServerFor = async (given: string | undefined) => {
     if (given) return given;
@@ -144,9 +127,6 @@ async function runImportMigrationProject(
     return soleServer ?? undefined;
   };
 
-  // What a database was called on the other side, and what it answers to here: filled in
-  // as the databases land, which is why they are imported first, and kept with the RUN so
-  // an app in a later project sees the databases of an earlier one.
   const dbHosts = new Map<string, string>();
   if (report.id)
     for (const h of await getDb()
@@ -163,20 +143,12 @@ async function runImportMigrationProject(
       items: report.items,
     };
 
-  // Before the databases: a schedule can only be set on a database whose
-  // destination is already here.
   const destinations = await importBackupDestinations(c, report);
 
-  // What the caller picked, or everything. A service left out is left out SILENTLY: it
-  // is a choice made on the review screen, and a line per unticked box would bury the
-  // ones that need reading.
   const wanted = input.serviceIds ? new Set(input.serviceIds) : null;
   const picked = (env: SourceEnvironment) =>
     servicesOf(env).filter((s) => !wanted || wanted.has(s.id));
 
-  // The shared variables come FIRST, because a link needs the row it points at.
-  // Levels in reach order: team, project, then each machine that hosts something
-  // we are importing.
   const shared: SharedIndex = new Map();
   await noteLevel(report, source.platformNotes);
   try {
@@ -211,8 +183,6 @@ async function runImportMigrationProject(
     },
     shared,
   );
-  // Coolify's fourth level has no twin here: a variable scoped to a MACHINE
-  // covers everything on it, across projects. Offered to this project instead.
   for (const sourceServerId of new Set(
     (source.environments ?? []).flatMap((env) =>
       picked(env).map((s) => s.serverId ?? ""),
@@ -242,14 +212,11 @@ async function runImportMigrationProject(
   for (const env of source.environments ?? []) {
     const chosen = servicesOf(env)
       .filter((s) => !wanted || wanted.has(s.id))
-      // Databases first: an app's connection strings still spell the hostname the
-      // database had over there, and rewriting them needs the new one to exist.
       .sort(
         (a, b) =>
           Number(a.kind === "application" || a.kind === "compose") -
           Number(b.kind === "application" || b.kind === "compose"),
       );
-    // An environment nobody picked anything from is not created empty.
     if (chosen.length === 0) continue;
 
     const envReport = report.at(env.name);
@@ -257,8 +224,6 @@ async function runImportMigrationProject(
     if (!environmentId) continue;
     await noteLevel(envReport, env.platformNotes);
 
-    // BEFORE the services: `project.all` is a projection, so an environment's
-    // variable blob is ALWAYS null there however much it holds.
     const envLevel =
       env.env != null
         ? env
@@ -277,15 +242,12 @@ async function runImportMigrationProject(
       shared,
     );
 
-    // Apps landed in this environment.
     const appIds: string[] = [];
 
     for (const svc of chosen) {
       const isApp = svc.kind === "application" || svc.kind === "compose";
       const targetKind = isApp ? "app" : "database";
 
-      // An engine Deplo does not have is settled without importing anything,
-      // but under its own name, not its id (see the scan for why).
       if (!isApp && !deploEngineFor(svc.kind as SourceDbKind)) {
         const unsupportedName = await nameOfService(c, svc);
         await envReport.at(unsupportedName).add({
@@ -298,9 +260,6 @@ async function runImportMigrationProject(
         });
         continue;
       }
-      // The DETAIL is loaded here rather than inside each importer because it is also
-      // where the service's real name lives: the tree gives a database nothing but its id,
-      // so a report scoped before this call has an empty breadcrumb for the hardest rows.
       let detail: SourceApplication | SourceCompose | SourceDatabase;
       try {
         detail = await loadService(c, svc);
@@ -317,12 +276,8 @@ async function runImportMigrationProject(
         continue;
       }
 
-      // The MACHINE, from the row that has one: `project.all` carries no server, so
-      // every service on the second host mapped as if it were on the panel's own.
       const sourceServerId = detail.serverId?.trim() || svc.serverId;
 
-      // Deplo caps a name at 60 characters; the panel's display NAME is free text, and a
-      // service called after a team, a region and a cluster goes past it.
       const fullName = nameOf(detail, svc);
       const name = truncateName(fullName);
       const svcReport = envReport.at(name);
@@ -371,13 +326,8 @@ async function runImportMigrationProject(
               serverId,
               projectName: source.name,
               environmentId,
-              // The port the review settled on, or the source's own when it said
-              // nothing. `null` is a decision ("publish nothing"), not a silence.
               exposedPort: placement?.exposedPort,
               mayExposePorts,
-              // Whether the machine it runs on over there IS the one it is about to run on
-              // here: the one case where the port it wants is held by the container we are
-              // importing, and stopping that frees it.
               sourceIsTargetHost:
                 serverId != null &&
                 (await hostOfMachine(sourceServerId)) === serverId,
@@ -401,8 +351,6 @@ async function runImportMigrationProject(
   }
 
   await refreshCounts(input.runId, teamId);
-  // Outside every transaction, like every other caller: `recordActivity` opens its
-  // own connection and would deadlock pglite from inside one.
   await recordActivity(
     "project",
     `Imported ${source.name} from ${sourceClient(c).displayName}`,
@@ -429,8 +377,6 @@ function tally(items: ImportItemDTO[]): {
     created: n("created"),
     skipped: n("skipped"),
     failed: n("failed"),
-    // Same fold as `refreshCounts`: an engine with no equivalent here is a
-    // decision for a person, and every item belongs to exactly one total.
     manual: n("manual") + n("unsupported"),
   };
 }
@@ -474,7 +420,6 @@ async function ensureProject(
   }
 }
 
-// The Deplo Environment for a source one.
 async function ensureEnvironment(
   projectId: string,
   env: SourceEnvironment,
@@ -504,8 +449,6 @@ async function ensureEnvironment(
     });
     return created.id;
   } catch (e) {
-    // A name Deplo reserves (`pr-<n>`) or a duplicate: fall back to the project's
-    // default environment so the services still land somewhere sensible.
     const fallback = await defaultEnvironmentFor(projectId);
     await report.add({
       sourceKind: "environment",
@@ -521,7 +464,6 @@ async function ensureEnvironment(
   }
 }
 
-// The adapter's own notes for one level of the tree, straight onto the report.
 async function noteLevel(
   report: Report,
   notes: string[] | null | undefined,
@@ -536,9 +478,6 @@ async function noteLevel(
     });
 }
 
-// A shared-variable level the panel would not answer for. `manual`, not `failed`: an
-// older build simply has no such endpoint, and `manual` already means "a person has to
-// look at this".
 async function levelRefused(
   report: Report,
   level: "team" | "server",

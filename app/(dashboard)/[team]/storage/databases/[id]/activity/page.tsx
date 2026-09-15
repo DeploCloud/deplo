@@ -6,7 +6,6 @@ import { ScopedActivity } from "@/components/activity/scoped-activity";
 
 export const metadata = { title: "Activity" };
 
-// History starts where `activities.database_id` did (migration 0134).
 export default async function DatabaseActivityPage(
   props: PageProps<"/[team]/storage/databases/[id]/activity">,
 ) {

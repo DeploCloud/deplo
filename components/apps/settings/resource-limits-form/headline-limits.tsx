@@ -54,7 +54,6 @@ function CapCaptions({
   );
 }
 
-// HeadlineLimits is the Memory + CPU row: the caps, their meters and the host panel.
 export function HeadlineLimits({
   form,
   set,

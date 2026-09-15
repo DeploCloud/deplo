@@ -16,7 +16,6 @@ test("every template is a well-formed capability set", () => {
       p.capabilities.length,
       `${p.id} repeats a capability`,
     );
-    // Filtering ALL_CAPABILITIES yields only known names, so an unknown one is caught here too.
     assert.deepEqual(
       p.capabilities,
       ALL_CAPABILITIES.filter((c) => p.capabilities.includes(c)),

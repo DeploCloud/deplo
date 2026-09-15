@@ -8,7 +8,6 @@ import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { providerFor } from "@/lib/git/providers/registry";
 import { readTextCapped } from "@/lib/http/body-cap";
 
-// POST is the push webhook for every non-GitHub provider; sniffing headers would let attacker-controlled input pick the verification rule.
 export async function POST(
   request: Request,
   ctx: { params: Promise<{ token: string }> },
@@ -24,14 +23,12 @@ export async function POST(
       .where(eq(gitConnectionsTable.webhookToken, token))
       .limit(1)
   )[0];
-  // 404 rather than a hint: the token is the only thing between the internet and this endpoint.
   if (!conn) return new Response("not found", { status: 404 });
 
   const api = providerFor(conn.provider).api;
   if (!api) return new Response("not found", { status: 404 });
 
   const secret = decryptSecret(conn.webhookSecretEnc);
-  // A connection is always minted WITH a secret, so empty here means the ciphertext stopped opening - not an unsigned delivery.
   const verdict = secret ? api.verify(secret, request.headers, raw) : "bad";
   if (verdict === "bad") {
     console.warn(
@@ -42,7 +39,6 @@ export async function POST(
     );
     return new Response("invalid signature", { status: 401 });
   }
-  // `unsigned` is Bitbucket with no secret on its side: the unguessable token in this URL is what authenticated the request.
 
   let payload: unknown;
   try {
@@ -51,7 +47,6 @@ export async function POST(
     return new Response("bad payload", { status: 400 });
   }
 
-  // One delivery can move several refs (two branches pushed at once), so each is dispatched on its own.
   const pushes = api.parsePush(request.headers, payload);
   if (pushes.length === 0) return new Response("ok", { status: 200 });
 

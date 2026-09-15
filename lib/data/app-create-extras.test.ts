@@ -133,7 +133,6 @@ test("shared variables are linked as part of the create", async () => {
         eq(sharedLinksTable.varId, varId),
       ),
     );
-  // ADR-0012: the link IS the injection, so a var picked in the wizard is attached before the first deploy.
   assert.equal(links.length, 1);
 });
 
@@ -346,7 +345,6 @@ test("a five-service stack routes its frontend, and the API only if asked", asyn
 });
 
 test("a service that would take over a database's address is refused", async () => {
-  // databases.host IS the DNS name on the network, so a same-named service on it collects the connections (ADR-0028).
   await seedDatabase(db, { id: "db_1", name: "analytics", teamId: TEAM_A });
 
   for (const [label, svc] of [
@@ -381,7 +379,6 @@ test("a service that would take over a database's address is refused", async () 
 });
 
 test("another team's database is not a clash - it is on another network", async () => {
-  // Before ADR-0028 every container shared one network; now the two never do, so this is no takeover.
   await seedDatabase(db, { id: "db_2", name: "billing", teamId: TEAM_B });
   const ok = await asUser1(() =>
     newApp({ compose: "services:\n  db-billing:\n    image: nginx:1.27\n" }),

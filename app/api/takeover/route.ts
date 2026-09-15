@@ -6,8 +6,6 @@ import {
 } from "@/lib/data/takeover";
 import { readTextCapped } from "@/lib/http/body-cap";
 
-// The installer has no session cookie, so this is a REST exception authenticated with DEPLO_HOST_BOOTSTRAP_TOKEN like agent/bootstrap.
-
 function authorized(request: Request): boolean {
   const expected = process.env.DEPLO_HOST_BOOTSTRAP_TOKEN?.trim();
   if (!expected) return false;
@@ -25,10 +23,8 @@ export async function GET(request: Request) {
   });
 }
 
-// Capped because the takeover wizard renders the installer's reason.
 const ERROR_MAX = 500;
 
-// POST is the installer reporting where it is: the ports moved, the removal, or a rollback.
 export async function POST(request: Request) {
   if (!authorized(request))
     return Response.json({ error: "unauthorized" }, { status: 401 });

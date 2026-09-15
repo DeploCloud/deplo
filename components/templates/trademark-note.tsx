@@ -1,4 +1,3 @@
-// TrademarkNote credits the third-party logos and names the catalogue draws.
 export function TrademarkNote() {
   return (
     <div className="border-t border-border pt-6 text-center">

@@ -43,7 +43,6 @@ export interface CoolifyServer {
   settings?: CoolifyServerSettings | null;
 }
 
-// One row of `GET /servers/{uuid}/resources` - the only reliable resource→server join.
 export interface CoolifyServerResource {
   uuid: string;
   name?: string | null;
@@ -68,11 +67,9 @@ export interface CoolifyApplication {
   status?: string | null;
   fqdn?: string | null;
   build_pack?: string | null;
-  // `owner/repo` behind a git SOURCE, a whole clone URL for a public one; the host lives in the relation below (see `coolifyGitUrl`).
   git_repository?: string | null;
   git_branch?: string | null;
   git_full_url?: string | null;
-  // `App\Models\GithubApp` | `App\Models\GitlabApp` | ...
   source_type?: string | null;
   source?: { html_url?: string | null; api_url?: string | null } | null;
   docker_registry_image_name?: string | null;
@@ -139,14 +136,12 @@ export interface CoolifyService {
   service_type?: string | null;
 }
 
-// CoolifyDatabase covers any of Coolify's eight standalone database tables: the per-engine credential fields are read by name, so one loose shape beats eight.
 export interface CoolifyDatabase {
   uuid: string;
   name?: string | null;
   description?: string | null;
   environment_id?: number | null;
   status?: string | null;
-  // `standalone-postgresql`, `standalone-redis`, ...; `type` is read only because an older instance may still answer with it.
   database_type?: string | null;
   type?: string | null;
   image?: string | null;
@@ -161,12 +156,10 @@ export interface CoolifyDatabase {
 
 export interface CoolifyEnv {
   key?: string | null;
-  // Present only for a token holding `read:sensitive`; that is how the scan detects the scope without a second call.
   value?: string | null;
   real_value?: string | null;
   is_literal?: boolean | null;
   is_multiline?: boolean | null;
-  // The panel showed this value once and never answers with it again, whatever the token holds.
   is_shown_once?: boolean | null;
   is_preview?: boolean | null;
   is_runtime?: boolean | null;
@@ -174,17 +167,14 @@ export interface CoolifyEnv {
   is_shared?: boolean | null;
 }
 
-// A `LocalPersistentVolume` row: `name` IS the volume's name on the host.
 export interface CoolifyStorage {
   uuid?: string | null;
   name?: string | null;
   mount_path?: string | null;
   host_path?: string | null;
-  // File storages: the only column saying where the file actually IS on the host, and without it neither channel could copy the bytes.
   fs_path?: string | null;
   container_id?: string | null;
   is_directory?: boolean | null;
-  // File storages only, and only for a token holding `read:sensitive`.
   content?: string | null;
 }
 
@@ -204,7 +194,6 @@ export interface CoolifyScheduledTask {
 }
 
 export interface CoolifyS3Storage {
-  // The numeric id a backup schedule's `s3_storage_id` points at.
   id?: number | null;
   uuid: string;
   name?: string | null;
@@ -212,15 +201,12 @@ export interface CoolifyS3Storage {
   region?: string | null;
   bucket?: string | null;
   endpoint?: string | null;
-  // Both only for a token holding `read:sensitive`.
   key?: string | null;
   secret?: string | null;
 }
 
-// One `ScheduledDatabaseBackup` row, as `GET /databases/{uuid}/backups` lists them.
 export interface CoolifyDatabaseBackup {
   uuid?: string | null;
-  // The morph class of the database this row is for (`App\Models\StandalonePostgresql`).
   database_type?: string | null;
   enabled?: boolean | null;
   frequency?: string | null;
@@ -239,12 +225,10 @@ export interface CoolifyUser {
   id?: number | null;
   name?: string | null;
   email?: string | null;
-  // The membership row Coolify serialises beside the user (`->withPivot('role')`).
   pivot?: { role?: string | null } | null;
   role?: string | null;
 }
 
-// Coolify allows 200 requests a minute; Deplo takes 150, because a person is usually using the same panel while a scan runs.
 // ponytail: one bucket per process; a multi-instance control plane wants it in Postgres.
 const RATE_PER_MINUTE = 150;
 const buckets = new Map<string, { tokens: number; refilledAt: number }>();
@@ -258,7 +242,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function take(baseUrl: string): Promise<void> {
   for (;;) {
     const now = Date.now();
-    // A 429 holds back every caller, not only the one that got it: the budget belongs to the panel.
     const until = blockedUntil.get(baseUrl) ?? 0;
     if (until > now) {
       await sleep(Math.min(until - now, 1_000));
@@ -281,13 +264,11 @@ async function take(baseUrl: string): Promise<void> {
   }
 }
 
-// Tests drive many calls through one bucket; this puts it back.
 export function __resetCoolifyRateLimitForTest(): void {
   buckets.clear();
   blockedUntil.clear();
 }
 
-// CoolifyHttpError carries the status the refusal came with: a caller that probes has to tell a 404 from a 429.
 export class CoolifyHttpError extends Error {
   constructor(
     readonly status: number,
@@ -298,15 +279,12 @@ export class CoolifyHttpError extends Error {
   }
 }
 
-// Coolify's 4xx bodies are `{"message": "..."}` and mostly already actionable.
 function refusalMessage(status: number, body: string): string {
   let said = panelSaid(body);
   try {
     const parsed = JSON.parse(body) as { message?: unknown };
     if (typeof parsed.message === "string") said = parsed.message.trim();
-  } catch {
-    // Not JSON: whatever came back is still better than nothing.
-  }
+  } catch {}
   const quoted = said ? ` (Coolify said: ${said})` : "";
 
   if (status === 403 && /API is disabled/i.test(said))
@@ -315,7 +293,6 @@ function refusalMessage(status: number, body: string): string {
     return `Coolify only accepts API calls from an allowed IP, and this panel's address is not on that list. Add it in Coolify's settings.${quoted}`;
   if (status === 403 && /Missing required permissions/i.test(said))
     return `That token does not carry the permissions this needs. Mint one with read and read:sensitive.${quoted}`;
-  // A token carries an expiry Coolify set when it was minted (7 days to never), and an expired one answers exactly like a revoked or mistyped one.
   if (status === 401)
     return `Coolify refused the token${quoted}. It may have expired - every token is minted with an expiry - or been revoked: mint a new one under Keys & Tokens.`;
   if (status === 400) return said || `Coolify refused the token (${status}).`;
@@ -324,7 +301,6 @@ function refusalMessage(status: number, body: string): string {
   return `Coolify request failed (${status})${quoted}`;
 }
 
-// Coolify answers a 429 with `Retry-After`; without one, back off and ask again.
 function retryAfterMs(res: Response, attempt: number): number {
   const raw = res.headers.get("retry-after");
   const secs = raw === null ? NaN : Number(raw);
@@ -363,7 +339,6 @@ async function request(
     );
   };
 
-  // A rate limit is the panel busy, not a failure: waiting it out beats losing a volume copy over a minute the panel wanted back.
   for (let attempt = 0; ; attempt++) {
     await take(c.baseUrl);
     const res = await send();
@@ -389,7 +364,6 @@ async function get<T>(
   return (await res.json()) as T;
 }
 
-// 404 or 405 is an older build without the route; anything else THROWS - swallowed, a 429 read as "no backup destination" and "not running", a copy over a live volume.
 async function getOr<T>(
   c: SourceCredential,
   path: string,
@@ -404,7 +378,6 @@ async function getOr<T>(
   }
 }
 
-// The ONLY write this client makes: the stop of a data cutover.
 async function post<T>(
   c: SourceCredential,
   path: string,
@@ -431,7 +404,6 @@ export async function listEnvironments(
   c: SourceCredential,
   projectUuid: string,
 ): Promise<CoolifyEnvironment[]> {
-  // Never swallowed: a project whose environments cannot be read is a project whose every resource would vanish from the scan without a word.
   return asArray<CoolifyEnvironment>(
     await get<unknown>(c, `projects/${projectUuid}/environments`),
   );
@@ -491,7 +463,6 @@ export function getDatabase(
   return get<CoolifyDatabase>(c, `databases/${uuid}`);
 }
 
-// CoolifyResourceGroup is also the path segment for a resource.
 export type CoolifyResourceGroup = "applications" | "services" | "databases";
 
 export async function listEnvs(
@@ -528,7 +499,6 @@ export async function listS3Storages(
   return asArray<CoolifyS3Storage>(await getOr<unknown>(c, "s3-storages", []));
 }
 
-// The backup schedules of one database. A panel without the route answers [].
 export async function listDatabaseBackups(
   c: SourceCredential,
   uuid: string,
@@ -548,7 +518,6 @@ export async function listTeamMembers(
   return asArray<CoolifyUser>(await getOr<unknown>(c, "team/members", []));
 }
 
-// THROWS rather than answering `[]`: an older panel with no such endpoint and a team whose variables really are empty are not the same fact, and swallowing it lost a whole team's variable set.
 export async function listSharedEnvs(
   c: SourceCredential,
   scope:
@@ -578,7 +547,6 @@ export function stopResource(
   return post<unknown>(c, `${group}/${uuid}/stop`);
 }
 
-// Its mirror, used only when an operator backs out of a takeover.
 export function startResource(
   c: SourceCredential,
   group: CoolifyResourceGroup,
@@ -587,7 +555,6 @@ export function startResource(
   return post<unknown>(c, `${group}/${uuid}/start`);
 }
 
-// Coolify answers a GET on the stop route 405 when the `deploy` ability is there and 403 when it is not, before it looks at the uuid, so nothing is touched (4.3.16).
 export async function canStop(c: SourceCredential): Promise<boolean> {
   const res = await request(c, "GET", "applications/deplo-probe/stop");
   return res.status !== 403;
@@ -601,7 +568,6 @@ export async function resourceStatus(
   return (await resourceState(c, group, uuid)).status;
 }
 
-// The status plus the compose that says how many containers a stop has to bring down - the same one call the status already made.
 export async function resourceState(
   c: SourceCredential,
   group: CoolifyResourceGroup,
@@ -624,7 +590,6 @@ export async function resourceState(
   };
 }
 
-// Only ever used to choose the WORDS of a failure - a reverse proxy can answer 200 here, so it never decides anything.
 export async function panelFromHealth(
   baseUrl: string,
 ): Promise<"coolify" | "dokploy" | null> {
@@ -642,7 +607,6 @@ export async function panelFromHealth(
     );
     if (!res.ok) return null;
     const body = (await res.text().catch(() => "")).trim();
-    // Both panels answer on this path in their own words - `OK` here, `{"ok":true}` there - so any 200 read as Coolify announced the other one as "a Coolify panel refusing the token".
     if (/^ok$/i.test(body)) return "coolify";
     try {
       const parsed: unknown = JSON.parse(body);
@@ -652,9 +616,7 @@ export async function panelFromHealth(
         (parsed as { ok?: unknown }).ok === true
       )
         return "dokploy";
-    } catch {
-      /* not JSON: not the other one either */
-    }
+    } catch {}
     return null;
   } catch {
     return null;

@@ -6,14 +6,10 @@ import { canonicalTimeZone, nextCronRunInZone } from "../../crons/cron-tz";
 import type { JobRow } from "./dto";
 
 const MAX_TIMEOUT_SECONDS = 24 * 60 * 60;
-/** The ceiling on `timeout x attempts`: a retrying run holds the job's `running`
- *  slot, and under overlap=skip a multi-day one starves every later fire. */
 const MAX_TOTAL_SECONDS = 24 * 60 * 60;
 const MIN_KEEP_RUNS = 10;
 export const MAX_KEEP_RUNS = 500;
 const MAX_ATTEMPTS = 4;
-/** A schedule with no fire this far ahead is a typo (Feb 31), not a plan. Four
- *  years, so a leap-day job passes. */
 const NEVER_FIRES_DAYS = 4 * 366;
 
 export interface CronJobInput {
@@ -31,12 +27,9 @@ export interface CronJobInput {
   keepRuns?: number;
   workdir?: string | null;
   user?: string | null;
-  /** Replaces the job's extra environment wholesale when present. A null
-   *  value keeps the stored one - the editor cannot read a secret back. */
   env?: { key: string; value: string | null }[];
 }
 
-/** The validated patch, or a thrown error carrying the sentence the UI shows. */
 export function buildPatch(
   input: CronJobInput,
   current?: JobRow,
@@ -58,9 +51,6 @@ export function buildPatch(
   }
   if (input.schedule !== undefined) {
     const schedule = input.schedule.trim().replace(/\s+/g, " ");
-    // An invalid expression is accepted nowhere: the scheduler treats an
-    // unparseable cron as "never matches", so storing one would leave a job the
-    // UI calls enabled and that silently never runs.
     if (!isValidSchedule(schedule))
       throw new Error(invalidScheduleMessage(schedule));
     patch.schedule = schedule;
@@ -105,8 +95,6 @@ export function buildPatch(
     }
     patch.keepRuns = Math.trunc(input.keepRuns);
   }
-  // `workdir` and `user` ride to the agent as structured fields and end up as `docker
-  // exec --workdir/--user` arguments.
   if (input.workdir !== undefined) {
     const workdir = (input.workdir ?? "").trim();
     if (workdir && !/^\/[\w./@+-]*$/.test(workdir))
@@ -117,7 +105,6 @@ export function buildPatch(
   }
   if (input.user !== undefined) {
     const user = (input.user ?? "").trim();
-    // `user`, `uid`, `user:group`, `uid:gid` - docker's own grammar.
     if (user && !/^[\w.-]+(:[\w.-]+)?$/.test(user))
       throw new Error("Run as must be a user or uid, optionally with :group");
     patch.user = user || null;
@@ -152,8 +139,6 @@ export function buildPatch(
     }
   }
 
-  // The clamp that keeps a retrying run from holding the job's `running` slot for
-  // days: the timeout is PER ATTEMPT, so the honest worst case is their product.
   const timeout = patch.timeoutSeconds ?? current?.timeoutSeconds ?? 3600;
   const attempts = patch.maxAttempts ?? current?.maxAttempts ?? 1;
   if (timeout * attempts > MAX_TOTAL_SECONDS) {

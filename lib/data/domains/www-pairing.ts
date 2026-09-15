@@ -17,9 +17,6 @@ import { domainNameExists } from "./hostname-claim";
 import { appServerIp, checkDomainDns } from "./dns-check";
 import { assertTeamLetsencryptQuota } from "./letsencrypt-quota";
 
-// applyWwwRedirect: pair a hostname with its `www`/non-`www` counterpart so one of
-// the two serves the app and the other permanently redirects to it. `mode` is
-// expressed relative to `domain`, the row the user is editing.
 export async function applyWwwRedirect(
   domain: Domain,
   mode: WwwRedirect,
@@ -34,8 +31,6 @@ export async function applyWwwRedirect(
     throw new Error(
       `${self.name} has no www variant to pair with - the www redirect is for a site's own domain, e.g. example.com.`,
     );
-  // A path-routed row serves ONE path of its host, not the site, so pairing it
-  // with a whole-host redirect would send the rest of the host nowhere.
   if ((self.pathPrefix ?? "").trim())
     throw new Error(
       `${self.name} routes the path ${self.pathPrefix} - a www redirect applies to a whole hostname, so it can't be set on a path route.`,
@@ -45,8 +40,6 @@ export async function applyWwwRedirect(
   if (mode === "none") {
     if (self.redirectTo) await writeRedirectTo(self.id, null);
     if (other && other.redirectTo === self.name) {
-      // Ours to delete only if we created it; a hostname the user added is left
-      // in place, serving the app again.
       if (other.source === "redirect") await deleteDomainRow(other.id);
       else await writeRedirectTo(other.id, null);
     }
@@ -54,7 +47,6 @@ export async function applyWwwRedirect(
   }
 
   if (mode === "toThis") {
-    // This row serves from now on, so it can't also be redirecting away.
     if (self.redirectTo) await writeRedirectTo(self.id, null);
     if (!other) {
       await insertPairedDomain(self, counterpart, {
@@ -63,8 +55,6 @@ export async function applyWwwRedirect(
         teamId,
       });
     } else {
-      // A path route serves ONE path of its host; turning it into a whole-host
-      // redirect would send the rest of that hostname nowhere.
       if ((other.pathPrefix ?? "").trim())
         throw new Error(
           `${counterpart} routes the path ${other.pathPrefix} - remove that domain before redirecting the hostname.`,
@@ -75,7 +65,6 @@ export async function applyWwwRedirect(
     return;
   }
 
-  // toCounterpart: the counterpart serves, this row redirects to it.
   if (!other) {
     await insertPairedDomain(self, counterpart, {
       redirectTo: null,
@@ -113,7 +102,6 @@ async function movePrimaryToServingHost(
   });
 }
 
-// repointRedirects: follow a renamed hostname with everything that redirects to it.
 export async function repointRedirects(
   appId: string,
   oldName: string,
@@ -153,8 +141,6 @@ export async function repointRedirects(
   }
 }
 
-// The single writer of `redirect_to`, so every path through the pairing above
-// stays one statement and one meaning.
 async function writeRedirectTo(
   id: string,
   target: string | null,
@@ -165,13 +151,10 @@ async function writeRedirectTo(
     .where(eq(domainsTable.id, id));
 }
 
-// Drop a domain row (its `domain_middlewares` children CASCADE).
 async function deleteDomainRow(id: string): Promise<void> {
   await getDb().delete(domainsTable).where(eq(domainsTable.id, id));
 }
 
-// The other half of a `www` pair, cloned from the row being edited: a redirect
-// answering on `https://www.…` needs its own certificate, or the browser errors first.
 async function insertPairedDomain(
   from: Domain,
   name: string,
@@ -186,8 +169,6 @@ async function insertPairedDomain(
       `${name} is already routed by another app - remove it there first.`,
     );
   const status = await checkDomainDns(name, await appServerIp(from.appId));
-  // Mirror the canonical host's certificate choice, upgrading to `cloudflare`
-  // when the check finds THIS hostname proxied (the same rule an add follows).
   const certProvider = certProviderForDns(status, from.certProvider ?? "none");
   await assertTeamLetsencryptQuota(opts.teamId, certProvider);
   await insertDomain(getDb(), {
@@ -205,7 +186,6 @@ async function insertPairedDomain(
     ...(from.entrypoint ? { entrypoint: from.entrypoint } : {}),
     certProvider,
     ...(from.service ? { service: from.service } : {}),
-    // Whatever fronts the canonical host fronts its www twin too.
     ...(from.proxied ? { proxied: true } : {}),
     createdAt: nowIso(),
   });

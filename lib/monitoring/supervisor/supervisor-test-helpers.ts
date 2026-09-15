@@ -40,7 +40,6 @@ export function setupSupervisor(): Harness {
     h.db = made.db;
     h.pg = made.pg;
     __setTestDb(made.db);
-    // Every connect calls `resolveExpectedAgentVersion`, which hits the GitHub releases API - fail it closed.
     globalThis.fetch = (() =>
       Promise.reject(new Error("network disabled in tests"))) as typeof fetch;
   });
@@ -64,8 +63,6 @@ export function setupSupervisor(): Harness {
   });
 
   afterEach(async () => {
-    // Order matters: `stopMetricsStreams` aborts SYNCHRONOUSLY before awaiting, so cutting the feeds right
-    // after the call lets each `for await` finish and see the stop flag.
     const stopped = stopMetricsStreams();
     endAllFeeds();
     await stopped;
@@ -76,7 +73,6 @@ export function setupSupervisor(): Harness {
   return h;
 }
 
-// A server ENROLLED enough for the supervisor to dial.
 export async function seedEnrolledServer(
   db: TestDb,
   id: string,
@@ -105,7 +101,6 @@ export async function seedEnrolledServer(
     .onConflictDoNothing();
 }
 
-// Turn the master switch OFF: a poll-mode loop then measures nothing, so the fallback needs no socket to dial.
 export async function disableSaving(db: TestDb): Promise<void> {
   await db
     .insert(monitoringSettings)
@@ -217,7 +212,6 @@ export class Feed {
         if (this.queue.length === 0) return;
       }
       yield this.queue.shift()!;
-      // Reached only when the consumer came back for the NEXT frame: the previous loop body has completed.
       const done = this.consumed;
       this.consumed = null;
       done?.();
@@ -234,7 +228,6 @@ export class Feed {
     });
   }
 
-  // The transport went away: the iterator finishes rather than hanging.
   end(): void {
     this.ended = true;
     const w = this.waiting;
@@ -253,8 +246,6 @@ export class Feed {
   }
 }
 
-// The per-server loops start with `void`, so there is no promise to await; bounded by ITERATIONS,
-// not by `Date.now()`, because one test below replaces the clock.
 export async function waitFor(
   pred: () => boolean | Promise<boolean>,
   what: string,
@@ -278,7 +269,6 @@ export async function statusCheckedAt(
   return row?.at ?? null;
 }
 
-// `updatedAt` is the write detector: every writer of the column sets it, so an unmoved value proves no UPDATE matched.
 export async function appRow(
   db: TestDb,
   id: string,
@@ -291,7 +281,6 @@ export async function appRow(
   return row;
 }
 
-// The publish is guarded on the UPDATE actually matching, so both "it fired" and "it did NOT" are worth pinning.
 export function countPings(appId: string): {
   count: () => number;
   stop: () => void;
@@ -315,7 +304,6 @@ export function countPings(appId: string): {
   };
 }
 
-// Bring one enrolled server up in stream mode and hand back its feed.
 export async function streamingServer(db: TestDb, id = SRV_A): Promise<Feed> {
   await seedEnrolledServer(db, id, "2026-01-01T00:00:00.000Z");
   const feed = new Feed();

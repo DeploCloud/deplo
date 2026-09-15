@@ -7,7 +7,6 @@ import { DatabaseLogo } from "@/components/storage/database-logo";
 import { cn } from "@/lib/utils";
 import type { BackupDTO } from "@/lib/data/backups/schedules";
 
-// targetHref - the target's own Backups tab, or null when the target is gone.
 export function targetHref(backup: BackupDTO): string | null {
   if (backup.targetKind === "app")
     return backup.serviceSlug ? `/apps/${backup.serviceSlug}/backups` : null;
@@ -16,7 +15,6 @@ export function targetHref(backup: BackupDTO): string | null {
     : null;
 }
 
-// BackupTarget - what a schedule backs up, linking to that app's or database's Backups tab.
 export function BackupTarget({
   backup,
   size = 20,
@@ -25,7 +23,6 @@ export function BackupTarget({
 }: {
   backup: BackupDTO;
   size?: number;
-  // False where the whole card is already a link to the same place.
   linked?: boolean;
   className?: string;
 }) {
@@ -53,7 +50,6 @@ export function BackupTarget({
   const shell = cn("flex min-w-0 items-center gap-2", className);
   if (!href || !linked) return <span className={shell}>{body}</span>;
   return (
-    // `data-card-actions` keeps the link clickable above a selectable card's click handler, as in the app grid.
     <Link
       href={href}
       data-card-actions

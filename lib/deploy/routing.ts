@@ -1,6 +1,3 @@
-// https://deplo.build/docs/guides/networking/domains-and-https
-
-// A routable hostname and the container port its router targets.
 export interface RouterRoute {
   name: string;
   port: number | null;
@@ -24,11 +21,8 @@ export interface RouterLabelOptions {
   basicAuth?: { name: string; users: string };
 }
 
-// Traefik defaults an un-pinned router's priority to its RULE-STRING LENGTH, so the floor
-// must sit far above any reachable rule length rather than be a small constant.
 const PATH_PRIORITY_BASE = 1_000_000;
 
-// Render the Traefik router + service labels for a set of routes, in a deterministic order.
 export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
   if (opts.routes.length === 0) return ["traefik.enable=false"];
 
@@ -102,8 +96,6 @@ interface RouterSig {
   middlewares: string[];
   pathPrefix: string;
   stripPrefix: boolean;
-  // Part of the signature: a redirecting host can never share a router with one that
-  // serves, or the redirect would swallow the canonical host too.
   redirectTo: string;
 }
 
@@ -147,8 +139,6 @@ function normalizeRedirectTarget(input?: string): string {
   return t.replace(/\/+$/, "");
 }
 
-// Backticks are stripped because the value is interpolated into a Traefik backtick
-// literal, where a stray one breaks the rule grammar.
 function normalizeRulePath(input?: string): string {
   let p = (input ?? "").trim().replace(/`/g, "");
   if (!p) return "";
@@ -166,8 +156,6 @@ function sigSuffix(sig: RouterSig, defaultResolver: string): string {
   if (!sig.tls) parts.push("http");
   else {
     if (sig.entrypoint !== "websecure") parts.push(safe(sig.entrypoint));
-    // An EMPTY resolver is TLS from the proxy's own certificate store (the custom
-    // provider), not the default one: safe("") would let the two share a router key.
     if (sig.certResolver === "") parts.push("owncert");
     else if (sig.certResolver !== defaultResolver)
       parts.push(safe(sig.certResolver));
@@ -192,7 +180,6 @@ function safe(s: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-// A short, stable, slug-safe hash of an arbitrary string, for a router-key suffix.
 export function hash6(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
@@ -209,13 +196,10 @@ function routerBlock(
   withApp: boolean,
 ): string[] {
   const hostRule = hosts.map((d) => `Host(\`${d}\`)`).join(" || ");
-  // `&&` binds tighter than `||`, so the parens are mandatory or only the LAST host is path-gated.
   const rule = sig.pathPrefix
     ? `(${hostRule}) && PathPrefix(\`${sig.pathPrefix}\`)`
     : hostRule;
   const stripName = sig.stripPrefix ? `${key}-stripprefix` : null;
-  // At the HEAD of the chain: the 301 must fire before basic auth (nobody should be asked
-  // to log in on a hostname they are being sent away from) and before stripprefix.
   const redirectName = sig.redirectTo ? `${key}-redirect` : null;
   const middlewares = [
     ...(redirectName ? [redirectName] : []),
@@ -235,8 +219,6 @@ function routerBlock(
             : []),
         ]
       : []),
-    // A path router MUST outrank the path-less router serving the same host, or Traefik
-    // hands `/api` to the whole-host router.
     ...(sig.pathPrefix
       ? [
           `traefik.http.routers.${key}.priority=${
@@ -244,8 +226,6 @@ function routerBlock(
           }`,
         ]
       : []),
-    // Every `$` is DOUBLED because these labels are embedded in a compose YAML, which
-    // would otherwise interpolate Go's `${1}` capture reference away.
     ...(redirectName
       ? [
           `traefik.http.middlewares.${redirectName}.redirectregex.regex=^https?://[^/]+(.*)`,

@@ -32,8 +32,6 @@ export default async function AppDeploymentsPage(
   ).length;
   const canManage = canDeploy || isAdmin;
 
-  // Passed into the table so it sits opposite the bulk-action buttons on one
-  // justify-between row; reused above the empty state.
   const header = (
     <div className="space-y-1">
       <h2 className={titleClass.section}>Deployment history</h2>

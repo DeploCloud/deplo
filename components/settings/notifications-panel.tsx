@@ -47,7 +47,6 @@ import type {
 
 const FEATURED: NotificationChannel[] = ["discord", "email", "webhook"];
 
-// NotificationsPanel - the notification settings.
 export function NotificationsPanel({
   initial,
   vapidPublicKey,
@@ -55,7 +54,6 @@ export function NotificationsPanel({
 }: {
   initial: NotificationChannelInstance[];
   vapidPublicKey: string;
-  // Cosmetic: the real gate is `manage_notifications` in the data layer.
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -198,7 +196,6 @@ export function NotificationsPanel({
 
   return (
     <div className="space-y-6">
-      {/* Here, not in the server page: only this component can open the modal. */}
       <PageHeader
         docs="notifications.overview"
         title="Notifications"
@@ -260,7 +257,6 @@ export function NotificationsPanel({
           )}
         </div>
 
-        {/* Outside the branch above: it does not come and go with the list. */}
         {channels.length > 0 && (
           <aside className="hidden xl:sticky xl:top-20 xl:block">
             <NotificationIllustration />
@@ -268,13 +264,11 @@ export function NotificationsPanel({
         )}
       </div>
 
-      {/* One modal for whichever channel is open, so one alert picker is mounted. */}
       <Dialog open={open} onOpenChange={(next) => !next && setOpen(false)}>
         <DialogContent
           selfManaged
           className="h-[46rem] max-h-[85vh] max-w-2xl grid-rows-[minmax(0,1fr)] gap-0 p-0"
         >
-          {/* A real form, so Enter in a webhook field saves. */}
           <form
             className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
             onSubmit={(e) => {
@@ -283,7 +277,6 @@ export function NotificationsPanel({
               else setOpen(false);
             }}
           >
-            {/* pr-12 keeps the switch clear of the modal's own close button. */}
             <div className="flex items-start gap-3 border-b border-border p-4 pr-12">
               {draft && brand ? (
                 <>
@@ -385,7 +378,6 @@ export function NotificationsPanel({
 
             <DialogFooter className="items-center gap-1.5 border-t border-border p-4">
               <div className="flex flex-wrap items-center gap-1.5">
-                {/* Only in the add flow: the picker is a screen to go back to. */}
                 {draft && !editingId && (
                   <Button
                     type="button"
@@ -400,7 +392,6 @@ export function NotificationsPanel({
                     Back
                   </Button>
                 )}
-                {/* A test dials what the SERVER has stored, so nothing may be pending. */}
                 {editingId && (
                   <>
                     <Button
@@ -604,7 +595,6 @@ function ChannelRow({
             <span className="truncate text-sm font-medium">
               {instance.name || brand.label}
             </span>
-            {/* The type, only once a name has taken its place. */}
             {instance.name && <Badge variant="secondary">{brand.label}</Badge>}
             {brand.beta && (
               <Badge variant="info" className="px-1.5 py-0 text-[10px]">
@@ -629,7 +619,6 @@ function ChannelRow({
           </span>
         </span>
       </button>
-      {/* Outside the button: nesting it would open the modal on every flip. */}
       <Switch
         checked={instance.enabled}
         disabled={!canManage}

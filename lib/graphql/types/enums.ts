@@ -9,7 +9,6 @@ export const RoleEnum = builder.enumType("Role", {
   values: ["owner", "member", "viewer"] as const,
 });
 
-// CapabilityEnum also carries the eight retired coarse names as DEPRECATED input aliases, so a script written against the old API keeps working.
 export const CapabilityEnum = builder.enumType("Capability", {
   values: Object.fromEntries([
     ...ALL_CAPABILITIES.map((c) => [c, { value: c }]),
@@ -37,7 +36,6 @@ export const AppStatusEnum = builder.enumType("AppStatus", {
   ] as const,
 });
 
-// GraphQL enum value names must match /[_a-zA-Z0-9]/, but domain values use hyphens ("docker-image").
 export const DeploySourceEnum = builder.enumType("DeploySource", {
   values: {
     GITHUB: { value: "github" },
@@ -72,7 +70,6 @@ export const DatabaseTypeEnum = builder.enumType("DatabaseType", {
   ] as const,
 });
 
-// Per-value descriptions here because `cloudflare` reads like a success and is NOT one.
 export const DomainStatusEnum = builder.enumType("DomainStatus", {
   description: "A custom domain's DNS verification state.",
   values: {

@@ -21,8 +21,6 @@ import { listApps } from "./apps/listing";
 import { moveAppToFolder } from "./folders";
 import type { Capability } from "../types/identity";
 
-// ADR-0016: a node grant REPLACES the team role inside that node, most specific wins.
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -208,7 +206,6 @@ test("a project grant governs the apps filed under it, and never hides them", as
     await capsOn({ kind: "app", id: APP_IN_PRC }),
     ["view", "manage_domains"].sort(),
   );
-  // Unlike a folder, a Project has no privacy rule.
   await db.delete(projectGrantsTable);
   assert.deepEqual(
     await capsOn({ kind: "app", id: APP_IN_PRC }),
@@ -216,7 +213,6 @@ test("a project grant governs the apps filed under it, and never hides them", as
   );
 });
 
-// A grant REPLACES the role in its node, so a team-wide capability stops at a node whose grant withholds it.
 test("a project grant that withholds move_apps stops the team-wide one", async () => {
   await pg.exec(
     `insert into membership_capabilities (membership_id, capability)

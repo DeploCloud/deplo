@@ -110,7 +110,6 @@ async function seedAll(): Promise<void> {
   await seedServer(db);
   await seedServer(db, B.server);
 
-  // Team A needs one of everything too, so a mutation reading the ACTIVE team first still runs.
   await db.insert(projectsTable).values([
     {
       id: "prc_a",
@@ -296,7 +295,6 @@ async function seedAll(): Promise<void> {
       createdAt: T0,
     },
   ]);
-  // NOT an instance admin: a global admin reaching another team is the feature, not the leak.
   await db
     .update((await import("../db/schema/control-plane/identity")).users)
     .set({ isInstanceAdmin: false })
@@ -537,7 +535,6 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
   return ` { ${parts.join(" ")} }`;
 }
 
-// A SERVER is deliberately shared across teams, so it is not a sentinel.
 const SENTINELS = [
   B.app,
   "b-app",
@@ -607,7 +604,6 @@ test("no query hands back another team's data", async () => {
     const hit = SENTINELS.filter((sentinel) => body.includes(sentinel));
     if (hit.length > 0) leaks.push(`${q.name} → ${hit.join(", ")}`);
   }
-  // THE CONTROL: team B's own owner must surface those sentinels, or the sweep proves nothing.
   const owner: RequestIdentity = { userId: B.user, teamId: TEAM_B };
   const ownerCtx = await runWithIdentity(
     owner,

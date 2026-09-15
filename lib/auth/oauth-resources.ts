@@ -6,10 +6,6 @@ import { getDb } from "@/lib/db/client";
 import { oauthResource } from "@/lib/db/schema/auth";
 import { mcpResource } from "@/lib/auth/oauth-metadata";
 
-/**
- * Keep exactly ONE OAuth resource requestable: the one matching this instance's
- * current address.
- */
 export async function reconcileOAuthResources(): Promise<void> {
   const current = mcpResource();
   if (!current) return;

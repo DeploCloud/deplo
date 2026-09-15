@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-// RepoSearchGraphic - the "nothing matched" picture for a repository list.
 export function RepoSearchGraphic({ className }: { className?: string }) {
   return (
     <svg

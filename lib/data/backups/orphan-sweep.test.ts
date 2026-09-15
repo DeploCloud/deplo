@@ -101,9 +101,6 @@ test("reconcileInFlightBackupRuns is idempotent / a no-op with nothing stale", a
   assert.equal(await reconcileInFlightBackupRuns(), 0);
 });
 
-// The FKs on backup_runs are ON DELETE SET NULL, so deleting an app used to blank the only
-// columns naming what its artifacts belonged to: retention stopped seeing them and the files
-// sat on the destination forever.
 test("a deleted target's runs stay findable, and the sweep stamps them", async () => {
   await seedRun(db, {
     id: "r_1",
@@ -122,8 +119,6 @@ test("a deleted target's runs stay findable, and the sweep stamps them", async (
   assert.equal(row!.targetId, "prj_1", "target_id survives it");
   assert.equal(row!.orphanedAt, null, "nothing has noticed yet");
 
-  // First sighting stamps, never deletes: measuring the keep window from the RUN (two years
-  // old) instead of the orphaning would expire it immediately.
   const reclaimed = await sweepOrphanedBackupArtifacts();
   assert.equal(reclaimed, 0, "the first sweep only starts the clock");
   const [stamped] = await db
@@ -181,8 +176,6 @@ test("a successful orphan is kept until its artifact is confirmed gone", async (
   assert.equal(rows.length, 1, "kept so the next sweep retries");
 });
 
-// The only shape it looks for is "both FKs null". Age alone must never be enough - that would
-// make it a second, unasked-for retention policy.
 test("the sweep never touches a LIVE target, however old its runs", async () => {
   await seedRun(db, {
     id: "r_live",

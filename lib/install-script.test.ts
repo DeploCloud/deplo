@@ -19,7 +19,6 @@ test("install.sh updates in place when Deplo is already there", async () => {
     "install.sh no longer has an update mode - the panel's one-liner would reinstall",
   );
   assert.match(script, /\[ -f "\$ENV_FILE" \] && MODE="update"/);
-  // Without the `latest` default, a host that cannot ask GitHub is stuck.
   assert.match(script, /DEPLO_VERSION="\$\{DEPLO_VERSION:-latest\}"/);
 });
 
@@ -38,19 +37,16 @@ test("--public-setup writes an empty key and prints a bare link", async () => {
   assert.match(script, /--public-setup\) PUBLIC_SETUP=true/);
   assert.match(script, /echo "DEPLO_SETUP_KEY="/);
   assert.match(script, /--public-setup {3}no setup key/);
-  // Otherwise the link ends in a bare `?key=`, which reads as broken.
   assert.match(script, /\[ -n "\$SETUP_KEY" \] \|\| \{ printf '%s\/setup'/);
 });
 
 test("install.sh runs with no domain given", async () => {
   const script = await readFile(join(process.cwd(), "install.sh"), "utf8");
-  // Without the default, `set -u` kills the common case: "DEPLO_DOMAIN: unbound variable".
   assert.match(script, /^DEPLO_DOMAIN="\$\{DEPLO_DOMAIN:-\}"$/m);
 });
 
 test("the setup link is never printed inside the summary card", async () => {
   const script = await readFile(join(process.cwd(), "install.sh"), "utf8");
-  // card_kv truncates to keep the box closed, and a truncated setup link is dead.
   assert.ok(
     !script.includes('card_kv "Set up"'),
     "the card would cut the key off the link",

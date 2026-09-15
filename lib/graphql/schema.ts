@@ -2,7 +2,6 @@ import "server-only";
 
 import { builder } from "./builder";
 
-// Side-effect registration on the shared builder; order is irrelevant (Pothos resolves refs lazily), keep alphabetical.
 import "./types/account";
 import "./types/activity";
 import "./types/auth";
@@ -68,5 +67,4 @@ import "./types/updates";
 import "./types/user-access";
 import "./types/viewer";
 
-// The assembled executable schema, built once at module load; per-request data flows through context.
 export const schema = builder.toSchema();

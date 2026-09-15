@@ -1,6 +1,5 @@
 import "server-only";
 
-// formatBytes - compact human bytes for the activity log ("12.3 MB").
 export function formatBytes(n: number): string {
   if (n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];

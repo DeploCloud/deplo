@@ -1,7 +1,6 @@
 import { parseEnvBlob } from "../../map/env";
 import type { SourceDomain } from "../../model";
 
-/** `{"app":{"domain":"https://x.com:3000"}}`, or an array of the same pairs. */
 function composeDomainPairs(
   raw: string | null | undefined,
 ): [string, string][] {
@@ -29,16 +28,10 @@ function composeDomainPairs(
   return out;
 }
 
-/**
- * Coolify's `fqdn` is a comma-separated list of URLs, each of which may carry the
- * CONTAINER port it routes to and a path prefix.
- */
 export function parseCoolifyFqdns(
   fqdn: string | null | undefined,
   perService?: string | null,
   extra: { url: string; service: string | null; port?: number | null }[] = [],
-  /** What an APPLICATION-level `fqdn` does not carry, for a `dockercompose` one:
-   *  it names no compose service and no port, and a stack route needs both. */
   onCompose?: { service: string | null; port: number | null },
 ): { value: SourceDomain[]; notes: string[] } {
   const entries: {
@@ -58,14 +51,8 @@ export function parseCoolifyFqdns(
       if (raw.trim()) entries.push({ url: raw.trim(), service });
   entries.push(...extra);
 
-  // One route per host+path+service. Coolify keeps TWO variables for the same
-  // address - SERVICE_FQDN_X and SERVICE_FQDN_X_<PORT> - so "first one wins" made
-  // the port depend on the order the variables happened to arrive in.
   const merged = new Map<string, { domain: SourceDomain; said: boolean }>();
   for (const [i, e] of entries.entries()) {
-    // An address that names no scheme claims NEITHER. Reading one as https gave
-    // four one-click services a certificate they never had over there and moved
-    // them off :80, so every link anyone had written answered 404.
     const said = /^https?:\/\//i.exec(e.url)?.[0] ?? "";
     let u: URL;
     try {
@@ -82,7 +69,6 @@ export function parseCoolifyFqdns(
 
     const already = merged.get(key);
     if (already) {
-      // A port is knowledge the other spelling did not carry, and so is a scheme.
       if (already.domain.port == null && port != null)
         already.domain.port = port;
       if (!already.said && said) {
@@ -101,8 +87,6 @@ export function parseCoolifyFqdns(
         https,
         port,
         path,
-        // Coolify adds no strip-prefix middleware of its own: the path reaches the
-        // container as it was requested.
         stripPath: false,
         internalPath: null,
         serviceName: e.service,
@@ -123,11 +107,6 @@ export function parseCoolifyFqdns(
   return { value: [...merged.values()].map((r) => r.domain), notes };
 }
 
-/**
- * `SERVICE_FQDN_<ID>[_<PORT>]`: where a one-click SERVICE keeps its address -
- * Coolify's `services` table carries no `fqdn` column at all. The id half names
- * the compose service without its separators (`it-tools` -> `ITTOOLS`).
- */
 const SERVICE_FQDN_KEY = /^SERVICE_FQDN_(.+?)(?:_(\d+))?$/;
 
 export function coolifyServiceFqdns(

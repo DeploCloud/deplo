@@ -12,14 +12,11 @@ export default async function AppConsolePage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // Re-gate here, not only in the sidebar: a direct URL hit would render a shell whose RPCs refuse.
   if (!project.consoleEnabled) notFound();
   if (!(await hasAppCapability(project.id, "open_app_console"))) notFound();
 
-  // getConsoleInfo skips the shell probe on purpose: the pane resolves the shell label after mount.
   const info = await getConsoleInfo(project.id);
 
-  // Full-bleed route (components/layout/shell-frame.tsx), so no title and no padding here.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <LiveConsole

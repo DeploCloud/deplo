@@ -1,4 +1,3 @@
-// remapBuildInput translates a GraphQL BuildConfigInput into the stored BuildConfig shape.
 export function remapBuildInput(build: unknown): Record<string, unknown> {
   const { settings, rootDir, outputDir, ...rest } = (build ?? {}) as Record<
     string,

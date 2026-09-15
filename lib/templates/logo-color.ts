@@ -3,21 +3,15 @@ import "server-only";
 import { templateImageBytes } from "@/templates/catalog";
 import type { CatalogTemplate } from "@/templates/types";
 
-// Below this OKLCH chroma a pixel is grey, white or black - it has no colour.
 const MIN_CHROMA = 0.04;
-// 15° buckets. Finer splits a single brand colour across two neighbours.
 const BUCKETS = 24;
-// A hue nobody would name: too few coloured pixels to be the logo's colour.
 const MIN_SHARE = 0.15;
 const MIN_COLOURED_PIXELS = 4;
-// Neutral ink below this OKLab lightness is "black", above it is "white".
 const MID_LIGHTNESS = 0.5;
 
 const CONCURRENCY = 16;
-// ADR-0023: the catalogue degrades, it does not error - a cold pass renders untinted.
 const BUDGET_MS = 8000;
 
-// A native module that will not load must not take the Templates section down: no tints.
 type Sharp = (typeof import("sharp"))["default"];
 let sharpModule: Promise<Sharp | null> | undefined;
 function loadSharp(): Promise<Sharp | null> {
@@ -25,7 +19,6 @@ function loadSharp(): Promise<Sharp | null> {
   return sharpModule;
 }
 
-// sRGB 0-255 → OKLab, the transform the oklch() in globals.css inverts.
 function oklab(r8: number, g8: number, b8: number) {
   const lin = (c: number) => {
     const v = c / 255;
@@ -46,20 +39,17 @@ function oklab(r8: number, g8: number, b8: number) {
   };
 }
 
-// LogoAccent - what a card needs to draw a logo well; tone is the theme it would vanish into.
 export interface LogoAccent {
   hue?: number;
   tone?: "dark" | "light";
 }
 
-// analyseLogo - read an image once and answer both; exported pure over bytes for its own test.
 export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
   const sharp = await loadSharp();
   if (!sharp) return {};
 
   let pixels: Buffer;
   try {
-    // 16px is enough to find a brand colour and cheap enough to run 388 times.
     const out = await sharp(bytes)
       .resize(16, 16, { fit: "inside" })
       .ensureAlpha()
@@ -70,9 +60,7 @@ export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
     return {};
   }
 
-  // Chroma-weighted: one saturated pixel says more than a dozen washed-out ones.
   const weights = new Array<number>(BUCKETS).fill(0);
-  // Summed as vectors so the winning bucket's hues average across 0°/360°.
   const sinSum = new Array<number>(BUCKETS).fill(0);
   const cosSum = new Array<number>(BUCKETS).fill(0);
   let total = 0;
@@ -85,7 +73,6 @@ export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
     const { L, a, b } = oklab(pixels[i], pixels[i + 1], pixels[i + 2]);
     const chroma = Math.hypot(a, b);
     if (chroma < MIN_CHROMA) {
-      // Neutral: no colour, but this ink decides whether the logo is visible at all.
       if (L < MID_LIGHTNESS) black += 1;
       else white += 1;
       continue;
@@ -112,20 +99,16 @@ export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
 
   if (hasHue) {
     const hue = (Math.atan2(sinSum[winner], cosSum[winner]) * 180) / Math.PI;
-    // Chroma carries a coloured logo on both surfaces, so it never needs a plate.
     return { hue: Math.round((hue + 360) % 360) };
   }
 
-  // A wordmark in one neutral disappears into the side it is drawn on.
   if (black > white) return { tone: "dark" };
   if (white > black) return { tone: "light" };
   return {};
 }
 
-// slug → accent: a logo never changes under its slug, so it is read once per process.
 const memo = new Map<string, Promise<LogoAccent>>();
 
-// templateAccent - one template's logo, read; logoUrl is the URL the catalog client resolved.
 export function templateAccent(
   slug: string,
   logoUrl: string | null,
@@ -141,7 +124,6 @@ export function templateAccent(
   const pending = templateImageBytes(logoUrl)
     .then((bytes) => (bytes ? analyseLogo(bytes) : {}))
     .catch(() => {
-      // One bad minute on the catalog must not pin a template to "no colour" for life.
       memo.delete(slug);
       return {};
     });
@@ -149,7 +131,6 @@ export function templateAccent(
   return pending;
 }
 
-// templateAccents - accents for a whole catalogue, keyed by slug.
 export async function templateAccents(
   templates: CatalogTemplate[],
 ): Promise<Record<string, LogoAccent>> {
@@ -170,7 +151,6 @@ export async function templateAccents(
 
   const accents: Record<string, LogoAccent> = {};
   for (const t of templates) {
-    // A slug the budget cut short is left out and picked up by the next render.
     const accent = settled.get(t.slug);
     if (accent && (accent.hue !== undefined || accent.tone !== undefined))
       accents[t.slug] = accent;

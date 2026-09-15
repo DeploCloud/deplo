@@ -5,11 +5,9 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-// SECRET_EDIT_BLOCKED - the refusal in the UI's words; the server raises the same sentence.
 export const SECRET_EDIT_BLOCKED =
   "Secrets cannot be edited. Delete and add it again.";
 
-// EnvEditButton - the pencil every variable table shows; a secret is write-only and gets none.
 export function EnvEditButton({
   secret,
   onClick,

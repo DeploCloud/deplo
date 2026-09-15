@@ -51,10 +51,8 @@ import type {
   ScopeTreeTeam,
 } from "@/lib/data/tokens/scope-tree";
 
-// The Select needs a value for "matches no template"; it is never selectable.
 const CUSTOM = "custom";
 
-// The API-token editor: a page and not a dialog - forty permissions, a search box and a scope do not fit a modal.
 export function TokenEditor({
   mode,
   token,
@@ -66,12 +64,9 @@ export function TokenEditor({
 }: {
   mode: "create" | "edit";
   token?: ApiTokenDTO;
-  // Revoking takes away THIS team's access, so the dialog has to name it.
   activeTeamId: string;
   preset?: TokenPreset | null;
-  // Every team, project and app the actor can reach - the scope picker's tree.
   tree: ScopeTreeTeam[];
-  // Only an instance admin may hand out instance administration.
   canGrantInstanceAdmin: boolean;
   publicUrl: string;
 }) {
@@ -94,7 +89,6 @@ export function TokenEditor({
         appIds: token?.appIds ?? [],
       } as ScopeSelection,
       instanceAdmin: token?.instanceAdmin ?? false,
-      // An existing token keeps its date unless touched; a new one defaults to 90 days.
       expiry: token ? "keep" : "90",
     }),
     [token, preset],
@@ -128,7 +122,6 @@ export function TokenEditor({
     !sameScope(scope, initial.scope) ||
     !sameCapabilities(caps, initial.capabilities);
 
-  // The server refuses scope + instanceAdmin together, so narrowing turns the bit off.
   function changeScope(next: ScopeSelection) {
     if (
       next.teamIds.length +
@@ -154,7 +147,6 @@ export function TokenEditor({
       folderIds: scope.folderIds,
       appIds: scope.appIds,
       instanceAdmin,
-      // `undefined` (omitted) leaves it as it is; `null` clears it.
       expiresAt: expiresAtFor(expiry),
     };
     startTransition(async () => {
@@ -188,7 +180,6 @@ export function TokenEditor({
     });
   }
 
-  // Not a dialog: Escape or a click away would dismiss the one screen that must not be.
   if (created)
     return (
       <TokenCreated
@@ -345,7 +336,6 @@ export function TokenEditor({
         </Card>
       </div>
 
-      {/* Right rail: the summary and the primary action. */}
       <aside className="h-fit space-y-4 lg:sticky lg:top-20">
         <Card>
           <CardHeader>
@@ -517,7 +507,6 @@ export function TokenEditor({
   );
 }
 
-// Order-blind equality, so re-ticking the same boxes isn't "dirty".
 function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
   const eq = (x: string[], y: string[]) =>
     x.length === y.length && x.every((v) => y.includes(v));
@@ -579,7 +568,6 @@ function nameOf(tree: ScopeTreeTeam[], id: string): string | null {
   return null;
 }
 
-// Computed at submit, not at render: the server refuses a date already in the past.
 function expiresAtFor(choice: string): string | null | undefined {
   if (choice === "keep") return undefined;
   if (choice === "never") return null;

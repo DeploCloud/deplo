@@ -22,7 +22,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { UserSearchResult } from "@/lib/data/members/user-search";
 import type { TeamRoleDTO } from "@/lib/data/roles/role-list";
 
-// AddMemberDialog adds a registered user to the active team; controlled, opened from more than one place.
 export function AddMemberDialog({
   open,
   onOpenChange,
@@ -32,21 +31,16 @@ export function AddMemberDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  // The "create a new user" shortcut is for instance admins only.
   canCreateUser?: boolean;
-  // Only an existing owner may add another; the data layer enforces it too, this only hides the option.
   canAssignOwner?: boolean;
-  // Called after this dialog closes, to open the create-user dialog.
   onCreateUser?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<UserSearchResult[]>([]);
-  // Starts true so the first render shows the skeleton instead of flashing the empty state.
   const [searching, setSearching] = React.useState(true);
   const [picked, setPicked] = React.useState<UserSearchResult | null>(null);
-  // Roles are fetched here, not passed in, so every entry point shows the team's live list.
   const [roles, setRoles] = React.useState<TeamRoleDTO[]>([]);
   const [roleId, setRoleId] = React.useState<string | null>(null);
 
@@ -142,7 +136,6 @@ export function AddMemberDialog({
 
   function add() {
     if (!picked || !roleId) return;
-    // Snapshotted because the dialog closes first, so a refusal can reopen on the same person.
     const chosen = { picked, roleId };
     onOpenChange(false);
     startTransition(async () => {
@@ -196,7 +189,6 @@ export function AddMemberDialog({
                     autoFocus
                   />
                 </div>
-                {/* focus-safe-scroll keeps the rows' focus ring out of the overflow clip. */}
                 <div className="focus-safe-scroll max-h-44 min-h-24 space-y-1 overflow-y-auto">
                   {searching && (
                     <div className="space-y-1" aria-hidden>

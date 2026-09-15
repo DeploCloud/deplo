@@ -14,7 +14,6 @@ import { downsample } from "../monitoring/chart-geometry";
 import { isMetricsSavingEnabled } from "./monitoring-settings";
 import type { Server } from "../types/server";
 
-// ServerMetrics - one server's live reading.
 export interface ServerMetrics {
   serverId: string;
   online: boolean;
@@ -36,7 +35,6 @@ export interface ServerMetrics {
   containers: number;
   agentVersion: string | null;
   expectedAgentVersion: string;
-  // Which backend produced it: "cgroup2" | "docker-stats", empty when not from a frame.
   source: string;
   ts: number;
 }
@@ -59,7 +57,6 @@ function unavailable(
     online: false,
     traefik: false,
     cpu: 0,
-    // The server's OWN stored core count: os.cpus() here reports the control plane's.
     cpuCores: server?.cpuCores ?? 0,
     memUsed: 0,
     memTotal: 0,
@@ -80,7 +77,6 @@ function unavailable(
   };
 }
 
-// An unreachable agent reports online:false - never fabricated, never this machine's numbers.
 async function measureRemote(
   server: Server,
   expected: string,
@@ -88,15 +84,11 @@ async function measureRemote(
   const observedAt = nowIso();
   const conn = await connectAgent(server.id);
   try {
-    // Empty dataDir => the agent measures its own configured --data-dir.
     const m = await conn.metrics("");
-    // The only steady-state path: without it, traefikEnabled would update only on a deploy.
     let traefik = server.traefikEnabled;
-    // From THIS poll's Hello, so a just-updated agent self-corrects in the same snapshot.
     let liveAgentVersion: string | null = reportedAgentVersion(server);
     try {
       const hello = await conn.hello();
-      // ?? traefik keeps the last-known flag when the Hello observed nothing (Docker down).
       traefik = observedTraefik(hello) ?? traefik;
       if (hello.agentVersion) liveAgentVersion = hello.agentVersion;
       await markServerSeen(
@@ -116,9 +108,7 @@ async function measureRemote(
         classifyServerHealth(hello, null, { storageOnly: server.storageOnly }),
         observedAt,
       );
-    } catch {
-      /* metrics succeeded; the Hello refresh is best-effort */
-    }
+    } catch {}
     return {
       serverId: server.id,
       online: true,
@@ -140,7 +130,6 @@ async function measureRemote(
       containers: m.runningContainers,
       agentVersion: liveAgentVersion,
       expectedAgentVersion: expected,
-      // The one-shot RPC carries no backend label; only a stream frame does.
       source: "",
       ts: Date.now(),
     };
@@ -163,9 +152,7 @@ async function metricsFor(
 export async function getServerMetrics(
   serverId: string,
 ): Promise<ServerMetrics> {
-  // Enforced here, not only in the resolver.
   await requireCapability("view_metrics");
-  // Team-scoped: getServer is null for a server this team cannot target.
   const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
   const m = await metricsFor(server, await resolveExpectedAgentVersion());
@@ -173,11 +160,9 @@ export async function getServerMetrics(
   return m;
 }
 
-// getServerMetricsHistory - the buffered history the Monitoring page seeds its charts from.
 export async function getServerMetricsHistory(
   serverId: string,
 ): Promise<ServerMetrics[]> {
-  // Soft (empty) rather than a throw: this one seeds a chart on page load.
   if (!(await hasCapability("view_metrics"))) return [];
   const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
@@ -186,14 +171,12 @@ export async function getServerMetricsHistory(
 
 const FLEET_SPARK_POINTS = 30;
 
-// FleetSpark - one point of a fleet row's sparkline.
 export interface FleetSpark {
   ts: number;
   cpu: number;
   mem: number;
 }
 
-// FleetServerMetrics - one fleet row; ts: 0 means the buffer is empty, not an idle host.
 export interface FleetServerMetrics {
   serverId: string;
   online: boolean;
@@ -208,7 +191,6 @@ export interface FleetServerMetrics {
   spark: FleetSpark[];
 }
 
-// getFleetMetrics - every server's headline reading, read from the in-RAM buffers alone.
 export async function getFleetMetrics(): Promise<FleetServerMetrics[]> {
   if (!(await hasCapability("view_metrics"))) return [];
   const servers = await listServers();
@@ -237,7 +219,6 @@ export async function getFleetMetrics(): Promise<FleetServerMetrics[]> {
     });
 }
 
-// measureServerForCollector - session-free measure for the collector; takes a resolved Server row.
 export const measureServerForCollector = metricsFor;
 
 function withSpecTimeout<T>(p: Promise<T>, ms = 4000): Promise<T> {
@@ -248,9 +229,7 @@ function withSpecTimeout<T>(p: Promise<T>, ms = 4000): Promise<T> {
   return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
 }
 
-// hydrateServerSpecs - fill in each server's cores / RAM / disk for a STATIC render.
 export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
-  // A migration source is never measured: this dial happens INSIDE the page render.
   const measurable = (s: Server) =>
     s.cpuCores === 0 && Boolean(s.agent?.certFingerprint) && !s.importOnly;
   if (!servers.some(measurable)) return servers;
@@ -259,7 +238,6 @@ export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
     servers.map(async (s) => {
       if (!measurable(s)) return s;
       try {
-        // This runs synchronously in the page render, so an unreachable host must fail fast.
         const m = await withSpecTimeout(measureRemote(s, expected));
         if (m.cpuCores <= 0) return s;
         return {

@@ -29,7 +29,6 @@ import {
 import { summarize, summarizeOne, type AppSummary } from "./summary";
 import type { App } from "../../types/app";
 
-// The team-wide manual app order (the `team_app_order` junction), id -> rank.
 async function appOrderRank(teamId: string): Promise<Map<string, number>> {
   const rows = await getDb()
     .select({ appId: teamAppOrder.appId, position: teamAppOrder.position })
@@ -38,7 +37,6 @@ async function appOrderRank(teamId: string): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.appId, r.position] as const));
 }
 
-// listApps: the active team's apps the caller can reach, newest first or the team's manual order.
 export async function listApps(query?: string): Promise<AppSummary[]> {
   const teamId = await requireActiveTeamId();
   const [all, rank] = await Promise.all([
@@ -46,7 +44,6 @@ export async function listApps(query?: string): Promise<AppSummary[]> {
     appOrderRank(teamId),
   ]);
 
-  // A token's project scope applies HERE: `loadAppsByTeam` is an engine primitive and never filters itself.
   const scoped = all.filter((p) => inAppScope(p) && !p.deletingAt);
   const reach = await appCapabilitiesForTeam(
     teamId,
@@ -72,7 +69,6 @@ export async function listApps(query?: string): Promise<AppSummary[]> {
     });
 }
 
-// reorderApps persists the team-wide Overview order - one arrangement for everyone, gated like a team setting.
 export async function reorderApps(orderedIds: string[]): Promise<void> {
   const teamId = await requireActiveTeamId();
   await requireTeamWide("the team-wide app order");
@@ -105,7 +101,6 @@ export async function reorderApps(orderedIds: string[]): Promise<void> {
   });
 }
 
-// React-cached so one request reading the same app twice hits the DB once.
 export const getAppBySlug = cache(async function getAppBySlug(
   slug: string,
 ): Promise<AppSummary | null> {
@@ -121,12 +116,10 @@ export async function getAppById(id: string): Promise<App | null> {
   return p && (await canReachApp(p.id)) ? p : null;
 }
 
-// Holding nothing on an app is what keeps it - and its folder - out of the whole UI.
 async function canReachApp(id: string): Promise<boolean> {
   return (await appCapabilities(id)).length > 0;
 }
 
-// The cookie-free twin of canReachApp: getCurrentUser() reads cookies, which an SSE tick cannot.
 async function reachableByUser(
   userId: string,
   teamId: string,
@@ -138,7 +131,6 @@ async function reachableByUser(
   );
 }
 
-// summarizeForTeam is getAppBySlug's cookie-free twin, folder gate included.
 export async function summarizeForTeam(
   id: string,
   teamId: string,

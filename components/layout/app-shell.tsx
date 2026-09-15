@@ -31,31 +31,23 @@ export function AppShell({
   breadcrumb: BreadcrumbGraph;
   capabilities: string[];
   isAdmin: boolean;
-  // A passkey that works here already counts as a second factor (ADR-0024).
   hasPasskey?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    // Spans both panes: the sidebar collapses to zero width and the topbar hosts the control that expands it again.
     <SidebarProvider>
-      {/* Reads the stored log type size so a pane without the menu matches. */}
       <LogsDisplayVars />
-      {/* Suspense because it reads the query string, which the Overview's drill-ins navigate with. */}
       <React.Suspense fallback={null}>
         <NavProgress />
       </React.Suspense>
-      {/* Keyed by team: the live count resolves server-side when the stream opens, so a team switch must reconnect it. */}
       <DeployActivityProvider key={team.id}>
         <MigrationActivityProvider key={team.id}>
           <UpdateProvider enabled={isAdmin}>
-            {/* A client component because it reads the route: the log consoles take the whole area right of the sidebar, no other page does. */}
             <ShellFrame
               contentKey={team.id}
               sidebar={
                 <>
-                  {/* Tracks in-app history depth so back links can use the browser's back when there is a page to return to. */}
                   <NavigationHistoryTracker />
-                  {/* Connecting a git host ends on whatever page started it, so its one-shot confirmation is mounted once here. */}
                   <GitConnectToast />
                   <Sidebar
                     capabilities={capabilities}

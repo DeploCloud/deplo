@@ -91,7 +91,6 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
-// StorageSettingsForm edits the storage mounted into the app's container(s).
 export function StorageSettingsForm({
   appId,
   slug,
@@ -167,7 +166,6 @@ export function StorageSettingsForm({
             previous?.status === "editable" && previous.draft !== previous.saved
               ? previous.draft
               : undefined;
-          // Keyed by the path we ASKED for, not the one the server echoed.
           const next = storageFileDraft({ ...appStorageFile, path }, keep);
           if (!superseded()) setFiles((prev) => ({ ...prev, [rowId]: next }));
           return next;
@@ -186,7 +184,6 @@ export function StorageSettingsForm({
     [appId],
   );
 
-  // A failed read is left alone: retrying it would hammer an unreachable agent.
   React.useEffect(() => {
     if (!canManageFiles) return;
     const timer = setTimeout(() => {
@@ -215,7 +212,6 @@ export function StorageSettingsForm({
   const dirty = currentVolumesKey !== savedVolumesKey || contentDirty;
 
   function saveVolumes() {
-    // The same validator the editor uses; the server stays the boundary.
     for (const v of volumes) {
       const problem = volumeProblem(v, containerWorkdir);
       if (problem) {
@@ -234,11 +230,9 @@ export function StorageSettingsForm({
     const committedVolumesKey = volumesKey(volumes, containerWorkdir);
     const targets = fileTargets;
     startTransition(async () => {
-      // Files first, so no row is ever saved pointing at a file that isn't there.
       const written: { id: string; path: string; text: string }[] = [];
       if (canManageFiles) {
         for (const t of targets) {
-          // Writing to "" is the one thing this loop must never do.
           if (!t.path) continue;
           const known = filesRef.current[t.id];
           const file =
@@ -276,7 +270,6 @@ export function StorageSettingsForm({
           hostPath:
             kindOf(v) === "host" ? (v.hostPath ?? "").trim() : undefined,
           service: (v.service ?? "").trim() || undefined,
-          // Sent explicitly, so a later root-directory change cannot move the mount.
           mountPath: effectiveMountPath(v, containerWorkdir),
           readOnly: v.readOnly,
           propagation:
@@ -320,7 +313,6 @@ export function StorageSettingsForm({
             />
           </CardTitle>
         </CardHeader>
-        {/* A real form, so Enter saves; display: contents keeps Card's layout. */}
         <form
           className="contents"
           onSubmit={(e) => {

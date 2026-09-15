@@ -96,7 +96,6 @@ test("changed content is written", () => {
 });
 
 test("a file that isn't there yet is created even when it is empty", () => {
-  // Docker answers a missing bind source by inventing an empty directory there.
   assert.equal(
     pendingFileWrite(
       editable({ exists: false, saved: "", draft: "" }),

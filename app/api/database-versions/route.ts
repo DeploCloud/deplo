@@ -3,7 +3,6 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { listTags } from "@/lib/registry/client";
 import type { DatabaseType } from "@/lib/types/database";
 
-// Mirrors DB_IMAGES in lib/deploy/database-compose.ts; `listTags` expands bare Hub names to `library/…` itself.
 const HUB_REPO: Record<DatabaseType, string> = {
   postgres: "postgres",
   mysql: "mysql",
@@ -13,7 +12,6 @@ const HUB_REPO: Record<DatabaseType, string> = {
   clickhouse: "clickhouse/clickhouse-server",
 };
 
-// Offline fallback AND a floor merged into the live list, so common versions are never missing.
 const FALLBACK: Record<DatabaseType, string[]> = {
   postgres: ["18", "17", "16", "15"],
   mysql: ["9.1", "8.4", "8.0"],
@@ -30,7 +28,6 @@ function isEngine(v: string | null): v is DatabaseType {
   return v != null && Object.hasOwn(HUB_REPO, v);
 }
 
-// Hub tag lists are mostly variants ("18-alpine", "latest"); only clean numerics are real versions.
 function isCleanVersion(tag: string): boolean {
   return /^\d+(\.\d+){0,2}$/.test(tag);
 }
@@ -51,17 +48,13 @@ async function versionsFor(engine: DatabaseType): Promise<string[]> {
 
   let live: string[] = [];
   try {
-    // Hub orders by last_updated, so recent majors sit near the top of the batch.
     const tags = await listTags(HUB_REPO[engine], 100);
     live = tags.map((t) => t.name).filter(isCleanVersion);
-  } catch {
-    // Unreachable / rate-limited: fall back to the floor below.
-  }
+  } catch {}
 
   const merged = Array.from(new Set([...live, ...FALLBACK[engine]])).sort(
     compareDesc,
   );
-  // Cap so the dropdown stays scannable; free text covers anything trimmed.
   const versions = merged.slice(0, 40);
   cache.set(engine, { at: Date.now(), versions });
   return versions;

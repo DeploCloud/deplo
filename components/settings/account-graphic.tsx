@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Account page's mark: an ID badge with a padlock over its corner. */
 export function AccountGraphic({ className }: { className?: string }) {
   return (
     <svg

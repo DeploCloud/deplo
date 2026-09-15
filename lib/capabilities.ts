@@ -1,9 +1,6 @@
-// https://deplo.build/docs/reference/capabilities
-
 import type { Capability } from "./types/identity";
 import { ALL_CAPABILITIES } from "./types/identity";
 
-// CapabilityMeta - how a permission is shown in the role editor.
 export interface CapabilityMeta {
   label: string;
   description: string;
@@ -74,7 +71,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     description:
       "Create, edit and run scheduled commands inside an app or database container.",
     keywords: "cron schedule scheduled task job timer recurring command",
-    // Same class as the console: an arbitrary command inside the container, as its user, with no sandbox.
     sensitive: true,
   },
 
@@ -188,7 +184,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     description:
       "Permanently delete a single backup, removing the file it was restored from.",
     keywords: "remove artifact purge prune erase restore point",
-    // The only verb here that destroys data with no way back: the artifact can be a target's last restore point.
     sensitive: true,
   },
   manage_backup_destinations: {
@@ -197,7 +192,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
       "Connect, test and remove the places backups are stored, and download the key that decrypts them.",
     keywords:
       "bucket s3 server disk storage remote credentials minio garage path recovery key",
-    // It hands over the recovery key, which decrypts EVERY artifact at a destination, grant or no grant.
     sensitive: true,
   },
 
@@ -213,7 +207,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   manage_tokens: {
     label: "Use API tokens",
-    // Tokens are personal: this is the team's say over whether a member's tokens reach it at all.
     description:
       "Let their own API tokens act in this team, from scripts, CI and other clients.",
     keywords: "api access token bearer cli automation",
@@ -279,7 +272,6 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
 };
 
-// CAPABILITY_CATEGORIES - the role editor's browse order; a category is a place to LOOK, not a thing to grant.
 export const CAPABILITY_CATEGORIES: {
   key: string;
   label: string;
@@ -377,7 +369,6 @@ export const CAPABILITY_CATEGORIES: {
   },
 ];
 
-// LEGACY_CAPABILITY_EXPANSION - what each capability of the ORIGINAL eight expands to.
 export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   view: ["view", "view_logs", "view_metrics", "view_activity"],
   deploy: [
@@ -420,19 +411,15 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   ],
   manage_members: ["manage_members", "manage_roles"],
   manage_team: ["manage_team", "delete_team"],
-  // `manage_s3` was renamed to `manage_backup_destinations` (migration 0083).
   manage_s3: ["manage_backup_destinations"],
 };
 
-// LEGACY_CAPABILITY_NAMES - every retired spelling that still expands as input.
 export const LEGACY_CAPABILITY_NAMES = Object.keys(LEGACY_CAPABILITY_EXPANSION);
 
-// RETIRED_CAPABILITY_NAMES - the names that no longer exist as capabilities in their own right.
 export const RETIRED_CAPABILITY_NAMES = LEGACY_CAPABILITY_NAMES.filter(
   (n) => !(ALL_CAPABILITIES as string[]).includes(n),
 );
 
-// expandLegacyCapabilities - normalise a list that may still use a RETIRED name, dropping anything unrecognised.
 export function expandLegacyCapabilities(caps: string[]): Capability[] {
   const out = new Set<Capability>();
   for (const c of caps) {
@@ -445,7 +432,6 @@ export function expandLegacyCapabilities(caps: string[]): Capability[] {
   return ALL_CAPABILITIES.filter((c) => out.has(c));
 }
 
-// capabilitySearchText - the lower-cased haystack for the role editor's search box.
 export function capabilitySearchText(cap: Capability): string {
   const meta = CAPABILITY_META[cap];
   return `${cap} ${meta.label} ${meta.description} ${meta.keywords ?? ""}`
@@ -453,7 +439,6 @@ export function capabilitySearchText(cap: Capability): string {
     .replace(/_/g, " ");
 }
 
-// searchCapabilities - the capabilities matching a free-text query, in catalog order.
 export function searchCapabilities(query: string): Capability[] {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [...ALL_CAPABILITIES];

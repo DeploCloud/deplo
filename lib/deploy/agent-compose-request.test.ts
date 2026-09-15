@@ -46,8 +46,6 @@ test("compose plan → SOURCE_KIND_COMPOSE, no build, no single image to pull", 
 });
 
 test("a compose stack's bring-up pulls every service's image, the operator's flags after", async () => {
-  // `docker compose up -d` alone pulls only a MISSING image, so a redeploy of a `:latest`
-  // stack kept running the old one.
   const plain = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },
@@ -68,7 +66,6 @@ test("a compose stack's bring-up pulls every service's image, the operator's fla
 });
 
 test("a single image is pulled or built BEFORE the bring-up, so its command stays bare", async () => {
-  // A built image exists only on the host: `--pull always` there would fail the deploy.
   const built = await buildDeployRequest({
     ...base,
     imageRef: "deplo/myapp:abc123",

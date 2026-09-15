@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import sharp from "sharp";
 import { logoToneFromDataUri } from "./logo-tone";
 
-/** A 32x32 image of one colour, as the data-URI an app actually stores. */
 async function dataUri(fill: number[]): Promise<string> {
   const raw = Buffer.alloc(32 * 32 * 4);
   for (let i = 0; i < raw.length; i += 4) raw.set(fill, i);
@@ -36,7 +35,6 @@ test("a logo with colour needs no plate", async () => {
 
 test("nothing readable is nothing, never a throw", async () => {
   assert.equal(await logoToneFromDataUri(null), null);
-  // The legacy shape: a template path from before the catalog moved out.
   assert.equal(await logoToneFromDataUri("/templates/uptime-kuma.webp"), null);
   assert.equal(await logoToneFromDataUri("data:image/png;base64,zzzz"), null);
 });

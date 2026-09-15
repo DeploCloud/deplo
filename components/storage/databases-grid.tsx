@@ -74,7 +74,6 @@ const STATUS_LABELS: Record<DatabaseStatus, string> = {
   error: "Error",
 };
 
-// DatabasesGrid - search, engine + status filters, grid/list toggle and drag-to-reorder (persisted via reorderDatabases).
 export function DatabasesGrid({
   databases,
   serverNames,
@@ -89,14 +88,10 @@ export function DatabasesGrid({
   databases: DatabaseDTO[];
   serverNames: Record<string, string>;
   environments?: { id: string; label: string }[];
-  // `configure_databases` - what the move is gated on.
   canConfigure?: boolean;
   canReorder: boolean;
-  // `manage_infra` - the capability `revealConnection` needs.
   canReveal: boolean;
-  // `control_databases` - gates the bulk Start / Stop / Restart.
   canControl: boolean;
-  // `delete_databases` - gates the bulk Delete.
   canDelete: boolean;
   createButton: React.ReactNode;
 }) {
@@ -107,7 +102,6 @@ export function DatabasesGrid({
   const [status, setStatus] = React.useState<DatabaseStatus | "all">("all");
   const [view, setView] = React.useState<View>("grid");
 
-  // Optimistic order, seeded from the server list (already in persisted order).
   const [order, setOrder] = React.useState<string[]>(() =>
     databases.map((d) => d.id),
   );
@@ -133,11 +127,8 @@ export function DatabasesGrid({
     );
   });
 
-  // Only when nothing is filtering: a drop on a filtered view would persist a partial order.
   const reorderable = canReorder && !filtering;
 
-  // Only what is on screen is selectable, so a filtered-out database can never become a bulk target.
-  // A database a migration is still writing stays out too: selection is what feeds the bulk delete.
   const visibleIds = filtered.filter((d) => !d.migrationRunId).map((d) => d.id);
   const selection = useCardSelection(visibleIds);
   const {
@@ -151,7 +142,6 @@ export function DatabasesGrid({
   const selectedIds = visibleIds.filter((id) => selected.has(id));
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
 
-  // No bulk endpoint: one mutation each, and the selection survives a refusal so re-confirming retries.
   async function bulkRun(mutation: string, success: string) {
     const ids = selectedIds;
     const results = await Promise.all(
@@ -316,7 +306,6 @@ export function DatabasesGrid({
                 <PendingCards />
               </div>
             </SortableContext>
-            {/* Portalled above the grid so the lifted card is never clipped. */}
             <DragOverlay dropAnimation={DRAG_DROP_ANIMATION}>
               {activeDb ? (
                 <DragStack count={activeGroup.length}>
@@ -388,7 +377,6 @@ export function DatabasesGrid({
         />
       </SelectionBar>
 
-      {/* No force option here: "delete it anyway" stays on the single-card dialog, the escape hatch for a host that is never coming back. */}
       <ConfirmAction
         open={bulkDeleteOpen}
         onOpenChange={setBulkDeleteOpen}
@@ -463,7 +451,6 @@ function gridClass(view: View): string {
     : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3";
 }
 
-// Whole-card drag + a keyboard handle, swallowing the trailing click dnd-kit emits after a drop so a drag never navigates.
 function SortableCard({
   id,
   selected,
@@ -475,7 +462,6 @@ function SortableCard({
   id: string;
   selected: boolean;
   groupDragging?: boolean;
-  // A migration is still writing this row: no drag, no modifier-select.
   locked?: boolean;
   onSelect: (e: {
     metaKey: boolean;
@@ -504,7 +490,6 @@ function SortableCard({
 
   const { onKeyDown: keyboardListener, ...rawPointerListeners } =
     listeners ?? {};
-  // Scoped to this card's DOM: a press inside a menu the card portalled still reaches these, and must not start a drag under a backdrop.
   const pointerListeners = scopeListenersToSubtree(rawPointerListeners);
   const {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -529,12 +514,10 @@ function SortableCard({
   }, [isDragging]);
 
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
-    // A portalled menu is still in this card's React tree, so drop anything not physically inside the card (lib/portal-event-scope.ts).
     if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(
       (e.target as HTMLElement).closest?.("[data-card-actions]"),
     );
-    // Swallow the click dnd-kit emits on the dragged card after a drop.
     if (draggedRef.current) {
       draggedRef.current = false;
       if (onControls) return;

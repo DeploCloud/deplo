@@ -4,7 +4,6 @@ import * as React from "react";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 
-// TimeAgo - the string differs between server render and hydration, so suppressHydrationWarning is the point, not a mismatch.
 export function TimeAgo({ at, live = false }: { at: string; live?: boolean }) {
   const [, tick] = React.useState(0);
   React.useEffect(() => {

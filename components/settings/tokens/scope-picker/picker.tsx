@@ -11,7 +11,6 @@ import type { ScopeNode, ScopeSelection } from "./selection";
 import { ScopeTree } from "./tree";
 import { useScopePicker } from "./use-scope-picker";
 
-// ScopePicker - what an API token may reach, as the tree it actually is.
 export function ScopePicker({
   tree,
   selection,
@@ -28,15 +27,11 @@ export function ScopePicker({
   selection: ScopeSelection;
   onChange: (next: ScopeSelection) => void;
   disabled?: boolean;
-  // A team checkbox is a second way to say "no limit", which is what ticking
-  // nothing already says.
   teamPickable?: boolean;
   info?: React.ReactNode;
   docs?: DocsTopic;
   emptyNote?: React.ReactNode;
   notice?: React.ReactNode;
-  // An extra control on the right of a row. Rendered OUTSIDE the row's `<label>`,
-  // so clicking it doesn't toggle the checkbox next to it.
   renderMeta?: (node: ScopeNode) => React.ReactNode;
 }) {
   const state = useScopePicker({

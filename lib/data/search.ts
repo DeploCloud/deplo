@@ -26,7 +26,6 @@ import { listRoles } from "./roles/role-list";
 import { listServers } from "./servers/roster";
 import { listMyTeams } from "./teams";
 
-// SearchTeam - the team a hit was found in.
 export interface SearchTeam {
   id: ID;
   name: string;
@@ -34,7 +33,6 @@ export interface SearchTeam {
   avatarUrl: string | null;
 }
 
-// SearchApp - enough to recognise an app and call `getApp` next.
 export interface SearchApp {
   id: ID;
   name: string;
@@ -54,7 +52,6 @@ export interface SearchDatabase {
   team: SearchTeam;
 }
 
-// SearchServer - servers are shared across teams, so a hit names no team.
 export interface SearchServer {
   id: ID;
   name: string;
@@ -125,7 +122,6 @@ export interface SearchCron {
   team: SearchTeam;
 }
 
-// SearchTemplate - the catalogue is public and has no team.
 export interface SearchTemplate {
   slug: string;
   name: string;
@@ -221,7 +217,6 @@ function top<T>(rows: Ranked<T>[], key?: (hit: T) => string): T[] {
   return [...seen.values()].slice(0, MAX_HITS);
 }
 
-// Answers `[]` when that team refuses: a gate that throws for one kind must not cost the others.
 async function inTeam<T>(
   identity: RequestIdentity | null,
   userId: ID,
@@ -229,11 +224,7 @@ async function inTeam<T>(
   read: () => Promise<T[]>,
 ): Promise<T[]> {
   try {
-    return await runWithIdentity(
-      // The token grant rides along, so a bearer client stays clamped in every team.
-      { ...(identity ?? {}), userId, teamId },
-      read,
-    );
+    return await runWithIdentity({ ...(identity ?? {}), userId, teamId }, read);
   } catch {
     return [];
   }
@@ -246,12 +237,9 @@ export async function search(
   if (!foldQuery(query)) return EMPTY;
 
   const want = new Set(kinds);
-  // Resolved once: React `cache()` is inert outside a render, so every read below
-  // would otherwise re-resolve the session it already knows.
   const identity = currentIdentity();
   const user = await assertUser();
   const activeTeamId = await getActiveTeamId();
-  // Already clamped to the teams a bearer token's scope names.
   const teams = await listMyTeams();
 
   const found = await Promise.all(
@@ -292,7 +280,6 @@ export async function search(
         on("cron", listTeamCronJobs),
       ]);
 
-      // Belt and braces: a mis-resolved team means missing rows, never another team's.
       const mine = <R extends { teamId: string }>(rows: R[]) =>
         rows.filter((r) => r.teamId === t.id);
 
@@ -384,7 +371,6 @@ export async function search(
         ),
         members: rank(
           members,
-          // Never the email: a search must not turn a name into an address.
           (m) => [m.name, m.username],
           (m) => ({
             userId: m.userId,
@@ -444,8 +430,6 @@ export async function search(
   return {
     apps: top(found.flatMap((f) => f.apps)),
     databases: top(found.flatMap((f) => f.databases)),
-    // A server on `all_teams` is reachable from every team, so it would otherwise
-    // come back once per team.
     servers: top(
       found.flatMap((f) => f.servers),
       (s) => s.id,

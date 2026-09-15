@@ -11,7 +11,6 @@ import { publicBaseUrl } from "@/lib/public-url";
 import { ConsentForm } from "@/components/oauth/consent-form";
 import { ConsentRefusal } from "@/components/oauth/consent-refusal";
 
-// OAuthConsentPage - approving this form mints a real API token.
 export default async function OAuthConsentPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
@@ -20,12 +19,10 @@ export default async function OAuthConsentPage(props: {
   const clientId = typeof params.client_id === "string" ? params.client_id : "";
   const scope = typeof params.scope === "string" ? params.scope : "";
 
-  // Must survive the round trip byte for byte - see `rebuildOauthQuery`.
   const oauthQuery = rebuildOauthQuery(params);
 
   if (!clientId) redirect("/settings/mcp");
 
-  // Not the security boundary: the consent endpoint verifies the sig and its expiry, and owns the mint.
   if (typeof params.sig !== "string" || !params.sig)
     return (
       <ConsentRefusal
@@ -48,7 +45,6 @@ export default async function OAuthConsentPage(props: {
   const [tree, activeTeamId, connectableTeamIds] = await Promise.all([
     listScopeTree(),
     requireActiveTeamId(),
-    // Teams where this person may connect agents and MCP is on.
     listConnectableTeamIds(),
   ]);
 

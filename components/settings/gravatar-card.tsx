@@ -16,7 +16,6 @@ import { Switch } from "@/components/ui/switch";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 
-// GravatarCard - off by default: it is the member's browser that dials gravatar.com, not the panel.
 export function GravatarCard({ enabled }: { enabled: boolean }) {
   const router = useRouter();
   const [on, setOn] = React.useState(enabled);

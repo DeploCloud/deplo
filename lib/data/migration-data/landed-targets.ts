@@ -26,24 +26,14 @@ export interface Landed {
   targetKind: "app" | "database";
   targetId: string;
   targetName: string;
-  /** The stack slug the agent knows it by. */
   targetSlug: string;
   targetServerId: string;
   volumes: NamedVolume[];
-  /** The host directories this app bind-mounts. Only an app has any. */
   hostMounts: HostMount[];
-  /** Container paths a config file already fills - its bytes came across with the
-   *  configuration, so no host directory has to. */
   fileMounts: Set<string>;
-  /** Engine facts, for the post-copy check. Only on a database. */
   engine?: { type: DatabaseType; username: string; dbName: string };
 }
 
-/**
- * What this import run landed on: source service id → the Deplo resource. A
- * service the run SKIPPED because it was already here is a target too - read as
- * "not created", a second pass copied nothing and took the agent off the source.
- */
 export async function runTargets(
   runId: string,
 ): Promise<Map<string, { targetKind: "app" | "database"; targetId: string }>> {
@@ -61,9 +51,6 @@ export async function runTargets(
     string,
     { targetKind: "app" | "database"; targetId: string }
   >();
-  // A skipped target counts only when a migration made it: somebody's own app
-  // or database is never a place a copy may wipe and refill. The durable fact is
-  // a `created` line in SOME run's report; the row's own marker is transient.
   const migrated = async (kind: "app" | "database", ids: string[]) => {
     if (ids.length === 0) return new Set<string>();
     const table = kind === "app" ? appsTable : databasesTable;
@@ -115,11 +102,6 @@ export async function runTargets(
   return out;
 }
 
-/**
- * The imported resource itself, with the volumes it would receive. Loaded BY ID
- * and scoped to the team, so a run item pointing somewhere it should not reach
- * resolves to nothing rather than to someone else's database.
- */
 export async function landedFor(
   teamId: string,
   target: { targetKind: "app" | "database"; targetId: string },
@@ -199,9 +181,6 @@ export async function landedFor(
     targetSlug: hit.slug,
     targetServerId: hit.serverId,
     volumes: [
-      // A volume Deplo manages is rendered with an explicit `name:`; one declared
-      // in the user's own compose is prefixed by the project, and `deploVolumeName`
-      // is the only place that knows which is which.
       ...managed
         .filter((v) => (v.type ?? "named") === "named")
         .map((v) => ({
@@ -219,12 +198,7 @@ export async function landedFor(
       ...managed
         .filter((v) => v.type === "host" && (v.hostPath ?? "").trim())
         .map((v) => ({ hostPath: v.hostPath!.trim(), mountPath: v.mountPath })),
-      // The stack's own YAML binds host directories too, and it is the same file
-      // that came across: a `./x` bind resolves into the stack's files dir,
-      // exactly where the render points it (`rewriteMountSource`).
       ...composeHostMounts(hit.compose ?? "", stackFilesDir(hit.slug)),
-      // A directory the panel kept beside the app lands in Deplo's own files dir,
-      // and it is a directory: the config channel carries files, not folders.
       ...managed
         .filter((v) => v.type === "app" && (v.projectPath ?? "").trim())
         .map((v) => ({
@@ -233,8 +207,6 @@ export async function landedFor(
           stackRelative: true,
         })),
     ],
-    // A file mount lands as a project file, not a bind, and the panel handed over
-    // its CONTENT with the configuration - so nothing here is missing it.
     fileMounts: new Set(
       managed
         .filter((v) => v.type === "app")

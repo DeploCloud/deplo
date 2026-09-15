@@ -16,17 +16,14 @@ export {
   useSelectedLayoutSegments,
 } from "next/navigation";
 
-/** The team the open page belongs to, or null outside the dashboard. */
 export function useTeamSlug(): string | null {
   return teamSlugFromPath(useNextPathname());
 }
 
-// useFlatPathname is the open path WITHOUT its team segment, how every path here is written.
 export function useFlatPathname(): string {
   return flatPath(useNextPathname());
 }
 
-// useRouter re-adds the team to every push: import it from here, never from `next/navigation` (eslint enforces it).
 export function useRouter() {
   const router = useNextRouter();
   const slug = useTeamSlug();

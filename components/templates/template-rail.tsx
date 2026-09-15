@@ -7,7 +7,6 @@ import { titleClass } from "@/components/shared/page-header";
 
 const FADE = "56px";
 
-// TemplateRail - native overflow and scroll snap, because `ScrollArea` takes no orientation and mounts a vertical scrollbar.
 export function TemplateRail({
   title,
   subtitle,
@@ -27,7 +26,6 @@ export function TemplateRail({
   const measure = React.useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    // 1px of slack: sub-pixel layout leaves scrollLeft short of the end and kept the right arrow lit on a fully scrolled row.
     setEdges({
       left: el.scrollLeft > 1,
       right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
@@ -52,7 +50,6 @@ export function TemplateRail({
       });
   };
 
-  // Masked, not overlaid (a gradient would be a fill nobody chose), and right only - a fade over the left edge cuts a card.
   const mask = edges.right
     ? `linear-gradient(to right, black calc(100% - ${FADE}), transparent 100%)`
     : undefined;

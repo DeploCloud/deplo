@@ -5,8 +5,6 @@ import { Command as CommandPrimitive } from "cmdk";
 
 import { cn } from "@/lib/utils";
 
-// No shadcn CommandDialog on purpose: the palette composes this repo's DialogContent (hideClose, selfManaged, nested-dismiss guard).
-
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive>

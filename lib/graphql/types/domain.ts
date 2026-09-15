@@ -205,7 +205,6 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id, patch }) => {
       const next: DomainPatch = {
         name: patch.name ?? undefined,
-        // `port` is tri-state: a value, null to clear, absent to leave it.
         port: patch.port === undefined ? undefined : patch.port,
         entrypoint:
           patch.entrypoint === undefined ? undefined : patch.entrypoint,
@@ -231,7 +230,6 @@ builder.mutationFields((t) => ({
       "domain onto the `cloudflare` provider.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      // Without the reroute the domain reports "verified" while the container's labels never mention it.
       const domain = await verifyDomain(id);
       const routable = isRoutableDomain(domain);
       if (domain.statusChanged || routable) await applyRouting(domain.appId);

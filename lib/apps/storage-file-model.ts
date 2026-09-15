@@ -1,8 +1,6 @@
-// StorageFileState mirrors `AppStorageFile.state`: what the agent found at the path.
 export type StorageFileState =
   "text" | "new" | "folder" | "binary" | "too-large";
 
-// StorageFileDraft is one File entry's content, as the Storage form holds it.
 export interface StorageFileDraft {
   path: string;
   status: "loading" | "editable" | "blocked" | "error";
@@ -20,7 +18,6 @@ const BLOCKED_MESSAGE: Record<"folder" | "binary" | "too-large", string> = {
     "This file is too big to edit here (1 MiB max). It stays mounted as it is.",
 };
 
-// storageFileDraft turns the server's answer into what the editor shows.
 export function storageFileDraft(
   file: { path: string; state: string; text: string },
   keepDraft?: string,
@@ -48,7 +45,6 @@ export function storageFileDraft(
   };
 }
 
-// loadingFileDraft is the placeholder while a read is in flight.
 export function loadingFileDraft(path: string): StorageFileDraft {
   return {
     path,
@@ -60,7 +56,6 @@ export function loadingFileDraft(path: string): StorageFileDraft {
   };
 }
 
-// unpathedFileDraft is what the box holds before the entry names a file.
 export function unpathedFileDraft(text: string): StorageFileDraft {
   return {
     path: "",
@@ -72,7 +67,6 @@ export function unpathedFileDraft(text: string): StorageFileDraft {
   };
 }
 
-// failedFileDraft is a read that failed for a real reason.
 export function failedFileDraft(
   path: string,
   message: string,
@@ -87,7 +81,6 @@ export function failedFileDraft(
   };
 }
 
-// fileDraftIsDirty reports whether this entry has content the user hasn't saved yet.
 export function fileDraftIsDirty(
   draft: StorageFileDraft | undefined,
   path: string,
@@ -99,7 +92,6 @@ export function fileDraftIsDirty(
   );
 }
 
-// pendingFileWrite is what the save must write to `path`, or null to leave it alone.
 export function pendingFileWrite(
   draft: StorageFileDraft | undefined,
   path: string,

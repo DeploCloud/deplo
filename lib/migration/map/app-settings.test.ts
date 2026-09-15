@@ -60,7 +60,6 @@ test("mapBuildSettings sends publishDirectory to the field the builder reads", (
 });
 
 test("mapBuildSettings ignores the settings the chosen builder never reads", () => {
-  // Dokploy fills every build column with its own defaults, so none of them are choices this app made.
   const { value } = mapBuildSettings(
     app({
       buildType: "nixpacks",
@@ -120,7 +119,6 @@ test("mapPorts carries a published port across as it is", () => {
   assert.deepEqual(mapPorts(app()).value, []);
 });
 
-// 80 and 443 belong to the proxy, and everything under 1024 to the host.
 test("mapPorts refuses a privileged port and says what to do instead", () => {
   const { value, notes } = mapPorts(
     app({
@@ -133,7 +131,6 @@ test("mapPorts refuses a privileged port and says what to do instead", () => {
 });
 
 test("mapLogo carries a Dokploy icon across untouched", () => {
-  // What Dokploy stores: a template logo it inlined itself, and the browser-built SVG its bundled icon set produces.
   const png = `data:image/png;base64,${Buffer.from("not really a png").toString("base64")}`;
   const svg = `data:image/svg+xml;base64,${Buffer.from(
     '<svg xmlns="http://www.w3.org/2000/svg"/>',
@@ -148,15 +145,12 @@ test("mapLogo drops what Deplo would not store, and never throws", () => {
   assert.equal(mapLogo(undefined), null);
   assert.equal(mapLogo(""), null);
   assert.equal(mapLogo("   "), null);
-  // A remote URL is the shape the strict CSP exists to refuse.
   assert.equal(
     mapLogo("https://templates.dokploy.com/blueprints/n8n/logo.png"),
     null,
   );
-  // An image type outside Deplo's allowlist, and a non-image data URI.
   assert.equal(mapLogo("data:image/avif;base64,AAAA"), null);
   assert.equal(mapLogo("data:text/html;base64,PHNjcmlwdD4="), null);
-  // Dokploy accepts up to 2MB of raw image and Deplo stores the inflated string, so the ceiling is the string length.
   const huge = `data:image/png;base64,${"A".repeat(MAX_LOGO_STRING_LEN)}`;
   assert.equal(mapLogo(huge), null);
 });

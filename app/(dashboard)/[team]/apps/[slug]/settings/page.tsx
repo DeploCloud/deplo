@@ -15,7 +15,6 @@ export default async function AppGeneralSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // Same dispatch the detector runs, so the offer matches what detection can read.
   const detectable = faviconSourceKind(project) !== "none";
 
   return (

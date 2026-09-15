@@ -30,7 +30,6 @@ import { RemoteMarkdown } from "@/components/shared/remote-markdown";
 import { UpdateGraphic } from "@/components/settings/update-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 
-// FleetSummary - how much of the fleet is on the agent release the control plane expects.
 export interface FleetSummary {
   total: number;
   outdated: number;
@@ -89,7 +88,6 @@ function day(iso: string | null): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
-// DeploUpdatesTab - what this instance runs, what the fleet runs, what changed.
 export function DeploUpdatesTab({
   active,
   version,
@@ -123,7 +121,6 @@ export function DeploUpdatesTab({
     setListError(res.data?.deploChangelog?.error ?? null);
   }, []);
 
-  // First activation only: nobody who never opens Updates costs a GitHub call.
   React.useEffect(() => {
     if (!active || loaded.current) return;
     loaded.current = true;
@@ -150,7 +147,6 @@ export function DeploUpdatesTab({
     }
   }
 
-  // The panel restarts mid-update, so the signal is the version it reports on return.
   React.useEffect(() => {
     if (!updating) return;
     const startedAt = Date.now();
@@ -176,7 +172,6 @@ export function DeploUpdatesTab({
         window.location.reload();
         return;
       }
-      // The installer restores the previous image on failure, so the old version means failed.
       if (Date.now() - startedAt > UPDATE_TIMEOUT_MS) {
         setStalled(true);
         return;
@@ -215,7 +210,6 @@ export function DeploUpdatesTab({
 
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
-      {/* First in the DOM on a phone, last and pinned on a wide screen. */}
       <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
         <UpdateGraphic className="w-48 xl:w-[72%]" />
       </div>
@@ -246,7 +240,6 @@ export function DeploUpdatesTab({
                   {manual && <ManualUpdate reason={manual} />}
                 </>
               )}
-              {/* An update that did not take leaves the buttons, to try again. */}
               {(!updating || stalled) && (
                 <>
                   <div className="flex flex-wrap items-center gap-2">

@@ -19,9 +19,6 @@ const DEPLOY_COLUMNS = {
   id: varsTable.id,
   key: varsTable.key,
   valueEnc: varsTable.valueEnc,
-  // `plain` | `secret`, and it has to travel with the entry: the fork-preview drop in
-  // lib/deploy/build/deploy-env.ts asks every layer the same question, and a column left out of
-  // this projection answered "not a secret" for a team's whole shared-variable set.
   type: varsTable.type,
   createdAt: varsTable.createdAt,
 } as const;
@@ -34,8 +31,6 @@ type DeployRow = {
   createdAt: string;
 };
 
-// Stitch the targets junction on and order the layer (`created_at ASC` breaks a
-// same-key collision within it). An empty target set means every runtime.
 async function toEntries(rows: DeployRow[]): Promise<SharedVarEntry[]> {
   if (rows.length === 0) return [];
   const targetRows = await getDb()
@@ -77,9 +72,6 @@ async function teamOfApp(appId: string): Promise<string | null> {
   return app?.teamId ?? null;
 }
 
-// loadSharedVarsForApp - the entries that inject into one app: ONLY the vars it is
-// explicitly linked to (ADR-0012 - availability scopes never inject). Reads what the
-// app's team SEES, so a variable shared in and opted into does not drop at deploy time.
 export async function loadSharedVarsForApp(
   appId: string,
 ): Promise<SharedVarEntry[]> {
@@ -94,9 +86,6 @@ export async function loadSharedVarsForApp(
   );
 }
 
-// loadAutoInjectedVarsForApp - the vars that inject with NO link: those reaching more
-// than one team, and the instance-owned ones (ADR-0027). They fold at the LOWEST
-// precedence, so an app's own value always wins over one it never asked for.
 export async function loadAutoInjectedVarsForApp(
   appId: string,
 ): Promise<SharedVarEntry[]> {

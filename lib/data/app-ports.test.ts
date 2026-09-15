@@ -89,7 +89,6 @@ test("saving an empty set clears them", async () => {
   assert.equal((await loadAppGraph("prj_1"))?.ports, null);
 });
 
-// The container leaves the proxy for the host's own network, so the host-mount grant gates it.
 test("publishing a port needs the grant; clearing them does not", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await assert.rejects(

@@ -34,7 +34,6 @@ test("an unscoped role reaches the whole team, as every role does today", async 
   assert.ok(await reaches({ kind: "app", id: APP_OUT_PRC }));
   assert.ok(await reaches({ kind: "app", id: APP_TOP }));
   assert.ok(await reaches({ kind: "project", id: PRC_OUT }));
-  // Folders are private to their owner and grantees (ADR-0016), so ADMIN's answer nothing either way.
   assert.equal(await reaches({ kind: "folder", id: FLD_IN }), false);
 });
 

@@ -15,8 +15,6 @@ import { addBasicAuthUser } from "../basic-auth";
 import { createCronJob } from "../crons/job-crud";
 import type { SourceService } from "./source-tree";
 
-// A service name as it landed here: renamed when the import had to move it off a name
-// the network already answers to.
 function renamedService(
   name: string | null | undefined,
   renames: Map<string, string>,
@@ -26,14 +24,12 @@ function renamedService(
   return renames.get(trimmed.toLowerCase()) ?? trimmed;
 }
 
-// The panel's schedules for one service, as Deplo cron jobs.
 async function importCrons(
   c: SourceCredential,
   scheduleType: "application" | "compose",
   sourceId: string,
   appId: string,
   notes: string[],
-  // Services the import renamed, so a job still runs in its own container.
   serviceRenames: Map<string, string> = new Map(),
 ): Promise<void> {
   for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
@@ -58,8 +54,6 @@ async function importCrons(
   }
 }
 
-// Everything Deplo stores about a running app once it exists: resource caps, its
-// health check, basic-auth users, preview settings and the panel's schedules.
 export async function landAppExtras(
   c: SourceCredential,
   svc: SourceService,
@@ -85,8 +79,6 @@ export async function landAppExtras(
     }
   }
 
-  // One panel fills `healthCheck`, the other keeps the same thing in Swarm's own shape:
-  // reading only the first reported it as unimportable.
   const health =
     (detail as SourceApplication).healthCheck ??
     swarmHealthCheck((detail as SourceApplication).healthCheckSwarm);
@@ -100,8 +92,6 @@ export async function landAppExtras(
     }
   }
 
-  // The credential comes across AS IT IS. Measured: a code-server arrived online and
-  // open because "CoderPass123" has no special character.
   const security = (detail as SourceApplication).security ?? [];
   for (const s of security) {
     try {
@@ -124,7 +114,6 @@ export async function landAppExtras(
     if (app.isPreviewDeploymentsActive) {
       try {
         const { setAppPreviewSettings } = await import("../previews");
-        // `*.preview.acme.com` over there is the base `preview.acme.com` here.
         const base = app.previewWildcard?.trim().replace(/^\*\./, "") || null;
         await setAppPreviewSettings(created.id, {
           enabled: true,
@@ -141,8 +130,6 @@ export async function landAppExtras(
         );
       }
     }
-    // Their own variables, as Deplo's own preview variables - a preview inherits
-    // the app's, so these are the ones that differ or exist only there.
     const previewVars = parseEnvBlob(app.previewEnv).filter((v) => v.key);
     if (previewVars.length > 0) {
       const { setPreviewEnvVar } = await import("../previews");

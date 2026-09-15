@@ -73,7 +73,6 @@ import {
   scopeRepoCredentials,
 } from "./source-guards";
 
-// True if `err` is a Postgres unique violation (23505) on that constraint - retries the slug pick.
 function isUniqueViolation(err: unknown, constraint: string): boolean {
   for (let e: unknown = err; e; e = (e as { cause?: unknown }).cause) {
     const o = e as { code?: string; constraint?: string; message?: string };
@@ -87,12 +86,10 @@ function isUniqueViolation(err: unknown, constraint: string): boolean {
   return false;
 }
 
-// Same grammar as env.ts: a key with a newline or quote would break out of the templated `environment:` block.
 const ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 const APP_NAME_MAX = 60;
 
-// cleanAppName trims and caps an app name, so a multi-MB name cannot bloat every RSC payload.
 export function cleanAppName(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("App name is required.");
@@ -103,7 +100,6 @@ export function cleanAppName(name: string): string {
 
 const MAX_MOUNT_BYTES = 1024 * 1024;
 
-// A config file's path inside the app's Files dir: `..` and the stack's own env-file are refused.
 function cleanMountPath(raw: string): string {
   const rel = raw
     .trim()
@@ -169,14 +165,12 @@ export interface CreateAppFromTemplateInput {
   deploy?: boolean;
 }
 
-// ComposeNameClash: one service name a stack would share with a neighbour, and its way out.
 export interface ComposeNameClash {
   name: string;
   owner: string;
   renamedTo: string;
 }
 
-// composeNameClashes says what createApp would refuse this stack over, BEFORE it is asked.
 export async function composeNameClashes(
   input: Pick<
     CreateAppInput,
@@ -215,7 +209,6 @@ export async function composeNameClashes(
   }));
 }
 
-// withImagePort asks the registry what the image declares, so a Docker-image app is not guessed onto 3000.
 async function withImagePort(
   input: Pick<CreateAppInput, "source" | "dockerImage" | "build">,
 ): Promise<Partial<BuildConfig> | undefined> {
@@ -226,17 +219,14 @@ async function withImagePort(
   return port ? { ...input.build, port } : input.build;
 }
 
-// createApp gates `create_apps` on the DESTINATION (resolvePlacement): a node grant can hold it where the role does not.
 export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const { membership, userId } = await requireMembership();
   input = { ...input, name: cleanAppName(input.name) };
   assertImageRef(input.source, input.dockerImage);
 
-  // Asked BEFORE anything is written: refusing after the insert would leave the app created and the mutation failed.
   if (input.sharedVarIds?.length) await requireCapability("manage_env");
   const reach = await assertComposeSavable(input.compose);
 
-  // A REAL hostname is a domain claim (`domains.name` is instance-unique); our own nip.io hosts are not.
   const claimsAHostname = [
     input.autoDomain,
     ...(input.extraDomains ?? []).map((e) => e.host),
@@ -250,21 +240,18 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  // The optimistic slug pick races a concurrent same-name create; the INSERT retries on `apps_slug_uq`.
   const existing = new Set(
     (await getDb().select({ slug: appsTable.slug }).from(appsTable)).map(
       (r) => r.slug,
     ),
   );
 
-  // A slug still awaiting teardown stays taken, or the new app adopts the old one's volumes and files.
   for (const p of await getDb()
     .select({ deployKey: pendingTeardownsTable.deployKey })
     .from(pendingTeardownsTable))
     existing.add(appSlugFromDeployKey(p.deployKey));
   const slugRoot = slugBase || `project-${newId("").slice(1, 6)}`;
 
-  // `deplo-<slug>` is the container name and the name it answers to on the network (ADR-0029).
   const taken = (s: string): boolean =>
     existing.has(s) || isReservedSharedName(stackName(s));
   let i = 1;
@@ -323,7 +310,6 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   input.env = hosts.env;
 
   // ponytail: renamed before the lock, like the import; a concurrent clashing
-  // create in the gap falls back to the refusal below, never to a collision.
   const renameNotes: string[] = [];
   if (input.renameClashes && input.compose) {
     const mine = new Set(
@@ -453,11 +439,8 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       for (let attempt = 0; ; attempt++) {
         try {
           await getDb().transaction(async (tx) => {
-            // Re-asserted inside the tx so a concurrent setServerTeams restrict cannot land this app on a lost server.
             await assertServerAccessibleTx(tx, server.id, membership.teamId);
 
-            // created_by_user_id / host_reach_by ride with the insert: read only by the delete-a-user
-            // flow and the deploy's grant check, never by the renderer or a capability check.
             await tx.insert(appsTable).values({
               ...appToRow(project),
               createdByUserId: userId,
@@ -512,7 +495,6 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
         ? detectDefaultApp(input.compose)
         : null;
 
-  // Auto domains are born plain-HTTP; only a blueprint that baked an `https://` host of its own opts in.
   const certProvider = blueprintWantsTls(
     [input.autoDomain, ...(input.extraDomains ?? []).map((e) => e.host)],
     [
@@ -524,7 +506,6 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     ? "letsencrypt"
     : "none";
 
-  // The ONLY place an auto domain is born - deploys never create one, so a deleted one stays deleted.
   if (!input.noAutoDomain)
     await ensureAutoDomain(project.id, {
       slug,
@@ -536,7 +517,6 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       certProvider,
     });
 
-  // Every extra hostname is registered ONCE, here, never on a deploy.
   for (const ex of input.extraDomains ?? []) {
     await ensureExtraDomain(project.id, ex.host.trim(), {
       port: ex.port,
@@ -548,12 +528,10 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     });
   }
 
-  // Linked BEFORE the deploy below, or the first build would run without them.
   for (const varId of input.sharedVarIds ?? []) {
     await setSharedVarAppLink(varId, project.id, true);
   }
 
-  // `create_apps` is NOT `deploy_apps`: the deploy is asked for ON THE NEW APP, else the app is born idle.
   const wantsDeploy = input.deploy !== false;
   if (
     !isUpload &&

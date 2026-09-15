@@ -2,8 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { envNameLooksSensitive } from "./env-secret-name";
 
-// Every case below is the verdict `docker build --check` gives for `ARG <name>`
-// on docker 29.7.1 - the rule is mirrored, so it has to answer the same.
 const FLAGGED = [
   "PAYLOAD_SECRET",
   "S3_ACCESS_KEY_ID",
@@ -39,7 +37,6 @@ const CLEAN = [
   "APP_KEYS",
   "TOKEN2",
   "AWS_REGION",
-  // The three allow words.
   "PUBLIC_KEY",
   "NEXT_PUBLIC_API_KEY",
   "TOKEN_FILE",

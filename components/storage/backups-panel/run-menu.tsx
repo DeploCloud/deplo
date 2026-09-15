@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MenuAction } from "./menu-action";
 
-// RunMenu - everything you can do with one artifact, behind one menu.
 export function RunMenu({
   href,
   running,
@@ -29,13 +28,11 @@ export function RunMenu({
   onDelete,
   onCancel,
 }: {
-  /** The download URL, or null for a run that has no id yet (the placeholder). */
   href: string | null;
   running: boolean;
   ok: boolean;
   canRestore: boolean;
   canDelete?: boolean;
-  /** `manage_backups` - whoever may start a dump may stop it. */
   canManage?: boolean;
   onRestore?: () => void;
   onDelete?: () => void;
@@ -53,15 +50,11 @@ export function RunMenu({
       ? "Restore this backup in place"
       : "Download this backup file";
   }
-  // Delete is the one action a FAILED run still has: its record is clutter and
-  // clearing it is the only thing left to do with it.
   function deleteReason() {
     if (!canDelete) return "You don't have permission to delete backups";
     if (running) return "This backup is still running";
     return "Delete this backup permanently";
   }
-  // Icon + label as DIRECT children of the item, never wrapped: one <span> around
-  // them makes the pair a single flex item and the item's `gap-2` stops applying.
   const downloadLabel = (
     <>
       <Download className="size-4" />

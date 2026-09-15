@@ -99,7 +99,6 @@ test("an instance admin who is not a member administers the team, and works in i
   );
   refused(await gql(NEWBIE, Q.apps), "gone");
 
-  // Their token is not an admin unless it says so.
   const { token } = await mintToken(
     SYSADMIN,
     { name: "plain", capabilities: ["view", "manage_tokens"] },
@@ -272,7 +271,6 @@ test("a share can carry only what the sharer holds on the folder", async () => {
     await gql(MEMBER, M.moveAppToFolder, { appId: APP_X, folderId }),
     "files an app",
   );
-  // Member holds no manage_backups: the share is bounded to what they have.
   const grants = field<{ userId: string; capabilities: string[] }[]>(
     await gql(MEMBER, M.setFolderGrant, {
       folderId,

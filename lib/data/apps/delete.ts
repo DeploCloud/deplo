@@ -21,7 +21,6 @@ import { mapLimit } from "../../utils";
 import { errMsg } from "./lifecycle";
 import type { App } from "../../types/app";
 
-// markAppsDeleting stamps the point of no return: from here every gate refuses the app. Nothing ever clears it.
 async function markAppsDeleting(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await getDb()
@@ -30,7 +29,6 @@ async function markAppsDeleting(ids: string[]): Promise<void> {
     .where(inArray(appsTable.id, ids));
 }
 
-// beginAppDelete gates the delete, loads what the teardown needs and stamps the app - one gate for both delete shapes.
 async function beginAppDelete(
   id: string,
 ): Promise<{ project: App; actor: string }> {
@@ -43,16 +41,12 @@ async function beginAppDelete(
   return { project, actor: user.name };
 }
 
-// destroyApp is the identity-free teardown half, so the boot reconcile can finish a delete with no session to read.
 async function destroyApp(project: App, actor: string): Promise<void> {
   const id = project.id;
 
-  // Teardown runs OUTSIDE any tx, under the app's lifecycle lock, so a deploy mid-build cannot resurrect the stack.
   const tornDown = await withKeyedLock(`app-lifecycle:${id}`, async () => {
-    // Previews FIRST: the DELETE below cascades their rows away, and with them the only record those containers exist.
     await destroyPreviewsForApp(id).catch(() => {});
 
-    // Deleting an app takes its data with it: the safety net for a delete you regret is the BACKUP.
     const ok = await teardownOrQueue({
       serverId: project.serverId,
       deployKey: project.slug,
@@ -60,12 +54,9 @@ async function destroyApp(project: App, actor: string): Promise<void> {
       label: project.name,
       teamId: project.teamId,
 
-      // Named BY NAME: `down -v` reclaims only what the compose file ON THE HOST declares, and a migrated
-      // app that was never deployed has none.
       reclaimVolumes: appOwnVolumeNames(project),
     });
 
-    // Mid-move, the data is still on the host it is leaving, and this row is the only thing that names it.
     if (project.migrateFromServerId)
       await teardownOrQueue({
         serverId: project.migrateFromServerId,
@@ -77,7 +68,6 @@ async function destroyApp(project: App, actor: string): Promise<void> {
       }).catch(() => {});
     await removeUploads(id).catch(() => {});
 
-    // One DELETE: the FK CASCADEs take the deployments, env vars, domains, child tables and shared-variable links.
     await getDb().delete(appsTable).where(eq(appsTable.id, id));
     return ok;
   });
@@ -101,13 +91,11 @@ async function destroyApp(project: App, actor: string): Promise<void> {
   );
 }
 
-// deleteApp waits for the host to be clear - for a caller with no response to get out of the way of.
 export async function deleteApp(id: string): Promise<void> {
   const { project, actor } = await beginAppDelete(id);
   await destroyApp(project, actor);
 }
 
-// startAppDelete is the same delete minus the wait: the app is stamped before this returns.
 export async function startAppDelete(id: string): Promise<void> {
   const { project, actor } = await beginAppDelete(id);
   void destroyApp(project, actor).catch((e) =>
@@ -118,7 +106,6 @@ export async function startAppDelete(id: string): Promise<void> {
   );
 }
 
-// deleteApps tears several down with bounded concurrency, then drops their records. Foreign ids are ignored.
 export async function deleteApps(ids: string[]): Promise<number> {
   const { apps, actor } = await beginAppsDelete(ids);
   if (apps.length === 0) return 0;
@@ -126,7 +113,6 @@ export async function deleteApps(ids: string[]): Promise<number> {
   return apps.length;
 }
 
-// startAppsDelete is the bulk twin of startAppDelete: stamped now, torn down behind the response.
 export async function startAppsDelete(ids: string[]): Promise<number> {
   const { apps, actor } = await beginAppsDelete(ids);
   if (apps.length === 0) return 0;
@@ -147,7 +133,6 @@ async function beginAppsDelete(
   );
   if (apps.length === 0) return { apps, actor: user.name };
 
-  // Gate EACH app on its own node (ADR-0016): bulk delete is not a way around per-folder access.
   for (const p of apps) {
     await requireAppCapability(p.id, "delete_apps");
   }
@@ -203,7 +188,6 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
   }
 }
 
-// resumeAppDeletes finishes the deletes a dead control plane left stamped. Identity-free: there is no session at boot.
 export async function resumeAppDeletes(): Promise<void> {
   const rows = await getDb()
     .select({ id: appsTable.id })

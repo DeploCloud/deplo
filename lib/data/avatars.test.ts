@@ -103,7 +103,6 @@ test("no uploaded picture resolves to a Gravatar address built from the email", 
     row.avatarUrl,
     `https://gravatar.com/avatar/${expected}?s=160&d=404`,
   );
-  // `d=404` is load-bearing: without it Gravatar paints a pattern instead of 404ing.
   assert.match(row.avatarUrl!, /d=404/);
 });
 
@@ -377,7 +376,6 @@ test("a team picture is scoped to the ACTIVE team, never another one", async () 
   assert.equal(a!.image, null, "the other team's row must be untouched");
 });
 
-// Only the refusal half: createTeam ends in setActiveTeam, which the pglite harness cannot write.
 test("a team picture is validated at creation, not only when it is changed", async () => {
   await assert.rejects(
     as(MEMBER, () => createTeam({ name: "Bad", image: "https://x.io/a.png" })),

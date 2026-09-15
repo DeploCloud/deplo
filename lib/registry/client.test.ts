@@ -8,7 +8,6 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-// A public IP literal skips DNS, so the SSRF guard needs no network.
 const HOST = "1.1.1.1";
 const CHALLENGE = 'Bearer realm="https://1.1.1.1/token",service="reg"';
 
@@ -47,7 +46,6 @@ test("the realm issuing a token means the credential works", async () => {
   );
 });
 
-// ghcr answers a dead token 403, the Hub and GitLab 401 - both are a refusal.
 for (const status of [401, 403]) {
   test(`the realm answering ${status} rejects the credential`, async () => {
     stub((url) =>

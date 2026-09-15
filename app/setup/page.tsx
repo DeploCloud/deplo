@@ -12,7 +12,6 @@ export const metadata = { title: "Set up Deplo" };
 
 export default async function SetupPage(props: PageProps<"/setup">) {
   if (!(await isSetupNeeded())) redirect("/login");
-  // Tells the waiting installer its port is open, true of a keyless visitor too, so it precedes the check.
   await noteBrowserReached();
 
   const raw = (await props.searchParams).key;

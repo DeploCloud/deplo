@@ -14,12 +14,10 @@ import { dismissPendingChanges } from "@/lib/data/pending-changes";
 import type { EnvVarDTO } from "@/lib/types/env";
 import type { VarAuthor } from "@/lib/types/identity";
 
-// EnvVarTypeEnum is exported so the shared-env types reuse it: a Pothos enum name must be unique.
 export const EnvVarTypeEnum = builder.enumType("EnvVarType", {
   values: ["plain", "secret"] as const,
 });
 
-// VarAuthorRef is exported so shared-env.ts reuses it: a Pothos type name must be unique.
 export const VarAuthorRef = builder
   .objectRef<VarAuthor>("VarAuthor")
   .implement({
@@ -44,7 +42,6 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
   fields: (t) => ({
     id: t.exposeID("id"),
     key: t.exposeString("key"),
-    // A secret is masked here and has no reveal path at all.
     value: t.exposeString("value"),
     isMasked: t.exposeBoolean("masked"),
     targets: t.field({
@@ -114,7 +111,6 @@ const UpsertEnvInputType = builder.inputType("UpsertEnvInput", {
     appId: t.string({ required: true }),
     key: t.string({ required: true }),
     value: t.string({ required: true }),
-    // Optional, not removed, so clients still passing targets keep working; omitted applies to all.
     targets: t.field({ type: [EnvTargetEnum], required: false }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
   }),

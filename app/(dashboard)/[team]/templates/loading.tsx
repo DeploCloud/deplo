@@ -4,7 +4,6 @@ import {
   StoreRailsSkeleton,
 } from "@/components/templates/store-skeleton";
 
-// Loading shares its chips and rails with the store's own streaming skeleton - one shape, one place.
 export default function Loading() {
   return (
     <div

@@ -24,7 +24,6 @@ export function DeployActivityProvider({
         ACTIVE_DEPLOYMENTS_SUBSCRIPTION,
         undefined,
         (data) => setCount(data.activeDeployments ?? 0),
-        // A stream we can no longer open (signed out, team gone) just stops decorating the nav - never a toast.
         () => setCount(0),
       ),
     [],
@@ -37,7 +36,6 @@ export function DeployActivityProvider({
   );
 }
 
-// Deployments queued or building right now, 0 when nothing is.
 export function useActiveDeployments(): number {
   return React.useContext(DeployActivityContext);
 }

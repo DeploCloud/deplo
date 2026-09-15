@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/concepts/servers-and-the-agent
-
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
@@ -36,7 +34,6 @@ import {
 import type { BuildConfig, BuildMethod } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
-// A built-context source the agent can tar up and build, vs. an image to run.
 export type AgentBuildPlan =
   | {
       kind: "dockerfile";
@@ -60,7 +57,6 @@ export type AgentBuildPlan =
       mounts: { filePath: string; content: string }[];
     };
 
-// Whether the agent can execute this build method at all: the single predicate the deploy arms call.
 export function agentCanHandle(build: BuildConfig | null): boolean {
   if (!build) return true;
   void normalizeBuildConfig(build).buildMethod;
@@ -82,7 +78,6 @@ const HEAVY_METHOD: Record<
   },
 };
 
-// The agent capability a build method requires, or null for the Dockerfile family.
 export function agentCapabilityForMethod(
   build: BuildConfig | null,
 ): string | null {
@@ -96,7 +91,6 @@ function heavyBuildKind(method: BuildMethod): BuildKind | null {
   return HEAVY_METHOD[method]?.kind ?? null;
 }
 
-// The BuildSpec the agent's heavy builders read: BuildConfig + methodSettings on the wire.
 export function buildSpecFor(build: BuildConfig): BuildSpec {
   const b = normalizeBuildConfig(build);
   const pinned = (b.runtimeVersion ?? "").trim();
@@ -105,8 +99,6 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
   return {
     method: b.buildMethod,
     port: b.port ?? 0,
-    // A proto3 string cannot carry NULL ("work it out") apart from "" ("run nothing"),
-    // so the two booleans below say it instead.
     installCommand: b.installCommand ?? "",
     buildCommand: b.buildCommand ?? "",
     startCommand: b.startCommand ?? "",
@@ -123,7 +115,6 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
   };
 }
 
-// The proto DockerfileBuild shape the agent receives.
 export interface DockerfileDescriptor {
   dockerfilePath: string;
   contextPath: string;
@@ -132,7 +123,6 @@ export interface DockerfileDescriptor {
   generatedDockerfile: string;
 }
 
-// The Dockerfile descriptor for the explicit "dockerfile" build method.
 export function explicitDockerfileDescriptor(
   build: BuildConfig,
 ): DockerfileDescriptor {
@@ -146,19 +136,16 @@ export function explicitDockerfileDescriptor(
   };
 }
 
-// Callbacks the agent stream writes into - the existing deploy log/status seam.
 export interface AgentDeploySink {
   log: (level: LogLevel, text: string) => void;
   phase?: (phase: DeployPhase) => void;
 }
 
-// The outcome of an agent deploy: readiness + any commit sha the agent resolved.
 export interface AgentDeployResult {
   ready: boolean;
   commitSha: string;
 }
 
-// The paths of the app's Storage File rows: files by definition, whatever the name.
 export async function fileVolumePathsForApp(appId: string): Promise<string[]> {
   const rows = await getDb()
     .select({ path: appVolumesTable.projectPath })
@@ -187,7 +174,6 @@ async function filesPathState(
   }
 }
 
-// Create every file-shaped bind that is not on the host yet, as an empty FILE, so `compose up` cannot invent a folder.
 export async function ensureFileBinds(
   conn: Pick<
     AgentConnection,
@@ -198,7 +184,6 @@ export async function ensureFileBinds(
   log: (level: "info" | "warn", text: string) => void,
 ): Promise<void> {
   for (const rel of rels) {
-    // The deploy writes the env-file itself, 0600, before `up`.
     if (rel === ".env") continue;
     const state = await filesPathState(conn, slug, rel);
     if (state === "file") continue;
@@ -240,7 +225,6 @@ export async function runAgentDeploy(opts: {
   forceRecreate?: boolean;
   composeUpArgs?: string[];
   buildOnly?: boolean;
-  // A pull request preview of a FORK: a stranger's code, so no team credential.
   forkPreview?: boolean;
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
@@ -250,8 +234,6 @@ export async function runAgentDeploy(opts: {
       "the agent reports Docker is not available on the target server",
     );
   }
-  // A HARD gate: an older agent reads `build_only` as absent and DEPLOYS the app
-  // here, quietly running production on the build server.
   if (opts.buildOnly && !hello.capabilities.includes("deploy.build-only")) {
     throw new AgentUnavailableError(
       "this build server's agent is too old to build without deploying - update it " +
@@ -293,7 +275,6 @@ export async function runAgentDeploy(opts: {
   }
   const req = await buildDeployRequest({
     ...opts,
-    // Every pull of this deploy authenticates with these, so a fork preview gets none.
     registryAuth: opts.forkPreview
       ? []
       : await loadRegistryAuthsForApp(opts.appId),
@@ -310,11 +291,8 @@ export async function runAgentDeploy(opts: {
     );
   }
 
-  // A reattach replays everything AFTER this seq, so a reconnect never double-logs
-  // and never misses an event.
   const cursor = { seq: 0 };
 
-  // Once the agent has begun real work, a local fallback would DOUBLE-build.
   let started = false;
   const first = await connectAgent(opts.serverId);
   if (!opts.buildOnly) {
@@ -433,7 +411,6 @@ async function consumeStream(
   return { terminal: null };
 }
 
-// An agent transport/availability failure BEFORE any deploy work began.
 export class AgentUnavailableError extends Error {}
 
 function handleEvent(
@@ -469,7 +446,6 @@ function coerceLevel(s: string): LogLevel {
   return LEVELS.has(s as LogLevel) ? (s as LogLevel) : "info";
 }
 
-// Build the self-contained DeployRequest the agent needs. Exported for tests: the plan to request mapping is the wire contract.
 export async function buildDeployRequest(opts: {
   deployId: string;
   slug: string;
@@ -501,7 +477,6 @@ export async function buildDeployRequest(opts: {
     contextTar: new Uint8Array(0),
     pullImage: false,
     mounts: [],
-    // Dead V1 wire field (dev mode removed); the generated type still requires it.
     devWorkspaceSubdir: "",
     buildSpec: undefined,
     noBuildCache: opts.noCache ?? false,
@@ -529,7 +504,6 @@ export async function buildDeployRequest(opts: {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_IMAGE,
       buildKind: BuildKind.BUILD_KIND_NONE,
-      // A rollback must NOT pull: its image is local to that host and in no registry.
       pullImage: opts.plan.pull,
     };
   }

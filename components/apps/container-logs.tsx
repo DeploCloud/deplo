@@ -86,7 +86,6 @@ interface ParsedLine {
   ts: string | null;
 }
 
-// ContainerLogs streams runtime logs for one app container over SSE.
 export function ContainerLogs({
   appId,
   instances,
@@ -391,7 +390,6 @@ export function ContainerLogs({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Controls beside the search input are h-9, not size="sm" (h-8). */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <ScrollText className="size-4 shrink-0 text-muted-foreground" />
         <PaneTitleLink title={title} />
@@ -442,7 +440,6 @@ export function ContainerLogs({
           <span className="shrink-0 font-mono text-xs">{active.name}</span>
         )}
 
-        {/* Why this output may not be the whole story. */}
         <LogNoticeChip notice={notice} />
 
         <span
@@ -557,7 +554,6 @@ export function ContainerLogs({
           />
         ))}
 
-        {/* Empty for three different reasons - a filter is one of them. */}
         {lines.length > 0 && filters.shown.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
             <FileSearch className="size-5 text-zinc-500" />
@@ -591,7 +587,6 @@ export function ContainerLogs({
           <p className="mt-1 text-[11px] text-destructive">{failure}</p>
         ) : null}
 
-        {/* The stream never opened and said nothing about why. */}
         {(status === "error" || status === "ended") &&
         output === "" &&
         !failure ? (

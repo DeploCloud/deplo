@@ -38,7 +38,6 @@ const HTTP_PROBE_CAPABILITY = "http-probe";
 const MAX_HTML_BYTES = 256 * 1024;
 const MAX_REDIRECTS = 2;
 
-// FaviconFileLister - the one agent call the walk needs, narrowed so tests can drive it.
 export interface FaviconFileLister {
   listFiles(
     slug: string,
@@ -46,7 +45,6 @@ export interface FaviconFileLister {
   ): Promise<{ path: string; name: string; kind: string; size: number }[]>;
 }
 
-// FaviconFileReader - the agent calls the byte read needs, narrowed the same way.
 export interface FaviconFileReader {
   readFile(
     slug: string,
@@ -56,7 +54,6 @@ export interface FaviconFileReader {
   exportFiles(slug: string): AsyncIterable<Buffer>;
 }
 
-// collectAgentFaviconCandidates - walk an app's files dir and collect the favicon candidates.
 export async function collectAgentFaviconCandidates(
   lister: FaviconFileLister,
   slug: string,
@@ -82,7 +79,6 @@ export async function collectAgentFaviconCandidates(
     for (const e of entries) {
       if (++seen > MAX_ENTRIES_SEEN || found.length >= MAX_CANDIDATES) break;
       if (e.kind === "dir") {
-        // The agent already resolved symlinks away and reports only dirs/files.
         if (dir.depth + 1 <= MAX_DEPTH && !isExcludedDirName(e.name)) {
           queue.push({ path: e.path, depth: dir.depth + 1 });
         }
@@ -95,7 +91,6 @@ export async function collectAgentFaviconCandidates(
   return found;
 }
 
-// Closing BOTH ends on an early exit is what stops the agent's tar.
 async function* gunzip(
   chunks: AsyncIterable<Buffer>,
 ): AsyncGenerator<Uint8Array, void, unknown> {
@@ -109,14 +104,12 @@ async function* gunzip(
   }
 }
 
-// readFilesDirBytes - one file's raw bytes; an SVG tries ReadFile first, the only read an agent without files-copy can do.
 export async function readFilesDirBytes(
   conn: FaviconFileReader,
   slug: string,
   path: string,
 ): Promise<Buffer | null> {
   if (path.toLowerCase().endsWith(".svg")) {
-    // Text withheld (binary / too-large) is still in the tar, so fall through.
     const file = await conn.readFile(slug, path).catch(() => null);
     if (file?.text) {
       const bytes = Buffer.from(file.text, "utf8");
@@ -132,14 +125,12 @@ export async function readFilesDirBytes(
   });
 }
 
-// DetectedFaviconBytes - where an icon was found and its bytes; `mime` only when the source stated the type.
 export interface DetectedFaviconBytes {
   path: string;
   bytes: Buffer;
   mime?: string;
 }
 
-// detectAgentFilesFavicon - a favicon in an app's files dir on its owning server, or null.
 export async function detectAgentFilesFavicon(
   serverId: string,
   slug: string,
@@ -149,7 +140,6 @@ export async function detectAgentFilesFavicon(
     conn = await connectAgent(serverId);
     if (!(await conn.filesExist(slug))) return null;
     const candidates = await collectAgentFaviconCandidates(conn, slug);
-    // Sizes come from the listing, so the logo cap lands before any byte crosses the wire.
     const best = pickBestFavicon(candidates);
     if (!best) return null;
     const bytes = await readFilesDirBytes(conn, slug, best.path);
@@ -162,7 +152,6 @@ export async function detectAgentFilesFavicon(
   }
 }
 
-// ServedIconTarget - where to reach an app's own web service, and nothing it could turn into an arbitrary address.
 export interface ServedIconTarget {
   appId: string;
   slug: string;
@@ -172,7 +161,6 @@ export interface ServedIconTarget {
   basePath: string;
 }
 
-// IconProbeRoute - the routing facts a target is derived from, the shape `RoutableDomain` already has.
 export interface IconProbeRoute {
   name: string;
   service: string | null;
@@ -181,7 +169,6 @@ export interface IconProbeRoute {
   stripPrefix: boolean;
 }
 
-// FaviconHttpProber - the narrowed agent call the served-icon read needs.
 export interface FaviconHttpProber {
   hello(): Promise<{ capabilities: string[] }>;
   probeHttp(req: {
@@ -195,7 +182,6 @@ export interface FaviconHttpProber {
   }): Promise<AgentProbeHttpResult>;
 }
 
-// servedIconTarget - which container, port and hostname to ask, the same target Traefik was pointed at.
 export function servedIconTarget(
   app: { id: string; slug: string; compose: string | null },
   routes: readonly IconProbeRoute[],
@@ -220,7 +206,6 @@ export function servedIconTarget(
     service,
     port,
     host: route?.name ?? primaryHost ?? "",
-    // A stripped prefix never reaches the container; an unstripped one is part of every URL it sees.
     basePath:
       route && route.pathPrefix && !route.stripPrefix ? route.pathPrefix : "",
   };
@@ -256,7 +241,6 @@ async function readHomePage(
     const res = await probe(conn, target, path, MAX_HTML_BYTES);
     if (!res) return null;
     if (res.status >= 300 && res.status < 400 && res.location) {
-      // resolveIconHref drops an absolute URL elsewhere, so a redirect cannot walk the probe off this app.
       const next = resolveIconHref(res.location, {
         basePath: target.basePath,
         host: target.host,
@@ -272,7 +256,6 @@ async function readHomePage(
   return null;
 }
 
-// detectServedFavicon - the icon a running app serves, the only arm that works for a prebuilt image.
 export async function detectServedFavicon(
   serverId: string,
   target: ServedIconTarget,
@@ -289,7 +272,6 @@ export async function detectServedFavicon(
   }
 }
 
-// detectServedFaviconVia - detectServedFavicon against an already-open connection.
 export async function detectServedFaviconVia(
   conn: FaviconHttpProber,
   target: ServedIconTarget,
@@ -302,7 +284,6 @@ export async function detectServedFaviconVia(
     host: target.host,
   });
   const tried = new Set<string>();
-  // One budget for the whole search, so a chain of redirects cannot become a crawl.
   for (let fetches = 0; queue.length > 0 && fetches < MAX_ICON_FETCHES;) {
     const candidate = queue.shift()!;
     if (candidate.kind === "inline") {
@@ -326,7 +307,6 @@ export async function detectServedFaviconVia(
         queue.unshift(next);
       continue;
     }
-    // `truncated` means the agent cut the body at the logo cap: a fragment, never storable.
     if (res.status !== 200 || res.truncated || res.body.length === 0) continue;
     if (res.body.length > MAX_LOGO_BYTES) continue;
     const mime = imageMimeFor(res.body, res.contentType, candidate.path);

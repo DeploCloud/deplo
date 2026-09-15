@@ -20,7 +20,6 @@ import type { ActivityType } from "@/lib/types/activity";
 import type { DatabaseType } from "@/lib/types/database";
 import { DateRangeFilter } from "./date-range-filter";
 
-// A filter's options never depend on the rows on screen - the query narrows, so nothing here matches client-side.
 const MATCH_ALL = () => true;
 
 function facet(
@@ -49,15 +48,12 @@ const EVENT_OPTIONS: FacetOption[] = ACTIVITY_TYPES.map((t) => ({
   group: t.group,
 }));
 
-// One named thing the trail can be narrowed to.
 export interface ResourceOption {
   id: string;
   name: string;
-  // Apps only: the same logo the Overview grid shows.
   logo?: string | null;
 }
 
-// A database in the Resource facet - its engine decides the brand mark.
 export interface DatabaseResourceOption {
   id: string;
   name: string;
@@ -65,7 +61,6 @@ export interface DatabaseResourceOption {
   type: DatabaseType;
 }
 
-// Every pick is a navigation, so the URL is the whole state; a dimension the page already fixes loses its facet and `base` points back at that page.
 export function ActivityFilters({
   params,
   actors,
@@ -79,24 +74,19 @@ export function ActivityFilters({
   base = "/activity",
 }: {
   params: ActivityParams;
-  // Omitted on a person's own page, where the User facet is left out.
   actors?: FacetOption[];
-  // Omitted on a resource's own tab, where the Resource facet is left out.
   apps?: ResourceOption[];
   folders?: ResourceOption[];
   projects?: ResourceOption[];
   databases?: DatabaseResourceOption[];
-  // How many events each option covers in the window the rail counts over.
   actorCounts?: Record<string, number>;
   typeCounts?: Record<string, number>;
-  // `rail` turns the row into the Activity page's right-hand column at `lg`.
   layout?: "bar" | "rail";
   base?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
 
-  // Built here rather than on the server: an option's picture is a component, and JSX does not ship across.
   const resources: FacetOption[] = React.useMemo(
     () => [
       ...(apps ?? []).map((a) => ({
@@ -137,10 +127,7 @@ export function ActivityFilters({
     <div
       className={cn(
         "z-20 flex flex-col gap-2 bg-background py-3 sm:flex-row sm:items-center",
-        // Sticky only once the row fits on ONE line: stacked on a phone it is half the screen, and in the rail the pinned
-        // element is the COLUMN, as tall as this row, so a sticky child has nowhere to travel.
         layout === "bar" && "sm:sticky sm:top-14",
-        // Stretch is what squares the date button and Clear up with the comboboxes above them.
         layout === "rail" && "lg:flex-col lg:items-stretch lg:py-0",
         pending && "opacity-60",
       )}

@@ -2,7 +2,6 @@ import { completeBootstrap } from "@/lib/data/servers/agent-handshake";
 import { signResponse, BootstrapError } from "@/lib/agent/bootstrap";
 import { readTextCapped } from "@/lib/http/body-cap";
 
-// POST is the agent call-home bootstrap: the agent pinned our cert fingerprint over HTTPS, and over plain HTTP the response HMAC below is its only proof of us.
 export async function POST(request: Request) {
   let body: {
     token?: unknown;
@@ -38,7 +37,6 @@ export async function POST(request: Request) {
       agentPort,
       advertisedHost,
     });
-    // The agent recomputes this HMAC and refuses a mismatch, binding the CA it carries to a party that knew the token.
     const payload = JSON.stringify({ certPem, caPem });
     const mac = signResponse(token, payload);
     return new Response(payload, {
@@ -50,10 +48,8 @@ export async function POST(request: Request) {
     });
   } catch (e) {
     if (e instanceof BootstrapError) {
-      // The reason code is all we reveal: it leaks neither the token nor which server.
       return Response.json({ error: e.reason }, { status: 401 });
     }
-    // A lost race (token consumed concurrently) or unexpected failure.
     return Response.json(
       { error: e instanceof Error ? e.message : "bootstrap failed" },
       { status: 409 },

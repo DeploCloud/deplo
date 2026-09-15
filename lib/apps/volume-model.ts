@@ -1,5 +1,3 @@
-// https://deplo.build/docs/guides/data/persistent-storage
-
 import { hostVolumeName } from "../utils";
 import {
   MOUNT_PROPAGATIONS,
@@ -7,10 +5,8 @@ import {
   type VolumeMount,
 } from "../types/container";
 
-// VolumeKind - the stored discriminant, never renamed.
 export type VolumeKind = NonNullable<VolumeMount["type"]>;
 
-// VOLUME_KIND_ORDER - safest and most common first, the privileged one last.
 export const VOLUME_KIND_ORDER: VolumeKind[] = ["named", "app", "host"];
 
 export interface VolumeKindMeta {
@@ -76,13 +72,11 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
   },
 };
 
-// switchKind - switch a row's kind, keeping each kind's own source value.
 export function switchKind(v: VolumeMount, kind: VolumeKind): VolumeMount {
   if (kind === kindOf(v)) return v;
   return { ...v, type: kind };
 }
 
-// containerWorkdir - where a built app's code runs inside its container.
 export function containerWorkdir(
   source: string,
   rootDirectory: string | null | undefined,
@@ -94,7 +88,6 @@ export function containerWorkdir(
   return !root || root === "." ? "/app" : `/app/${root}`;
 }
 
-// kindOf - the kind of a row, defaulting the absent discriminant to "named".
 export function kindOf(v: Pick<VolumeMount, "type">): VolumeKind {
   return v.type ?? "named";
 }
@@ -103,7 +96,6 @@ export function metaOf(v: Pick<VolumeMount, "type">): VolumeKindMeta {
   return VOLUME_KINDS[kindOf(v)];
 }
 
-// RESERVED_MOUNT_PREFIXES - container paths the runtime owns; mounting over them breaks the container.
 export const RESERVED_MOUNT_PREFIXES = [
   "/proc",
   "/sys",
@@ -117,7 +109,6 @@ export const RESERVED_MOUNT_PREFIXES = [
   "/var/run",
 ];
 
-// reservedMountPath - whether this kind of entry may not take mountPath, because the runtime owns it.
 export function reservedMountPath(
   mountPath: string,
   kind: VolumeKind,
@@ -129,11 +120,9 @@ export function reservedMountPath(
   );
 }
 
-// VOLUME_NAME_RE - Docker's name shape for a managed volume; also blocks YAML key injection.
 export const VOLUME_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 export const VOLUME_NAME_MAX = 40;
 
-// mountOptions - the ":"-suffixed options a mount line ends with.
 export function mountOptions(m: {
   readOnly?: boolean | null;
   propagation?: MountPropagation | null;
@@ -142,14 +131,12 @@ export function mountOptions(m: {
   return opts.length ? `:${opts.join(",")}` : "";
 }
 
-// parseMountPropagation - the propagation named in a mount line's option list, if any.
 export function parseMountPropagation(
   opts: string[],
 ): MountPropagation | undefined {
   return MOUNT_PROPAGATIONS.find((p) => opts.includes(p));
 }
 
-// normalizeFilesPath - trimmed, the optional "./" dropped, no trailing slash.
 export function normalizeFilesPath(path: string | null | undefined): string {
   return (path ?? "")
     .trim()
@@ -163,12 +150,10 @@ function lastSegment(path: string): string {
   return last === "." || last === ".." ? "" : last;
 }
 
-// filesPathFromMountPath - the file name a mount path ends in.
 export function filesPathFromMountPath(mountPath: string): string {
   return lastSegment(mountPath);
 }
 
-// derivedMountPath - where a row lands inside the container when the user does not say.
 export function derivedMountPath(
   v: VolumeMount,
   workdir: string | null | undefined,
@@ -180,13 +165,11 @@ export function derivedMountPath(
       ? normalizeFilesPath(v.projectPath)
       : kind === "host"
         ? lastSegment((v.hostPath ?? "").trim())
-        : // As typed, NOT case-folded: container paths are case-sensitive.
-          (v.name ?? "").trim();
+        : (v.name ?? "").trim();
   if (!rel) return "";
   return `${workdir.replace(/\/+$/, "")}/${rel.replace(/^\/+/, "")}`;
 }
 
-// effectiveMountPath - what the user typed, or else the derived path.
 export function effectiveMountPath(
   v: VolumeMount,
   workdir?: string | null,
@@ -197,7 +180,6 @@ export function effectiveMountPath(
   );
 }
 
-// deriveVolumeName - a docker-volume-safe name derived from a mount path when the name is blank.
 export function deriveVolumeName(mountPath: string): string {
   const s = mountPath
     .toLowerCase()
@@ -206,7 +188,6 @@ export function deriveVolumeName(mountPath: string): string {
   return s || "data";
 }
 
-// VolumeProblem - which field of a row is wrong, and what to say about it.
 export interface VolumeProblem {
   field: "source" | "mountPath";
   message: string;
@@ -305,7 +286,6 @@ export function volumeProblem(
   return null;
 }
 
-// volumeSetProblem - the problem the SET has: two mounts at one path, or two volumes sharing a name.
 export function volumeSetProblem(
   volumes: VolumeMount[],
   workdir?: string | null,
@@ -315,7 +295,6 @@ export function volumeSetProblem(
   for (const v of volumes) {
     const path = effectiveMountPath(v, workdir);
     if (path) {
-      // JSON, not a joined string: no separator a service name or path could contain.
       const key = JSON.stringify([(v.service ?? "").trim(), path]);
       if (paths.has(key)) return `Two mounts share the path ${path}`;
       paths.add(key);
@@ -333,7 +312,6 @@ export function volumeSetProblem(
   return null;
 }
 
-// namedVolumeTarget - the on-host name a Volume row will use; null for a File, a Bind, or a pathless Volume.
 export function namedVolumeTarget(
   v: VolumeMount,
   slug: string,
@@ -345,7 +323,6 @@ export function namedVolumeTarget(
   return name ? hostVolumeName(slug, name.toLowerCase()) : null;
 }
 
-// volumeReadout - one sentence stating what this row will do at deploy.
 export function volumeReadout(
   v: VolumeMount,
   slug: string,

@@ -141,7 +141,6 @@ test("pairVolumes stays quiet about an unmatched anonymous volume", () => {
   assert.deepEqual(notes, []);
 });
 
-// The one volume the importer has nowhere to put, on every Mongo that names it.
 test("pairVolumes says why a standalone Mongo's configdb has no twin", () => {
   const { notes } = pairVolumes(
     [
@@ -156,7 +155,6 @@ test("pairVolumes says why a standalone Mongo's configdb has no twin", () => {
 });
 
 test("pairHostMounts drops what belongs to the MACHINE, not to the app", () => {
-  // The target has its own `/etc/localtime`, and reading one is not a copy that can succeed.
   const host = [
     "/etc/localtime",
     "/etc/timezone",
@@ -173,7 +171,6 @@ test("pairHostMounts drops what belongs to the MACHINE, not to the app", () => {
     host.map((p) => ({ hostPath: p, mountPath: p })),
   );
   assert.deepEqual(paired, []);
-  // A path that only LOOKS like one of them is still the app's own data.
   assert.equal(
     pairHostMounts(
       [{ hostPath: "/etc/localtime.bak", mountPath: "/cfg" }],

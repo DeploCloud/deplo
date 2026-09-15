@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Cron jobs empty-state illustration: a dial with a hand sweeping round it, firing the job every time it crosses the top mark. */
 export function CronGraphic({ className }: { className?: string }) {
   return (
     <svg

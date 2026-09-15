@@ -33,7 +33,6 @@ import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-// DatabaseConnectionSettings - how clients reach a database and authenticate.
 export function DatabaseConnectionSettings({
   db,
   servers,
@@ -58,7 +57,6 @@ export function DatabaseConnectionSettings({
   );
 }
 
-// Exposure + server move - one reroute either way: updateDatabase applies both.
 function ExposureCard({
   db,
   servers,

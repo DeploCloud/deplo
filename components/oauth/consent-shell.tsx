@@ -1,7 +1,6 @@
 import Link from "@/components/ui/link";
 import { DeploLogo } from "@/components/logo";
 
-// ConsentShell is the sign-in shell without its layout, which redirects a signed-in user away.
 export function ConsentShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-4 py-10">

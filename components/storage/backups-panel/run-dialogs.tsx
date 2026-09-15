@@ -9,7 +9,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { BackupRun } from "@/lib/types/backup";
 import { noun, type BackupTarget } from "./target";
 
-// CancelRunDialog - stop a dump that is still running, keeping nothing.
 export function CancelRunDialog({
   runId,
   open,
@@ -40,7 +39,6 @@ export function CancelRunDialog({
   );
 }
 
-// RestoreRunDialog - put this artifact back over the live target, in place.
 export function RestoreRunDialog({
   run,
   target,
@@ -81,7 +79,6 @@ export function RestoreRunDialog({
   );
 }
 
-// DeleteRunDialog - drop one artifact, or the record a failed run left behind.
 export function DeleteRunDialog({
   run,
   target,
@@ -98,7 +95,6 @@ export function DeleteRunDialog({
   const router = useRouter();
   const { hide, restore } = useOptimisticRow(run.id);
   const ok = run.status === "success";
-  // No typed confirmation, unlike Restore: ceremony everywhere is ceremony nowhere.
   return (
     <ConfirmAction
       open={open}

@@ -17,7 +17,6 @@ import { openOrSyncPreview } from "../deploy/preview-lifecycle/open-sync";
 import { syncPreviewComment } from "../deploy/preview-comment";
 import { parseRequiredLabels } from "../deploy/preview-lifecycle/settings";
 
-// The `pull_request` arm of the GitHub webhook - twin of the `push` arm in app/api/github/webhook/route.ts.
 export async function handlePullRequestDelivery(
   raw: string,
   appId: string,
@@ -57,7 +56,6 @@ export async function handlePullRequestDelivery(
     return new Response("ok", { status: 200 });
   }
 
-  // Same cut as the push arm: github-source apps of this installation.
   const candidates = (
     await getDb()
       .select()
@@ -141,7 +139,6 @@ export async function handlePullRequestDelivery(
         },
       );
 
-      // Always tell the pull request what happened: a silent refusal leaves the contributor waiting for a preview that never comes.
       if (res.previewId && res.refusal?.kind === "awaiting-approval") {
         void syncPreviewComment(res.previewId, { kind: "awaiting-approval" });
       } else if (res.previewId && res.refusal?.kind === "evicted") {
@@ -155,7 +152,6 @@ export async function handlePullRequestDelivery(
         );
       }
     } catch (e) {
-      // One app's failure must never block the rest of the fan-out.
       console.warn(
         `[github-webhook] pull_request #${ev.number} failed for ${app.slug}: ` +
           (e instanceof Error ? e.message : String(e)),

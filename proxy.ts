@@ -9,9 +9,6 @@ import {
   teamSlugFromPath,
 } from "@/lib/team-path";
 
-// The proxy is never the sole auth gate: layouts (requireUser) and lib/data verify.
-
-// Better Auth's session cookie (ADR-0014).
 const SESSION_COOKIES = ["deplo.session_token", "__Secure-deplo.session_token"];
 const PUBLIC_PATHS = ["/login", "/setup", "/register"];
 
@@ -63,7 +60,6 @@ export function proxy(request: NextRequest) {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${
       isDev ? " 'unsafe-eval'" : ""
     }`,
-    // worker-src falls back to script-src, where 'strict-dynamic' makes 'self' inert.
     `worker-src 'self'`,
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' blob: data: ${GRAVATAR_ORIGINS.join(" ")} https://avatars.githubusercontent.com${
@@ -73,7 +69,6 @@ export function proxy(request: NextRequest) {
     `connect-src 'self'${ownOrigin ? ` ${ownOrigin}` : ""}`,
     `object-src 'none'`,
     `base-uri 'self'`,
-    // github.com: the one-click GitHub App manifest flow POSTs from the browser.
     `form-action 'self' https://github.com`,
     `frame-ancestors 'none'`,
     isHttps ? `upgrade-insecure-requests` : ``,
@@ -91,7 +86,6 @@ export function proxy(request: NextRequest) {
 
   if (!hasSession && !isPublic) {
     const url = request.nextUrl.clone();
-    // The query is dropped everywhere else on purpose: a link can put anything there.
     const back = pathname.startsWith("/oauth/")
       ? pathname + request.nextUrl.search
       : null;
@@ -103,7 +97,6 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
-  // Always set, so a team header a client sent never gets through.
   const teamSlug = teamSlugFromPath(pathname);
   requestHeaders.set(TEAM_HEADER, teamSlug ?? "");
 
@@ -126,8 +119,6 @@ export function proxy(request: NextRequest) {
     "camera=(), microphone=(), geolocation=(), browsing-topics=()",
   );
   response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
-  // No includeSubDomains/preload, and never on the generated host: HSTS there takes away
-  // the browser's "Proceed anyway" on a certificate warning.
   if (isHttps && !isWildcardDnsHost(hostOf(request))) {
     response.headers.set("Strict-Transport-Security", "max-age=15552000");
   }
@@ -137,7 +128,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      // .well-known is excluded like api: OAuth discovery (RFC 8414 / 9728) has no cookie yet.
       source:
         "/((?!api|\\.well-known|_next/static|_next/image|favicon.ico|robots.txt|install|uninstall).*)",
     },

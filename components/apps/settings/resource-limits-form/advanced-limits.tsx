@@ -68,7 +68,6 @@ function AdvancedRow({
   );
 }
 
-// AdvancedLimits is the collapsed section: the knobs past Memory and CPU.
 export function AdvancedLimits({
   form,
   set,

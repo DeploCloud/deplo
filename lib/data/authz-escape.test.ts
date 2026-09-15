@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
 
-// Set BEFORE the modules load: with a public URL the deploy hook never reads request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -205,7 +204,6 @@ test("a project-scoped token can't read the team's shared secrets back", async (
 test("nor author one - a team-wide var reaches every app in the team", async () => {
   const id = await teamWideSecret();
 
-  // The var would be injected into apps in prc_out too, at the highest deploy precedence.
   await refused(
     () =>
       scoped(() =>
@@ -250,7 +248,6 @@ test("nor author one - a team-wide var reaches every app in the team", async () 
 
 test("nor enumerate them from an app it does reach", async () => {
   await teamWideSecret();
-  // Only secret rows are masked, so a team-wide plain var is the value itself.
   await asUser(() =>
     saveSharedVar({
       key: "SENTRY_DSN",
@@ -262,7 +259,6 @@ test("nor enumerate them from an app it does reach", async () => {
     }),
   );
 
-  // ADR-0012 "scopes only suggest": over a session the app's page shows the whole team set.
   const mine = await asUser(() => listSharedVarsForApp(APP_IN));
   assert.deepEqual(
     mine.map((v) => v.key).sort(),
@@ -270,7 +266,6 @@ test("nor enumerate them from an app it does reach", async () => {
     "a session still sees the whole team's shared vars from any app",
   );
 
-  // manage_env survives the project clamp, so this page cannot refuse - it must hold the catalogue back.
   const theirs = await scoped(() => listSharedVarsForApp(APP_IN));
   assert.deepEqual(
     theirs.map((v) => v.key),
@@ -286,7 +281,6 @@ test("nor enumerate them from an app it does reach", async () => {
 test("nor link one into an app it controls", async () => {
   const id = await teamWideSecret();
 
-  // Linking is a read-back by other means, which is why the shared library is requireTeamWide.
   const refusal = await refused(
     () => scoped(() => setSharedVarAppLink(id, APP_IN, true)),
     "a narrowed token linked a team-wide secret into its own app",
@@ -301,7 +295,6 @@ test("nor link one into an app it controls", async () => {
     "the refusal must be the unknown-id message: a scope is no existence oracle",
   );
 
-  // The rule is "does this variable pertain to this app", not "is the caller narrowed".
   const ownId = await asUser(async () => {
     await saveSharedVar({
       key: "PROJECT_KEY",
@@ -334,7 +327,6 @@ test("nor delete one", async () => {
   );
 });
 
-// The defence is upstream: move_apps is absent from PROJECT_SCOPED_CAPABILITIES, so the clamp strips it.
 test("a narrowed token holds no move at all, in or out of its scope", async () => {
   await asUser(() => createFolder("Mine"));
   const fld = (await asUser(() => listFolders()))[0]!.id;
@@ -360,7 +352,6 @@ test("a narrowed token holds no move at all, in or out of its scope", async () =
   );
 });
 
-// A database belongs to no Project, but manage_backups / restore_backups survive the clamp.
 async function dbBackup(): Promise<{ backupId: string; runId: string }> {
   const backupId = await seedBackup(db, {
     id: "bkp_db",
@@ -389,7 +380,6 @@ test("a project-scoped token can't restore a database it can't even see", async 
 
 test("nor download its artifact - a dump is every byte the database holds", async () => {
   const { runId } = await dbBackup();
-  // Gated on restore_backups: a dump hands over every byte without touching the live database.
   await refused(
     () => scoped(() => downloadBackupArtifact(runId)),
     "a narrowed token downloaded a database backup",
@@ -402,7 +392,6 @@ test("nor take the recovery key that decrypts every artifact at a destination", 
     kind: "server",
     serverId: SERVER_1,
   });
-  // A destination belongs to the team and no Project, and its key opens every artifact written there.
   await refused(
     () => scoped(() => revealRecoveryKey(dest)),
     "a narrowed token took a destination's recovery key",
@@ -534,7 +523,6 @@ test("resetting a default role can't hand out more than the actor holds", async 
     }),
   );
 
-  // Reset rewrites every holder's capabilities, so it answers to the same bound as updateRole.
   await refused(
     () => as("u_roles", () => resetRole(member.id)),
     "a manage_roles holder reset a role back above their own permissions",
@@ -557,7 +545,6 @@ test("so a member holding that role can't reset their way back to the preset", a
       capabilities: ["view", "manage_roles"],
     }),
   );
-  // On the narrowed role, a reset would rewrite their OWN membership_capabilities row.
   await asUser(() => updateMember({ userId: "u_roles", roleId: member.id }));
 
   await refused(
@@ -631,11 +618,8 @@ test("the masked hook URL is a mask, not a prefix of the secret", async () => {
     masked.startsWith(`https://deplo.test/api/apps/${APP_IN}/deploy-hook/`),
   );
   assert.ok(!masked.includes(secret), "the whole secret is absent");
-  // A settings page renders this for anyone who can read the app, configure_apps or not.
   assert.ok(!masked.includes(secret.slice(0, 4)), "nor its leading characters");
 });
-
-// memberships.role is a RANK the token clamp does not narrow, so the bound reads capabilities.
 
 const adminToken = (cap: Capability): TokenGrant => ({
   id: "tok_admin",
@@ -658,7 +642,6 @@ test("an owner's manage_tokens token can't mint a successor above itself", async
       ),
     "a one-permission token minted an all-powerful one",
   );
-  // It still mints what it actually holds - the bound is a ceiling, not a ban.
   const ok = await asToken("manage_tokens", () =>
     createToken({ name: "Sibling", capabilities: ["view", "manage_tokens"] }),
   );
@@ -694,7 +677,6 @@ test("an owner's manage_roles token can't widen the role every member holds", as
 });
 
 test("an owner's manage_members token can't promote anyone past itself", async () => {
-  // The legacy rank + capabilities path CLAMPS rather than refusing: the proof is the set that lands.
   await asToken("manage_members", () =>
     updateMember({
       userId: "u_roles",
@@ -720,7 +702,6 @@ test("an owner's manage_members token can't promote anyone past itself", async (
 });
 
 test("an owner-RANK member with a narrowed set can't author their way out", async () => {
-  // The legacy role + capabilities path can mint an owner-rank membership holding only some.
   await asUser(() =>
     updateMember({
       userId: "u_roles",

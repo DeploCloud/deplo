@@ -11,7 +11,6 @@ import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
 import { updateServerAddress } from "./servers/agent-maintenance";
 import { getServerById } from "./servers/roster";
 
-// The probe mints a real client cert from DEPLO_SECRET (lib/agent/pki), so pin one.
 process.env.DEPLO_SECRET = "test-secret-for-server-address-aaaaaaaa";
 
 let db: TestDb;
@@ -107,7 +106,6 @@ test("an unprovisioned server needs no probe: both columns follow the address", 
 });
 
 test("verify-first: an unanswered probe refuses and writes NOTHING", async () => {
-  // Loopback, not TEST-NET: a refused connection is instant, a dropped SYN hangs.
   await assert.rejects(() =>
     asAdmin(() =>
       updateServerAddress({ id: PROVISIONED, address: "127.0.0.2" }),

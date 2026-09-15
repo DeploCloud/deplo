@@ -21,7 +21,7 @@ import {
 const h = setupSupervisor();
 
 test("reconnect backoff grows exponentially and is CAPPED at RECONNECT_BACKOFF_CAP_MS", () => {
-  const JITTER = 1.2; // +/-20%, so the band to assert against is base * [0.8, 1.2]
+  const JITTER = 1.2;
 
   for (let attempt = 0; attempt < 4; attempt++) {
     const base = Math.min(RECONNECT_BACKOFF_CAP_MS, 1000 * 2 ** attempt);
@@ -32,7 +32,6 @@ test("reconnect backoff grows exponentially and is CAPPED at RECONNECT_BACKOFF_C
     );
   }
 
-  // Capped: no attempt, however deep, escalates past the ceiling.
   for (const attempt of [10, 16, 64, 1024]) {
     const v = backoffFor(attempt);
     assert.ok(
@@ -43,7 +42,6 @@ test("reconnect backoff grows exponentially and is CAPPED at RECONNECT_BACKOFF_C
 });
 
 test("reconnect attempts are UNBOUNDED - a host down for an hour reconnects when it returns", async () => {
-  // No give-up state on purpose: recovery must cost zero operator action, only the capped backoff.
   await seedEnrolledServer(h.db, SRV_A, "2026-01-01T00:00:00.000Z");
 
   const held: { feed: Feed | null } = { feed: null };
@@ -56,7 +54,6 @@ test("reconnect attempts are UNBOUNDED - a host down for an hour reconnects when
   });
 
   startMetricsStreams();
-  // Two failures back off ~1s then ~2s (with jitter) before the host returns.
   await waitFor(() => attempts >= 3, "the third dial, after two failures", 600);
   await waitFor(() => held.feed !== null, "the recovered connection");
   await held.feed!.send(frame());

@@ -42,7 +42,6 @@ const NEVER_CHANGES = () => () => {};
 const onClient = () => true;
 const onServer = () => false;
 
-// SchedulePicker - pick a schedule without writing cron; the raw expression is the last item, under Advanced.
 export function SchedulePicker({
   value,
   onChange,
@@ -83,7 +82,6 @@ export function SchedulePicker({
   const valid = isValidSchedule(value);
   const description = describeCron(value, { timeZone: timezone });
 
-  // After hydration only: the reader's timezone and clock are not the server's.
   const hydrated = React.useSyncExternalStore(
     NEVER_CHANGES,
     onClient,
@@ -111,7 +109,6 @@ export function SchedulePicker({
     const [h, m] = time.split(":");
     const hour = Number(h);
     const minute = Number(m);
-    // A cleared `type="time"` input reports "" - ignore it rather than emit NaN.
     if (!Number.isInteger(hour) || !Number.isInteger(minute)) return;
     apply({ ...parts, hour, minute });
   }
@@ -173,7 +170,6 @@ export function SchedulePicker({
 
   return (
     <div className="grid gap-4">
-      {/* Row 1 - how often, plus the day that frequency has to pin down. */}
       <div className={dayField ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
         <div className="space-y-2">
           <FieldLabel htmlFor={id} info={info} docs={docs}>
@@ -203,7 +199,6 @@ export function SchedulePicker({
               </SelectGroup>
             </SelectContent>
           </Select>
-          {/* The raw expression IS the frequency, so it sits in that cell, not on its own row. */}
           {custom && (
             <Input
               aria-label="Cron expression"
@@ -220,7 +215,6 @@ export function SchedulePicker({
         {dayField}
       </div>
 
-      {/* Row 2 - the time of day, on the same axis as whatever the caller pairs with it. */}
       <div className="space-y-2">
         {(needsTime || trailing) && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -272,7 +266,6 @@ export function SchedulePicker({
   );
 }
 
-// ScheduleLabel - a stored schedule read back as words, the display twin of the picker.
 export function ScheduleLabel({
   cron,
   timezone = "UTC",

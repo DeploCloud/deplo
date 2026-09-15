@@ -7,14 +7,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { FacetOption } from "./types";
 
-// toggleValue ticks or unticks one option of a multi-select facet.
 export function toggleValue(values: string[], value: string): string[] {
   return values.includes(value)
     ? values.filter((v) => v !== value)
     : [...values, value];
 }
 
-// Options with no group land in one nameless bucket - the whole list, for most facets.
 function groupedOptions(
   options: FacetOption[],
 ): { group: string | null; options: FacetOption[] }[] {
@@ -48,7 +46,6 @@ function FacetGroupHeader({
       </span>
       <button
         type="button"
-        // Keeps the caret in the combobox input this can sit inside.
         onMouseDown={(e) => e.preventDefault()}
         onClick={() =>
           onChange(
@@ -83,7 +80,6 @@ function FacetOptionRow({
   checked: boolean;
   count?: number;
   onToggle: () => void;
-  // Set by the combobox - the row becomes an aria `option` the input points at.
   id?: string;
   active?: boolean;
   onActivate?: () => void;
@@ -94,14 +90,10 @@ function FacetOptionRow({
       role={id ? "option" : undefined}
       aria-selected={id ? checked : undefined}
       onMouseEnter={onActivate}
-      // Keep the combobox input focused while ticking - a row must never steal
-      // the caret mid-search.
       onMouseDown={id ? (e) => e.preventDefault() : undefined}
       className={cn(
         "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm",
         active ? "bg-accent" : "hover:bg-accent",
-        // Ticking it would add nothing - shown, so you can see the option
-        // exists, greyed, so you know why it's pointless.
         count === 0 && !checked && "opacity-50",
       )}
     >
@@ -131,7 +123,6 @@ function FacetOptionRow({
   );
 }
 
-// FacetClearRow is the "off" row at the top of a facet menu - its allLabel.
 export function FacetClearRow({
   label,
   on,
@@ -143,7 +134,6 @@ export function FacetClearRow({
   label: string;
   on: boolean;
   onSelect: () => void;
-  // Set by the combobox - the row joins its listbox as row 0.
   id?: string;
   active?: boolean;
   onActivate?: () => void;
@@ -171,7 +161,6 @@ export function FacetClearRow({
   );
 }
 
-// FacetOptionList is the scrolling body of a facet menu: group headings and option rows.
 export function FacetOptionList({
   options,
   values,
@@ -188,7 +177,6 @@ export function FacetOptionList({
   counts?: Record<string, number>;
   onChange: (values: string[]) => void;
   onToggle: (value: string) => void;
-  // Set by the combobox: the rows become aria `option`s of one flat listbox.
   optionId?: (index: number) => string;
   activeIndex?: number;
   onActivate?: (index: number) => void;
@@ -208,8 +196,6 @@ export function FacetOptionList({
             />
           )}
           {bucket.options.map((opt) => {
-            // The arrow keys walk ONE flat list, so the index is the option's
-            // position in `options`, not in its bucket.
             const i = options.indexOf(opt) + 1;
             return (
               <FacetOptionRow

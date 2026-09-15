@@ -24,7 +24,6 @@ export interface PickableServer {
   isDeploHost: boolean;
 }
 
-// ServerPicker - which host the panels below belong to, and how to change it.
 export function ServerPicker({
   servers,
   rows,
@@ -75,7 +74,6 @@ export function ServerPicker({
               return (
                 <CommandItem
                   key={s.id}
-                  // Both, so an address is as searchable as a name.
                   value={`${s.name} ${s.ip}`}
                   onSelect={() => {
                     onSelect(s.id);

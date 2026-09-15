@@ -91,38 +91,27 @@ export function NewAppWizard({
   exitHref,
 }: {
   servers: WizardServer[];
-  /** Hosts offerable under Advanced → Build on. */
   buildServers: WizardBuildServer[];
-  /** The team's shared variables, empty when the creator can't manage env. */
   sharedVars: LinkableSharedVar[];
   template?: WizardTemplate;
   presetRepo?: string;
   presetName?: string;
-  /** A source the caller already knows - a dropped archive opens on Upload. */
   presetSource?: DeploySource | null;
   installations: GithubInstallationDTO[];
   connections: GitConnectionDTO[];
-  /** The connectable git hosts, so one is added from the picker itself. */
   providers: GitProviderChoice[];
-  /** Gates the connect dialog's "on my own network" option. */
   isInstanceAdmin: boolean;
-  /** Whether to start the app's first deployment after creation. */
   shouldDeploy?: boolean;
   placement?: WizardPlacement | null;
-  /** Where Cancel goes - the Overview drill-in, or the template catalog. */
   exitHref: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const isTemplate = Boolean(template);
 
-  // An archive dropped on another page rides a module variable across the
-  // client-side navigation: read (not consumed) during render, dropped by the effect.
   const [dropped] = React.useState(peekPendingArchive);
   React.useEffect(() => clearPendingArchive(), []);
 
-  // A template arrives resolved (its stack, env and routing are decided), so the
-  // wizard opens on the last card. A dropped archive already answered step one.
   const [source, setSource] = React.useState<DeploySource | null>(
     isTemplate
       ? "docker-image"
@@ -145,14 +134,11 @@ export function NewAppWizard({
     connectionId: null,
   });
   const [dockerImage, setDockerImage] = React.useState("");
-  // A code archive picked here and held until deploy, then streamed to the
-  // freshly-created app (there's no app to POST to yet).
   const [uploadFile, setUploadFile] = React.useState<File | null>(dropped);
   const [compose, setCompose] = React.useState(template?.compose ?? "");
   const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>(
     () => (template?.compose ? lintCompose(template.compose) : []),
   );
-  // Services the user asked to give an address to, on top of the primary one.
   const [extraRouted, setExtraRouted] = React.useState<string[]>([]);
 
   const [name, setName] = React.useState(
@@ -176,16 +162,12 @@ export function NewAppWizard({
   const [sharedIds, setSharedIds] = React.useState<string[]>([]);
   const [composeOpen, setComposeOpen] = React.useState(false);
   const [envOpen, setEnvOpen] = React.useState(false);
-  // A deploy held at the door: the stack shares a service name with a neighbour,
-  // and the dialog asks whether to rename it or go edit the compose.
   const [clash, setClash] = React.useState<{
     input: CreateAppVariables;
     clashes: NameClash[];
   } | null>(null);
 
   const usesGit = source === "github" || source === "git";
-  // Build settings only apply when Deplo turns code into an image. A prebuilt
-  // image and a compose stack are deployed as-is.
   const buildsImage = source !== "docker-image" && source !== "compose";
   const templateCompose = isTemplate && source === "docker-image";
   const useCompose = templateCompose || source === "compose";
@@ -200,7 +182,6 @@ export function NewAppWizard({
     setImagePort,
   } = useBuildConfig({ source, buildsImage, ghSelection, gitValue });
 
-  /** Name the app after whatever the user just picked, until they type one. */
   function suggestName(suggested: string) {
     if (!nameTouched && suggested) setName(suggested);
   }
@@ -221,8 +202,6 @@ export function NewAppWizard({
     () => (compose.trim() ? composeServiceNames(compose) : []),
     [compose],
   );
-  // Which services of a hand-written stack get an address. A template declares
-  // its own domains, so the picker is only for a compose the user wrote.
   const routeCandidates = React.useMemo(
     () =>
       compose.trim() && !isTemplate ? composeRouteCandidates(compose) : [],
@@ -243,14 +222,12 @@ export function NewAppWizard({
     return false;
   }
 
-  // Step one has no button to disable - it advances on the choice itself.
   const nextDisabled =
     step === "details"
       ? !sourceReady() || (!usesGit && !name.trim())
       : !name.trim();
 
   function onBack() {
-    // A template skipped the picker, so its way back is out of the wizard.
     if (isTemplate) {
       router.push(exitHref);
       return;
@@ -385,7 +362,6 @@ export function NewAppWizard({
 
   return (
     <>
-      {/* Dropping an archive anywhere in the wizard is the Upload source. */}
       <ArchiveDropZone
         onFile={(file) => {
           setUploadFile(file);
@@ -402,7 +378,6 @@ export function NewAppWizard({
             description="Where does your code live? Deplo takes it from there and puts it online."
             meta={meta}
           >
-            {/* No Next here: picking the source IS the answer. */}
             <SourceTiles
               value={source}
               onSelect={(next) => {

@@ -315,7 +315,6 @@ test("a foreign team can't be put in a scope", async () => {
   });
 });
 
-// Filing an app into a folder CLEARS its `project_id`.
 async function seedFolders() {
   await db.insert(foldersTable).values([
     {
@@ -512,7 +511,6 @@ test("a folder in a team you don't belong to can't be put in a scope", async () 
   });
 });
 
-// Membership of a team is not access to every folder in it: a folder is private to its owner and grantees.
 async function seedPrivateFolder(): Promise<void> {
   await db.insert(foldersTable).values({
     id: "fld_private",
@@ -622,7 +620,6 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
     });
   await seedPrivateFolder();
 
-  // The picker won't offer it, but the API takes ids, so the read path is what has to hold.
   const raw = await asOutsider(
     async () =>
       (
@@ -708,7 +705,6 @@ test("a folder-scoped token creates apps in its own folder, and nowhere else", a
       folderIds: ["fld_root"],
     },
     async () => {
-      // A folder has no `project_id` of its own, so "is your PROJECT in scope?" refused its own folder.
       const made = await newApp("in-folder", { folderId: "fld_root" });
       assert.equal(made.folderId, "fld_root");
 
@@ -755,7 +751,6 @@ test("the whole team and one app inside it is refused, not merged", async () => 
 });
 
 test("a token minted before that refusal reads as narrowed, never as the whole team", async () => {
-  // Exactly the row shape `createToken` used to accept: one app, plus its own team.
   const raw = await asUser1(
     async () =>
       (

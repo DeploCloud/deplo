@@ -10,7 +10,6 @@ import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-f
 
 export const metadata = { title: "Resources" };
 
-/** Per-database caps - the app form, saving through updateDatabaseResources. */
 export default async function DatabaseResourcesSettingsPage(
   props: PageProps<"/[team]/storage/databases/[id]/settings/resources">,
 ) {
@@ -36,7 +35,6 @@ export default async function DatabaseResourcesSettingsPage(
         docs="resources.overview"
         info="Cap how much RAM, CPU, disk and processes this database may use. Applied on the next redeploy."
       />
-      {/* InnoDB needs headroom: a too-small cap is a silent restart loop. */}
       {(db.type === "mysql" || db.type === "mariadb") && (
         <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
           {db.type === "mysql" ? "MySQL" : "MariaDB"} generally needs at least{" "}

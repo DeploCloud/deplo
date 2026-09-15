@@ -31,9 +31,7 @@ import {
   TEAM,
 } from "./fixture-ids";
 
-// seedAccessControl adds the lab's scoped roles and its two hand-picked grants.
 export async function seedAccessControl(db: TestDb): Promise<void> {
-  // Three scoped roles, one per shape a contractor comes in.
   await db.insert(teamRolesTable).values(
     [
       [ROLE_PRJ, "Project A only"],
@@ -77,7 +75,6 @@ export async function seedAccessControl(db: TestDb): Promise<void> {
       .where(eq(membershipsTable.userId, userId));
   }
 
-  // SOLO holds one app and nothing else; GRANTEE was shared one private folder.
   await db
     .update(membershipsTable)
     .set({ granular: true })

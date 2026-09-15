@@ -25,7 +25,6 @@ export default async function AppPullRequestsPage(
   const [view, canDeploy, canManageGit] = await Promise.all([
     listAppPreviews(app.id),
     hasCapability("manage_previews"),
-    // Everyone is told why previews cannot run; only manage_git is sent to GitHub.
     hasCapability("manage_git"),
   ]);
 
@@ -38,7 +37,6 @@ export default async function AppPullRequestsPage(
 
   return (
     <div className="space-y-4">
-      {/* Section title inside the app, not a page title: same shape as Domains. */}
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Pull request previews</h3>

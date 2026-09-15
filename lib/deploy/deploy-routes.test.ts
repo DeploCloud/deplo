@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { orderDeployRoutes } from "./build/deploy-routes";
 import { defaultRoute, type RoutableDomain } from "../data/domains/routes";
 
-// A valid, routable row as `routableRoutes` returns it.
 function route(
   name: string,
   extra: Partial<RoutableDomain> = {},
@@ -71,8 +70,6 @@ test("a not-yet-valid primary is added as a synthetic route, never duplicated", 
     "the synthetic fallback routes the whole host",
   );
 });
-
-// An unverified primary is still routed, so a brand-new app answers on it.
 
 test("an unverified primary keeps its OWN path/strip/port, not defaults", () => {
   const stored = route("app.com", {

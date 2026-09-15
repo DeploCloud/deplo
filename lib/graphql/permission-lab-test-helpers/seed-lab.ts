@@ -51,28 +51,22 @@ import {
 import { seedAccessControl } from "./seed-access-control";
 import { seedProjectGraph } from "./seed-project-graph";
 
-// The lab's live fixture: assigned in `before`, re-seeded in `beforeEach`.
 export const lab = {
   db: null as unknown as TestDb,
   pg: null as unknown as PGlite,
   roles: new Map<Role, string>(),
 };
 
-// installLab registers the lab's hooks in the calling test file.
 export function installLab(): void {
   before(async () => {
     ({ db: lab.db, pg: lab.pg } = await makeTestDb());
     __setTestDb(lab.db);
-    // The stand-in runner has to settle the row: left `queued`, the lane picks it
-    // up again the moment the runner returns and spins the event loop forever.
     __setRunnerForTest(async (depId) => {
       await lab.db
         .update(deploymentsTable)
         .set({ status: "canceled" })
         .where(eq(deploymentsTable.id, depId));
     });
-    // The lab has no host: a gate that passes is then stopped by the dial, which
-    // is the one error every "allowed" probe is permitted to end in.
     __setAgentConnectorForTest(async () => {
       throw new AgentUnreachableError("lab: no host");
     });
@@ -83,7 +77,6 @@ export function installLab(): void {
   });
 
   after(async () => {
-    // A delete's teardown runs behind the response; let it land before the DB goes.
     await settle(300);
     __resetQueueForTest();
     __setAgentConnectorForTest();

@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/advanced/network-isolation
-
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -12,14 +10,12 @@ import { appNetwork } from "../deploy/network";
 import { stackName } from "../deploy/deploy-key";
 import { withKeyedLock } from "./keyed-mutex";
 
-// Placement is where a workload would sit: the two fields that decide its network.
 export interface Placement {
   teamId: string;
   environmentId: string | null;
   serverId: string;
 }
 
-// namesOnNetwork lists the names answered on `to`'s network; only the same network AND host contests one.
 export async function namesOnNetwork(
   to: Placement,
   exceptId: string,
@@ -38,7 +34,6 @@ export async function namesOnNetwork(
         serverId: appsTable.serverId,
       })
       .from(appsTable)
-      // Narrowed to what can contest the name at all, so a create does not read every app's compose.
       .where(
         and(
           eq(appsTable.teamId, to.teamId),
@@ -83,7 +78,6 @@ export async function namesOnNetwork(
   return taken;
 }
 
-// namesTakenOnNetwork is every DNS name a neighbour already answers to on `to`'s network.
 export async function namesTakenOnNetwork(
   to: Placement,
   exceptId = "",
@@ -91,7 +85,6 @@ export async function namesTakenOnNetwork(
   return new Set((await namesOnNetwork(to, exceptId)).keys());
 }
 
-// neighboursOnNetwork names who else answers on this workload's network, by display name.
 export async function neighboursOnNetwork(
   to: Placement,
   exceptId: string,
@@ -99,7 +92,6 @@ export async function neighboursOnNetwork(
   return [...new Set((await namesOnNetwork(to, exceptId)).values())].sort();
 }
 
-// assertNoNameClash refuses a claim a neighbour already answers to: Docker round-robins a shared name.
 export async function assertNoNameClash(opts: {
   to: Placement;
   claims: string[];
@@ -112,8 +104,6 @@ export async function assertNoNameClash(opts: {
   for (const claim of claims) {
     const owner = taken.get(claim);
     if (!owner) continue;
-    // Suggest a free name instead of renaming: an import can rewrite a name it generated, but a
-    // compose the user wrote is theirs and renaming a service breaks the references inside it.
     let free = `${claim}-2`;
     for (let n = 2; taken.has(free); n++) free = `${claim}-${n}`;
     throw new Error(
@@ -125,7 +115,6 @@ export async function assertNoNameClash(opts: {
   }
 }
 
-// nameClashesOnMove reports the names that WOULD collide, because a delete cannot be refused for one.
 export async function nameClashesOnMove(
   appIds: string[],
   to: Omit<Placement, "serverId">,
@@ -147,7 +136,6 @@ export async function nameClashesOnMove(
       ? composeNamesOnNetwork(row.compose)
       : [stackName(row.slug)];
     try {
-      // Each app keeps its OWN host: a network lives on one machine, so two servers never collide.
       await assertNoNameClash({
         to: { ...to, serverId: row.serverId },
         claims,

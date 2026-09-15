@@ -9,9 +9,6 @@ import { PREVIEW_TTL_DAYS_DEFAULT } from "./settings";
 import { SLOTLESS } from "./slots";
 import { teardownPreviewStack } from "./stack-teardown";
 
-// Previews the reaper should act on, in two disjoint sets: `retry` - stopped but never
-// verifiably torn down, because the agent was down; `expired` - open, and idle past the
-// app's TTL.
 export async function previewsDueForReaping(
   now: Date,
   limit: number,
@@ -31,7 +28,6 @@ export async function previewsDueForReaping(
         isNull(appPreviewsTable.tornDownAt),
         or(
           eq(appPreviewsTable.state, "closed"),
-          // A row that never built has nothing on any host, so it is not a retry.
           and(
             inArray(appPreviewsTable.status, [...SLOTLESS]),
             isNotNull(appPreviewsTable.latestDeploymentId),
@@ -41,8 +37,6 @@ export async function previewsDueForReaping(
     )
     .limit(limit);
 
-  // The TTL lives on the APP (NULL ⇒ the default), so the comparison is done in
-  // SQL against a coalesced interval rather than by loading every app.
   const expired = await getDb()
     .select({ id: appPreviewsTable.id, prNumber: appPreviewsTable.prNumber })
     .from(appPreviewsTable)
@@ -59,8 +53,6 @@ export async function previewsDueForReaping(
   return { retry, expired };
 }
 
-// Finish a teardown the reaper picked up, unless the row moved on since: a Redeploy or
-// an approval in between made it `queued`, and its stack is now the one being built.
 export async function retryPreviewTeardown(
   previewId: string,
 ): Promise<boolean> {
@@ -83,12 +75,8 @@ export async function retryPreviewTeardown(
   return teardownPreviewStack(p);
 }
 
-// How long a closed pull request keeps its row in the list.
 export const PREVIEW_CLOSED_RETENTION_DAYS = 7;
 
-// Drop the rows of pull requests closed long enough ago, once their stack is confirmed
-// gone. A row is the only proof a stack exists, so one whose teardown never succeeded
-// is kept whatever its age.
 export async function pruneClosedPreviews(
   now: Date,
   limit: number,
@@ -119,9 +107,6 @@ export async function pruneClosedPreviews(
   return stale.length;
 }
 
-// Open previews whose pull request should be re-checked against GitHub - the
-// missed-`closed`-webhook safety net. Oldest-checked first, so a batch per tick covers
-// everything eventually.
 export async function openPreviewsForStateCheck(limit: number): Promise<
   {
     id: string;

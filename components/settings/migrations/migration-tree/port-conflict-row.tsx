@@ -7,15 +7,12 @@ import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import type { Placement, PlanService } from "../types";
 
-// PortConflict is a database's host port already taken on the server it lands on.
 export interface PortConflict {
   takenPort: number;
   serverName: string;
-  // The port chosen RIGHT NOW is itself taken, so the import cannot start.
   invalid: boolean;
 }
 
-// PortConflictRow is the one choice here that is not about WHERE, but about what a database answers on.
 export function PortConflictRow({
   service,
   conflict,
@@ -46,8 +43,6 @@ export function PortConflictRow({
           <Checkbox
             id={toggleField}
             checked={exposed}
-            // Back ON means back to what the source published, which the review
-            // finds a free port for again - so there is no stale "last port" here.
             onCheckedChange={(v) =>
               onPlace({
                 exposedPort:
@@ -66,8 +61,6 @@ export function PortConflictRow({
         </span>
         {exposed && (
           <span className="flex items-center gap-2">
-            {/* `text-xs` on purpose: `Label` is `text-sm`, a size bigger than
-                the sentence it sits in. One row, one type size. */}
             <FieldLabel
               htmlFor={portField}
               className="text-xs"
@@ -87,8 +80,6 @@ export function PortConflictRow({
               onChange={(e) => {
                 const n = Number(e.target.value);
                 const next = Number.isInteger(n) && n > 0 ? n : null;
-                // Emptying the box IS "publish nothing", and the checkbox says so
-                // by going off.
                 onPlace({ exposedPort: next });
               }}
               className="h-8 w-24"

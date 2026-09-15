@@ -28,14 +28,11 @@ import type { VolumeMount } from "../../types/container";
 
 export { deriveVolumeName };
 
-// validateVolumes canonicalizes an app's whole volume set: the renderer trusts its input, so every
-// path, name and service rule lives here. A HOST source is shape-checked only; the grant is the caller's.
 export function validateVolumes(
   raw: VolumeMount[],
   existingMounts: { filePath: string }[] | null | undefined,
   composeServices?: string[] | null,
   opts?: {
-    // An import is refused AT a reserved path, never merely under it - see validateVolumes.
     imported?: boolean;
   },
 ): VolumeMount[] | null {
@@ -56,7 +53,6 @@ export function validateVolumes(
     }
     const mountPath = (v.mountPath ?? "").trim().replace(/\/+$/, "") || "/";
 
-    // "$" too: a path with one interpolates from the env-file at `up`, so it never means what it says.
     if (!/^\/[^\s:$]*$/.test(mountPath) || mountPath.length < 2) {
       throw new Error(
         `Mount path must be an absolute path with no spaces, ":" or "$": "${v.mountPath}"`,
@@ -66,7 +62,6 @@ export function validateVolumes(
       throw new Error(`Mount path must not contain "..": "${v.mountPath}"`);
     }
 
-    // Reserved for a Volume or a Bind; only AS ITSELF for a File - see reservedMountPath.
     if (reservedMountPath(mountPath, opts?.imported ? "app" : kindOf(v))) {
       throw new Error(`Mount path "${mountPath}" is reserved by the system.`);
     }
@@ -94,7 +89,6 @@ export function validateVolumes(
       (v.name ?? "").trim() || deriveVolumeName(mountPath)
     ).toLowerCase();
 
-    // The source stays relative so ".." cannot climb out; a leading "/" is a gated host path.
     if (v.type === "app") {
       const projectPath = (v.projectPath ?? "")
         .trim()
@@ -140,7 +134,6 @@ export function validateVolumes(
         );
       }
 
-      // Propagation rides into the compose mount line verbatim, so the closed set is checked here too.
       const propagation = v.propagation;
       if (propagation && !MOUNT_PROPAGATIONS.includes(propagation)) {
         throw new Error(
@@ -181,7 +174,6 @@ export function validateVolumes(
   return out.length ? out : null;
 }
 
-// setAppVolumes replaces an app's volumes (full set), compose stacks included. Takes effect next deploy.
 export async function setAppVolumes(
   id: string,
   volumes: VolumeMount[],
@@ -191,7 +183,6 @@ export async function setAppVolumes(
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
 
-  // A host bind mount escapes the per-app sandbox, so it needs the dedicated grant on top.
   if (volumes.some((v) => v.type === "host")) {
     await requireMountHostVolumes();
   }

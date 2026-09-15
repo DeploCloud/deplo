@@ -10,7 +10,6 @@ export async function register(): Promise<void> {
     throw e;
   }
   try {
-    // First and awaited: the panel address decides whether sessions get __Secure- cookies.
     const { hydratePublicBaseUrl } =
       await import("./lib/data/instance-settings/settings-store");
     await hydratePublicBaseUrl();
@@ -37,7 +36,6 @@ export async function register(): Promise<void> {
     console.error("[deplo] could not read the takeover this install is:", e);
   }
   try {
-    // Retire anything left by the withdrawn Plugins feature (ADR-0013).
     const { retireInstalledPlugins } = await import("./lib/plugins/retire");
     void retireInstalledPlugins().catch((e) =>
       console.error("[deplo] plugin retirement sweep failed:", e),

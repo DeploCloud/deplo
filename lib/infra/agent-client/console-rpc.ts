@@ -22,8 +22,6 @@ import { CONSOLE_TIMEOUT_MS, STREAM_DEADLINE_MS } from "./deadlines";
 import { logsFailureReason, toAgentError } from "./errors";
 import type { AgentChannel } from "./mtls-channel";
 
-// consoleRpc - what the console and the log viewer speak: container state, live
-// output, an interactive shell.
 export function consoleRpc(
   channel: AgentChannel,
 ): Pick<
@@ -35,9 +33,6 @@ export function consoleRpc(
     deadline: new Date(Date.now() + CONSOLE_TIMEOUT_MS),
   });
 
-  // Adapt a LogChunk server-stream into the output-only AttachHandle the logs
-  // session registry consumes, so lib/logs/session.ts works UNCHANGED for a
-  // remote backing.
   function logsHandle(stream: ClientReadableStream<LogChunk>): AttachHandle {
     const subs = new Set<(c: Buffer) => void>();
     let pending: Buffer[] | null = [];
@@ -56,9 +51,6 @@ export function consoleRpc(
       exitCb?.(error);
     };
     stream.on("end", () => end());
-    // A stream FAILURE is not a clean end: the agent can refuse the container (no such
-    // container / not this app's), or the host can drop mid-follow. A cancel we asked
-    // for (close()) is filtered by the `closed` guard above.
     stream.on("error", (e: Error) => end(logsFailureReason(e)));
     return {
       onData(cb) {
@@ -73,24 +65,18 @@ export function consoleRpc(
       onExit(cb) {
         exitCb = cb;
       },
-      write() {
-        /* logs are read-only */
-      },
+      write() {},
       close() {
         if (closed) return;
         closed = true;
         try {
           stream.cancel();
-        } catch {
-          /* already gone */
-        }
+        } catch {}
         client.close();
       },
     };
   }
 
-  // Adapt a bidi attach stream into a full-duplex AttachHandle. The FIRST frame
-  // (AttachOpen) is sent by the factory before the handle is returned.
   function attachHandle(
     stream: ClientDuplexStream<AttachInput, AttachOutput>,
   ): AttachHandle {
@@ -130,28 +116,20 @@ export function consoleRpc(
         if (closed) return;
         try {
           stream.write({ data: Buffer.from(data, "utf8") });
-        } catch {
-          /* stream gone; ignore */
-        }
+        } catch {}
       },
       resize(cols: number, rows: number) {
         if (closed) return;
         try {
-          // A tty-only AttachInput frame; the agent applies it to the pty. On a
-          // pipe-backed (non-tty) attach the agent ignores it - harmless.
           stream.write({ resize: { cols, rows } });
-        } catch {
-          /* stream gone; ignore */
-        }
+        } catch {}
       },
       close() {
         if (closed) return;
         closed = true;
         try {
           stream.cancel();
-        } catch {
-          /* already gone */
-        }
+        } catch {}
         client.close();
       },
     };
@@ -167,8 +145,6 @@ export function consoleRpc(
     workdir: i.workdir,
     openStdin: i.openStdin,
     tty: i.tty,
-    // Absent from an older agent: protobuf leaves them at "" / 0, which the
-    // runtime probe reads as "this agent cannot tell me" and falls back.
     state: i.state,
     health: i.health,
     restartCount: i.restartCount,
@@ -207,8 +183,6 @@ export function consoleRpc(
             projectId: appId,
             container,
             tail,
-            // 0 is the proto default and the agent's "unset", so an omitted window produces the
-            // exact request this sent before the fields existed.
             sinceUnix: opts.sinceUnix ?? 0,
             untilUnix: opts.untilUnix ?? 0,
             timestamps: opts.timestamps ?? false,
@@ -227,7 +201,6 @@ export function consoleRpc(
       const stream = client.attach({
         deadline: new Date(Date.now() + STREAM_DEADLINE_MS),
       });
-      // The agent requires AttachOpen as the FIRST frame.
       stream.write({ open: { projectId: appId, container, tty, cols, rows } });
       return attachHandle(stream);
     },

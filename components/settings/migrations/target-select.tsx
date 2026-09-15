@@ -17,10 +17,6 @@ import type { TargetTeam } from "./types";
 
 const NEW_TEAM = "new";
 
-/**
- * Where one source team lands: a team that exists, or one named after it. The
- * namesake is the default (see `defaultTarget`); this is the way to say otherwise.
- */
 export function TargetSelect({
   value,
   teams,
@@ -30,7 +26,6 @@ export function TargetSelect({
 }: {
   value: TeamTarget;
   teams: TargetTeam[];
-  /** What the new team would be called. */
   sourceName: string;
   disabled: boolean;
   onChange: (target: TeamTarget) => void;

@@ -26,10 +26,8 @@ import type { Capability } from "@/lib/types/identity";
 import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import type { AgentDef } from "../agents";
 
-// Radix needs a value for "matches no preset"; it is never chosen.
 const CUSTOM = "custom";
 
-// PermissionsDialog is the advanced editor behind the Permissions row: a template, then the ticks.
 export function PermissionsDialog({
   open,
   onOpenChange,
@@ -108,7 +106,6 @@ export function PermissionsDialog({
   );
 }
 
-// AccessDialog is the advanced editor behind the Access row: how far the token reaches.
 export function AccessDialog({
   open,
   onOpenChange,

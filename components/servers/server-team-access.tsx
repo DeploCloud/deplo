@@ -19,12 +19,10 @@ export interface ServerAccess {
   teamIds: string[];
 }
 
-// accessIsComplete: "Specific teams" with nothing ticked would lock every team out.
 export function accessIsComplete(a: ServerAccess) {
   return a.allTeams || a.teamIds.length > 0;
 }
 
-// ServerTeamAccess edits the all-teams / specific-teams choice; the parent owns the value and persists it.
 export function ServerTeamAccess({
   value,
   teams,
@@ -105,7 +103,6 @@ export function ServerTeamAccess({
   );
 }
 
-// AccessOption is one card in a card-shaped radio group.
 export function AccessOption({
   icon: Icon,
   title,

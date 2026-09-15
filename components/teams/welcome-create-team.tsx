@@ -15,7 +15,6 @@ const CREATE_TEAM = /* GraphQL */ `
   }
 `;
 
-// WelcomeCreateTeam - the only screen a user with zero teams can reach; the dashboard needs an active team.
 export function WelcomeCreateTeam({ userName }: { userName: string }) {
   const [pending, startTransition] = React.useTransition();
   const [team, setTeam] = React.useState(EMPTY_TEAM);
@@ -27,7 +26,6 @@ export function WelcomeCreateTeam({ userName }: { userName: string }) {
         image: team.image,
       });
       if (res.ok) {
-        // Hard, not the router: it cached `/` when this account still had no team.
         window.location.assign("/");
       } else toast.error(res.error);
     });

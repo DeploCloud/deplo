@@ -9,7 +9,6 @@ import {
   type DeploymentSettingsProps,
 } from "./use-deployment-settings";
 
-// DeploymentSettingsForm: how the app is built, where it runs, and what makes it deploy again.
 export function DeploymentSettingsForm(props: DeploymentSettingsProps) {
   const settings = useDeploymentSettings(props);
 
@@ -18,7 +17,6 @@ export function DeploymentSettingsForm(props: DeploymentSettingsProps) {
       <div className="space-y-6">
         <DeploySourceCard {...props} settings={settings} />
 
-        {/* Build & Output - single-image builds only. */}
         {settings.buildCardVisible && (
           <BuildOutputCard
             build={settings.build}
@@ -35,7 +33,6 @@ export function DeploymentSettingsForm(props: DeploymentSettingsProps) {
         {settings.autoDeployPossible && <AutoDeployCard settings={settings} />}
       </div>
 
-      {/* Auto-deploy saves on change, so it doesn't count toward this. */}
       <UnsavedChangesGuard when={settings.overallDirty} />
     </>
   );

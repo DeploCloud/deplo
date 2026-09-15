@@ -14,7 +14,6 @@ import {
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
 
-// ServerConnectionGuard - connection watchdog mounted once in the root layout.
 export function ServerConnectionGuard() {
   const state = React.useSyncExternalStore(
     subscribeServerConnection,
@@ -186,9 +185,7 @@ function useBlockNavigationWhileDisconnected(active: boolean): void {
     const pin = () => {
       try {
         window.history.pushState(null, "", window.location.href);
-      } catch {
-        /* pushState can throw in rare sandboxed contexts - degrade gracefully */
-      }
+      } catch {}
     };
     const onPopState = () => {
       pin();
@@ -214,7 +211,6 @@ function DisconnectedNotification() {
 
   useBlockNavigationWhileDisconnected(!restored);
 
-  // Literal class strings only - Tailwind never emits an interpolated one.
   const tone = restored
     ? {
         core: "border-emerald-500/30 bg-emerald-500/15 text-emerald-500",
@@ -234,7 +230,6 @@ function DisconnectedNotification() {
         aria-describedby="server-connection-lost-description"
         className="pointer-events-auto relative isolate w-full max-w-sm animate-in duration-300 fade-in-0 slide-in-from-bottom-4"
       >
-        {/* Red glow behind the card. */}
         <div
           aria-hidden
           className="pointer-events-none absolute -inset-10 -z-10 opacity-80 blur-3xl transition-colors duration-500"
@@ -244,7 +239,6 @@ function DisconnectedNotification() {
         />
 
         <div className="overflow-hidden rounded-xl border border-border bg-card p-3.5 shadow-2xl">
-          {/* Icon rides inline with the title, so it owns no tall column. */}
           <div className="flex items-center gap-2.5">
             <span
               className={`flex size-7 shrink-0 items-center justify-center rounded-lg border shadow-sm transition-colors duration-500 ${tone.core}`}
@@ -272,7 +266,6 @@ function DisconnectedNotification() {
               : "Can’t reach the server. You can keep reading this page - navigation and actions are paused until it’s back."}
           </p>
 
-          {/* The button's own fill is the timer for the next probe. */}
           <Button
             size="sm"
             className="relative mt-3 w-full overflow-hidden"

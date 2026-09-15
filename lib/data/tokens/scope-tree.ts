@@ -22,7 +22,6 @@ export interface ScopeTreeApp {
   id: string;
   name: string;
   slug: string;
-  // The app's own logo, when it has one. Null falls back to a generic glyph.
   logo: string | null;
 }
 export interface ScopeTreeFolder {
@@ -32,8 +31,6 @@ export interface ScopeTreeFolder {
   folders: ScopeTreeFolder[];
   apps: ScopeTreeApp[];
 }
-// ScopeTreeEnvironment - an environment of a project, where an app lives inside
-// it (ADR-0009). A sibling of the project's folders, never a parent of them.
 export interface ScopeTreeEnvironment {
   id: string;
   name: string;
@@ -52,36 +49,23 @@ export interface ScopeTreeProject {
 export interface ScopeTreeTeam {
   id: string;
   name: string;
-  // The team's picture, so the tree names it the way the switcher does.
   avatarUrl: string | null;
   projects: ScopeTreeProject[];
-  // Folders at the team top level, in no project.
   folders: ScopeTreeFolder[];
-  // Apps of this team in no folder and no project.
   looseApps: ScopeTreeApp[];
 }
 
-// listScopeTree - every team the CURRENT USER belongs to, with its projects, its
-// folders and their apps: the tree the scope picker draws.
 export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
-  // Deliberately NOT gated on `manage_tokens`: a member without it still opens a
-  // token page (read-only, like the roles page), and the tree holds nothing they
-  // can't already see.
   const user = await assertUser();
   await requireTeamWide("the token scope picker");
-  // Their memberships bound WHICH teams; per-node access bounds what shows up inside
-  // one.
   return buildScopeTree(await teamsForUser(user.id), { asCaller: true });
 }
 
-// listTeamScopeTree - the same tree narrowed to the ACTIVE team, what a ROLE
-// editor draws, since a role belongs to exactly one team.
 export async function listTeamScopeTree(): Promise<ScopeTreeTeam[]> {
   const teamId = await requireActiveTeamId();
   return (await listScopeTree()).filter((t) => t.id === teamId);
 }
 
-// buildScopeTree - the tree for an explicit set of teams.
 export async function buildScopeTree(
   mine: { id: string; name: string; avatarUrl?: string | null }[],
   opts: { asCaller?: boolean } = {},
@@ -140,9 +124,6 @@ export async function buildScopeTree(
       .where(inArray(projectsTable.teamId, teamIds)),
   ]);
 
-  // Per-node visibility, when the tree is the CALLER's own picker: a folder they
-  // can't see, and an app they hold nothing on, must not be listed - the same answer
-  // `listFolders` and `listApps` give.
   const { folders: visibleFolders, apps: visibleApps } = opts.asCaller
     ? await visibleNodes(teamIds, folderRows, appRows)
     : { folders: null, apps: null };
@@ -153,8 +134,6 @@ export async function buildScopeTree(
   const byName = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name);
 
-  // Apps keyed by the ONE container they live in: a folder, else the ENVIRONMENT
-  // of their project, else the project itself (legacy rows), else the team.
   const appsIn = new Map<string, ScopeTreeApp[]>();
   for (const a of appRows) {
     if (!appVisible(a.id)) continue;
@@ -172,8 +151,6 @@ export async function buildScopeTree(
         f,
       ]);
 
-  // Cycle-safe, like every other walk over this tree: a stale parent chain must
-  // not hang the page.
   const build = (
     f: (typeof folderRows)[number],
     seen: Set<string>,
@@ -209,8 +186,6 @@ export async function buildScopeTree(
         id: p.id,
         name: p.name,
         color: p.color ?? null,
-        // Environments first, in the order the project shows them: ADR-0009
-        // makes the environment the primary axis of a project.
         environments: envRows
           .filter((e) => e.projectId === p.id)
           .sort((a, b) => a.position - b.position)
@@ -221,8 +196,6 @@ export async function buildScopeTree(
             apps: (appsIn.get(e.id) ?? []).sort(byName),
           })),
         folders: rootFolders((f) => f.projectId === p.id),
-        // Legacy rows only: an app filed in a project before the environment
-        // column existed. Everything newer sits under an environment above.
         apps: (appsIn.get(p.id) ?? []).sort(byName),
       })),
     folders: rootFolders((f) => f.teamId === t.id && !f.projectId),
@@ -230,8 +203,6 @@ export async function buildScopeTree(
   }));
 }
 
-// The folder and app ids the CURRENT caller may see, across several teams - the
-// per-node half of the picker's bound.
 async function visibleNodes(
   teamIds: string[],
   folderRows: { id: string; teamId: string }[],
@@ -240,8 +211,6 @@ async function visibleNodes(
     teamId: string;
     projectId: string | null;
     folderId: string | null;
-    // The environment is where an app inside a project actually lives, so a
-    // placement without it is refused by an environment-shaped scope.
     environmentId?: string | null;
   }[],
 ): Promise<{ folders: Set<string>; apps: Set<string> }> {
@@ -265,11 +234,7 @@ async function visibleNodes(
           })),
       );
       for (const [id, caps] of reach) if (caps.length > 0) apps.add(id);
-    } catch {
-      // A team the caller can't currently resolve at all - an unmet two-factor
-      // policy is the live example. It contributes nothing rather than taking
-      // down the whole picker: they could not use that team's nodes anyway.
-    }
+    } catch {}
   }
   return { folders, apps };
 }

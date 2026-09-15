@@ -12,9 +12,6 @@ import type { createApp } from "../apps/create";
 import { setAppVolumes } from "../apps/volumes";
 import { writeAppFile } from "../app-files";
 
-// The app's config files and volumes, after the app exists: the files are written
-// into its Files the same way the Storage editor writes them, and every mount that
-// needs no grant survives one that does.
 export async function landAppStorage(
   created: Awaited<ReturnType<typeof createApp>>,
   mounts: { value: MappedMounts },
@@ -30,8 +27,6 @@ export async function landAppStorage(
   const unwritten = new Set<string>();
   for (const f of mounts.value.files) {
     try {
-      // Retried once on purpose: it is a single call to a host that answered a
-      // moment ago, and this content lives nowhere else on this side.
       try {
         await writeAppFile(created.id, f.filePath, f.content);
       } catch {
@@ -39,9 +34,6 @@ export async function landAppStorage(
       }
     } catch (e) {
       unwritten.add(f.filePath);
-      // Only worth saying for a single-image app: there, a file that was not
-      // written is a file that is GONE, and its mount is dropped below with it.
-      // The stack's own deploy will write the compose one on its own.
       if (!isCompose)
         notes.push(
           `${f.filePath} could not be written into this app's Files: ${
@@ -55,9 +47,6 @@ export async function landAppStorage(
     (v) => !(v.type === "app" && unwritten.has(v.projectPath ?? "")),
   );
 
-  // A compose service that came across as an APP keeps its storage: its volumes were
-  // declared in the compose file, not in the panel's mounts, and without them the app
-  // arrives with nowhere for the data cutover to put the bytes.
   if (asRepoApp)
     for (const v of composeVolumeMounts(yamlText))
       volumes.push({
@@ -67,17 +56,11 @@ export async function landAppStorage(
         readOnly: false,
       });
 
-  // A compose stack's config file is mounted by the stack's OWN yaml, so nothing in
-  // Storage described it and the Storage page showed an empty list for an app that
-  // demonstrably had files.
   if (isCompose && compose) {
     const bindings = composeFileBindings(compose);
     for (const f of mounts.value.files) {
-      // Unlike a single-image app's File entry, this row does not depend on the
-      // write above having landed: the file is in `app_mounts` too, and the
-      // agent writes it from there on every bring-up.
       const bound = bindings.find((b) => b.filePath === f.filePath);
-      if (!bound) continue; // in the files dir but mounted nowhere: nothing to show
+      if (!bound) continue;
       volumes.push({
         type: "app",
         name: volumeLabel(f.filePath, "file"),
@@ -88,9 +71,6 @@ export async function landAppStorage(
       });
     }
   }
-  // A host bind needs the host-volumes grant, and setAppVolumes refuses the WHOLE
-  // set over one of them - which used to drop the app's named volumes with it.
-  // Leave the bind behind, keep the storage that needs no grant, and say so.
   if (
     volumes.some((v) => v.type === "host") &&
     !(await canMountHostVolumes())
@@ -105,13 +85,9 @@ export async function landAppStorage(
     );
     volumes = volumes.filter((v) => v.type !== "host");
   }
-  // Same shape as the grant filter above, and for the same measured reason:
-  // `setAppVolumes` writes the whole set or nothing, so ONE entry it will not take
-  // used to leave the app with NO storage at all.
   const refusedMounts: string[] = [];
   volumes = volumes.filter((v) => {
     const path = (v.mountPath ?? "").trim().replace(/\/+$/, "");
-    // The relaxed rule an import gets: reserved only AS the path itself.
     if (!path || !reservedMountPath(path, "app")) return true;
     refusedMounts.push(path);
     return false;

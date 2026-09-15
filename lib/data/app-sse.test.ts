@@ -62,7 +62,6 @@ test("appStatusStream yields the initial snapshot + multiple change pings (cooki
     status: "active",
   });
 
-  // NO runWithIdentity: if the generator read a cookie it would throw here.
   const gen = appStatusStream("alpha", TEAM_A, USER_1);
 
   const first = await gen.next();
@@ -76,7 +75,6 @@ test("appStatusStream yields the initial snapshot + multiple change pings (cooki
   assert.equal(second.done, false);
   assert.equal(second.value.id, "prj_1");
 
-  // A SECOND change across another tick - the old crash point.
   const p2 = gen.next();
   publishAppChanged("prj_1");
   const third = await p2;
@@ -143,7 +141,6 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
   const token = {
     id: "tok_test",
     capabilities: [...ALL_CAPABILITIES],
-    // Scoped to a project the app is NOT in.
     scope: {
       teamIds: [TEAM_A],
       wholeTeamIds: [],
@@ -184,7 +181,6 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
 });
 
 test("a member who can't see the folder can't watch the app inside it", async () => {
-  // The member holds real team capabilities but no access to the folder.
   await pg.exec(`truncate table users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
@@ -219,7 +215,6 @@ test("a member who can't see the folder can't watch the app inside it", async ()
     .set({ folderId: "fld_private" })
     .where(eq(appsTable.id, "prj_1"));
 
-  // A member refused the app's own page must not read it off a live feed either.
   await assert.rejects(
     () => appStatusStream("alpha", TEAM_A, "u_outsider").next(),
     /App not found/,
@@ -274,7 +269,6 @@ test("an app moved into a folder the watcher can't see ends their stream", async
   const gen = appStatusStream("alpha", TEAM_A, "u_outsider");
   assert.equal((await gen.next()).value.id, "prj_1");
 
-  // The revocation has to bite on the next tick, or an older subscription outlives it.
   const pending = gen.next();
   await db
     .update(appsTable)
@@ -299,7 +293,6 @@ test("activeDeploymentsStream counts in-flight builds and only pushes on change"
   await seedDeployment(db, { id: "dep_2", appId: "prj_1", status: "queued" });
   await seedDeployment(db, { id: "dep_3", appId: "prj_1", status: "ready" });
 
-  // No runWithIdentity: the chip reads this from an SSE tick, cookies long gone.
   const gen = activeDeploymentsStream(TEAM_A, USER_1);
   assert.equal((await gen.next()).value, 2);
 
@@ -354,7 +347,6 @@ test("a build inside a folder the member can't see is not counted", async () => 
     .where(eq(appsTable.id, "prj_1"));
   await seedDeployment(db, { id: "dep_1", appId: "prj_1", status: "building" });
 
-  // A count is still "something is happening in a folder you are refused".
   assert.equal(
     (await activeDeploymentsStream(TEAM_A, "u_outsider").next()).value,
     0,

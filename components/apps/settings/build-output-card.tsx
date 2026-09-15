@@ -73,7 +73,6 @@ export function BuildOutputCard({
   const showInstallCommand = showBuildCommand;
   const showOutputDirectory = method === "static";
 
-  // Empty is "work it out" (null), never the empty string that skips a step.
   function setCommand(
     key: "installCommand" | "buildCommand" | "startCommand" | "outputDirectory",
     value: string,
@@ -91,7 +90,6 @@ export function BuildOutputCard({
       setBuild((b) => ({ ...b, port: n }));
   }
 
-  // The port follows the framework: `vite preview` binds 4173 and ignores PORT.
   function pickFramework(next: string | null) {
     const previousPort = frameworkById(framework)?.defaultPort ?? 3000;
     const nextPort = frameworkById(next ?? detectedFramework)?.defaultPort;
@@ -132,8 +130,6 @@ export function BuildOutputCard({
           onFrameworkChange={pickFramework}
         />
 
-        {/* Each command is a decision: Deplo works it out, or you take it over. */}
-        {/* Two to a row from sm: each is one short field. */}
         <div className="grid gap-3 sm:grid-cols-2">
           {showInstallCommand && (
             <SettingRow

@@ -22,7 +22,6 @@ import {
 import { TEAM_HEADER, teamSlugFromPath } from "./team-path";
 import { assertVariablesDeclared } from "./graphql-vars";
 
-// `/api/graphql` is flat, so this header is what tells the server which team the request is for (lib/membership.ts).
 function teamHeader(teamId?: string): Record<string, string> {
   const slug =
     teamId ??
@@ -32,7 +31,6 @@ function teamHeader(teamId?: string): Record<string, string> {
   return slug ? { [TEAM_HEADER]: slug } : {};
 }
 
-// GqlOptions - per-call options; `teamId` sends the request to that team, not the page's.
 export interface GqlOptions {
   teamId?: string;
   signal?: AbortSignal;
@@ -62,7 +60,6 @@ async function readJsonBody<T>(res: Response): Promise<T> {
   }
 }
 
-// gqlAction - run an operation and box the outcome as an `ActionResult`, the shape the UI's call sites branch on.
 export async function gqlAction<TData = unknown, TPick = TData>(
   query: string,
   variables?: Record<string, unknown>,
@@ -90,7 +87,6 @@ export async function gql<TData = unknown>(
   opts?: GqlOptions,
 ): Promise<TData> {
   assertVariablesDeclared(query, variables);
-  // Already latched offline: refuse up front rather than making the user wait out a raw "Failed to fetch".
   if (isServerDisconnected()) throw new ServerUnreachableError();
 
   let res: Response;
@@ -124,7 +120,6 @@ export async function gql<TData = unknown>(
   return json.data as TData;
 }
 
-// gqlSubscribe - open a subscription over Server-Sent Events against the same `/api/graphql` endpoint.
 export function gqlSubscribe<TData = unknown>(
   query: string,
   variables: Record<string, unknown> | undefined,
@@ -155,7 +150,6 @@ export function gqlSubscribe<TData = unknown>(
     }
 
     if (!res.ok || !res.body) {
-      // A gateway status or an HTML body means the proxy answered for an app that is not there: an outage, not a failed subscription.
       const html = (res.headers.get("content-type") ?? "").includes(
         "text/html",
       );
@@ -167,7 +161,6 @@ export function gqlSubscribe<TData = unknown>(
     const decoder = new TextDecoder();
     let buffer = "";
 
-    // SSE frames are separated by a blank line; each frame is a set of `field: value` lines.
     while (!closed) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -181,7 +174,7 @@ export function gqlSubscribe<TData = unknown>(
         let event = "message";
         const dataLines: string[] = [];
         for (const line of frame.split("\n")) {
-          if (line.startsWith(":")) continue; // keep-alive ping
+          if (line.startsWith(":")) continue;
           if (line.startsWith("event:")) event = line.slice(6).trim();
           else if (line.startsWith("data:"))
             dataLines.push(line.slice(5).trim());
@@ -189,7 +182,6 @@ export function gqlSubscribe<TData = unknown>(
         if (event === "complete") return;
         if (event !== "next" || dataLines.length === 0) continue;
 
-        // A non-JSON frame means the stream got cut: drop it rather than let a raw SyntaxError reach `onError`.
         let json: { data?: TData; errors?: { message: string }[] };
         try {
           json = JSON.parse(dataLines.join("\n")) as typeof json;
@@ -207,15 +199,12 @@ export function gqlSubscribe<TData = unknown>(
   (async () => {
     let backoff = 1000;
     while (!closed) {
-      // Once the connection guard has latched the UI, stop self-healing: the overlay promises nothing reconnects until a reload.
       if (isServerDisconnected()) return;
       try {
         await connect();
-        // A clean `complete` or EOF should not happen unless the app was deleted, so stop trying.
         if (!closed) return;
       } catch (e) {
         if (closed || controller.signal.aborted) return;
-        // `connect()` already swapped the raw failure for the custom message, so this is safe to show verbatim.
         onError?.(e instanceof Error ? e : new Error(String(e)));
         await new Promise((r) => setTimeout(r, backoff));
         backoff = Math.min(backoff * 2, 10_000);

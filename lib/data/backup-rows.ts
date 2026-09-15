@@ -38,7 +38,6 @@ export type BackupInsert = InferInsertModel<typeof backups>;
 export type BackupRunRow = InferSelectModel<typeof backupRuns>;
 export type BackupRunInsert = InferInsertModel<typeof backupRuns>;
 
-// databaseToRow - explode a Database into its `databases` row.
 export function databaseToRow(d: Database): DatabaseInsert {
   return {
     id: d.id,
@@ -59,7 +58,6 @@ export function databaseToRow(d: Database): DatabaseInsert {
     connectionStringEnc: d.connectionStringEnc,
     exposedPublicly: d.exposedPublicly,
     exposedPort: d.exposedPort,
-    // Flattened ResourceLimits, the same mapping `appToRow` uses, so the two cannot drift.
     ...resourceLimitsToRow(d.resources),
     customImage: d.customImage,
     customCommand: d.customCommand,
@@ -67,13 +65,11 @@ export function databaseToRow(d: Database): DatabaseInsert {
     sizeMb: d.sizeMb,
     createdAt: d.createdAt,
   } satisfies Record<
-    // `mounts` is an ordered CHILD table (`database_mounts`), not a column.
     Exclude<keyof Database, "resources" | "mounts">,
     unknown
   > as DatabaseInsert;
 }
 
-// assembleDatabase - reassemble a `databases` row into a Database.
 export function assembleDatabase(
   row: DatabaseRow,
   mounts: DatabaseMount[] = [],
@@ -107,7 +103,6 @@ export function assembleDatabase(
   };
 }
 
-// destinationToRow - explode a BackupDestination into its `backup_destination` row.
 export function destinationToRow(
   d: BackupDestination,
 ): BackupDestinationInsert {
@@ -144,7 +139,6 @@ export function destinationToRow(
   > as BackupDestinationInsert;
 }
 
-// assembleDestination - reassemble a `backup_destination` row into a BackupDestination.
 export function assembleDestination(
   row: BackupDestinationRow,
 ): BackupDestination {
@@ -178,7 +172,6 @@ export function assembleDestination(
   };
 }
 
-// backupToRow - explode a Backup schedule into its `backups` row.
 export function backupToRow(b: Backup): BackupInsert {
   return {
     id: b.id,
@@ -198,7 +191,6 @@ export function backupToRow(b: Backup): BackupInsert {
   } satisfies Record<keyof Backup, unknown> as BackupInsert;
 }
 
-// assembleBackup - reassemble a `backups` row into a Backup schedule.
 export function assembleBackup(row: BackupRow): Backup {
   return {
     id: row.id,
@@ -218,8 +210,6 @@ export function assembleBackup(row: BackupRow): Backup {
   };
 }
 
-// backupRunToRow - explode a BackupRun into its `backup_runs` row.
-// `seq` is `generatedAlwaysAsIdentity`, so even passing it would be rejected.
 export function backupRunToRow(r: BackupRun): BackupRunInsert {
   return {
     id: r.id,
@@ -242,7 +232,6 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
   } satisfies Record<keyof BackupRun, unknown> as BackupRunInsert;
 }
 
-// assembleBackupRun - reassemble a `backup_runs` row into a BackupRun; `seq` is dropped.
 export function assembleBackupRun(row: BackupRunRow): BackupRun {
   return {
     id: row.id,

@@ -18,8 +18,6 @@ export default async function DatabaseMonitoringPage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  // The buffered window, so the charts render full on the first paint. Nothing
-  // gates it: the telemetry stream carries this database's container regardless.
   const [initialHistory, servers, canManageServers] = await Promise.all([
     getDatabaseMetricsHistory(db.id),
     listServers(),

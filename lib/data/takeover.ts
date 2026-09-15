@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/migrations
-
 import { cache } from "@/lib/request-cache";
 import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 
@@ -22,7 +20,6 @@ import type { MigrationPlatform } from "../migration/source";
 
 const SETTINGS_ID = "default";
 
-// TAKEOVER_STATES - the ladder the takeover walks, from pending to removed.
 export const TAKEOVER_STATES = [
   "pending",
   "ready",
@@ -34,7 +31,6 @@ export const TAKEOVER_STATES = [
 ] as const;
 export type TakeoverState = (typeof TAKEOVER_STATES)[number];
 
-// Never backwards except a rollback; a later host state is taken from ready and done too.
 const NEXT: Record<TakeoverState, readonly TakeoverState[]> = {
   pending: ["ready", "cancelled"],
   ready: ["done", "removing", "removed", "failed", "cancelled"],
@@ -59,7 +55,6 @@ function isTakeoverState(v: unknown): v is TakeoverState {
   );
 }
 
-// takeoverStatus - the takeover in progress, or null; ungated because it gates the dashboard itself.
 export const takeoverStatus = cache(
   async (): Promise<TakeoverStatus | null> => {
     const [row] = await getDb()
@@ -84,7 +79,6 @@ export const takeoverStatus = cache(
   },
 );
 
-// takeoverAwaitsCutover - true while the ports are still the old panel's, so addresses must name it.
 export async function takeoverAwaitsCutover(): Promise<boolean> {
   const t = await takeoverStatus();
   return (
@@ -93,7 +87,6 @@ export async function takeoverAwaitsCutover(): Promise<boolean> {
   );
 }
 
-// takeoverBlocksDashboard - true until the old platform is off the machine.
 export async function takeoverBlocksDashboard(): Promise<boolean> {
   const t = await takeoverStatus();
   return t != null && t.state !== "removed" && t.state !== "cancelled";
@@ -118,7 +111,6 @@ async function writeState(
     });
 }
 
-// ensureTakeoverFromEnv - seed from DEPLO_TAKEOVER at boot, never over a state already reached.
 export async function ensureTakeoverFromEnv(): Promise<void> {
   const platform = process.env.DEPLO_TAKEOVER?.trim().toLowerCase();
   if (!isMigrationPlatform(platform)) return;
@@ -149,16 +141,13 @@ async function advance(
   return { ...current, state: to, runId: opts.runId ?? current.runId, error };
 }
 
-// noteBrowserReached - stamp that a BROWSER reached the panel; the installer only calls /api/takeover.
 export async function noteBrowserReached(): Promise<void> {
   const t = await takeoverStatus();
   if (!t || t.seenExternalRequest) return;
   await writeState({ takeoverSeenExternalAt: nowIso() });
 }
 
-// takeoverDataLoss - the services that arrived WITHOUT their data, named as the report names them.
 export async function takeoverDataLoss(runId?: string): Promise<string[]> {
-  // The marker on the resource is the state, not the report: a copy run again clears it.
   const runs = runId
     ? [runId]
     : (
@@ -219,7 +208,6 @@ export async function takeoverDataLoss(runId?: string): Promise<string[]> {
   return names;
 }
 
-// Any team: the machine is one, the runs are per team.
 async function migrationInFlight(): Promise<boolean> {
   const [row] = await getDb()
     .select({ id: runsTable.id })
@@ -238,12 +226,10 @@ export async function requestTakeover(
   } = {},
 ): Promise<TakeoverStatus> {
   await requireInstanceAdmin();
-  // The cutover stops the old panel for good: a copy in flight is data half way across.
   if (await migrationInFlight())
     throw new Error(
       "A migration is still running. Wait for it to finish, or stop it, before taking the machine.",
     );
-  // Nothing is coming across, so there is no run to check; the typed confirmation is the gate.
   if (opts.discardData) return advance("ready");
   if (!runId)
     throw new Error(
@@ -265,7 +251,6 @@ export async function requestTakeover(
     throw new Error(
       `That migration is ${run.status}. Let it finish before handing Deplo the ports.`,
     );
-  // The cutover stops that panel for good, so a run still owing a team is overruled by hand.
   const owed = run.sessionId
     ? (
         await getDb()
@@ -284,7 +269,6 @@ export async function requestTakeover(
     throw new Error(
       "That migration still has teams to bring over from the panel. Finish them first: taking the ports stops it for good, and a token reads one team.",
     );
-  // A failed copy leaves the old panel holding the only data, and the cutover stops it for good.
   const lost = await takeoverDataLoss();
   if (lost.length > 0 && !opts.acceptDataLoss)
     throw new Error(
@@ -293,7 +277,6 @@ export async function requestTakeover(
   return advance("ready", { runId });
 }
 
-// markTakeoverProgress - the installer reporting in; ungated because it carries the bootstrap token.
 export async function markTakeoverProgress(
   to: "done" | "removing" | "removed" | "failed",
   error?: string,
@@ -301,7 +284,6 @@ export async function markTakeoverProgress(
   return advance(to, { error });
 }
 
-// cancelTakeover - stop, undo, restart the source's services; the API token has to be handed back.
 export async function cancelTakeover(
   apiKey?: string,
 ): Promise<{ restarted: number; left: string[] }> {
@@ -316,7 +298,6 @@ export async function cancelTakeover(
     throw new Error(
       "The ports are already Deplo's, so there is nothing to hand back.",
     );
-  // Backing out restarts the panel's services: a copy still reading one would tar a live volume.
   if (await migrationInFlight())
     throw new Error(
       "A migration is still running. Stop it first, then cancel the takeover.",
@@ -327,7 +308,6 @@ export async function cancelTakeover(
   return outcome;
 }
 
-// Driven by stoppedAt, not a run id: a service the operator stopped themselves carries no stamp.
 async function restartStoppedSources(
   apiKey?: string,
 ): Promise<{ restarted: number; left: string[] }> {
@@ -348,7 +328,6 @@ async function restartStoppedSources(
   let restarted = 0;
   const left: string[] = [];
   for (const t of stopped) {
-    // The token is wiped when a run ends, so most of these need the operator's again.
     const key = t.apiKeyEnc
       ? decryptSecretOrThrow(t.apiKeyEnc, "the panel's API token")
       : (apiKey ?? "");
@@ -376,7 +355,6 @@ export interface TakeoverPreflight {
   diskFreeBytes: number;
   diskTotalBytes: number;
   // ponytail: a `VolumeSize` RPC would make this a real comparison; it needs an
-  // agent release, and the free space is the number that actually goes wrong.
   diskTight: boolean;
   agentReady: boolean;
   agentMessage: string;
@@ -385,7 +363,6 @@ export interface TakeoverPreflight {
 const DISK_FLOOR_BYTES = 5 * 1024 * 1024 * 1024;
 const DISK_FLOOR_RATIO = 0.1;
 
-// takeoverPreflight - what a takeover of THIS machine walks into: disk room and a live agent.
 export async function takeoverPreflight(): Promise<TakeoverPreflight | null> {
   await requireInstanceAdmin();
   const { deploHostServer } =
@@ -413,9 +390,7 @@ export async function takeoverPreflight(): Promise<TakeoverPreflight | null> {
       const info = await fetchHostInfo(host.id);
       diskTotalBytes = info.diskTotalBytes;
       diskFreeBytes = Math.max(0, info.diskTotalBytes - info.diskUsedBytes);
-    } catch {
-      /* the host answered Hello but not this; the disk line simply reads 0 */
-    }
+    } catch {}
   }
 
   return {

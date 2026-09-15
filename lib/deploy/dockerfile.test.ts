@@ -13,7 +13,6 @@ function build(overrides: Partial<BuildConfig> = {}): BuildConfig {
     skipUnchangedDeployments: false,
     buildCache: true,
     buildCacheClearPending: false,
-    // null is "Deplo works it out"; an empty string would mean "run nothing".
     installCommand: null,
     buildCommand: "npm run build",
     outputDirectory: null,
@@ -32,7 +31,6 @@ test("generateDockerfile declares each env key as ARG before the build steps", (
   assert.ok(argIdx < df.indexOf("RUN "), "the ARGs must precede the RUN steps");
 });
 
-// A build arg already reaches every RUN; an ENV would only persist the value in the image config.
 test("generateDockerfile never declares a build var as ENV", () => {
   const df = generateDockerfile(build(), [
     "PAYLOAD_SECRET",
@@ -47,7 +45,6 @@ test("generateDockerfile with no env keys matches the var-free shape", () => {
   assert.ok(!df.includes("ARG "), `unexpected ARG in:\n${df}`);
 });
 
-// NODE_ENV is the exception: an ENV outranks a build arg, so the user's value needs its own ENV.
 test("a user NODE_ENV lands after the default so it wins", () => {
   const df = generateDockerfile(build(), ["NODE_ENV"]);
   const defaultIdx = df.indexOf("ENV NODE_ENV=production");
@@ -99,7 +96,6 @@ test("default install forces devDependencies in for every manager", () => {
   );
 });
 
-// An unpinned repo would pull the latest pnpm, which can refuse to run on node:20.
 test("pnpm is gated behind a pinned packageManager", () => {
   const df = generateDockerfile(build());
   assert.match(
@@ -127,7 +123,6 @@ test("a custom installCommand copies the source first and runs verbatim", () => 
   );
 });
 
-// Every lockfile is a wildcard, so a repo missing one is skipped rather than failing the COPY.
 test("manifest COPY anchors on package.json with wildcard lockfiles", () => {
   const df = generateDockerfile(build());
   assert.match(

@@ -6,7 +6,6 @@ import { WelcomeCreateTeam } from "@/components/teams/welcome-create-team";
 
 export const metadata = { title: "Create a team" };
 
-// WelcomePage - the dashboard layout redirects here instead of throwing "No active team".
 export default async function WelcomePage() {
   const user = await requireUser();
   const teams = await listMyTeams();

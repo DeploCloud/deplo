@@ -38,16 +38,13 @@ import { MovingPanel } from "./moving-panel";
 import { ReportCard } from "./report-card";
 import { DoneStep } from "./done-step";
 
-// stepForHandover - the step a handover already under way pins the wizard to, or null.
 function stepForHandover(
   state: Exclude<TakeoverState, "cancelled"> | undefined,
 ): StepId | null {
   if (!state || state === "pending") return null;
-  // `failed` lands on the step too: it is where Try again lives.
   return state === "removed" ? "done" : "takeover";
 }
 
-// MigrationWizard - migrating a panel over, as one screen: every team of it, into a Deplo team.
 export function MigrationWizard({
   teamId,
   targetTeams,
@@ -95,8 +92,6 @@ export function MigrationWizard({
       stepForHandover(takeover?.state) ??
       (mode == null ? "choose" : startOnTakeover ? "takeover" : "connect"),
   );
-  // The handover is the server's, so the step follows it once it starts.
-  // Adjusted during the render, which is what React prescribes here.
   /* eslint-disable react-hooks/refs -- deliberate render-phase adjustment; the rule
      only bailed before because the pre-split component was too large to analyse. */
   const seenHandover = React.useRef(takeover?.state);
@@ -279,8 +274,6 @@ export function MigrationWizard({
     (plan != null || url.trim() !== "" || apiKey.trim() !== "");
 
   const abandonRef = React.useRef(false);
-  // No dependency array on purpose: this is the "latest value" of a flag the
-  // listeners below read long after the render that produced it.
   React.useEffect(() => {
     abandonRef.current = guarded && plan != null && !starting && !running;
   });

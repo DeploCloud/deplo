@@ -13,9 +13,6 @@ test("nobody names it, or two Environments do: it stays put", () => {
 });
 
 test("an app at the TEAM'S TOP LEVEL counts, and stops the move", () => {
-  // The regression this guards: the top-level users were skipped, so a database
-  // three of them shared read as "used by one Environment" and was taken away.
   assert.equal(soleEnvironmentUsing(new Set(["environ_a", ""])), null);
-  // Used only from the top level, which is where it already is.
   assert.equal(soleEnvironmentUsing(new Set([""])), null);
 });

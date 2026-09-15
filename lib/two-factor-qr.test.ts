@@ -7,7 +7,6 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { deploMarkDataUri } from "../components/logo";
 
-// Full length on purpose: a shorter stand-in encodes to fewer modules and flatters the numbers.
 const TOTP_URI =
   "otpauth://totp/deplo:someone%40acme.com?secret=ONWWMRJXGVBE2SDPIN2TEZKDKVVEW2TMJU4WSMTHN5GW4LKSJRDQ&issuer=deplo&digits=6&period=30";
 
@@ -45,14 +44,12 @@ test("the mark is embedded in the QR, not painted beside it", () => {
 
 test("the excavated centre stays well inside level H's error budget", () => {
   const svg = render("H");
-  // qrcode.react renders in MODULE units: the viewBox side is the module count.
   const modules = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)![1]);
   assert.ok(modules > 20, `expected a real QR version, got ${modules} modules`);
 
   const logoModules = Math.ceil((LOGO_PX / SIZE) * modules);
   const covered = (logoModules * logoModules) / (modules * modules);
 
-  // Level H recovers 30%; half of that is the working ceiling, since finder patterns and glare cost the rest.
   assert.ok(
     covered < 0.15,
     `the mark covers ${(covered * 100).toFixed(1)}% of the code; keep it under 15%`,
@@ -75,7 +72,6 @@ test("the mark data URI is a well-formed, self-contained SVG", () => {
   const svg = decodeURIComponent(uri.replace("data:image/svg+xml,", ""));
   assert.match(svg, /^<svg[^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
   assert.match(svg, /<\/svg>$/);
-  // An <image> has no inherited text colour, so currentColor would render as nothing.
   assert.doesNotMatch(svg, /currentColor/);
   assert.match(svg, /fill="#0a0a0a"/, "the glyph is drawn dark");
   assert.match(svg, /fill="#ffffff"/, "on its own light badge");

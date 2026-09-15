@@ -79,8 +79,6 @@ test("generateDatabaseCompose: redis still sets requirepass via command override
   assert.ok(yaml.includes("- cache-data:/data"));
 });
 
-// The logical database the backup descriptor dumps MUST be created at provision
-// time, or a backup silently dumps a database that doesn't exist.
 const DB_CREATE_ENV: Partial<Record<DatabaseType, string>> = {
   postgres: "POSTGRES_DB=mydb",
   mysql: "MYSQL_DATABASE=mydb",
@@ -263,9 +261,6 @@ test("buildConnectionString: the credential survives every URL delimiter", () =>
   assert.equal(url.port, "5432");
 });
 
-// The agent authorizes every container RPC (listInstances/exec/attach/followLogs) by
-// `deplo.project=<id>`, so a DB stack without these labels is invisible to logs,
-// the terminal and the runtime poll.
 test("generateDatabaseCompose: stamps the deplo.* labels with the database id", () => {
   const yaml = generateDatabaseCompose({
     name: "mydb",
@@ -389,8 +384,6 @@ test("parseConnectionPassword: round-trips the embedded password", () => {
   assert.equal(parseConnectionPassword("not a url"), "");
 });
 
-// Postgres 18+ defaults PGDATA elsewhere and its entrypoint EXITS when
-// `/var/lib/postgresql/data` is a mount point, which the volume above always is.
 for (const version of ["15", "16", "17", "18", "19"]) {
   test(`generateDatabaseCompose(postgres ${version}): pins PGDATA to the mounted path`, () => {
     const yaml = generateDatabaseCompose({

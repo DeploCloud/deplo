@@ -1,4 +1,3 @@
-// assertVariablesDeclared - the server silently DROPS an undeclared variable, so a mismatch is always a bug.
 export function assertVariablesDeclared(
   query: string,
   variables?: Record<string, unknown>,

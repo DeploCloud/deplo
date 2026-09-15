@@ -1,4 +1,3 @@
-// Remote input: everything the catalog client reads is parsed through here first.
 import { z } from "zod";
 
 export const slugSchema = z

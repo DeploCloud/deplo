@@ -5,9 +5,6 @@ import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { downloadBackupArtifact } from "@/lib/data/backups/download";
 import { statusForBackupError } from "@/lib/backups/http-status";
 
-// Server destinations only: an S3 artifact is one the operator can already fetch themselves.
-
-// Long-lived streamed response; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -25,7 +22,6 @@ export async function GET(
   try {
     artifact = await downloadBackupArtifact(runId);
   } catch (e) {
-    // The status is derived from the data layer's message text, so surface it verbatim.
     const message = e instanceof Error ? e.message : String(e);
     return Response.json(
       { error: message },
@@ -35,7 +31,6 @@ export async function GET(
 
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
-      // One chunk per pull: backpressure paces the agent, so a slow client cannot make the control plane buffer the artifact.
       try {
         const next = await artifact.chunks.next();
         if (next.done) {
@@ -50,7 +45,6 @@ export async function GET(
       }
     },
     cancel() {
-      // Stop the agent, or it reads the rest of a multi-GB artifact into a socket nobody reads.
       void artifact.chunks.return(undefined);
       artifact.close();
     },
@@ -60,7 +54,6 @@ export async function GET(
     headers: {
       "Content-Type": "application/gzip",
       "Content-Disposition": `attachment; filename="${artifact.filename}"`,
-      // A short stream then FAILS the download instead of saving a truncated archive that looks complete.
       ...(artifact.sizeBytes !== null
         ? { "Content-Length": String(artifact.sizeBytes) }
         : {}),

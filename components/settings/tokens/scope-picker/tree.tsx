@@ -12,8 +12,6 @@ import { AppMark, Row, TeamMark } from "./row";
 import type { ScopeNode } from "./selection";
 import type { ScopePickerState } from "./use-scope-picker";
 
-// ScopeTree - the teams, their projects, environments and folders, and the apps
-// inside them, folders nesting as deep as they do on the Overview.
 export function ScopeTree({
   state,
   disabled,
@@ -24,8 +22,6 @@ export function ScopeTree({
   state: ScopePickerState;
   disabled: boolean;
   teamPickable: boolean;
-  // Only a consumer whose selection carries the field can express an environment:
-  // an offered tick that the save drops is worse than no tick.
   environmentsExpressible: boolean;
   renderMeta?: (node: ScopeNode) => React.ReactNode;
 }) {
@@ -164,8 +160,6 @@ export function ScopeTree({
                         label={project.name}
                         meta={projectMeta(project)}
                         checked={projOn}
-                        // Covered by its team: ticked, not editable here, so the
-                        // tree never contradicts itself.
                         disabled={disabled || teamOn}
                         onCheckedChange={(v) =>
                           toggleProject(project, v, teamOn)
@@ -183,9 +177,6 @@ export function ScopeTree({
                       />
                       {projExpanded && (
                         <>
-                          {/* Environments first: ADR-0009 makes the environment the
-                              primary axis of a project, and folders are their
-                              siblings, never their children. */}
                           {(environmentsExpressible
                             ? project.environments
                             : []
@@ -221,8 +212,6 @@ export function ScopeTree({
                           {project.folders.map((f) =>
                             renderFolder(f, 2, projOn),
                           )}
-                          {/* Hiding the environment level must never hide its
-                              contents: its apps are folded in here. */}
                           {(environmentsExpressible
                             ? project.apps
                             : [

@@ -1,14 +1,7 @@
 import type { CoolifyApplication } from "../client";
 
-/** Bytes no `key=value` line can hold: C0 controls other than tab/newline, and
- *  the replacement character a mis-decode leaves behind. */
 const NOT_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/;
 
-/**
- * `custom_labels` is base64 with one `key=value` per line - EXCEPT that Coolify
- * hands it back in clear for anything it never deployed. `Buffer.from` does not
- * throw on that, it answers mojibake, so what decodes has to be TEXT.
- */
 function decodeLabels(raw: string | null | undefined): string[] {
   const text = raw?.trim();
   if (!text) return [];
@@ -20,23 +13,15 @@ function decodeLabels(raw: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-/**
- * Everything Coolify carries that Deplo has nowhere to put. Each one is a line in
- * the report rather than a silent loss.
- */
 export function coolifyNotes(row: CoolifyApplication): string[] {
   const notes: string[] = [];
 
-  // The proxy labels {panel} generates itself are dropped: Deplo owns that grammar
-  // and writes its own. `http-basic-auth-<uuid>` is its rendering of the basic auth
-  // the import already carries through its own columns.
   const generated = new RegExp(
     `^(traefik\\.enable=|traefik\\.http\\.(routers|services)\\.${row.uuid}|traefik\\.http\\.routers\\.https-|traefik\\.http\\.routers\\.http-|traefik\\.http\\.services\\.https-|traefik\\.http\\.services\\.http-|traefik\\.http\\.middlewares\\.(gzip|redirect-to-https|redirect-to-http|http-basic-auth-)|caddy_)`,
     "i",
   );
   const labels = decodeLabels(row.custom_labels)
     .filter((l) => !generated.test(l))
-    // A credential never rides in a report line, whoever wrote the middleware.
     .map((l) =>
       /\.(basicauth|digestauth)\.users(file)?=/i.test(l)
         ? l.replace(/=.*$/, "=<credentials>")

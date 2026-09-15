@@ -8,13 +8,11 @@ import type { DeploymentStatus } from "@/lib/types/deployment";
 
 const SHOW_MS = 4000;
 
-// FirstDeployCelebration - fires on the TRANSITION only, so opening a finished deployment later is just the page.
 export function FirstDeployCelebration({
   status,
 }: {
   status: DeploymentStatus;
 }) {
-  // The status the page was OPENED on: kept frozen across the poll's refreshes.
   const [watched] = React.useState(() => isDeploymentLive(status));
   const [done, setDone] = React.useState(false);
   const fire = watched && status === "ready" && !done;

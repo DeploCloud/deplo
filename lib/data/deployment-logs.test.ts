@@ -156,7 +156,6 @@ test("flushes for different deployments don't interleave", async () => {
 });
 
 test("a failed flush retries IN ORDER (no inversion across two failed batches)", async () => {
-  // Regression: drain-and-unshift-on-failure re-queued the SECOND batch first.
   const fail = { n: 2 };
   const real = db as unknown as {
     insert: (t: unknown) => { values: (v: unknown) => Promise<unknown> };
@@ -204,8 +203,6 @@ test("a failed flush retries IN ORDER (no inversion across two failed batches)",
   );
 });
 
-// `deployment_logs` lives in the CONTROL PLANE's database, shared by every team, the build's
-// output is the tenant's to write, and nothing prunes these rows.
 test("the per-line and per-deployment log caps hold, and a read can't reset the budget", async () => {
   await seedDeployment(db, {
     id: "dpl_cap",
@@ -222,7 +219,6 @@ test("the per-line and per-deployment log caps hold, and a read can't reset the 
     assert.match(rows[0].text, /line truncated/);
     assert.match(rows[rows.length - 1].text, /log truncated at 5 lines/);
 
-    // The budget must not live on the buffer, or a read would reset the ceiling.
     for (let i = 0; i < 5; i++) appendLog("dpl_cap", line(`B${i}`));
     rows = await loadDeploymentLogs("dpl_cap");
     assert.equal(rows.length, 5, "the ceiling survived the read");
@@ -240,7 +236,6 @@ test("the per-line and per-deployment log caps hold, and a read can't reset the 
 });
 
 test("an unstated build line is classified on read; an authored level is not", async () => {
-  // The agent stamps the builder's whole output `info`, so the line's TEXT decides.
   appendLog(
     "dpl_1",
     line('#14 4.914 error: script "build" exited with code 1'),

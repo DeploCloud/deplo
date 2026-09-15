@@ -35,7 +35,6 @@ const WORK_EDGE_PX = 2048;
 
 const PREVIEW_PX = 640;
 
-// isCroppableLogo - a WebP may be animated, so its header decides whether the dialog can crop it.
 export async function isCroppableLogo(file: File): Promise<boolean> {
   if (
     !CROPPABLE_LOGO_TYPES.includes(
@@ -88,7 +87,6 @@ export function ImageCropDialog({
     const ctx = cv.getContext("2d");
     if (!ctx) return;
     const { sx, sy, size } = cropRect(viewRef.current, s);
-    // Load-bearing: in fit mode the padding is transparent, so the last frame shows through.
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.drawImage(bmp, sx, sy, size, size, 0, 0, cv.width, cv.height);
   }, []);
@@ -107,7 +105,6 @@ export function ImageCropDialog({
     let cancelled = false;
     void (async () => {
       try {
-        // imageOrientation is what turns a portrait phone photo the right way up.
         let bmp = await createImageBitmap(file, {
           imageOrientation: "from-image",
         });
@@ -147,14 +144,12 @@ export function ImageCropDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file, mode, apply]);
 
-  // Wheel by hand: React registers wheel on the root as passive, so preventDefault() is a no-op there.
   React.useEffect(() => {
     const el = surfaceRef.current;
     if (!el || !src) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      // deltaMode 1 is DOM_DELTA_LINE (Firefox): ~3 per notch, not ~100.
       const f = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.03 : 0.002));
       apply(
         zoomTo(
@@ -271,9 +266,7 @@ export function ImageCropDialog({
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("no 2d context");
       const { sx, sy, size } = cropRect(viewRef.current, s);
-      // drawImage clips source and destination alike, so fit-mode padding comes out transparent.
       ctx.drawImage(bmp, sx, sy, size, size, 0, 0, edge, edge);
-      // A browser that cannot encode WebP answers with a PNG data-URI, which both validators accept.
       onCropped(canvas.toDataURL("image/webp", 0.85));
     } catch {
       toast.error("Could not read that image");
@@ -311,10 +304,8 @@ export function ImageCropDialog({
                 height={PREVIEW_PX}
                 className="size-full"
               />
-              {/* Rule of thirds: two elements, four lines, exact thirds. */}
               <div className="pointer-events-none absolute inset-y-0 left-1/3 w-1/3 border-x border-ring" />
               <div className="pointer-events-none absolute inset-x-0 top-1/3 h-1/3 border-y border-ring" />
-              {/* The mask: the spread paints everything outside the shape in the dialog's own colour. */}
               <div
                 className={cn(
                   "pointer-events-none absolute inset-0 shadow-[0_0_0_9999px_var(--card)] ring-1 ring-border",

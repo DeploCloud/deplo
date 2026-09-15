@@ -1,7 +1,5 @@
 import { gzipSync } from "node:zlib";
 
-// Emptiness is read from an archive's ENTRIES, so a stand-in buffer proves nothing.
-
 function tarEntry(name: string, body: Buffer, type = "0"): Buffer {
   const header = Buffer.alloc(512);
   header.write(name, 0, "latin1");
@@ -11,7 +9,6 @@ function tarEntry(name: string, body: Buffer, type = "0"): Buffer {
   return Buffer.concat([header, body, pad]);
 }
 
-// tarGz - a gzipped tar holding the directory root plus these files.
 export function tarGz(files: [string, Buffer][]): Buffer {
   return gzipSync(
     Buffer.concat([
@@ -22,10 +19,8 @@ export function tarGz(files: [string, Buffer][]): Buffer {
   );
 }
 
-// EMPTY_TAR_GZ - what a volume that was created and never written to exports.
 export const EMPTY_TAR_GZ = tarGz([]);
 
-// tarGzOf - a gzipped tar of one file of `size` bytes, filled with `fill`.
 export function tarGzOf(size: number, fill: number): Buffer {
   return tarGz([["./blob", Buffer.alloc(size, fill)]]);
 }

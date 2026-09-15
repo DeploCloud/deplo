@@ -25,10 +25,8 @@ import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { UserSessionDTO } from "@/lib/data/sessions";
 
-// DevicesPanel - every device signed in to this account, with a way to end any of them.
 export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
   const router = useRouter();
-  // Removed on click: the row is gone server-side by the time the mutation answers, and a live "Sign out" invites a doomed second click.
   const {
     visible: rows,
     remove,
@@ -192,7 +190,6 @@ export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
   );
 }
 
-// No Sign out here: ending this session is what the account menu's Sign out does.
 function ThisDevice({ session }: { session: UserSessionDTO }) {
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center">

@@ -14,10 +14,8 @@ import { mapLimit } from "../../utils";
 import { startAppsDelete } from "./delete";
 import { errMsg, startApp, stopApp } from "./lifecycle";
 
-// AppScope: which container a whole-contents action runs over - a folder or a project.
 export type AppScope = { folderId?: string | null; projectId?: string | null };
 
-// Every app in a folder's whole subtree, or in a project. Team-scoped rows only: the caller applies its own reach.
 async function appsInScope(
   teamId: string,
   scope: AppScope,
@@ -40,11 +38,9 @@ async function appsInScope(
     .from(foldersTable)
     .where(eq(foldersTable.teamId, teamId));
 
-  // A project's apps are its own plus anything in a LEGACY folder filed under it - the two sources its tile counts.
   const folderIds = scope.folderId
     ? [...descendantFolderIds(scope.folderId, tree)]
-    : // A project's apps are its own (ADR-0009's per-environment membership),
-      tree
+    : tree
         .filter((f) => f.projectId === scope.projectId)
         .flatMap((f) => [...descendantFolderIds(f.id, tree)]);
   return getDb()
@@ -70,7 +66,6 @@ async function appsInScope(
     );
 }
 
-// deleteAppsIn runs BEFORE the container itself goes (ADR-0016), gated per app on `delete_apps`.
 export async function deleteAppsIn(scope: AppScope): Promise<number> {
   const { membership } = await requireMembership();
   const rows = await appsInScope(membership.teamId, scope);
@@ -78,10 +73,8 @@ export async function deleteAppsIn(scope: AppScope): Promise<number> {
   return startAppsDelete(rows.map((r) => r.id));
 }
 
-// BulkAppAction: the lifecycle actions a folder or a project runs over all of its apps at once.
 export type BulkAppAction = "start" | "stop" | "restart" | "redeploy";
 
-// bulkAppAction only fans out to the per-app functions the single-app menu calls, so the gates and the trail are identical.
 export async function bulkAppAction(
   action: BulkAppAction,
   scope: AppScope,
@@ -91,7 +84,6 @@ export async function bulkAppAction(
 
   const rows = await appsInScope(teamId, scope);
 
-  // Token scope first, then per-app reach: the same two filters `listApps` applies.
   const scoped = rows.filter((p) => inAppScope(p));
   const reach = await appCapabilitiesForTeam(
     teamId,

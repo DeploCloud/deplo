@@ -45,8 +45,6 @@ beforeEach(async () => {
   await pg.exec(
     `truncate table notification_alerts, notification_channels, push_subscriptions, users, teams restart identity cascade;`,
   );
-  // USER_2 owns TEAM_B, so the cross-team test below is refused by the row's
-  // scoping rather than by a missing capability.
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -58,7 +56,6 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-// Bare hostnames never resolve, so the outbound guard passes them through untouched.
 function draft(
   over: Partial<NotificationChannelInput> = {},
 ): NotificationChannelInput {
@@ -128,8 +125,6 @@ test("the same kind can be added twice, each with its own alerts", async () => {
     );
     assert.notEqual(got[0].id, got[1].id);
   });
-  // The regression net for the lookup that used to key on `kind`, which is the same
-  // answer for both of them.
   assert.equal((await channelsForAlert(TEAM_A, "deployment_failed")).length, 2);
   assert.equal(
     (await channelsForAlert(TEAM_A, "deployment_succeeded")).length,
@@ -298,7 +293,6 @@ test("a URL aimed inside the network is refused before it is stored", async () =
   await asUser1(async () => {
     await assert.rejects(
       () =>
-        // The self-hosted case the owner explicitly chose to keep refused.
         saveNotificationChannel(
           null,
           draft({ kind: "gotify", url: "https://127.0.0.1:8080" }),
@@ -314,8 +308,6 @@ test("another team's channel is out of reach, and its row survives", async () =>
   await asUser1(async () => {
     id = (await saveNotificationChannel(null, draft())).id;
   });
-  // USER_2 owns TEAM_B and holds every capability THERE, so the refusal has to come
-  // from the row being scoped to another team, not from a missing grant.
   await runWithIdentity({ userId: USER_2, teamId: TEAM_B }, async () => {
     await assert.rejects(() => deleteNotificationChannel(id), /not found/i);
     assert.deepEqual(await listNotificationChannels(), []);

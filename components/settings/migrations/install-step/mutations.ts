@@ -11,7 +11,6 @@ export const ADD_SERVER = /* GraphQL */ `
   }
 `;
 
-// CHECK_HEALTH is a live probe, not a read of the stored row - the point of the gate.
 export const CHECK_HEALTH = /* GraphQL */ `
   mutation CheckMigrationServerHealth($id: String!) {
     checkServerHealth(id: $id, force: true) {
@@ -22,8 +21,6 @@ export const CHECK_HEALTH = /* GraphQL */ `
   }
 `;
 
-// CHANGE_ADDRESS files a proved address against the source, so the next attempt
-// registers the machine where it really is instead of at the panel's name.
 export const CHANGE_ADDRESS = /* GraphQL */ `
   mutation SetMigrationMachineAddress(
     $url: String!
@@ -40,8 +37,6 @@ export const CHANGE_ADDRESS = /* GraphQL */ `
   }
 `;
 
-// REISSUE brings a registered machine's command back - without it the only way
-// past this step is deleting the server by hand.
 export const REISSUE = /* GraphQL */ `
   mutation ReissueMigrationBootstrap($id: String!) {
     reissueServerBootstrap(id: $id) {

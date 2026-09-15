@@ -99,7 +99,6 @@ const CONTROL_PLANE = [
   "backup_destination",
   "backups",
   "backup_runs",
-  // cron jobs (ADR-0018)
   "cron_jobs",
   "cron_job_env",
   "cron_runs",
@@ -115,7 +114,6 @@ const CONTROL_PLANE = [
   "push_subscriptions",
   "registries",
   "installed_plugins",
-  // unified shared variables (ADR-0010)
   "shared_env_vars",
   "shared_env_var_targets",
   "shared_env_var_environments",

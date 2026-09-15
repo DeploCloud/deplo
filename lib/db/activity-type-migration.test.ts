@@ -63,7 +63,6 @@ const CASES: [string, string][] = [
   ["Cleared the Deplo panel address", "instance"],
   ["Moved the panel to https://deplo.acme.com", "instance"],
   ["3 activity entries could not be recorded on this instance", "instance"],
-  // Everything still about people stays `member` - the rows an unanchored LIKE would carry off.
   ["Created team Acme", "member"],
   ["Added @ada to the team", "member"],
   ["Removed @ada from the team", "member"],

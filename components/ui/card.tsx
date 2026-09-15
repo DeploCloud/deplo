@@ -22,7 +22,6 @@ const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    // flex-wrap is inert in the default column direction: headers that flip to flex-row overflow a phone without it.
     className={cn("flex flex-col flex-wrap space-y-1.5 p-6", className)}
     {...props}
   />
@@ -35,7 +34,6 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    // text-base is the partner of lg:text-lg - tailwind-merge keys on the modifier, so a call site's bare text-base never eats it.
     className={cn(
       "text-base leading-none font-semibold tracking-tight lg:text-lg",
       className,

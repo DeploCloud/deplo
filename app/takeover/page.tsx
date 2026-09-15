@@ -30,24 +30,20 @@ import { AuthChrome } from "@/components/auth/auth-chrome";
 
 export const metadata = { title: "Take over this machine" };
 
-// TakeoverPage is the whole screen while Deplo replaces another panel on this machine.
 export default async function TakeoverPage() {
   const status = await takeoverStatus();
   if (!status || status.state === "cancelled") redirect("/");
-  // A refresh mid-removal can reach this before the step's own poll sees `removed`.
   if (status.state === "removed")
     redirect(
       `/?welcome=1&takeover=${encodeURIComponent(SOURCE_COPY[status.platform].name)}`,
     );
 
   await requireUser();
-  // Rendering this page IS the proof a browser got through, which the installer waits on.
   await noteBrowserReached();
 
   const copy = SOURCE_COPY[status.platform];
   const sourceUrl = takeoverSourceUrl(status.platform);
 
-  // Each source team lands in a team of the operator's choosing, so runs are read across every team.
   const admin = await isInstanceAdmin();
   const [team, targetTeams, servers, buildServers, runs, resumable, mayExpose] =
     await Promise.all([
@@ -60,14 +56,11 @@ export default async function TakeoverPage() {
       canExposePorts(),
     ]);
 
-  // Something has to have come across before there is any point taking the ports.
   const finished = runs.find((r) => r.status === "done") ?? null;
-  // It names every team's services, so only the operator reads it.
   const dataLoss = finished && admin ? await takeoverDataLoss() : [];
 
   return (
     <Screen
-      // Once the ports have been asked for there is nothing here to back out of.
       footer={
         (status.state === "pending" || status.state === "failed") && (
           <TakeoverCancel
@@ -77,7 +70,6 @@ export default async function TakeoverPage() {
         )
       }
     >
-      {/* The wizard watches the run it started itself, in whichever team it lands. */}
       <MigrationWizard
         teamId={team.id}
         targetTeams={targetTeams}
@@ -88,7 +80,6 @@ export default async function TakeoverPage() {
         isInstanceAdmin={admin}
         canExposePorts={mayExpose}
         prefill={{ url: sourceUrl, kind: status.platform }}
-        // It probes the agent, which the cutover is busy with.
         preflight={
           admin && status.state === "pending" ? <TakeoverPreflight /> : null
         }
@@ -100,7 +91,6 @@ export default async function TakeoverPage() {
           error: status.error,
           dataLoss,
         }}
-        // A null resumable means the report has been closed, leaving only the last step.
         startOnTakeover={finished != null && resumable == null}
       />
     </Screen>
@@ -117,16 +107,13 @@ function Screen({
   return (
     <div className="relative flex min-h-dvh flex-col">
       <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
-      {/* Theme and the links every signed-out screen carries. */}
       <AuthChrome />
       <header className="relative z-10 px-6 py-5">
         <DeploLogo />
       </header>
       <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8">
-        {/* Wide enough for the People step's grid. */}
         <div className="w-full max-w-3xl space-y-6">{children}</div>
       </main>
-      {/* Clear of AuthChrome's own row of links, which sits at the page's foot. */}
       {footer && <footer className="relative z-10 px-4 pb-14">{footer}</footer>}
     </div>
   );
@@ -137,7 +124,6 @@ function takeoverSourceUrl(platform: "dokploy" | "coolify"): string {
   return `http://${ip}:${platform === "coolify" ? 8000 : 3000}`;
 }
 
-// Its host on 443, never a port this container got while another panel still held 443.
 function finalPanelUrl(): string {
   const pub = process.env.DEPLO_PUBLIC_URL?.trim() ?? "";
   try {

@@ -202,7 +202,6 @@ test("host mount: rejects '..' traversal in the host path", () => {
 });
 
 test("host mount: the host SOURCE may point at an otherwise-reserved path", () => {
-  // RESERVED_MOUNT_PREFIXES guard the in-container TARGET, not the host source.
   const out = validateVolumes(
     [vol({ type: "host", hostPath: "/etc/myapp", mountPath: "/data" })],
     null,
@@ -261,7 +260,6 @@ test("host mount: rejects a propagation outside the closed set", () => {
             type: "host",
             hostPath: "/srv/x",
             mountPath: "/data",
-            // Docker's non-recursive modes and anything invented are refused, never passed into a mount line.
             propagation: "shared" as never,
           }),
         ],
@@ -272,7 +270,6 @@ test("host mount: rejects a propagation outside the closed set", () => {
 });
 
 test("propagation is dropped for a named volume and an app-files bind", () => {
-  // Docker rejects the option on a managed volume, and a files-dir bind has no submounts.
   const out = validateVolumes(
     [
       vol({ name: "data", mountPath: "/data", propagation: "rslave" }),
@@ -396,7 +393,6 @@ test("project bind: rejects an absolute or empty projectPath", () => {
 });
 
 test("every mount path refuses `$`, which compose fills in at `up`", () => {
-  // A "$" is substituted from the env-file at `up`, so a bind climbs wherever the variable points.
   for (const v of [
     vol({ type: "app", projectPath: "${X}", mountPath: "/data" }),
     vol({ type: "named", name: "data", mountPath: "/data/${X}" }),

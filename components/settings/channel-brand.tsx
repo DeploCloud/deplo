@@ -12,12 +12,10 @@ import {
 import { cn } from "@/lib/utils";
 import type { NotificationChannel } from "@/lib/types/notification";
 
-// ChannelBrand - how a channel presents itself: name, one-line pitch, brand colour.
 export interface ChannelBrand {
   label: string;
   description: string;
   beta?: boolean;
-  // A literal, not a token: a brand colour is not themeable.
   bg: string;
   fg: string;
   icon?: React.ComponentType<{ className?: string }>;
@@ -120,7 +118,6 @@ export const CHANNEL_BRAND: Record<NotificationChannel, ChannelBrand> = {
   },
 };
 
-// ChannelMark - the mark on its own colour, or the initial when there is none.
 export function ChannelMark({
   channel,
   className,

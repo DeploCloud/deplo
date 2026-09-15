@@ -41,13 +41,11 @@ export async function generateMetadata(
 export default async function ServerDetailPage(
   props: PageProps<"/[team]/settings/servers/[id]">,
 ) {
-  // Instance-admin: this view spans servers restricted to other teams and every action on it is host-wide.
   if (!(await isInstanceAdmin())) notFound();
 
   const { id } = await props.params;
   const server = await getServerById(id);
   if (!server) notFound();
-  // A migration source has no management page.
   if (server.importOnly) notFound();
 
   const [expectedAgentVersion, teamIds, teamsRaw, policy, runs] =
@@ -81,7 +79,6 @@ export default async function ServerDetailPage(
 
   return (
     <ServerHealthProvider seed={seed}>
-      {/* Forms and readouts, not a grid: a readable width, not the wide list shell. */}
       <div className="mx-auto w-full max-w-5xl space-y-6">
         <div className="space-y-3">
           <Button
@@ -95,7 +92,6 @@ export default async function ServerDetailPage(
               Servers
             </Link>
           </Button>
-          {/* Only the name gives ground: a long one wraps the h1 and drops the chip, badge and button onto their own line. */}
           <div className="flex items-center gap-2">
             <h1
               className={`${titleClass.page} min-w-0 truncate`}
@@ -141,7 +137,6 @@ export default async function ServerDetailPage(
             dockerVersion: hydrated.dockerVersion,
             allTeams: hydrated.allTeams,
             deployConcurrency: hydrated.deployConcurrency,
-            // Never "import": a migration source 404s above, so the three-role union holds here.
             role: serverRole(hydrated) as "everything" | "build" | "storage",
             buildFallback: isBuildFallbackServer(hydrated, self),
             isDeploHost,
@@ -157,7 +152,6 @@ export default async function ServerDetailPage(
           accessTeamIds={teamIds}
           cleanup={{
             policy,
-            // The policy is instance-wide (one row for the whole fleet); only the runs are per-server.
             runs,
           }}
         />

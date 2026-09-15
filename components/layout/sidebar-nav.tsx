@@ -179,7 +179,6 @@ export function SidebarNav({
             i > 0 && !section.title && !collapsed && "pt-0.5",
           )}
         >
-          {/* Collapsed has no room for a label, so a rule stands in. */}
           {section.title && !collapsed ? (
             <div
               className={cn(

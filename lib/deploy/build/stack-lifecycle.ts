@@ -13,8 +13,6 @@ export async function owningServerIdForDeployKey(
 ): Promise<string | null> {
   const p = await loadAppGraphBySlug(appSlugFromDeployKey(deployKey));
   if (!p) return null;
-  // A preview may be pinned to a machine of its own: `startDeployment` sends it to
-  // `preview_server_id ?? server_id`, so every lifecycle verb reads the same column.
   let serverId = p.serverId;
   if (prNumberFromDeployKey(deployKey) !== null) {
     const rows = await getDb()
@@ -28,7 +26,6 @@ export async function owningServerIdForDeployKey(
   return server ? server.id : null;
 }
 
-// stopContainer stops a project's stack via the owning server's agent StopStack.
 export async function stopContainer(deployKey: string): Promise<void> {
   const serverId = await owningServerIdForDeployKey(deployKey);
   if (!serverId) return;
@@ -41,7 +38,6 @@ export async function stopContainer(deployKey: string): Promise<void> {
   }
 }
 
-// startContainer starts a previously stopped stack via the owning agent's StartStack.
 export async function startContainer(deployKey: string): Promise<void> {
   const serverId = await owningServerIdForDeployKey(deployKey);
   if (!serverId) return;
@@ -54,7 +50,6 @@ export async function startContainer(deployKey: string): Promise<void> {
   }
 }
 
-// destroyStack stops and removes a project's stack via the owning agent's DestroyStack.
 export async function destroyStack(
   deployKey: string,
   opts: { removeVolumes?: boolean } = {},
@@ -63,8 +58,6 @@ export async function destroyStack(
   if (!serverId) return;
   const conn = await connectAgent(serverId);
   try {
-    // `removeVolumes` is left UNSET for an App: its named volumes hold the user's
-    // data and must survive a teardown they can undo.
     const r = await conn.destroyStack(deployKey, opts.removeVolumes);
     if (!r.ok) throw new Error(r.error || "agent failed to destroy the stack");
   } finally {

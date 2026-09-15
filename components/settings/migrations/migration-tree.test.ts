@@ -14,10 +14,6 @@ import type {
   ServerChoice,
 } from "./types";
 
-/**
- * The review tree's arithmetic, and which of its two placement columns exist.
- */
-
 function service(
   over: Partial<PlanService> & { sourceId: string },
 ): PlanService {
@@ -110,13 +106,11 @@ const SERVERS: ServerChoice[] = [
   { id: HOME, name: "deplo host", isDeploHost: true },
   { id: OTHER, name: "eu-main-1" },
 ];
-/** A fleet with somewhere to build that is not somewhere to run. */
 const WITH_BUILDER: ServerChoice[] = [
   ...SERVERS,
   { id: BUILDER, name: "builder-1", buildOnly: true },
 ];
 
-/** Every importable service on `HOME`, building automatically. */
 function homePlacements(): Record<string, Placement> {
   const out: Record<string, Placement> = {};
   for (const p of PROJECTS)
@@ -146,8 +140,6 @@ function render(
         chosen: new Set(chosen),
         onChange: () => {},
         servers: SERVERS,
-        // Same list as the run column unless a test says otherwise: a fleet with
-        // no build-only host is the ordinary case.
         buildServers: opts.buildServers ?? SERVERS,
         placements: opts.placements ?? homePlacements(),
         onPlacementsChange: () => {},
@@ -158,7 +150,6 @@ function render(
   );
 }
 
-/** The whole `<button role="checkbox">` tag carrying this id. */
 function tagFor(html: string, id: string): string {
   const m = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`));
   assert.ok(m, `no control with id ${id}`);
@@ -170,13 +161,10 @@ function stateOf(html: string, id: string): string {
   return m ? m[1] : "MISSING";
 }
 
-/** The bulk row, which now lives ABOVE the table instead of inside its head. */
 function toolbar(html: string): string {
   const i = html.indexOf("min-w-[48rem]");
   return html.slice(0, i === -1 ? html.length : i);
 }
-
-/* ---- selection ------------------------------------------------------ */
 
 test("nothing picked leaves every box off", () => {
   const html = render([]);
@@ -197,7 +185,6 @@ test("dropping one service makes its project and environment half", () => {
   const html = render(["s-web", "s-db", "s-stg"]);
   assert.equal(stateOf(html, "imp-p-p1"), "indeterminate");
   assert.equal(stateOf(html, "imp-e-e-prod"), "indeterminate");
-  // The environment nothing was taken from stays fully on.
   assert.equal(stateOf(html, "imp-e-e-stg"), "checked");
   assert.match(html, />3 of 4 selected</);
   assert.match(html, />2 of 3 selected</);
@@ -207,26 +194,18 @@ test("an engine Deplo does not have can never be picked, and never counts", () =
   const html = render(["s-stack"]);
   assert.equal(stateOf(html, "imp-s-s-libsql"), "unchecked");
   assert.match(tagFor(html, "imp-s-s-libsql"), /disabled/);
-  // One compose plus one unsupported is ONE pickable, so the project is full.
   assert.equal(stateOf(html, "imp-p-p2"), "checked");
   assert.match(html, />1 of 1 selected</);
 });
 
 test("a service's notes stay off the review entirely", () => {
-  // They are not warnings - "this path now points at Deplo's files directory" is a
-  // fact about how the import maps a thing, and a strip of yellow under every second
-  // row is how a screen stops being read.
   const html = render(["s-web"]);
   assert.equal(html.includes("Published host ports"), false);
   assert.equal(html.includes("Deplo has no libsql engine"), false);
-  // What DOES stay is the one-word verdict, which is a property of the row.
   assert.match(html, /Not supported/);
 });
 
 test("nothing marks a row as new, because everything here is", () => {
-  // The status column says what is DIFFERENT about a row. A badge reading "New"
-  // on nine rows out of ten is a column you have to look past to find the one
-  // that says "Already here".
   const html = render([]);
   assert.equal(html.includes(">New<"), false);
 });
@@ -252,8 +231,6 @@ test("something already in Deplo reads as a state, not a warning", () => {
     placements: { "s-old": { serverId: HOME, buildServerId: null } },
   });
   assert.match(html, /Already here/);
-  // `info`, the blue token - never `warning`, which is what "there is a problem
-  // with this row" means everywhere else in the app.
   const badge = html.match(/<[^>]*>Already here</);
   assert.ok(badge, "no Already here badge");
   const around = html.slice(
@@ -264,13 +241,10 @@ test("something already in Deplo reads as a state, not a warning", () => {
   assert.equal(around.includes("--warning"), false);
 });
 
-/* ---- placement ------------------------------------------------------ */
-
 test("every app gets a Runs on picker, including the ones nothing builds", () => {
   const html = render([]);
   for (const id of ["s-web", "s-api", "s-db", "s-stack"])
     assert.ok(html.includes(`id="imp-run-${id}"`), `no run picker for ${id}`);
-  // Nothing Deplo can create, so nowhere to put it.
   assert.equal(html.includes(`id="imp-run-s-libsql"`), false);
 });
 
@@ -282,8 +256,6 @@ test("no build-only host in the fleet means no build picker anywhere", () => {
 
 test("one build-only host brings the build pickers back", () => {
   const html = render([], { buildServers: WITH_BUILDER });
-  // The aria-label, not the placeholder: rows that agree on Automatic give the
-  // bulk control a value, and a Select showing one renders no placeholder.
   assert.ok(
     toolbar(html).includes(`aria-label="Build everything on"`),
     "no bulk build control",
@@ -293,8 +265,6 @@ test("one build-only host brings the build pickers back", () => {
 
 test("a service Deplo never compiles gets a dash, not a picker", () => {
   const html = render([], { buildServers: WITH_BUILDER });
-  // A compose stack and a database both deploy as they are. The tooltip that
-  // says WHY is not asserted here: Radix renders its content only once open.
   for (const id of ["s-stack", "s-db"]) {
     assert.equal(
       html.includes(`id="imp-build-${id}"`),
@@ -307,28 +277,20 @@ test("a service Deplo never compiles gets a dash, not a picker", () => {
 });
 
 test("the bulk row places nothing and selects nothing", () => {
-  // Where a service lands is a per-row answer, and so is whether it comes at
-  // all: a control that rewrites every row at once is not worth its width.
   const html = render([]);
   const row = toolbar(html);
   assert.equal(row.includes("Place all on"), false);
   assert.equal(row.includes("Select all"), false);
   assert.equal(row.includes("Unselect all"), false);
-  // The rows still carry their own picker, which is where placing now lives.
   assert.ok(html.includes(`id="imp-run-s-api"`), "a row lost its picker");
 });
 
 test("the table head is gone", () => {
   const html = render([]);
-  // The header row that used to sit inside the table, with "Set all" down its
-  // left and a caption over each picker, is not a column and is not there.
   assert.equal(html.includes("Set all"), false);
   assert.equal(html.includes(">Runs on<"), false);
 });
 
-/* ---- what a search leaves standing ---------------------------------- */
-
-/** `visible` is the whole search: the markup around it is an Input and an X. */
 function seen(query: string) {
   const v = visible(PROJECTS, query.toLowerCase().split(/\s+/).filter(Boolean));
   return {
@@ -346,13 +308,11 @@ test("a hit keeps its ancestors, so nothing is stranded two levels down", () => 
 });
 
 test("a project or environment that matches ITSELF keeps everything under it", () => {
-  // Ticking a node has to keep meaning "everything in here".
   assert.deepEqual(seen("Blink").services, ["s-api", "s-db", "s-stg", "s-web"]);
   assert.deepEqual(seen("staging").services, ["s-stg"]);
 });
 
 test("an app is findable by its hostname, not only by its name", () => {
-  // The name over there is often not the name you remember; the domain is.
   assert.deepEqual(seen("acme.com").services, ["s-web"]);
 });
 
@@ -362,9 +322,7 @@ test("a kind finds every service of that kind at once", () => {
 });
 
 test("every term has to match, and nothing matching is empty", () => {
-  // Two words describing a path: the project name plus the app's own.
   assert.deepEqual(seen("blink api").services, ["s-api"]);
-  // Both terms against ONE service: "blink" is the project, "db" the app.
   assert.deepEqual(seen("blink db").services, ["s-db"]);
   assert.deepEqual(seen("nothing-like-this"), {
     projects: [],
@@ -373,17 +331,11 @@ test("every term has to match, and nothing matching is empty", () => {
   });
 });
 
-/* ---- how a service is drawn ----------------------------------------- */
-
 test("a database wears its engine's own mark, not a generic glyph", () => {
   const html = render([]);
   assert.match(html, /\/engines\/postgres\.svg/);
 });
 
-/**
- * A database's host port, which is the one thing on this screen that is not about
- * WHERE something goes.
- */
 test("a database says what it publishes, and only asks when that port is taken", () => {
   const clean = render(["s-db"]);
   assert.match(clean, /Publishes 5432/, "shown next to the engine");
@@ -400,13 +352,9 @@ test("a database says what it publishes, and only asks when that port is taken",
   });
   assert.match(clash, /Port 5432 is taken on eu-main-1\./);
   assert.match(clash, /Expose publicly/);
-  // The alternative is already filled in: pressing Import is a working answer.
   assert.match(clash, /id="imp-port-s-db"[^>]*value="25432"/);
-  // ...and the read-only chip is gone, because the number moved into the field.
   assert.equal(/Publishes 5432/.test(clash), false);
 
-  // "Don't publish" is the same control turned off: no port field, and the row
-  // no longer claims to publish anything.
   const off = render(["s-db"], {
     placements: {
       ...homePlacements(),
@@ -419,8 +367,6 @@ test("a database says what it publishes, and only asks when that port is taken",
   assert.equal(/imp-port-s-db/.test(off), false);
   assert.match(off, /Expose publicly/);
 
-  // Without the publish-ports grant nothing about a port is shown at all - the
-  // review says once, at the top, that these databases come over private.
   const noGrant = render(["s-db"], { showPorts: false });
   assert.equal(/Publishes 5432/.test(noGrant), false);
 });

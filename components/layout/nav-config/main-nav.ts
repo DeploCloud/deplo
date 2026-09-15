@@ -57,18 +57,12 @@ export const NAV: NavSection[] = [
         href: "/templates",
         icon: LayoutTemplate,
         tooltip: "One-click deploy templates",
-        // No capability: anyone on the team may read the catalogue; `createApp`
-        // gates the Deploy button with `create_apps`.
       },
-      // Plugins deliberately have NO nav entry (ADR-0013): the feature is
-      // deferred and `/plugins/<slug>` stays reserved for a plugin's own routes.
     ],
   },
   {
     title: "Workspace",
     items: [
-      // Members lives under Settings → Team, beside the Roles page that defines
-      // what a member can do - one decision, one place.
       {
         label: "Activity",
         href: "/activity",
@@ -83,8 +77,6 @@ export const NAV: NavSection[] = [
         tooltip: "Real-time server metrics",
         requires: "view_metrics",
       },
-      // Settings is NOT here: it sits in the sidebar's own footer, because it is
-      // a way OUT of the workspace rather than a place in it.
     ],
   },
 ];

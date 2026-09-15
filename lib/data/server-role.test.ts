@@ -99,14 +99,12 @@ test("a host that still runs something cannot be retired into either role", asyn
 test("going BACK to everything is always allowed - nothing is stranded by it", async () => {
   await asOwner(async () => {
     await setServerRole(SERVER_1, "build");
-    // No workload check on the way back: a build server hosts nothing to move off.
     const s = await setServerRole(SERVER_1, "everything");
     assert.equal(serverRole(s), "everything");
   });
 });
 
 test("a backups-only server with no Docker is pinned to that role", async () => {
-  // The storage-only installer puts no Docker on the box, so the agent reports no version.
   await db
     .update((await import("../db/schema/control-plane/servers")).servers)
     .set({ storageOnly: true, buildOnly: false, dockerVersion: "" })
@@ -128,7 +126,6 @@ test("a backups-only server with no Docker is pinned to that role", async () => 
 });
 
 test("a Docker-having server retired into storage can still come back", async () => {
-  // The pin must NOT catch a merely repurposed host: Docker is still on it.
   await asOwner(async () => {
     await setServerRole(SERVER_1, "storage");
     const s = await setServerRole(SERVER_1, "everything");
@@ -160,7 +157,6 @@ async function addMigrationSource(name = "dokploy-host", host = "10.9.9.9") {
 
 test("a migration source is not a role anyone can pick, and not one it can leave", async () => {
   await asOwner(async () => {
-    // The installer put no Traefik and no shared network on that host.
     await assert.rejects(
       () => setServerRole(SERVER_1, "import" as never),
       /created by the import wizard/,
@@ -189,9 +185,6 @@ test("a migration source is out of the deploy picker AND the build picker", asyn
       false,
       "a migration source was offered as a deploy target",
     );
-    // The build picker keeps hosts that cannot deploy, and a migration source HAS Docker.
-    // Without its own exclusion it would be offered, and a build would ship the app's
-    // source to the host the user is migrating away from.
     const builders = await listBuildServerChoices();
     assert.ok(
       builders.some((c) => c.id === SERVER_1),
@@ -216,7 +209,6 @@ test("a build-only server is still a legal builder, unlike a migration source", 
 });
 
 test("the Deplo host is a build fallback with nobody configuring anything", async () => {
-  // SERVER_1 answers on 10.0.0.1, which is what the panel says it is.
   process.env.DEPLO_SERVER_IP = "10.0.0.1";
   try {
     await asOwner(async () => {
@@ -232,7 +224,6 @@ test("the Deplo host is a build fallback with nobody configuring anything", asyn
           ?.buildFallback,
         false,
       );
-      // null is back to automatic, which is on again for this host.
       await setServerBuildFallback(SERVER_1, null);
       assert.equal((await getServerById(SERVER_1))!.buildFallback, null);
     });

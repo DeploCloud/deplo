@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The API tokens empty-state illustration: a key being cut, then turned in a lock that springs open. */
 export function TokenGraphic({ className }: { className?: string }) {
   return (
     <svg

@@ -16,7 +16,6 @@ import {
 } from "@/lib/alerts";
 import { ALL_ALERTS, type AlertKey } from "@/lib/types/notification";
 
-// AlertPicker - which alerts a team wants, in the role editor's picker shape.
 export function AlertPicker({
   alerts,
   onChange,
@@ -45,7 +44,6 @@ export function AlertPicker({
   const shown = sections.flatMap((c) => c.shown);
   const shownCount = shown.length;
 
-  // Always emit in catalog order, never insertion order.
   function write(next: Set<AlertKey>) {
     onChange(ALL_ALERTS.filter((a) => next.has(a)));
   }
@@ -72,7 +70,6 @@ export function AlertPicker({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          {/* The count belongs to the heading: it is not something you can press. */}
           <h3 className="text-sm font-medium">
             Alerts{" "}
             <span className="font-normal text-muted-foreground tabular-nums">
@@ -91,7 +88,6 @@ export function AlertPicker({
               Reset to defaults
             </button>
           )}
-          {/* Acts on the filtered subset, spelled as in every category header. */}
           {!disabled && shown.some((a) => enabled.has(a)) && (
             <button
               type="button"
@@ -133,7 +129,6 @@ export function AlertPicker({
         <div className="space-y-3">
           {sections.map((cat) => {
             const on = cat.alerts.filter((a) => enabled.has(a)).length;
-            // The filtered subset, so "Select all" while searching never ticks a hidden row.
             const allShownOn = cat.shown.every((a) => enabled.has(a));
             return (
               <section

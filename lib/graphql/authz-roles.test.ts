@@ -58,7 +58,6 @@ beforeEach(async () => {
 const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-// Effective capabilities the authorization layer will actually read.
 async function effectiveCaps(userId = USER_M): Promise<Capability[]> {
   return runWithIdentity({ userId, teamId: TEAM_A }, async () => {
     const m = await membershipFor(userId, TEAM_A);
@@ -131,7 +130,6 @@ test("deleting a role is refused while somebody still holds it", async () => {
 });
 
 test("a hand-picked capability set is not a role, and a role edit doesn't touch it", async () => {
-  // "Custom" is role_id NULL, and it must stay immune to edits of the role they were on.
   const role = await asOwner(() =>
     createRole({ name: "Ops", capabilities: ["deploy_apps", "view_logs"] }),
   );
@@ -164,7 +162,6 @@ test("a role's two-factor mandate closes the whole team to a member who hasn't e
     }),
   );
   await asOwner(() => updateMember({ userId: USER_M, roleId: role.id }));
-  // Not "fewer permissions" - none at all, reads included.
   await assert.rejects(
     () => effectiveCaps(),
     /two-factor/i,
@@ -181,7 +178,6 @@ test("a role's two-factor mandate closes the whole team to a member who hasn't e
 });
 
 test("a role from another team can't be assigned into this one", async () => {
-  // TEAM_B's roles are seeded lazily; forge one directly and try to use it.
   await db.insert(teamRolesTable).values({
     id: "role_foreign",
     teamId: "team_b",
@@ -206,7 +202,6 @@ test("the Owner role is locked: it cannot be narrowed into a trap", async () => 
     .from(teamRolesTable)
     .where(eq(teamRolesTable.builtinKey, "owner"));
   if (!owner) {
-    // Roles are seeded lazily - touch them, then re-read.
     await asOwner(() => createRole({ name: "Seeder", capabilities: ["view"] }));
   }
   const [ownerRole] = await db

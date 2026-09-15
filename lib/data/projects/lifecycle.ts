@@ -76,7 +76,6 @@ export async function createProject(
     await tx
       .insert(teamProjectOrder)
       .values({ teamId, projectId: project.id, position: next });
-    // Seed the three default environments so a new container is usable (ADR-0008).
     await tx
       .insert(environmentsTable)
       .values(defaultEnvironmentRows(project.id, project.createdAt));
@@ -161,17 +160,12 @@ export async function deleteProject(
 ): Promise<void> {
   const { teamId } = await requireCapability("delete_projects");
   await requireReachableProject(id, teamId);
-  // This takes the environments and the apps with it, and a run is still filling them.
   await assertContainerNotMigrating("project", id);
   const userName = (await getCurrentUser())?.name ?? "Someone";
-  // Before the project row goes, while its apps still resolve through it
-  // (ADR-0016). Lazy import: apps.ts imports this module.
   if (opts.deleteApps) {
     const { deleteAppsIn } = await import("../apps/bulk");
     await deleteAppsIn({ projectId: id });
   }
-  // Read the movers BEFORE the delete: afterwards the rows point nowhere and there
-  // is no way left to tell which stacks changed network.
   const moved = await getDb()
     .select({ id: appsTable.id })
     .from(appsTable)
@@ -205,9 +199,6 @@ export async function deleteProject(
     await tx.delete(projectsTable).where(eq(projectsTable.id, id));
     return p.name;
   });
-  // The placement IS the network: everything here just landed on the team's, so the
-  // stacks need the bring-up. The move can put two stacks on one name, and a delete
-  // cannot be refused for it - so it is reported.
   for (const clash of await nameClashesOnMove(
     moved.map((a) => a.id),
     { teamId, environmentId: null },
@@ -221,8 +212,6 @@ export async function deleteProject(
     );
   await reapplyNetworkAfterMove(moved.map((a) => a.id));
   await reapplyDatabaseNetwork(movedDbs.map((d) => d.id));
-  // Record OUTSIDE the transaction: recordActivity opens its own connection, which
-  // would deadlock against the open tx on pglite's single connection.
   await recordActivity(
     "project",
     `Deleted project ${name}`,
@@ -232,8 +221,6 @@ export async function deleteProject(
   );
 }
 
-// reorderProjects - total and self-healing: ids sanitised to the caller's own team,
-// omitted ids appended. Gated on the super-user role, it being a team-wide setting.
 export async function reorderProjects(orderedIds: string[]): Promise<void> {
   const { teamId } = await requireMembership();
   if (!(await isInstanceAdmin()) && !(await hasCapability("manage_team")))

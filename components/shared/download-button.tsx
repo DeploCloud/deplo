@@ -5,7 +5,6 @@ import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// DownloadButton saves a block of text to a file via a throwaway object URL.
 export function DownloadButton({
   value,
   filename,
@@ -13,7 +12,6 @@ export function DownloadButton({
   size = "icon-sm",
   label,
 }: {
-  // A thunk is read at click time: a terminal's buffer changes on every keystroke.
   value: string | (() => string);
   filename: string;
   className?: string;
@@ -30,7 +28,6 @@ export function DownloadButton({
     document.body.appendChild(a);
     a.click();
     a.remove();
-    // Revoke after the click has been dispatched so the navigation isn't cut off.
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 

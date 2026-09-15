@@ -19,7 +19,6 @@ import { assertServiceInTarget } from "./target-services";
 
 const MAX_JOBS_PER_TARGET = 20;
 
-/** Turn cron jobs on or off for one target. */
 export async function setCronEnabled(
   targetKind: CronTargetKind,
   targetId: string,
@@ -76,8 +75,6 @@ export async function createCronJob(
   const teamId = gated.teamId;
   assertServiceInTarget(input.service?.trim(), gated.app);
 
-  // Required on create, optional on edit - so the patch builder is shared and the
-  // requiredness lives in exactly one place.
   if (input.name === undefined) throw new Error("Give the cron job a name");
   if (input.command === undefined)
     throw new Error("Give the cron job a command to run");
@@ -130,8 +127,6 @@ export async function createCronJob(
         updatedAt: now,
       });
   } catch (e) {
-    // The unique index is the real check; catching it here turns a Postgres constraint
-    // string into the sentence the form should show.
     if (/cron_jobs_(app|database)_name_uq/.test(errorChainText(e))) {
       throw new Error(`A cron job called "${patch.name}" already exists here`);
     }
@@ -150,7 +145,6 @@ export async function createCronJob(
   return (await oneJob(id))!;
 }
 
-/** An error plus its `cause` chain as one string - where drivers hide details. */
 function errorChainText(e: unknown): string {
   const parts: string[] = [];
   let cur: unknown = e;

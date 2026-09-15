@@ -124,8 +124,6 @@ const passkeyRows = (userId: string) =>
     .from(passkeyTable)
     .where(eq(passkeyTable.userId, userId));
 
-// The READ paths are in the list too: a token that could merely enumerate its creator's devices
-// tells its holder - not necessarily the person who minted it - which second factors to go after.
 test("every passkey function refuses a bearer token", async () => {
   await seedPasskey(USER_1);
   const calls: [string, () => Promise<unknown>][] = [
@@ -396,7 +394,6 @@ test("finishing a registration nobody started creates nothing", async () => {
           response: { id: "made-up", rawId: "made-up", type: "public-key" },
           name: "Forged",
         }),
-      // Whatever the plugin calls it, the point is that it refuses.
       /.+/,
     );
   });
@@ -410,7 +407,6 @@ test("with no policy in force, the last passkey goes without argument", async ()
 });
 
 test("two removals racing each other cannot both win", async () => {
-  // Without the row lock both readers see two passkeys and both deletes land.
   await db
     .update(teamsTable)
     .set({ requireTwoFactor: true })

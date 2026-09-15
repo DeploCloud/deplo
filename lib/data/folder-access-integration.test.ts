@@ -210,7 +210,6 @@ test("a grantee with a folder grant can act; without it they can't", async () =>
 });
 
 test("a grant EXCEEDS the grantee's team caps and holds (ADR-0016)", async () => {
-  // ADR-0016 reversed: a folder grant may exceed the grantee's team caps and holds.
   await as(OWNER, () =>
     setFolderGrant(FLD, GRANTEE, ["deploy_apps", "manage_backups"]),
   );

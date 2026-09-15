@@ -15,10 +15,8 @@ import { SERVER_1 } from "./app-graph-test-helpers";
 
 const T0 = "2026-01-01T00:00:00.000Z";
 
-// The singleton policy row's PK (mirrors `POLICY_ID` in the data layer).
 export const CLEANUP_POLICY_ID = "default";
 
-// Truncate every Docker-cleanup table (call in `beforeEach` before seeding).
 export const TRUNCATE_CLEANUP = `truncate table
   docker_cleanup_run_items, docker_cleanup_runs,
   docker_cleanup_policy_scopes, docker_cleanup_excluded_servers, docker_cleanup_policy
@@ -34,7 +32,6 @@ export interface SeedCleanupPolicyOpts {
   updatedAt?: string;
 }
 
-// Seed the singleton policy + its scopes junction (+ any exclusions).
 export async function seedCleanupPolicy(
   db: TestDb,
   opts: SeedCleanupPolicyOpts = {},
@@ -67,7 +64,6 @@ export async function seedCleanupPolicy(
   }
 }
 
-// Seed the scheduled sweep's opt-out list (the servers must already exist).
 export async function seedCleanupExclusions(
   db: TestDb,
   serverIds: string[],
@@ -93,7 +89,6 @@ export interface SeedCleanupRunOpts {
   items?: CleanupRunItem[];
 }
 
-// Seed one cleanup RUN (history), plus its per-scope items. `seq` is DB-assigned.
 export async function seedCleanupRun(
   db: TestDb,
   opts: SeedCleanupRunOpts,

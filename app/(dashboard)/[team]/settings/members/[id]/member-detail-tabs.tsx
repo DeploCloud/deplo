@@ -54,8 +54,6 @@ import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import type { UserTeamAccessDTO } from "@/lib/data/user-access";
 import { titleClass } from "@/components/shared/page-header";
 
-// The edit state lives here: hold it anywhere else and switching tabs discards the edit.
-
 const TABS = ["permissions", "activity", "advanced"] as const;
 type TabId = (typeof TABS)[number];
 
@@ -71,7 +69,6 @@ export function MemberDetailTabs({
   viewerIsPrimaryOwner,
   viewerTwoFactorEnabled,
 }: {
-  // Their trail, rendered on the server - see the page's MemberActivity.
   activity: React.ReactNode;
   member: MemberDTO;
   access: UserTeamAccessDTO;
@@ -79,11 +76,8 @@ export function MemberDetailTabs({
   tree: ScopeTreeTeam[];
   canAssignOwner: boolean;
   isSelf: boolean;
-  // Instance admin - the link to this person's global account is theirs alone.
   canManageAccount: boolean;
-  // The VIEWER holds the crown, so the team is theirs to hand over.
   viewerIsPrimaryOwner: boolean;
-  // The VIEWER's own 2FA, which decides whether the transfer asks for a code.
   viewerTwoFactorEnabled: boolean;
 }) {
   const router = useRouter();
@@ -103,8 +97,6 @@ export function MemberDetailTabs({
     if (next === TABS[0]) q.delete("tab");
     else q.set("tab", next);
     const s = q.toString();
-    // Replace, not push: flipping between tabs is not navigation the back button should walk through.
-    // The native History API, not router.replace: a router navigation re-runs this whole page on the server.
     window.history.replaceState(
       null,
       "",
@@ -130,13 +122,11 @@ export function MemberDetailTabs({
     initial.selection,
   );
   const [caps, setCaps] = React.useState<Capability[]>(initial.capabilities);
-  // One entry per distinct set they already hold, so moving ticks doesn't flatten two shares onto one set.
   const [groups] = React.useState<NodeGroup[]>(initial.groups);
 
   const role = roles.find((r) => r.id === roleId) ?? null;
   const roleReach = React.useMemo(() => reachOf(role, tree), [role, tree]);
   const roleCaps = React.useMemo(() => effectiveCapabilities(role), [role]);
-  // A node grant has no environment rung, so a role limited to an Environment would drop ticks on save.
   const reachEditable = (role?.scope?.environmentIds.length ?? 0) === 0;
 
   function pickRole(id: string) {
@@ -147,10 +137,8 @@ export function MemberDetailTabs({
   }
 
   const ticked = tickedIds(selection);
-  // When the ticks stop covering the role's reach, THEY become this person's reach and the role stops answering.
   const covers = coversRoleReach(selection, role, tree);
   const granular = reachEditable && !covers;
-  // Written even while the role still supplies the reach, or saving this page would revoke those shares.
   const extra = subtract(selection, roleReach);
   const delta = accessDelta({
     capabilities: caps,
@@ -165,7 +153,6 @@ export function MemberDetailTabs({
     !sameSelection(selection, initial.selection) ||
     !sameCapabilities(caps, initial.capabilities);
 
-  // All three are refused server-side too; this only spares a toast that arrives after the click.
   const lockReason = access.isFounder
     ? "The team's primary owner. Their access can't be changed by anyone, and ownership moves by transferring the team."
     : isSelf
@@ -174,12 +161,9 @@ export function MemberDetailTabs({
         ? "An owner's access can only be changed by another owner."
         : null;
   const readOnly = lockReason != null;
-  // The locks above are exactly the people `removeMember` refuses.
   const canRemove = !readOnly;
-  // Only the crown hands the crown on; the transfer puts them on the Owner role itself (lib/data/team-ownership.ts).
   const canTransfer = viewerIsPrimaryOwner && !isSelf && !member.isPrimaryOwner;
   const onNodes = boundedBy(caps, NODE_GRANTABLE_CAPABILITIES);
-  // The same question the server asks before it bounds their set, so a tick the save would drop is struck through here.
   const reachLimited = granular || role?.scope != null;
   const nothingTicked = ticked.length === 0 && tree.length > 0;
   const nothingAllowed =
@@ -209,14 +193,12 @@ export function MemberDetailTabs({
             userId: member.userId,
             roleId,
             granular,
-            // Only what the role doesn't already reach, so a share survives a save that never touched it.
             grants: buildGrants(
               granular ? selection : extra,
               groups,
               onNodes,
               !sameCapabilities(caps, initial.capabilities),
             ),
-            // The server compares this with the role's set to decide whether the role still owns these permissions.
             capabilities: caps,
           },
         },
@@ -246,7 +228,6 @@ export function MemberDetailTabs({
               {member.roleName && (
                 <Badge variant="outline">{member.roleName}</Badge>
               )}
-              {/* Live, not the stored verdict: what the Save is about to make true. */}
               <AccessDeltaBadge delta={delta} roleName={role?.name ?? null} />
               {member.isPrimaryOwner && (
                 <Badge variant="secondary" className="gap-1">
@@ -268,7 +249,6 @@ export function MemberDetailTabs({
               joined {timeAgo(member.createdAt)}
             </p>
           </div>
-          {/* The account is instance-wide, so it is edited where every account is. */}
           {canManageAccount && (
             <Button asChild variant="outline" size="sm" className="ml-auto">
               <Link href={`/settings/users?user=${member.userId}`}>
@@ -289,7 +269,6 @@ export function MemberDetailTabs({
           <UnderlineTabsTrigger value="advanced">Advanced</UnderlineTabsTrigger>
         </UnderlineTabsList>
 
-        {/* Everything team-scoped, one form, one Save. */}
         <form
           className="space-y-6"
           onSubmit={(e) => {
@@ -298,18 +277,15 @@ export function MemberDetailTabs({
           }}
         >
           <TabsContent value="permissions" className="space-y-4 pt-2">
-            {/* Why nothing on this tab can be edited, above the things that can't be. */}
             {lockReason && (
               <div className="flex items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
                 <Lock className="size-5 shrink-0 text-[var(--warning)]" />
                 <p className="text-sm">{lockReason}</p>
               </div>
             )}
-            {/* The role comes first: the two editors below are filled from it. */}
             {!access.isFounder && (
               <Card>
                 <CardContent className="pt-6">
-                  {/* RoleSelect has no disabled state of its own, so a locked row shows no picker. */}
                   {readOnly ? (
                     <p className="text-sm text-muted-foreground">
                       Role: {member.roleName ?? "Custom"}
@@ -384,12 +360,10 @@ export function MemberDetailTabs({
           )}
         </form>
 
-        {/* Its filters navigate, so the tab rides in the URL with them. */}
         <TabsContent value="activity" className="pt-2">
           {activity}
         </TabsContent>
 
-        {/* The two actions that end a membership rather than shape it. */}
         <TabsContent value="advanced" className="space-y-4 pt-2">
           {canTransfer && (
             <Card className="border-destructive/40">
@@ -488,7 +462,6 @@ export function MemberDetailTabs({
                   onChange={(e) => setTransferPassword(e.target.value)}
                 />
               </div>
-              {/* Only when the account has a second factor: asking everyone for a code they may not have is a dead end. */}
               {viewerTwoFactorEnabled && (
                 <div className="space-y-2">
                   <Label htmlFor="transfer-code">
@@ -564,7 +537,6 @@ function reachOf(
   };
 }
 
-// Mirrors the server's effectiveRoleCapabilities, the set written onto every membership.
 function effectiveCapabilities(role: TeamRoleDTO | null): Capability[] {
   if (!role) return ["view"];
   return role.scope
@@ -572,7 +544,6 @@ function effectiveCapabilities(role: TeamRoleDTO | null): Capability[] {
     : role.capabilities;
 }
 
-// False means this person's ticks ARE their reach, so it asks the role's own nodes rather than a count.
 function coversRoleReach(
   selection: ScopeSelection,
   role: TeamRoleDTO | null,
@@ -630,13 +601,11 @@ function toSelection(nodes: UserTeamAccessDTO["nodes"]): ScopeSelection {
   };
 }
 
-// The set one node carries.
 export interface NodeGroup {
   capabilities: Capability[];
   nodeIds: string[];
 }
 
-// The member's existing grants, grouped by the set they carry; two shares stay two through a ticks-only save.
 export function groupNodes(nodes: UserTeamAccessDTO["nodes"]): NodeGroup[] {
   const by = new Map<string, NodeGroup>();
   for (const n of nodes) {
@@ -648,7 +617,6 @@ export function groupNodes(nodes: UserTeamAccessDTO["nodes"]): NodeGroup[] {
   return [...by.values()];
 }
 
-// Nodes that already had a set of their own keep it, unless the admin edited the permission list.
 export function buildGrants(
   selection: ScopeSelection,
   groups: NodeGroup[],

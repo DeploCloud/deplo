@@ -48,7 +48,6 @@ test("one host frame demuxes to the right App and Database by projectId", async 
     ]),
   );
 
-  // The App's two containers fold into ONE series, the app TOTAL: splitting siblings by name makes the chart lie.
   const app = getContainerHistory("prj_1");
   assert.equal(app.length, 1);
   assert.equal(app[0].cpu, 8);
@@ -65,7 +64,6 @@ test("one host frame demuxes to the right App and Database by projectId", async 
 });
 
 test("a container with an EMPTY projectId is ignored, never guessed at from its name", async () => {
-  // The `deplo.project` label is the only identity we trust: a name-inferred id grafts a foreign workload onto a chart.
   await seedEnrolledServer(h.db, SRV_A, "2026-01-01T00:00:00.000Z");
   await seedApp(h.db, { id: "prj_1", slug: "app-one", serverId: SRV_A });
 
@@ -79,7 +77,7 @@ test("a container with an EMPTY projectId is ignored, never guessed at from its 
 
   await feed.send(
     frame([
-      containerStat("", "prj_1-web-1", 99), // the NAME looks like it belongs to prj_1
+      containerStat("", "prj_1-web-1", 99),
       containerStat("", "some-unmanaged-thing", 50),
     ]),
   );
@@ -95,12 +93,10 @@ test("a container with an EMPTY projectId is ignored, never guessed at from its 
     "and the empty id is not a bucket either",
   );
   assert.deepEqual(latestContainerInstances("prj_1"), []);
-  // The HOST half of the same frame is unaffected: one unattributable stat costs one stat, never the frame.
   assert.equal(getMetricsHistory(SRV_A).length, 1);
 });
 
 test("the master switch gates HOST history only; container history keeps flowing", async () => {
-  // Filtered on the RECORD side: one stream carries both halves, so gating the transport would take container history too.
   await disableSaving(h.db);
   await seedEnrolledServer(h.db, SRV_A, "2026-01-01T00:00:00.000Z");
   await seedApp(h.db, { id: "prj_1", slug: "app-one", serverId: SRV_A });

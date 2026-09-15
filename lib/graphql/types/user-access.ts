@@ -84,7 +84,6 @@ const SetUserTeamAccessInputType = builder.inputType("SetUserTeamAccessInput", {
     teamId: t.string({ required: true }),
     roleId: t.string({ required: true }),
     granular: t.boolean({ required: true }),
-    // Ignored unless `granular` - a stale grant list must not quietly apply to someone switched back to Role.
     grants: t.field({ type: [NodeGrantInputType], required: false }),
   }),
 });
@@ -97,7 +96,6 @@ const SetMemberAccessInputType = builder.inputType("SetMemberAccessInput", {
     roleId: t.string({ required: true }),
     granular: t.boolean({ required: true }),
     grants: t.field({ type: [NodeGrantInputType], required: false }),
-    // Absent means "whatever the role gives", which is what a client predating a per-member set already means.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
   }),
 });
@@ -125,12 +123,10 @@ builder.mutationFields((t) => ({
         teamId: input.teamId,
         roleId: input.roleId,
         granular: input.granular,
-        // Absent stays absent: on a non-granular save it means "leave the shares alone", and `[]` would revoke them all.
         grants: input.grants?.map((g) => ({
           projectIds: g.projectIds ?? undefined,
           folderIds: g.folderIds ?? undefined,
           appIds: g.appIds ?? undefined,
-          // The data layer re-validates every one against NODE_GRANTABLE_CAPABILITIES anyway.
           capabilities: g.capabilities as never,
         })),
       }),
@@ -146,7 +142,6 @@ builder.mutationFields((t) => ({
         userId: input.userId,
         roleId: input.roleId,
         granular: input.granular,
-        // Absent stays absent: on a non-granular save it means "leave the shares alone", and `[]` would revoke them all.
         grants: input.grants?.map((g) => ({
           projectIds: g.projectIds ?? undefined,
           folderIds: g.folderIds ?? undefined,

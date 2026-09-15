@@ -34,13 +34,8 @@ export interface CronJobDTO {
   lastRunAt: string | null;
   lastStatus: CronRunStatus | null;
   lastSuccessAt: string | null;
-  /** True while a run is in flight. `lastStatus` cannot say so - it is written
-   *  when a run SETTLES. */
   running: boolean;
-  /** Computed, never stored: the next instant this fires, in the job's zone. */
   nextRunAt: string | null;
-  /** The keys of the job's extra environment. NEVER the values (ADR: secrets are
-   *  write-only and have no reveal path). */
   envKeys: string[];
   createdAt: string;
   updatedAt: string;
@@ -63,23 +58,15 @@ export interface CronRunDTO {
   error: string | null;
   container: string;
   command: string;
-  /** True while a retry waits out its backoff, which reads very differently from
-   *  "the command is running" even though both are `running` rows. */
   retrying: boolean;
 }
 
-/** Everything a Cron jobs page renders in one read. */
 export interface CronJobsView {
   targetKind: CronTargetKind;
   targetId: string;
-  /** The per-target master switch. While false the scheduler skips every job. */
   enabled: boolean;
   jobs: CronJobDTO[];
-  /** Compose services that can be picked as a job's container. Empty for a
-   *  database (one container) and when the host cannot be reached. */
   services: string[];
-  /** Where a job that names no container runs: the service the app's domain
-   *  routes to, else the first declared. Null for a database. */
   primaryService: string | null;
 }
 
@@ -141,9 +128,6 @@ export function toRunDTO(r: typeof cronRunsTable.$inferSelect): CronRunDTO {
     error: r.error,
     container: r.container,
     command: r.command,
-    // `attempt > 0` is what separates a retry waiting out its backoff from a run
-    // in the split second between its INSERT and its StartJob - both have no
-    // agent handle, and only one of them has anything to retry.
     retrying: r.status === "running" && r.agentJobId === null && r.attempt > 0,
   };
 }

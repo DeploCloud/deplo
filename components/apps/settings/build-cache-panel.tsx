@@ -10,7 +10,6 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
-// BuildCachePanel is one app's build cache: the reuse switch and the clear button.
 export function BuildCachePanel({
   appId,
   buildCache,
@@ -83,7 +82,6 @@ export function BuildCachePanel({
             : "Reuse the layers from this app's last build. Off rebuilds everything, on every deploy."}
         </p>
       </div>
-      {/* Clearing sits with the setting it acts on. */}
       <div className="flex shrink-0 items-center gap-3">
         <SimpleTooltip
           content={
@@ -94,7 +92,6 @@ export function BuildCachePanel({
                 : "The next deployment builds from scratch, then caches again. Only this app is affected - the server's cache is shared, so nothing is deleted from it."
           }
         >
-          {/* A disabled button fires no pointer events: the tooltip hangs off this wrapper. */}
           <span className="inline-flex">
             <Button
               size="sm"

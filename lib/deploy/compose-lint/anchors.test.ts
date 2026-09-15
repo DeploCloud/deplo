@@ -7,9 +7,6 @@ import {
 } from "./host-privileges";
 import { composeHasHostBindMount } from "./volumes";
 
-// Every host-escape gate parses the compose with the same parser as the renderer and
-// FAILS OPEN on YAML it cannot read, so a shape the gate cannot parse but the renderer
-// can is a way past all of them at once.
 test("no host-escape gate is blind to a value that arrives through an anchor", () => {
   const via = (
     block: string,

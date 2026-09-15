@@ -6,7 +6,6 @@ import { gqlAction } from "@/lib/graphql-client";
 
 const POLL_MS = 5_000;
 
-// UsageSample is one buffered metrics sample - the slice of `ContainerMetricsSample` read here.
 export interface UsageSample {
   ts: number;
   online: boolean;
@@ -15,7 +14,6 @@ export interface UsageSample {
   running: number;
 }
 
-// LiveUsage is the polled window plus the readings the meters and captions draw from it.
 export interface LiveUsage {
   samples: UsageSample[];
   peak: ResourceSize | null;

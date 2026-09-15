@@ -137,7 +137,6 @@ const UpdateDockerCleanupPolicyInputType = builder.inputType(
       minAgeHours: t.int({ required: true }),
       keepImagesPerApp: t.int({ required: true }),
       scopes: t.field({ type: [DockerCleanupScopeEnum], required: true }),
-      // Omitted leaves the opt-out list untouched; `[]` clears it (every server is swept).
       excludedServerIds: t.stringList({ required: false }),
     }),
   },
@@ -232,7 +231,6 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-// cleanupRunsStream must stay cookie-free across iteration ticks (the SSE test asserts it).
 export async function* cleanupRunsStream(): AsyncGenerator<CleanupRunDTO[]> {
   yield await listCleanupRunsForSubscriber();
   for await (const _ping of pubSub.subscribe(

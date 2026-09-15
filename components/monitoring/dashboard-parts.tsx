@@ -7,13 +7,10 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { GAP_MS } from "@/lib/monitoring/chart-gaps";
 import { cn } from "@/lib/utils";
 
-// POLL_MS - the FLOOR for a dashboard's buffer READ rate, not a measurement rate.
 export const POLL_MS = 1000;
 
-// The ceiling, so a host reporting once a minute still moves its "as of" clock.
 const MAX_POLL_MS = 10_000;
 
-// pollIntervalFor - the agent clamps its own cadence into [1s, 60s], so a fixed 1s poll mostly re-read the frame already on screen.
 export function pollIntervalFor(timestamps: readonly number[]): number {
   const gaps: number[] = [];
   for (let i = Math.max(1, timestamps.length - 6); i < timestamps.length; i++) {
@@ -26,9 +23,7 @@ export function pollIntervalFor(timestamps: readonly number[]): number {
   if (!Number.isFinite(median)) return POLL_MS;
   return Math.min(MAX_POLL_MS, Math.max(POLL_MS, Math.round(median / 2)));
 }
-// STALE_AFTER_MS - the same threshold the charts band "No data" at; it must not fork from `GAP_MS`.
 export const STALE_AFTER_MS = GAP_MS;
-// MAX_POINTS - mirrors `HARD_CAP` in lib/monitoring/history.ts; trimming it is silent truncation.
 export const MAX_POINTS = 1200;
 
 export const WINDOWS = [
@@ -37,7 +32,6 @@ export const WINDOWS = [
   { label: "15m", ms: 900_000 },
 ] as const;
 
-// StatTile - a current-value tile with a small saturation bar.
 export function StatTile({
   icon: Icon,
   label,
@@ -50,9 +44,7 @@ export function StatTile({
   label: string;
   value: string;
   sub: React.ReactNode;
-  // A tooltip, not a second body line, so the tile still reads as one figure.
   info?: React.ReactNode;
-  // 0-100 saturation for the bar; omit for a value with no natural ceiling.
   pct?: number;
 }) {
   const over = (pct ?? 0) > 80;
@@ -82,7 +74,6 @@ export function StatTile({
   );
 }
 
-// ChartCard - a titled card wrapping a chart, with an optional live caption.
 export function ChartCard({
   title,
   caption,
@@ -109,7 +100,6 @@ export function ChartCard({
   );
 }
 
-// InfoItem - a small labelled read-out for the info strip.
 export function InfoItem({
   icon: Icon,
   label,
@@ -130,7 +120,6 @@ export function InfoItem({
   );
 }
 
-// WindowSelector - the 1m / 5m / 15m chart-window selector.
 export function WindowSelector({
   windowMs,
   onChange,
@@ -164,14 +153,11 @@ export function WindowSelector({
   );
 }
 
-// LiveStatusLine - "Live · streaming", or an amber "not answering - showing data up to …".
 export function LiveStatusLine({
   stale,
   asOf,
 }: {
-  // True when the buffer has stopped advancing (see `STALE_AFTER_MS`).
   stale: boolean;
-  // ts (epoch ms) of the newest real sample.
   asOf: number;
 }) {
   if (stale) {
@@ -188,13 +174,11 @@ export function LiveStatusLine({
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
         <span className="relative inline-flex size-2 rounded-full bg-[var(--success)]" />
       </span>
-      {/* NOT "sampling every Ns": the cadence is the agent's, and this timer only re-reads a buffer. */}
       Live · streaming
     </div>
   );
 }
 
-// fmtClock - wall-clock HH:MM:SS for "showing data up to …".
 export function fmtClock(ts: number): string {
   const d = new Date(ts);
   const p = (n: number) => String(n).padStart(2, "0");

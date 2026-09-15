@@ -24,12 +24,10 @@ test("with no authored copy the rendered one comes across, and says so", () => {
   });
   assert.match(value.composeFile ?? "", /^services:/);
   assert.equal(notes.length, 1);
-  // The note carries the token, never a product's name.
   assert.match(notes[0], /\{panel\}/);
 });
 
 test("a service's address comes from SERVICE_FQDN_*, which is where Coolify keeps it", () => {
-  // `services` has no fqdn column at all: 25 of 25 one-click services arrived with no domain while their own variables spelled one out.
   const raw = [
     "services:",
     "  it-tools:",
@@ -86,7 +84,6 @@ test("SERVICE_FQDN_X and SERVICE_FQDN_X_PORT reach one domain with the port", ()
 });
 
 test("the port survives when only the variable NAME carries it", () => {
-  // Coolify resolves BOTH spellings to the same URL, so the port exists nowhere but the key - a portless compose domain falls back to the stack's default port and answers 502.
   const raw = "services:\n  linkding:\n    image: sissbruecker/linkding\n";
   const vars = [
     "SERVICE_FQDN_LINKDING=https://linkding.acme.com",
@@ -106,7 +103,6 @@ test("the port survives when only the variable NAME carries it", () => {
 });
 
 test("a dockercompose application's own address gets a service and a port", () => {
-  // The address is on the APPLICATION, not on a compose service, so the domain arrived naming neither and Deplo rendered no router at all - a 404 on every one of them.
   const raw = [
     "services:",
     "  web:",
@@ -181,7 +177,6 @@ test("a config file is named after the source its own compose binds", () => {
         {
           mountId: "f1",
           type: "file",
-          // What Coolify records: the container path, whose basename is a DIFFERENT string from the file the compose actually binds.
           filePath: ".filebrowser.json",
           content: "{}",
           mountPath: "/.filebrowser.json",
@@ -235,7 +230,6 @@ test("a compose build pack pointed at a repository keeps the repository", () => 
   assert.equal(value.customGitUrl, "https://github.com/acme/web");
   assert.equal(value.customGitBranch, "main");
   assert.equal(value.composePath, "/docker-compose.yml");
-  // No repository, no build: the raw file is the whole stack.
   const { value: raw } = coolifyCompose({
     uuid: "cmp-2",
     name: "kv",

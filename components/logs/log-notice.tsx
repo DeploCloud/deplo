@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-// LogNotice - context the log pane must not be read without; a toolbar chip, because a strip never goes away in a crash loop.
 export interface LogNotice {
   tone: "error" | "warn" | "muted";
   icon: typeof CircleAlert;

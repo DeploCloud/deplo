@@ -11,8 +11,6 @@ import { ensureFileBinds } from "./agent-deploy";
 import { buildComposeStack } from "./compose-stack/render";
 import { renderCompose } from "./build/compose-render";
 
-// Docker invents an empty FOLDER for a missing bind source, so file binds are created first.
-
 test("looksLikeFile: a known extension or a known name is a file", () => {
   for (const p of [
     "config.yml",

@@ -13,12 +13,10 @@ export type AppBuildMethodSettingsRow =
 type AppBuildInsert = typeof appBuild.$inferInsert;
 type AppBuildMethodSettingsInsert = typeof appBuildMethodSettings.$inferInsert;
 
-/** Reassemble a {@link BuildConfig} from the `app_build` (+ method-settings) rows. */
 export function assembleBuild(
   build: AppBuildRow,
   ms: AppBuildMethodSettingsRow | null,
 ): BuildConfig {
-  // Legacy rows may still hold the removed "heroku"/"paketo" build methods.
   const rawMethod = build.buildMethod;
   const buildMethod =
     rawMethod === "heroku" || rawMethod === "paketo" ? "nixpacks" : rawMethod;
@@ -39,7 +37,6 @@ export function assembleBuild(
   };
 }
 
-/** Reassemble {@link BuildMethodSettings} from its 1-to-1 row. */
 export function assembleMethodSettings(
   ms: AppBuildMethodSettingsRow | null,
 ): BuildMethodSettings {
@@ -75,11 +72,6 @@ export function buildToRow(appId: string, b: BuildConfig): AppBuildInsert {
   };
 }
 
-/**
- * A build tool's pinned version: `1.2.3`, with or without a `v`, `latest`, or
- * nothing. The agent pastes it into a download URL it then executes as root, so
- * a `/` or `..` in it would be a path to somebody else's release asset.
- */
 export function cleanToolVersion(
   raw: string | null | undefined,
 ): string | null {
@@ -91,7 +83,6 @@ export function cleanToolVersion(
   return m[1];
 }
 
-/** The 1-to-1 `app_build_method_settings` row. */
 export function methodSettingsToRow(
   appId: string,
   ms: BuildMethodSettings,

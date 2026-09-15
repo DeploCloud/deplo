@@ -7,8 +7,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { LogoImage } from "@/components/shared/project-logo";
 import { cn } from "@/lib/utils";
 
-// TeamMark - a team's picture or its monogram, the same mark the topbar switcher
-// shows, so a team looks the same wherever it is named.
 export function TeamMark({
   name,
   avatarUrl,
@@ -19,7 +17,6 @@ export function TeamMark({
   return <TeamAvatar name={name} avatarUrl={avatarUrl} size="xs" />;
 }
 
-// AppMark - an app's own logo when it has one, else the generic app glyph.
 export function AppMark({ logo }: { logo: string | null }) {
   return (
     <LogoImage
@@ -31,7 +28,6 @@ export function AppMark({ logo }: { logo: string | null }) {
   );
 }
 
-// Row - one node of the tree: expander, checkbox, mark, label, meta, extra cell.
 export function Row({
   depth,
   mark,
@@ -51,7 +47,6 @@ export function Row({
   mark: React.ReactNode;
   label: string;
   meta?: string;
-  // False renders the row as a header: nothing to tick, only children to open.
   checkbox?: boolean;
   checked: boolean;
   disabled?: boolean;
@@ -60,8 +55,6 @@ export function Row({
   expanded?: boolean;
   onToggleExpand?: () => void;
   id: string;
-  // An interactive cell after the label. OUTSIDE the label, or clicking it
-  // would toggle the checkbox.
   right?: React.ReactNode;
 }) {
   return (
@@ -70,8 +63,6 @@ export function Row({
         "flex items-center gap-2 py-2 pr-3",
         depth === 0 && "bg-surface",
       )}
-      // Indent by depth rather than by a class per level: folders nest as deep
-      // as the Overview lets them, so there is no fixed set of levels.
       style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
     >
       {expandable ? (

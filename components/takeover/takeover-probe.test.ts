@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-// Regression: until the ports move the old panel answers that https address with a
-// 404, and an opaque `no-cors` probe resolved on it, sending the operator to a dead
-// page away from the Try again button.
-
 const read = (p: string) => readFile(join(process.cwd(), p), "utf8");
 
 test("the takeover probe reads the answer, it does not just connect", async () => {

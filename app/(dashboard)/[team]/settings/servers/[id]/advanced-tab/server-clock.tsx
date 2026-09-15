@@ -15,7 +15,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "../server-detail-tabs";
 import { HOST_INFO_FIELDS, type HostInfo, type Reading } from "./host-info";
 
-// ServerClock shows the host's live clock and sets its timezone.
 export function ServerClock({
   server,
   reading,
@@ -33,8 +32,6 @@ export function ServerClock({
 
   const [nowMs, setNowMs] = React.useState(0);
 
-  // Adjusting state during render is the supported pattern here; an effect would
-  // render the old zone first.
   const [seen, setSeen] = React.useState(reading);
   if (seen !== reading) {
     const theirs = zone !== "" && zone !== seen?.info.timezone;
@@ -47,7 +44,6 @@ export function ServerClock({
     return () => clearInterval(t);
   }, []);
 
-  // Before the first tick, show the reading as it arrived rather than "—".
   const hostNow = reading
     ? new Date(reading.info.timeUnixMs + Math.max(0, nowMs - reading.readAt))
     : null;
@@ -71,8 +67,6 @@ export function ServerClock({
     });
   }
 
-  // Both stamps are taken server-side around the same agent call. Never against the
-  // browser: a laptop an hour out would paint every healthy server in the fleet red.
   const skewMs = info ? info.timeUnixMs - info.controlPlaneTimeUnixMs : 0;
 
   return (
@@ -92,8 +86,6 @@ export function ServerClock({
           <HostUnavailable what="Server time" reason={error} />
         ) : (
           <form className="space-y-4" onSubmit={save}>
-            {/* In the SERVER's zone, so a host whose clock is wrong shows its
-              wrong time rather than the browser's right one. */}
             <div className="rounded-lg border border-border bg-surface p-4">
               {hostNow && info ? (
                 <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
@@ -105,9 +97,6 @@ export function ServerClock({
                           minute: "2-digit",
                         })}
                       </span>
-                      {/* Seconds come from the instant itself: every current IANA
-                        offset is a whole number of minutes, and asking Intl for
-                        seconds alone yields an unpadded "7". */}
                       <span className="text-xl leading-none text-muted-foreground">
                         :{String(hostNow.getUTCSeconds()).padStart(2, "0")}
                       </span>
@@ -207,15 +196,12 @@ function partsIn(
   if (info.timezone) {
     try {
       return at.toLocaleString("en-GB", { timeZone: info.timezone, ...opts });
-    } catch {
-      // An IANA name this browser does not carry; fall through to the offset.
-    }
+    } catch {}
   }
   const shifted = new Date(at.getTime() + info.utcOffsetMinutes * 60_000);
   return shifted.toLocaleString("en-GB", { timeZone: "UTC", ...opts });
 }
 
-// Minutes, not hours, because Kathmandu is +05:45.
 function formatOffset(minutes: number): string {
   const sign = minutes < 0 ? "-" : "+";
   const abs = Math.abs(minutes);

@@ -225,8 +225,6 @@ export function useSourceQueue({
     key: string,
   ): Promise<string | null> {
     if (sourcesTeam.current !== home) {
-      // Every lookup that reads a source is team-scoped: left behind, the run
-      // refuses to start and their agents are stranded.
       const moved = await gqlAction(
         HAND_OVER_SOURCES,
         { fromTeamId: sourcesTeam.current },
@@ -293,8 +291,6 @@ export function useSourceQueue({
     }
     const fresh = res.data;
     setTeamPlans((prev) => ({ ...prev, [i]: fresh }));
-    // This team's ticks are replaced by what the new landing makes importable;
-    // every other team's are left exactly as they were.
     const mine = new Set(
       fresh.projects.flatMap(importableOf).map((s) => s.sourceId),
     );
@@ -352,8 +348,6 @@ export function useSourceQueue({
           serverId: landing.placements[svc.sourceId]?.serverId ?? null,
           buildServerId:
             landing.placements[svc.sourceId]?.buildServerId ?? null,
-          // Absent, null and a number are three different instructions - see
-          // the input's own description; spread keeps an untouched service absent.
           ...(landing.placements[svc.sourceId] &&
           "exposedPort" in landing.placements[svc.sourceId]!
             ? { exposedPort: landing.placements[svc.sourceId]!.exposedPort }
@@ -442,8 +436,6 @@ export function useSourceQueue({
             }
           : prev,
       );
-      // Its LANDING is left alone on purpose: this row is the source machine,
-      // enrolled `import_only`, and nothing deploys onto one of those.
     },
     [],
   );
@@ -470,8 +462,6 @@ export function useSourceQueue({
     setPanelTeams(null);
     setTeamPlans({});
     setTargetTeamId(null);
-    // The last run took the agents off the source machines; the next panel's
-    // are registered afresh, by the page's team.
     sourcesTeam.current = teamId;
   }, [teamId]);
 

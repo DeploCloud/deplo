@@ -19,8 +19,6 @@ import {
 
 export type LintSeverity = "error" | "warning" | "info";
 
-// The rules that mean "this stack reaches the server itself". Named once so the
-// wizard can say so on the card.
 export const HOST_ACCESS_RULES: readonly string[] = [
   "host-privileges",
   "foreign-volume",
@@ -29,7 +27,6 @@ export const HOST_ACCESS_RULES: readonly string[] = [
   "bind-mount-interpolated",
 ];
 
-// Does this stack need the host-volume grant?
 export function needsHostAccess(
   diagnostics: readonly { rule: string }[],
 ): boolean {
@@ -39,15 +36,11 @@ export function needsHostAccess(
 export interface LintDiagnostic {
   severity: LintSeverity;
   message: string;
-  // Stable rule id, useful for tests and suppression.
   rule: string;
-  // 1-based line the marker attaches to (best-effort for semantic rules).
   line: number;
-  // 1-based column, when known.
   column?: number;
 }
 
-// A js-yaml load error carries a `.mark` with 0-based line/column.
 interface YamlMark {
   line: number;
   column: number;
@@ -62,9 +55,6 @@ function markOf(e: unknown): YamlMark | null {
   return null;
 }
 
-// The 1-based line a top-level `services:` child key is declared on. js-yaml v4
-// drops per-node position info in the high-level API, so semantic rules locate the
-// service block textually. Returns 1 when not found.
 function lineOfAppKey(lines: string[], service: string): number {
   const re = new RegExp(`^\\s+${escapeRe(service)}\\s*:\\s*(?:#.*)?$`);
   for (let i = 0; i < lines.length; i++) {
@@ -73,7 +63,6 @@ function lineOfAppKey(lines: string[], service: string): number {
   return 1;
 }
 
-// The `aliases:` a service asks for on any network, in either compose form.
 function svcNetworkAliases(svc: Record<string, unknown>): string[] {
   const nets = svc.networks;
   if (!nets || typeof nets !== "object" || Array.isArray(nets)) return [];
@@ -86,7 +75,6 @@ function svcNetworkAliases(svc: Record<string, unknown>): string[] {
   return out;
 }
 
-// The line of a `key:` within a service block (best-effort).
 function lineOfServiceField(
   lines: string[],
   appLine: number,
@@ -99,7 +87,7 @@ function lineOfServiceField(
     const line = lines[i];
     if (line.trim() === "") continue;
     const indent = leadingSpaces(line);
-    if (indent <= appIndent) break; // left the service block
+    if (indent <= appIndent) break;
     const m = line.match(re);
     if (m && m[1].length > appIndent) return i + 1;
   }
@@ -122,7 +110,6 @@ type ComposeDoc = {
 
 const VALID_RESTART = new Set(["no", "always", "on-failure", "unless-stopped"]);
 
-// Lint a docker-compose document. Returns diagnostics ordered by line.
 export function lintCompose(source: string): LintDiagnostic[] {
   const diags: LintDiagnostic[] = [];
   const lines = source.split("\n");
@@ -144,8 +131,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
   } catch (e) {
     const mark = markOf(e);
     const message = e instanceof Error ? e.message.split("\n")[0] : String(e);
-    // A tab in the indentation is the most common cryptic YAML failure - give a
-    // direct fix instead of js-yaml's raw "bad indentation" wording.
     const isTab =
       /tab/i.test(message) ||
       (mark != null && /\t/.test(lines[mark.line] ?? ""));
@@ -232,9 +217,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
     }
     const svc = raw as Record<string, unknown>;
 
-    // Only REFUSED once the service is actually on the shared network, so a stack
-    // can be saved and imported with one - and then fail its first deploy on a rule
-    // nothing had mentioned.
     const reservedClaim = serviceReservedClaim(name, svc);
     if (reservedClaim) {
       diags.push({
@@ -245,9 +227,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
       });
     }
 
-    // Aliases on the shared network are dropped at deploy: a hand-written alias is
-    // a way to claim any OTHER name on a network every app on the host shares. Said
-    // here because the stack still deploys, so nothing else would mention it.
     if (svcNetworkAliases(svc).length > 0) {
       diags.push({
         severity: "warning",
@@ -308,11 +287,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
 
     checkListOrMap(svc, "environment", name, svcLine, lines, diags);
     checkList(svc, "volumes", name, svcLine, lines, diags);
-    // Load-bearing - appNetworks() reads this and a malformed value silently drops
-    // the service's real networks when it attaches the `deplo` network.
     checkListOrMap(svc, "networks", name, svcLine, lines, diags);
-    // Load-bearing - mergeLabels() only handles those two shapes; a scalar means
-    // Deplo's Traefik routing + tracking labels are merged onto a broken base.
     checkListOrMap(svc, "labels", name, svcLine, lines, diags);
 
     if ("depends_on" in svc && svc.depends_on != null) {
@@ -347,9 +322,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
       for (const v of svc.volumes) {
         const src = volumeSource(v);
         if (!src) continue;
-        // An interpolated source is none of the three shapes below, and the save
-        // gates it as a host bind - the editor has to say so here, or the refusal
-        // arrives out of nowhere.
         if (interpolates(src)) {
           diags.push({
             severity: "warning",
@@ -407,9 +379,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
       });
     }
 
-    // ANY network_mode takes the service out of its own network, so `wireApp`
-    // refuses to wire it and the router is skipped: a domain pointed at it answers
-    // 404 with nothing said.
     if (typeof svc.network_mode === "string" && svc.network_mode.trim()) {
       const mode = svc.network_mode.trim();
       diags.push({
@@ -432,8 +401,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
       });
     }
 
-    // Gated server-side behind the host-volume grant, so the message names the
-    // permission rather than pretending it is only a smell.
     for (const key of hostPrivilegeKeys(svc)) {
       diags.push({
         severity: "warning",
@@ -444,8 +411,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
     }
   }
 
-  // A warning rather than an error because it IS a legitimate operator action, just
-  // not a team-level one.
   const topLevelVolumes =
     doc.volumes &&
     typeof doc.volumes === "object" &&
@@ -477,8 +442,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
     }
   }
 
-  // Keys that merge config from another file are REFUSED server-side (the gate
-  // can't inspect what they pull in), so the editor shows an error, not a warning.
   const merge = composeUsesExternalMerge(source);
   if (merge) {
     diags.push({
@@ -510,7 +473,6 @@ export function lintCompose(source: string): LintDiagnostic[] {
   return sortDiags(diags);
 }
 
-// True if there are any blocking (error) diagnostics.
 export function hasBlockingErrors(diags: LintDiagnostic[]): boolean {
   return diags.some((d) => d.severity === "error");
 }
@@ -556,9 +518,7 @@ function checkListOrMap(
 }
 
 function hasExplicitTagOrDigest(image: string): boolean {
-  if (image.includes("@")) return true; // digest pin
-  // Strip a registry host (which may contain a port colon) before checking for a
-  // tag colon. The last path component holds the tag.
+  if (image.includes("@")) return true;
   const lastSlash = image.lastIndexOf("/");
   const lastComponent = lastSlash === -1 ? image : image.slice(lastSlash + 1);
   return lastComponent.includes(":");
@@ -569,7 +529,6 @@ function stringifyPort(p: unknown): string {
   return JSON.stringify(p);
 }
 
-// Line of a top-level key like `version:` or `services:`.
 function lineOfTopKey(lines: string[], key: string): number {
   const re = new RegExp(`^${escapeRe(key)}\\s*:`);
   for (let i = 0; i < lines.length; i++) {

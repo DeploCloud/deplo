@@ -8,13 +8,11 @@ import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
 const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = TooltipPrimitive.Root;
 
-// A tooltip stays SHUT unless the user asked for it - an overlay placing focus on open does not count as asking.
 function keyboardOnlyTooltipFocus(event: React.FocusEvent<HTMLElement>) {
   if (isOverlayAutoFocusing() || !event.currentTarget.matches(":focus-visible"))
     event.preventDefault();
 }
 
-// TooltipTrigger: every tooltip goes through it so the guard above is never a call site's to remember; a caller's own `onFocus` runs first and can preventDefault to opt out.
 const TooltipTrigger = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
@@ -65,7 +63,6 @@ function SimpleTooltip({
   );
 }
 
-// MenuSubTooltip steps the tooltip aside for the submenu (same hover gesture); the menu primitives are passed in, and `trigger` is the SubTrigger's inner content.
 function MenuSubTooltip({
   Sub,
   SubTrigger,

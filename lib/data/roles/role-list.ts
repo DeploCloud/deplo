@@ -23,28 +23,20 @@ import {
 import { ensureTeamRoles } from "./builtin-roles";
 import { EMPTY_SCOPE, loadRoleScopes, type ResolvedScope } from "./scope";
 
-// A team role as shown in Settings → Team → Roles.
 export interface TeamRoleDTO {
   id: string;
   name: string;
   description: string | null;
-  // 'owner' | 'member' | 'viewer' for a default role, null for a custom one.
   builtinKey: Role | null;
   capabilities: Capability[];
-  // A POLICY, not a capability: unmet, the member resolves nothing at all.
   requireTwoFactor: boolean;
   memberCount: number;
-  // A default role that no longer matches its shipped preset - offer "Reset".
   modified: boolean;
-  // Full access, not editable: the Owner default.
   locked: boolean;
-  // What the role REACHES, or null when it reaches the whole team. Distinct from
-  // `capabilities`: that is what its holders may DO, this is where.
   scope: ResolvedScope | null;
   createdAt: string;
 }
 
-// listRoles - every role of the active team: defaults first, then custom roles by age.
 export async function listRoles(): Promise<TeamRoleDTO[]> {
   await requireTeamWide("roles");
   const teamId = await requireActiveTeamId();
@@ -111,7 +103,6 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
       capabilities,
       requireTwoFactor: r.requireTwoFactor ?? false,
       memberCount: countByRole.get(r.id) ?? 0,
-      // Both axes, not just power.
       modified: builtinKey
         ? r.scoped ||
           (r.requireTwoFactor ?? false) ||
@@ -132,8 +123,6 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
   return dtos.sort((a, b) => rank(a) - rank(b));
 }
 
-// getRole - one role of the active team, or null when the id belongs to another team
-// (or to nothing) - the role editor page's loader.
 export async function getRole(id: string): Promise<TeamRoleDTO | null> {
   return (await listRoles()).find((r) => r.id === id) ?? null;
 }

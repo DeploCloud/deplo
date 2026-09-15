@@ -49,7 +49,6 @@ test("pick beats both and lands on the chooser", () => {
   );
 });
 
-// Security-shaped: a target the caller may no longer read is absent from the list, and absence is refusal.
 test("a target missing from the readable list resolves to nothing", () => {
   assert.equal(resolveLogTarget(TARGETS, { cookie: "app:deleted" }), null);
   assert.equal(resolveLogTarget(TARGETS, { app: "someone-elses-app" }), null);
@@ -70,7 +69,6 @@ test("hrefs name the kind and encode the ref", () => {
   assert.equal(logTargetHref("app:my-app"), "/logs?app=my-app");
   assert.equal(logTargetHref("db:abc"), "/logs?db=abc");
   assert.equal(logTargetHref("app:a b/c"), "/logs?app=a%20b%2Fc");
-  // Anything that is not a target key must not become a half-formed URL.
   for (const bad of ["", "app:", "nope", "db:"]) {
     assert.equal(logTargetHref(bad), "/logs");
   }
@@ -119,7 +117,6 @@ const TREE_TARGETS = [
   app("web", { projectId: "prc_a", environmentId: "environ_prod" }),
   app("api-staging", { projectId: "prc_a", environmentId: "environ_stage" }),
   app("landing", { folderId: "fld_sub" }),
-  // Its folder is one the caller holds no grant on, so `listFolders` never returned it; the app stays pickable.
   app("orphan", { folderId: "fld_gone" }),
   app("scratch"),
   db,
@@ -146,7 +143,6 @@ test("the tree reads top down, the way the Overview is arranged", () => {
   );
 });
 
-// The empty project, its environment and the project folder nobody deployed into are all absent above.
 test("a branch with no readable target is not drawn", () => {
   const keys = buildLogTree(TREE_TARGETS, TREE_CTX).map((r) => r.key);
   for (const gone of [

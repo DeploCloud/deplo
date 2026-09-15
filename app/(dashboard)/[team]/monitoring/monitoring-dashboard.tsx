@@ -58,15 +58,12 @@ export function MonitoringDashboard({
   canManageServers,
 }: {
   servers: ServerLite[];
-  // The FIRST server's buffered window, so its charts paint full on the first render.
   initialHistory: ServerMetrics[];
   initialFleet: FleetRow[];
-  // Cosmetic gate on the link to a server's own page (instance admins only).
   canManageServers: boolean;
 }) {
   const [selectedId, setSelectedId] = React.useState(servers[0]?.id ?? "");
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
-  // Live MEASUREMENTS only: charting the SSR hint (zeroed net/load) drew a fake dip to 0.
   const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>(
     () =>
       initialHistory.length && servers[0]
@@ -76,24 +73,19 @@ export function MonitoringDashboard({
   const [fleet, setFleet] = React.useState<Record<string, FleetRow>>(() =>
     Object.fromEntries(initialFleet.map((r) => [r.serverId, r])),
   );
-  // A render clock, so staleness asserts itself when reads stop succeeding.
   const [now, setNow] = React.useState<number>(() => Date.now());
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
   const showFleet = servers.length > 1;
-  // Read at the rate the samples ARRIVE, not a fixed 1s - see pollIntervalFor.
   const pollMs = React.useMemo(
     () => pollIntervalFor((history[selectedId] ?? []).map((x) => x.ts)),
     [history, selectedId],
   );
-  // Anything that HAS an agent, not just a server whose last stored status was `online`.
   const online = Boolean(selected) && selected.status !== "provisioning";
 
-  // Fleet rows ride the same document: one round trip cannot interleave two clocks.
   React.useEffect(() => {
     if (!selectedId || !online) return;
     let active = true;
-    // In-flight guard: on a slow link ticks would stack into a queue and land out of order.
     let busy = false;
     const seed = async () => {
       setNow(Date.now());
@@ -127,12 +119,10 @@ export function MonitoringDashboard({
         setHistory((h) => {
           const prev = h[selectedId] ?? [];
           const byTs = new Map<number, ServerMetrics>();
-          // Buffer samples go second so they win a timestamp collision.
           for (const s of [...prev, ...seeded]) byTs.set(s.ts, s);
           const merged = [...byTs.values()]
             .sort((a, b) => a.ts - b.ts)
             .slice(-MAX_POINTS);
-          // Reads outrun the agent's cadence, so most return the window already on screen.
           if (
             merged.length === prev.length &&
             merged[merged.length - 1]?.ts === prev[prev.length - 1]?.ts
@@ -147,7 +137,6 @@ export function MonitoringDashboard({
     };
     void seed();
     const iv = setInterval(seed, pollMs);
-    // A soft-nav back or bfcache restore may not remount, so a mount-only read never re-runs.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void seed();
     };
@@ -164,9 +153,7 @@ export function MonitoringDashboard({
   }, [selectedId, online, pollMs, showFleet]);
 
   const samples = history[selectedId] ?? [];
-  // Tiles freeze on the last real values instead of zeroing, and never fabricate one.
   const cur = samples[samples.length - 1] ?? null;
-  // "Live" is a claim about the FEED: a read that returns a minute-old frame is not live.
   const stale = cur ? now - cur.ts > STALE_AFTER_MS : false;
 
   const points = React.useMemo(
@@ -186,7 +173,6 @@ export function MonitoringDashboard({
     [samples],
   );
 
-  // After every hook above, so the hook order stays stable across renders.
   if (!selected) {
     return (
       <EmptyState
@@ -199,7 +185,6 @@ export function MonitoringDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Outside the empty branch on purpose: a host gone quiet must not be a dead end. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {showFleet ? (
@@ -222,7 +207,6 @@ export function MonitoringDashboard({
               )}
             </>
           )}
-          {/* Shared with the per-app Monitoring tab, so both make the same live claim. */}
           {cur && <LiveStatusLine stale={stale} asOf={cur.ts} />}
         </div>
         {online && cur && (
@@ -243,7 +227,6 @@ export function MonitoringDashboard({
         />
       ) : (
         <>
-          {/* Saturation against the machine - three arcs asking one question. */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <GaugeTile
               icon={Cpu}
@@ -288,7 +271,6 @@ export function MonitoringDashboard({
               display={`${cur.diskPct.toFixed(1)}%`}
               caption={`${formatBytes(cur.diskUsed)} of ${formatBytes(cur.diskTotal)}`}
             />
-            {/* Throughput has no ceiling to fill, so it stays a reading. */}
             <Card>
               <CardContent className="space-y-1.5 p-4">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -307,7 +289,6 @@ export function MonitoringDashboard({
             </Card>
           </div>
 
-          {/* Real-time charts */}
           <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard
               title="CPU usage"
@@ -379,7 +360,6 @@ export function MonitoringDashboard({
         </>
       )}
 
-      {/* Under this host's own numbers: the page answers "how is the one I picked" first. */}
       {showFleet && (
         <FleetList
           servers={servers}

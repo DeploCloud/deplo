@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/config/environment-variables
-
 import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -45,7 +43,6 @@ function toDTO(e: EnvVar, authors: Map<string, VarAuthor>): EnvVarDTO {
   return {
     id: e.id,
     key: e.key,
-    // A secret has NO read-back path at all: the DTO always masks it.
     value: isSecret ? MASK : decryptSecret(e.valueEnc),
     masked: isSecret,
     targets: e.targets,
@@ -61,9 +58,7 @@ function authorIds(vars: EnvVar[]): (string | null)[] {
   return vars.flatMap((e) => [e.createdByUserId, e.updatedByUserId]);
 }
 
-// listEnv - VIEWING env values requires `manage_env`, not just team membership.
 export async function listEnv(appId: string): Promise<EnvVarDTO[]> {
-  // `manage_env` can be held on the app alone (ADR-0016), so the reach question is asked at the app.
   if (!(await hasAppCapability(appId, "manage_env"))) return [];
   const vars = (await loadEnvVarsForApp(appId)).sort((a, b) =>
     a.key.localeCompare(b.key),
@@ -98,11 +93,9 @@ async function loadPrimaryDomains(
         eq(domainsTable.isPrimary, true),
       ),
     );
-  // Last-write-wins is safe here: `domains_one_primary_uq` allows at most one primary row per app.
   return new Map(rows.map((r) => [r.appId, r.name]));
 }
 
-// listEnvManageableApps - the team's apps this caller may manage variables on, name-sorted.
 export async function listEnvManageableApps(): Promise<AppEnvGroup["app"][]> {
   const { teamId } = await requireMembership();
   const rows = await getDb()
@@ -117,7 +110,6 @@ export async function listEnvManageableApps(): Promise<AppEnvGroup["app"][]> {
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
-  // Asked PER APP, not once for the team: `manage_env` can be held on one folder or app (ADR-0016).
   const reach = await appCapabilitiesForTeam(teamId, rows);
   const apps = rows.filter((p) => reach.get(p.id)?.includes("manage_env"));
   const primaryDomains = await loadPrimaryDomains(apps.map((p) => p.id));
@@ -134,7 +126,6 @@ export async function listEnvManageableApps(): Promise<AppEnvGroup["app"][]> {
     }));
 }
 
-// listAllAppEnv - every project's env vars, grouped by project (the global Variables tab).
 export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
   const apps = await listEnvManageableApps();
   const all = await loadEnvVarsForApps(apps.map((p) => p.id));
@@ -166,7 +157,6 @@ export async function upsertEnv(input: {
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
-  // No targets named: default on insert, PRESERVE on update - widening leaks a secret into new runtimes.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
 
   await getDb().transaction(async (tx) => {
@@ -178,7 +168,6 @@ export async function upsertEnv(input: {
       )
       .limit(1);
     if (existing.length > 0) {
-      // A secret is frozen; plain -> secret still lands here, with nothing yet to protect.
       if (existing[0]!.type === "secret") throw new Error(secretImmutable(key));
       const varId = existing[0]!.id;
       await tx
@@ -219,7 +208,6 @@ export async function upsertEnv(input: {
   await recordActivity("env", `Updated env var ${key}`, user.name, input.appId);
 }
 
-// renameEnv - kept out of `upsertEnv`, which locates by `(appId, key)` and would mint a new var.
 export async function renameEnv(
   id: string,
   newKeyRaw: string,
@@ -229,12 +217,10 @@ export async function renameEnv(
   if (!KEY_RE.test(newKey)) throw new Error("Invalid variable name");
   const existing = await loadEnvVar(id);
   if (!existing) throw new Error("Env var not found");
-  // Env vars are owned through their app; an out-of-team id reads as "not found".
   const { userId } = await requireAppCapability(existing.appId, "manage_env");
   if (existing.type === "secret")
     throw new Error(secretImmutable(existing.key));
   if (existing.key === newKey) return existing.appId;
-  // A readable message for `env_vars_app_key_uq`, instead of the raw constraint violation.
   const clash = await getDb()
     .select({ id: envVarsTable.id })
     .from(envVarsTable)
@@ -260,7 +246,6 @@ export async function renameEnv(
   return existing.appId;
 }
 
-// importEnv - bulk import from a .env style blob.
 export async function importEnv(
   appId: string,
   blob: string,
@@ -297,14 +282,12 @@ export async function importEnv(
       skippedSecrets++;
       continue;
     }
-    // Imported vars are PLAIN by default, never silently marked secret.
     await upsertEnv({ appId, key, value, targets, type: "plain" });
     added++;
   }
   return { added, skippedSecrets };
 }
 
-// setAppEnv - replaces a project's whole env set from the ".env editor", in one atomic write.
 export async function setAppEnv(
   appId: string,
   entries: { key: string; value: string }[],
@@ -331,7 +314,6 @@ export async function setAppEnv(
     for (const [key, value] of wanted) {
       const e = byKey.get(key);
       if (e) {
-        // A secret is frozen; `overwriteSecrets` is the import correcting a value it wrote itself.
         if (e.type === "secret" && !opts?.overwriteSecrets) continue;
         await tx
           .update(envVarsTable)
@@ -376,7 +358,6 @@ export async function deleteEnv(id: string): Promise<void> {
   const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
   await requireAppCapability(e.appId, "manage_env");
-  // The env_var_targets child rows CASCADE on the delete.
   await getDb().delete(envVarsTable).where(eq(envVarsTable.id, id));
   await markPendingChanges([e.appId]);
   await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.appId);

@@ -43,7 +43,6 @@ export function AppControls({
     });
   }
 
-  // Reload re-applies routing (domains + basic auth) to the running container, no rebuild.
   const [reloading, setReloading] = React.useState(false);
   function reload() {
     setReloading(true);

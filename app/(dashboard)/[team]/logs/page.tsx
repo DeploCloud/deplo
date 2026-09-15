@@ -35,12 +35,10 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
   const params = await props.searchParams;
 
   const apps = await listApps();
-  // `view_logs` is held PER APP (ADR-0016); listApps already batched the answer per row.
   const readableApps = apps.filter((a) =>
     a.capabilities?.includes("view_logs"),
   );
 
-  // A database belongs to the team and to no project, so its logs gate team-wide.
   const canReadDatabases =
     (await hasCapability("view_logs")) && (await reachesWholeTeam());
   const databases = canReadDatabases ? await listDatabases() : [];
@@ -53,7 +51,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
       detail: a.slug,
       status: a.status,
       logo: a.logo,
-      // Tolerated when they point at something this viewer cannot see: the tree drops the app to the top level, not out of the list.
       projectId: a.projectId ?? null,
       environmentId: a.environmentId ?? null,
       folderId: a.folderId ?? null,
@@ -77,7 +74,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     cookie: remembered,
   });
 
-  // `?pick=1` is the only way to the chooser on a one-target instance; `redirect` throws, so this stays outside any try/catch.
   const pick = Array.isArray(params.pick) ? params.pick[0] : params.pick;
   if (!target && !pick && targets.length === 1)
     redirect(withTeam(logTargetHref(targets[0]!.key), team));
@@ -91,7 +87,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
 
   if (!target) return <LogChooser rows={rows} />;
 
-  // Put the remembered target in the URL, so a copied link opens it and Back walks the targets visited.
   const askedFor = params.app ?? params.db;
   if (!askedFor) redirect(withTeam(logTargetHref(target.key), team));
 
@@ -101,7 +96,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     const db = databases.find((d) => d.id === target.key.slice("db:".length))!;
     const info = await getDatabaseLogsInfo(db.id);
     return (
-      // Next reuses the segment when only search params change, so without the key the SSE buffer shows another database's output.
       <DatabaseLiveStatusProvider
         key={target.key}
         initial={{ id: db.id, name: db.name, status: db.status }}
@@ -135,7 +129,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
   };
 
   return (
-    // The App's own layout mounts this provider; `/logs` sits outside it and would not follow a live deploy.
     <AppLiveStatusProvider key={target.key} initial={initialLive}>
       <LiveLogs
         appId={app.id}

@@ -10,7 +10,6 @@ import {
   type ValueOverride,
 } from "@/lib/optimistic-value";
 
-// useOptimisticValue - the edit is on screen on the click, and the mutation settles behind it.
 export function useOptimisticValue<T>(serverValue: T): [
   T,
   (
@@ -44,7 +43,6 @@ export function useOptimisticValue<T>(serverValue: T): [
       } else if (opts?.success) {
         toast.success(opts.success);
       }
-      // Refresh either way: these mutations write the row first and can fail later, at the server agent.
       router.refresh();
     });
   }

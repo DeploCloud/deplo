@@ -13,50 +13,32 @@ import { apps } from "./apps";
 import { teams, users } from "./identity";
 import { folders, projects } from "./projects";
 
-// apiTokens - [ApiToken](../../../types.ts); it carries its own capabilities and is never root by construction.
 export const apiTokens = pgTable(
   "api_tokens",
   {
     id: text("id").primaryKey(),
-    // PERSONAL: the token belongs to this person and to no team. It reaches the
-    // teams where they hold `manage_tokens`, live, and nobody else can see it.
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     tokenHash: text("token_hash").notNull(),
     prefix: text("prefix").notNull(),
-    // May administer the WHOLE INSTANCE (users, servers, global env), not just its
-    // teams.
     instanceAdmin: boolean("instance_admin").notNull().default(false),
-    // The INTENT to be scoped, stored separately from the junctions: a deleted project
-    // or app cascades its scope row away, and without this flag an emptied scope would
-    // read as "no scope" and silently WIDEN the token.
     scoped: boolean("scoped").notNull().default(false),
-    // Set when this token was minted by approving an OAuth consent instead of by the
-    // tokens page, and names the client that presented itself.
     oauthClientId: text("oauth_client_id"),
-    // When this credential stops working. NULL is "never", which is what every token
-    // minted before this column existed keeps.
     expiresAt: isoTimestamptz("expires_at"),
     lastUsedAt: isoTimestamptz("last_used_at"),
-    // When this token last spoke MCP, as opposed to `last_used_at`, which rises on any
-    // authenticated request (GraphQL, a deploy hook, a tool call alike). NULL is "never
-    // spoke MCP", which is where every token starts and where a CI token stays forever.
     mcpLastUsedAt: isoTimestamptz("mcp_last_used_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
     uniqueIndex("api_tokens_token_hash_uq").on(t.tokenHash),
-    // One connection per (client, person): re-authorizing MOVES a connection
-    // rather than leaving two the owner cannot tell apart.
     uniqueIndex("api_tokens_oauth_client_user_uq")
       .on(t.oauthClientId, t.userId)
       .where(sql`${t.oauthClientId} is not null`),
   ],
 );
 
-// apiTokenCapabilities - a token's own capabilities; `view` is stored explicitly so "no rows" has one meaning.
 export const apiTokenCapabilities = pgTable(
   "api_token_capabilities",
   {
@@ -68,7 +50,6 @@ export const apiTokenCapabilities = pgTable(
   (t) => [primaryKey({ columns: [t.tokenId, t.capability] })],
 );
 
-// apiTokenTeams - what a token may reach, by whole Team.
 export const apiTokenTeams = pgTable(
   "api_token_teams",
   {
@@ -85,7 +66,6 @@ export const apiTokenTeams = pgTable(
   ],
 );
 
-// apiTokenProjects - what a token may reach, by whole Project.
 export const apiTokenProjects = pgTable(
   "api_token_projects",
   {
@@ -102,7 +82,6 @@ export const apiTokenProjects = pgTable(
   ],
 );
 
-// apiTokenFolders - what a token may reach, by whole folder.
 export const apiTokenFolders = pgTable(
   "api_token_folders",
   {
@@ -119,7 +98,6 @@ export const apiTokenFolders = pgTable(
   ],
 );
 
-// apiTokenApps - what a token may reach, by single App.
 export const apiTokenApps = pgTable(
   "api_token_apps",
   {

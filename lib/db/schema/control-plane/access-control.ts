@@ -14,7 +14,6 @@ import { apps } from "./apps";
 import { teams, users } from "./identity";
 import { environments, folders, projects } from "./projects";
 
-// projectGrants - one row per (project, user, capability); the owner is `projects.owner_user_id`.
 export const projectGrants = pgTable(
   "project_grants",
   {
@@ -32,7 +31,6 @@ export const projectGrants = pgTable(
   ],
 );
 
-// folderGrants - the capabilities a folder OWNER hands to other users.
 export const folderGrants = pgTable(
   "folder_grants",
   {
@@ -50,7 +48,6 @@ export const folderGrants = pgTable(
   ],
 );
 
-// appGrants - the per-App rung of the folder / project grant ladder.
 export const appGrants = pgTable(
   "app_grants",
   {
@@ -68,7 +65,6 @@ export const appGrants = pgTable(
   ],
 );
 
-// environmentGrants - the Environment rung of the same ladder.
 export const environmentGrants = pgTable(
   "environment_grants",
   {
@@ -86,7 +82,6 @@ export const environmentGrants = pgTable(
   ],
 );
 
-// teamRoles - a named, per-team capability set a member can be assigned.
 export const teamRoles = pgTable(
   "team_roles",
   {
@@ -94,22 +89,14 @@ export const teamRoles = pgTable(
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
-    // 'owner' | 'member' | 'viewer' for the three defaults (revertible to their
-    // preset, never deletable), NULL for a team-authored custom role.
     builtinKey: text("builtin_key"),
     name: text("name").notNull(),
     description: text("description"),
-    // Policy, NOT a capability: capabilities are a closed set of 8 that answer "may
-    // they do X", while this answers "under what condition does any of it count".
     requireTwoFactor: boolean("require_two_factor").notNull().default(false),
-    // The INTENT to reach only part of the team, stored apart from the junctions:
-    // deleting a project in the scope cascades its row away, and an emptied scope
-    // with no flag would read as "no scope" and silently WIDEN the role.
     scoped: boolean("scoped").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
-    // One row per built-in per team; custom roles (NULL) escape the predicate.
     uniqueIndex("team_roles_builtin_uq")
       .on(t.teamId, t.builtinKey)
       .where(sql`${t.builtinKey} is not null`),
@@ -117,7 +104,6 @@ export const teamRoles = pgTable(
   ],
 );
 
-// teamRoleScopeProjects - what a scoped role reaches, by whole Project.
 export const teamRoleScopeProjects = pgTable(
   "team_role_scope_projects",
   {
@@ -134,7 +120,6 @@ export const teamRoleScopeProjects = pgTable(
   ],
 );
 
-// teamRoleScopeFolders - what a scoped role reaches, by folder subtree.
 export const teamRoleScopeFolders = pgTable(
   "team_role_scope_folders",
   {
@@ -151,7 +136,6 @@ export const teamRoleScopeFolders = pgTable(
   ],
 );
 
-// teamRoleScopeEnvironments - what a scoped role reaches, by Environment.
 export const teamRoleScopeEnvironments = pgTable(
   "team_role_scope_environments",
   {
@@ -168,7 +152,6 @@ export const teamRoleScopeEnvironments = pgTable(
   ],
 );
 
-// teamRoleScopeApps - what a scoped role reaches, by single App.
 export const teamRoleScopeApps = pgTable(
   "team_role_scope_apps",
   {
@@ -185,7 +168,6 @@ export const teamRoleScopeApps = pgTable(
   ],
 );
 
-// teamRoleCapabilities - [teamRoles.capabilities] → junction.
 export const teamRoleCapabilities = pgTable(
   "team_role_capabilities",
   {
@@ -197,7 +179,6 @@ export const teamRoleCapabilities = pgTable(
   (t) => [primaryKey({ columns: [t.roleId, t.capability] })],
 );
 
-// memberships - [Membership](../../../types.ts). UNIQUE(user_id, team_id) closes the double-add race.
 export const memberships = pgTable(
   "memberships",
   {
@@ -208,31 +189,18 @@ export const memberships = pgTable(
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
-    // The member's RANK: 'owner' outranks everyone (only an owner may act on another
-    // owner or hand out the owner role).
     role: text("role").notNull(),
-    // The assigned {@link teamRoles} row. `ON DELETE RESTRICT`: a role with members
-    // can't be deleted out from under them (the data layer refuses first, with a
-    // message naming the count).
     roleId: text("role_id").references(() => teamRoles.id, {
       onDelete: "restrict",
     }),
-    // Whether this member's access is set per NODE on top of the role - the admin's
-    // MODE choice, not a derived fact. Kept as a column because node rows cascade away:
-    // "granular with nothing left ticked" must not read as Role mode.
     granular: boolean("granular").notNull().default(false),
-    // This member's capability set is THEIR OWN: the member page saved something other
-    // than what their role grants, so `syncMembersOfRole` leaves them alone.
     customCapabilities: boolean("custom_capabilities").notNull().default(false),
-    // THIS PERSON's own arrangement of the topbar team switcher, not a team-wide one:
-    // this row already IS the (user, team) junction the order is grained on.
     switcherPosition: integer("switcher_position"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("memberships_user_team_uq").on(t.userId, t.teamId)],
 );
 
-// membershipCapabilities - [Membership.capabilities](../../../types.ts) → junction.
 export const membershipCapabilities = pgTable(
   "membership_capabilities",
   {

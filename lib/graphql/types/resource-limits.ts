@@ -1,8 +1,6 @@
 import { builder } from "../builder";
 import type { ResourceLimits } from "@/lib/types/container";
 
-// Shared by App and Database: both carry the identical flattened resource_* columns.
-
 export const ResourceLimitsRef = builder
   .objectRef<ResourceLimits>("ResourceLimits")
   .implement({

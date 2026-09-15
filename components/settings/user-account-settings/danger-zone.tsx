@@ -14,8 +14,6 @@ import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
 import type { ActionResult } from "@/lib/result";
 import { ActionRow, Section } from "./section-shell";
 
-// SecondFactorsSection - passkey removal, kept apart from the two-factor reset
-// below it: a dead authenticator is no reason to drop a passkey that still works.
 export function SecondFactorsSection({
   pending,
   onRemovePasskeys,
@@ -45,7 +43,6 @@ export function SecondFactorsSection({
   );
 }
 
-// DangerZone - the actions that apply on confirm rather than on Save changes.
 export function DangerZone({
   suspended,
   twoFactorEnabled,
@@ -143,8 +140,6 @@ export function DangerZone({
   );
 }
 
-// AccountConfirmDialogs - every confirm the editor opens, rendered OUTSIDE its
-// form: each has a form of its own and a portalled submit still propagates up.
 export function AccountConfirmDialogs({
   userId,
   username,

@@ -16,8 +16,6 @@ export default async function DeploymentsPage() {
   ]);
   const canManage = canDeploy || isAdmin;
 
-  // Passed into the table so it can sit opposite the bulk-action buttons on one
-  // justify-between row; reused above the empty state.
   const header = (
     <div className="space-y-1">
       <h1 className={titleClass.page}>Deployments</h1>

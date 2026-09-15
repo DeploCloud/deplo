@@ -12,7 +12,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// ActiveMigration - the migration this team has in flight, live, for the whole shell.
 export type ActiveMigration = {
   id: string;
   status: string;
@@ -32,7 +31,6 @@ export type ActiveMigration = {
   heartbeatAt: string | null;
 };
 
-// isDriven - is anybody actually driving this run?
 export function isDriven(
   run: { heartbeatAt: string | null },
   now: number = Date.now(),
@@ -69,7 +67,6 @@ const MigrationActivityContext = React.createContext<ActiveMigration | null>(
   null,
 );
 
-// useMigrationFeed - one team's run in flight, live; the page's team unless one is named.
 export function useMigrationFeed(
   teamId?: string,
   opts: { includeFinished?: boolean } = {},
@@ -109,12 +106,10 @@ export function MigrationActivityProvider({
   );
 }
 
-// useActiveMigration - the team's running migration, or null when nothing is moving.
 export function useActiveMigration(): ActiveMigration | null {
   return React.useContext(MigrationActivityContext);
 }
 
-// MigrationChip - the header's "hold off" sign, a link only for somebody who can open that page.
 export function MigrationChip({ canOpen }: { canOpen: boolean }) {
   const run = useActiveMigration();
   if (!run) return null;
@@ -133,7 +128,6 @@ export function MigrationChip({ canOpen }: { canOpen: boolean }) {
       : "Migration in progress";
   const body = (
     <>
-      {/* Behind the text, not around it. */}
       <span
         aria-hidden
         className="absolute inset-y-0 left-0 bg-warning-wash-strong transition-[width] duration-500"
@@ -170,7 +164,6 @@ export function MigrationChip({ canOpen }: { canOpen: boolean }) {
         )}
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {/* What it is doing, not a warning to stand still. */}
         {!isDriven(run)
           ? "No control plane has picked this migration up yet. It starts on its own within a minute or two."
           : run.stepLabel

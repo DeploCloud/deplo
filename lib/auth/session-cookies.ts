@@ -10,15 +10,10 @@ import {
 } from "./better-auth";
 import { cookiesAreSecure, requestIsHttps } from "../public-url";
 
-// setActiveTeamCookie lands a new account on an active team, without the circular
-// import that calling `setActiveTeam` from here would need.
 export async function setActiveTeamCookie(teamId: string) {
   const store = await cookies();
   store.set(ACTIVE_TEAM_COOKIE, teamId, {
     httpOnly: true,
-    // Per REQUEST, not per instance: on the panel's own IP address, which is
-    // plain http, a `Secure` cookie is one the browser drops - and this one
-    // carries the active team.
     secure: await requestIsHttps(),
     sameSite: "lax",
     path: "/",
@@ -26,14 +21,11 @@ export async function setActiveTeamCookie(teamId: string) {
   });
 }
 
-// authHeaders is this request's session metadata (user agent + IP chain) plus its cookies.
 export async function authHeaders(): Promise<Headers> {
   let request: Headers | null = null;
   try {
     request = await headers();
-  } catch {
-    /* no request scope */
-  }
+  } catch {}
   let cookie = "";
   try {
     const store = await cookies();
@@ -41,20 +33,14 @@ export async function authHeaders(): Promise<Headers> {
       .getAll()
       .map((c) => `${c.name}=${c.value}`)
       .join("; ");
-  } catch {
-    /* no request scope */
-  }
+  } catch {}
   let https = false;
   try {
     https = await requestIsHttps();
-  } catch {
-    /* no request scope */
-  }
+  } catch {}
   return authRequestHeaders(request, cookie, { twinCookieNames: !https });
 }
 
-// keepAuthCookiesUsableOverHttp re-issues Better Auth's fresh cookies without
-// `Secure` when this request did not arrive over https.
 export async function keepAuthCookiesUsableOverHttp(): Promise<void> {
   if (!cookiesAreSecure()) return;
   if (await requestIsHttps()) return;

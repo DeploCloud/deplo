@@ -15,7 +15,6 @@ import {
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
 
-// ComposeArgsPanel edits the extra flags for this app's `docker compose up`.
 export function ComposeArgsPanel({
   appId,
   slug,
@@ -115,7 +114,6 @@ export function ComposeArgsPanel({
         </Button>
       </div>
 
-      {/* The command as the owning server will run it. */}
       <div className="overflow-x-auto rounded-md border border-border bg-surface px-3 py-2">
         <code className="flex items-baseline gap-1.5 font-mono text-[0.7rem] leading-relaxed whitespace-pre">
           <Terminal
@@ -131,7 +129,6 @@ export function ComposeArgsPanel({
 
       {error && <p className="text-xs text-destructive">{error}</p>}
 
-      {/* Its own guard: the page's tracks the source and build cards, not these flags. */}
       <UnsavedChangesGuard when={dirty} />
     </form>
   );

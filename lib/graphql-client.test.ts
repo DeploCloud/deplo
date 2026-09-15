@@ -40,7 +40,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  // Drain with the stub installed: a retried ping 1.5s later would land in the NEXT test.
   await __resetServerConnectionForTests();
   globalThis.fetch = realFetch;
 });
@@ -66,7 +65,6 @@ test("a proxy's HTML error page never surfaces as a JSON parse error", async () 
 });
 
 test("an HTML body with a 200 status is treated as an outage too", async () => {
-  // A proxy or captive portal can answer 200 with its own page.
   stubFetch(() => new Response(HTML_ERROR_PAGE, { status: 200 }));
   await assert.rejects(() => gql("{ me { id } }"), ServerUnreachableError);
 });
@@ -90,7 +88,6 @@ test("a failed request tells the connection guard, so the notification comes up"
   });
 
   await assert.rejects(() => gql("{ me { id } }"), ServerUnreachableError);
-  // Run the check to completion so the two-failed-pings latch shows without the retry delay.
   await checkServerConnection();
   assert.equal(getServerConnectionSnapshot(), "disconnected");
   assert.ok(
@@ -101,7 +98,6 @@ test("a failed request tells the connection guard, so the notification comes up"
 
 test("once paused, an interaction is refused without touching the network", async () => {
   stubFetch(() => jsonResponse({ data: { ok: true } }));
-  // Latch: /api/health answers 502 twice.
   await checkServerConnection();
   assert.equal(getServerConnectionSnapshot(), "disconnected");
 

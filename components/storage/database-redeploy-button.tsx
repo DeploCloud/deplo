@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
-// DatabaseRedeployButton - re-render the database's compose from its settings and reroute it.
 export function DatabaseRedeployButton({
   id,
   variant = "default",

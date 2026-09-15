@@ -1,7 +1,6 @@
 import type { DestinationKind, S3Provider } from "../types/backup";
 import type { LogLevel } from "../types/deployment";
 
-// S3TestStepKey - one step of the fixed probe sequence the agent performs.
 export type S3TestStepKey =
   "agent" | "client" | "bucket" | "root" | "write" | "cleanup";
 
@@ -14,7 +13,6 @@ export interface S3TestStep {
   status: S3TestStepStatus;
 }
 
-// S3TestLogLine - a line of the rendered probe log.
 export interface S3TestLogLine {
   level: LogLevel;
   text: string;
@@ -32,13 +30,10 @@ export interface S3TestReport {
   never: boolean;
 }
 
-// PROBE_KEY - the key the agent writes and removes to prove the bucket is writable.
 export const PROBE_KEY = ".deplo-s3check";
 
-// STORE_PROBE_FILE - its folder equivalent (deplo-agent backup_store.go `storeCheck`).
 export const STORE_PROBE_FILE = ".deplo-store-check";
 
-// S3TestTarget - the report's coordinates, never the DTO: this module must not see a credential.
 export interface S3TestTarget {
   name: string;
   kind: DestinationKind;
@@ -49,7 +44,6 @@ export interface S3TestTarget {
   path: string;
 }
 
-// splitEndpoint - strips the scheme and derives TLS, defaulting to TLS; mirrors `s3client.New`.
 export function splitEndpoint(endpoint: string): {
   host: string;
   secure: boolean;
@@ -68,18 +62,15 @@ export function splitEndpoint(endpoint: string): {
   return { host: raw.replace(/\/+$/, ""), secure: true };
 }
 
-// endpointUrl - the full URL form of a stored endpoint, scheme always explicit.
 export function endpointUrl(endpoint: string): string {
   const { host, secure } = splitEndpoint(endpoint);
   return `${secure ? "https" : "http"}://${host}`;
 }
 
-// Mirrors `pathStyleFor` in s3.ts: AWS is virtual-host, every other store path-style.
 function pathStyle(provider: S3Provider): boolean {
   return provider !== "aws";
 }
 
-// classifyFailedStep - which step a verdict stopped at, read off the agent's message prefixes.
 export function classifyFailedStep(
   error: string,
   kind: DestinationKind = "s3",
@@ -87,7 +78,6 @@ export function classifyFailedStep(
   const e = error.toLowerCase();
   if (!e.trim()) return null;
   if (kind === "server") {
-    // deplo-agent backup_store.go: only `storeCheck`'s own probe write says "cannot write to".
     if (e.startsWith("cannot write to ")) return "write";
     if (e.includes("backup store")) return "root";
     return null;
@@ -105,7 +95,6 @@ export function classifyFailedStep(
   return null;
 }
 
-// buildS3TestReport - the report for a completed probe.
 export function buildS3TestReport(opts: {
   target: S3TestTarget;
   ok: boolean;
@@ -232,7 +221,6 @@ export function buildS3TestReport(opts: {
   };
 }
 
-// emptyS3TestReport - the "never tested yet" report, so the dialog has something to show.
 export function emptyS3TestReport(target: S3TestTarget): S3TestReport {
   return {
     ok: false,
@@ -255,11 +243,9 @@ export function emptyS3TestReport(target: S3TestTarget): S3TestReport {
   };
 }
 
-// reproduceCommand - the same calls, as commands an operator can paste into a shell.
 export function reproduceCommand(target: S3TestTarget): string {
   if (target.kind === "server") return reproduceStoreCommand(target);
   const url = endpointUrl(target.endpoint);
-  // Quoted even though Deplo validates on the way in: either guard alone is one refactor from being the only one.
   const common = `--endpoint-url ${shellQuote(url)} --region ${shellQuote(target.region || "auto")}`;
   const bucket = shellQuote(target.bucket);
   const styleNote = pathStyle(target.provider)

@@ -15,8 +15,6 @@ import type { SourceApplication, SourceCompose } from "../model";
 
 import { type Mapped, truncate } from "./source-platform";
 
-/** Same shape as `ResourceLimitsInput` in lib/data/apps/resources.ts, without importing a
- *  `server-only` module into a file that must stay client-safe. */
 export type ResourceInput = {
   [K in keyof ResourceLimits]?: ResourceLimits[K] | null;
 };
@@ -26,16 +24,10 @@ const BUILD_METHOD: Record<string, BuildMethod> = {
   nixpacks: "nixpacks",
   railpack: "railpack",
   static: "static",
-  // Neither buildpack family has a Deplo equivalent. Nixpacks is the closest
-  // thing: an auto-detecting builder that reads the same repos. Noted, never
-  // silent - a Heroku buildpack with a custom `bin/compile` will not survive it.
   heroku_buildpacks: "nixpacks",
   paketo_buildpacks: "nixpacks",
 };
 
-/**
- * Dokploy's per-service build fields → Deplo's `BuildConfig`.
- */
 export function mapBuildSettings(
   app: SourceApplication,
 ): Mapped<Partial<BuildConfig>> {
@@ -52,7 +44,6 @@ export function mapBuildSettings(
   const build: Partial<BuildConfig> = { buildMethod };
   const methodSettings: BuildConfig["methodSettings"] = {};
 
-  // ONLY the settings the chosen builder reads.
   if (buildMethod === "dockerfile") {
     if (app.dockerfile?.trim())
       methodSettings.dockerfilePath = app.dockerfile.trim();
@@ -77,15 +68,10 @@ export function mapBuildSettings(
   const root = buildPathFor(app);
   if (root) build.rootDirectory = root;
 
-  // The panel's own overrides of the build steps, where it has them.
   if (app.installCommand?.trim())
     build.installCommand = app.installCommand.trim();
   if (app.buildCommand?.trim()) build.buildCommand = app.buildCommand.trim();
 
-  // Dokploy's `command` overrides the container's command; Deplo's closest field
-  // is the builder's start command. Same intent, different layer for a
-  // Dockerfile build (where Deplo leaves CMD alone), hence the note. An app run
-  // straight from an image has no build for the field to reach, so it is said.
   const command = app.command?.trim();
   if (command && app.sourceType === "docker") {
     notes.push(
@@ -107,7 +93,6 @@ export function mapBuildSettings(
   return { value: build, notes };
 }
 
-/** The repo subdirectory to build from, whichever provider the app uses. */
 function buildPathFor(app: SourceApplication | SourceCompose): string | null {
   const candidates = [
     (app as SourceApplication).buildPath,
@@ -139,7 +124,6 @@ const MEM_UNITS: Record<string, number> = {
   gib: 1024,
 };
 
-/** Docker's memory grammar (`512m`, `1g`, `1.5Gi`, or a bare byte count) → MiB. */
 export function parseMemoryMb(raw: string | null | undefined): number | null {
   const s = raw?.trim().toLowerCase();
   if (!s) return null;
@@ -148,8 +132,6 @@ export function parseMemoryMb(raw: string | null | undefined): number | null {
   const n = Number(m[1]);
   if (!Number.isFinite(n) || n <= 0) return null;
   const unit = m[2];
-  // A bare number in this column is bytes, which is what Docker's API takes and
-  // what Dokploy's own forms sometimes hold.
   const factor = unit ? MEM_UNITS[unit] : 1 / (1024 * 1024);
   if (factor === undefined) return null;
   const mb = Math.round(n * factor);
@@ -171,18 +153,12 @@ export function parseCpuMilli(raw: string | null | undefined): number | null {
   return milli >= 10 ? milli : null;
 }
 
-/**
- * `0` in any of Docker's limit flags means NO limit, and it is what one panel
- * writes in every column of every app. Read as an unparsable value it produced
- * three false alarms per application, which is how a real one goes unread.
- */
 const NO_LIMIT = /^0+(\.0+)?\s*[a-z]*$/i;
 
 function isNoLimit(raw: string | null | undefined): boolean {
   return NO_LIMIT.test((raw ?? "").trim());
 }
 
-/** Dokploy's four limit columns → Deplo's `resource_*`. Null when nothing was set. */
 export function mapResources(row: {
   memoryLimit?: string | null;
   memoryReservation?: string | null;
@@ -204,14 +180,11 @@ export function mapResources(row: {
         `${label} "${raw.trim()}" is not a value Deplo can read - set it by hand.`,
       );
 
-  // Dokploy's cpuReservation is a swarm scheduling hint with no Deplo column.
   if (row.cpuReservation?.trim() && !isNoLimit(row.cpuReservation))
     notes.push(
       `CPU reservation "${row.cpuReservation.trim()}" is a Swarm placement hint. Deplo has no equivalent, so it is not imported.`,
     );
 
-  // A reservation above the limit is what Deplo's own validator refuses; drop it
-  // rather than lose the limit too.
   const reservation =
     memoryReservationMb != null &&
     memoryMb != null &&
@@ -231,18 +204,12 @@ export function mapResources(row: {
   };
 }
 
-/**
- * The service's icon, carried over as-is. Those come back `null` rather than
- * throwing: an icon is decoration, and losing it must never be the reason a
- * service fails to import.
- */
 export function mapLogo(icon: string | null | undefined): string | null {
   const value = icon?.trim();
   if (!value) return null;
   return isValidLogoValue(value) ? value : null;
 }
 
-/** Published host ports on an application, which Deplo does not do for apps. */
 export function mapPorts(app: SourceApplication): Mapped<PublishedPort[]> {
   const notes: string[] = [];
   const value: PublishedPort[] = [];
@@ -255,7 +222,6 @@ export function mapPorts(app: SourceApplication): Mapped<PublishedPort[]> {
       : "tcp";
     const spec = `${p.publishedPort}->${p.targetPort}/${protocol}`;
     if (!isValidExposePort(published) || !Number.isInteger(target)) {
-      // A privileged port belongs to the host, and 80/443 belong to the proxy.
       notes.push(
         `${spec} on {panel} is not a port Deplo can publish (${MIN_USER_PORT}-${MAX_PORT}) - add a domain instead, or publish it on a higher port under Settings -> Advanced.`,
       );
@@ -269,11 +235,6 @@ export function mapPorts(app: SourceApplication): Mapped<PublishedPort[]> {
   return { value, notes };
 }
 
-/**
- * Dokploy keeps a health check in Swarm's own shape - `Test`, durations in
- * nanoseconds - and every field of it has a column here, so it comes across
- * instead of being reported as a setting with no equivalent.
- */
 export function swarmHealthCheck(spec: unknown): HealthCheck | null {
   if (!spec || typeof spec !== "object") return null;
   const row = spec as Record<string, unknown>;
@@ -304,7 +265,6 @@ export function swarmHealthCheck(spec: unknown): HealthCheck | null {
     port: null,
     command,
     intervalS,
-    // Deplo refuses a check still running when the next one is due.
     timeoutS: timeoutS < intervalS ? timeoutS : Math.max(1, intervalS - 1),
     retries:
       Number.isFinite(retries) && retries > 0
@@ -314,14 +274,12 @@ export function swarmHealthCheck(spec: unknown): HealthCheck | null {
   };
 }
 
-/** Everything else on a Dokploy service with no Deplo column at all. */
 export function unsupportedNotes(app: SourceApplication): string[] {
   const notes: string[] = [];
   if ((app.redirects ?? []).length > 0)
     notes.push(
       `${app.redirects!.length} redirect rule(s) on {panel} - Deplo has no redirect list, use a domain per host.`,
     );
-  // Swarm's own service spec.
   const swarm = (
     [
       ["healthCheckSwarm", "a health check"],
@@ -332,7 +290,6 @@ export function unsupportedNotes(app: SourceApplication): string[] {
   ).filter(
     ([key]) =>
       hasSwarmValue(app[key]) &&
-      // The health check is imported now, so it is not a loss to report.
       !(key === "healthCheckSwarm" && swarmHealthCheck(app[key])),
   );
   if (swarm.length > 0)
@@ -342,7 +299,6 @@ export function unsupportedNotes(app: SourceApplication): string[] {
   return notes;
 }
 
-/** A swarm column Dokploy actually filled in (it stores `null` or `{}` otherwise). */
 function hasSwarmValue(v: unknown): boolean {
   if (v == null) return false;
   if (typeof v === "string") return v.trim() !== "" && v.trim() !== "{}";

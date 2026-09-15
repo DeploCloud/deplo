@@ -20,7 +20,6 @@ import {
   panelFallbackHost,
 } from "../lib/deploy/domains";
 
-// Named by the Docker image, which has no package.json to `bun run`.
 const CMD = process.env.DEPLO_RECOVER_CMD || "bun run recover";
 
 const USAGE = `
@@ -61,7 +60,6 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-// hiddenEcho - what readline may echo while a password is typed: the redrawn prompt, nothing else.
 export function hiddenEcho(label: string, redraw: string): string {
   return redraw.startsWith(label) ? label : "";
 }
@@ -77,14 +75,12 @@ async function promptHidden(label: string): Promise<string> {
     _writeToOutput: (s: string) => void;
   };
   const answer = await new Promise<string>((resolve) => {
-    // Ctrl-C and Ctrl-D both leave `question` pending for ever otherwise.
     rl.on("SIGINT", () => {
       process.stdout.write("\n");
       process.exit(130);
     });
     rl.on("close", () => resolve(""));
     rl.question(label, resolve);
-    // Readline clears the row and redraws `prompt + line` on every keypress: let the prompt through, drop the rest.
     out._writeToOutput = (s: string) => {
       const echo = hiddenEcho(label, s);
       if (echo) out.output.write(echo);
@@ -159,7 +155,6 @@ async function cmdPassword(handle: string, given: string | undefined) {
 
   let password: string;
   if (given === "-") {
-    // Long enough that nobody is tempted to keep the generated break-glass password.
     password = randomBytes(18).toString("base64url");
   } else if (given) {
     password = given;
@@ -170,7 +165,6 @@ async function cmdPassword(handle: string, given: string | undefined) {
   }
   if (password.length < 8) fail("Choose a password of at least 8 characters.");
 
-  // The credential lives on the Better Auth `account` row since migration 0055; plain drizzle keeps this script free of `next/headers`.
   const updated = await getDb()
     .update(accountTable)
     .set({ password: await hashPassword(password), updatedAt: new Date() })
@@ -189,11 +183,9 @@ async function cmdPassword(handle: string, given: string | undefined) {
         userId: user.id,
         accountId: user.id,
         providerId: "credential",
-        // Better Auth 1.7.0 matches `account.issuer` exactly at sign-in: without it the password verifies and still cannot log in.
         issuer: createLocalAccountIssuer("credential"),
         password: await hashPassword(password),
       });
-  // Kill every live session: whoever locked this account out must not keep a cookie.
   await getDb().delete(sessionTable).where(eq(sessionTable.userId, user.id));
 
   console.log(`\n  Password updated for @${user.username}.`);
@@ -213,7 +205,6 @@ async function cmdOwner(handle: string) {
 
   const now = new Date().toISOString();
   await getDb().transaction(async (tx) => {
-    // The crown implies both, so granting them keeps the instance describable by the app's invariants.
     await tx
       .update(usersTable)
       .set({ isInstanceAdmin: true, suspended: false })
@@ -253,7 +244,6 @@ async function cmdUnsuspend(handle: string) {
   console.log(`\n  @${user.username} can sign in again.\n`);
 }
 
-// Break-glass half of updateServerAddress (lib/data/servers/agent-maintenance.ts): same two columns, none of the checks.
 async function cmdServerAddress(
   handle: string,
   address?: string,
@@ -297,7 +287,6 @@ async function cmdServerAddress(
   );
 }
 
-// Break-glass half of setPanelUrl on the host that serves the panel: none of the checks, no reachability probe.
 async function cmdPanelAddress(arg: string) {
   const servers = await getDb()
     .select({
@@ -353,7 +342,6 @@ async function cmdPanelAddress(arg: string) {
 
   const url = `${https ? "https" : "http"}://${domain}`;
   const now = new Date().toISOString();
-  // The generated address IS the backup address, so re-using it while that is switched off would leave the two disagreeing.
   const set = {
     panelUrl: url,
     updatedAt: now,

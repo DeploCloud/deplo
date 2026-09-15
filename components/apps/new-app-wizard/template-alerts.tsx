@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 
 import type { WizardTemplate } from "./types";
 
-// TemplateAlerts - what the catalog wants the reader warned about before deploying.
 export function TemplateAlerts({
   alerts,
 }: {

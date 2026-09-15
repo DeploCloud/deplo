@@ -28,7 +28,6 @@ import { normalizeUsername, validateUsername } from "@/lib/username";
 import { cn } from "@/lib/utils";
 import type { PublicUser } from "@/lib/types/identity";
 
-// The label stays mounted while the spinner runs, so the button keeps its width.
 function PendingLabel({
   pending,
   children,
@@ -55,14 +54,12 @@ export function AccountPanel({
   sessions,
 }: {
   user: PublicUser;
-  // Their Gravatar address, or null where the instance keeps it off.
   gravatar: string | null;
   passkeys: number;
   sessions: number;
 }) {
   return (
     <div className="space-y-4">
-      {/* Direct grid children, so Profile and Email share one row's height. */}
       <div className="grid gap-4 lg:grid-cols-2">
         <ProfileCard user={user} gravatar={gravatar} />
         <EmailCard user={user} />
@@ -89,7 +86,6 @@ function ProfileCard({
   const [name, setName] = React.useState(user.name);
   const [handle, setHandle] = React.useState(user.username);
   const dirty = name.trim() !== user.name || handle !== user.username;
-  // The same rules the server applies, so Save is closed on a handle it would bounce back.
   const canSave =
     dirty &&
     Boolean(name.trim()) &&

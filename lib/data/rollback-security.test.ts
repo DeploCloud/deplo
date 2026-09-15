@@ -148,8 +148,6 @@ test("deploy_apps alone does NOT let a member roll back", async () => {
 
 test("the member who cannot roll back is not offered the action either", async () => {
   await seedTwoBuilds();
-  // canRollback describes the DEPLOYMENT, not the viewer: it stays true and the permission is
-  // what the UI greys out.
   const rows = await as(GRANTEE, TEAM_A, () =>
     listDeployments({ appId: "prj_1" }),
   );
@@ -372,8 +370,6 @@ test("a preview stack is deliberately absent from the map", async () => {
     serverId: SERVER_1,
     imageRef: "deplo/web__pr-7:dpl_pr",
   });
-  // The agent groups images by the `deplo.slug` LABEL and a preview's is `<slug>__pr-<n>`, so
-  // naming it would hand a torn-down pull request the app's whole retention budget.
   const map = await rollbackKeepBySlug(SERVER_1);
   assert.deepEqual(Object.keys(map), ["web"]);
 });

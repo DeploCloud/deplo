@@ -31,14 +31,11 @@ function alreadyPlayed(key: string | undefined): boolean {
   }
 }
 
-// useLogoIntro - the opening logo; `once` is a sessionStorage key that suppresses a replay.
 export function useLogoIntro(once?: string) {
-  // "boot" renders nothing: only the client knows if the intro is owed, and a guess flashes the other screen.
   const [phase, setPhase] = React.useState<IntroPhase>("boot");
 
   React.useEffect(() => {
     const play = !alreadyPlayed(once) && !prefersReducedMotion();
-    // Even the first phase is scheduled: the first paint has to stay blank until the client decides.
     const at = (ms: number, next: IntroPhase) =>
       setTimeout(() => setPhase(next), ms);
     const timers = play
@@ -61,7 +58,6 @@ export function useLogoIntro(once?: string) {
   return { phase, markSeen };
 }
 
-// LogoIntro - the mark and its aurora, drifting over whatever the page is about to show.
 export function LogoIntro({ phase }: { phase: IntroPhase }) {
   if (phase === "boot" || phase === "steps") return null;
   const leaving = phase === "intro-out";
@@ -95,7 +91,6 @@ const LINKS = [
   { href: DISCORD_URL, Icon: DiscordIcon, label: "Discord" },
 ];
 
-// AuthChrome - theme + links; the links are pinned to the PAGE, not the viewport, so a tall screen scrolls past them.
 export function AuthChrome({ hidden = false }: { hidden?: boolean }) {
   if (hidden) return null;
   return (

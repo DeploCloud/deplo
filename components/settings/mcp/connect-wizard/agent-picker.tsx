@@ -5,7 +5,6 @@ import { veilProps } from "@/components/templates/veil";
 import { AGENTS, type AgentDef, type AgentId } from "../agents";
 import { StepShell } from "./step-shell";
 
-// AgentStep asks which agent is being connected; picking one IS the answer.
 export function AgentStep({
   agentId,
   canConnect,
@@ -39,7 +38,6 @@ export function AgentStep({
   );
 }
 
-// AgentMark is an agent's logo on its own tile, in the agent's own colours.
 export function AgentMark({
   agent,
   size = "sm",
@@ -77,8 +75,6 @@ export function AgentCard({
   canConnect: boolean;
   onSelect: () => void;
 }) {
-  // Shown but refused, with the reason: hiding the grid would leave a reader
-  // wondering whether Deplo supports their agent at all.
   const blocked = !canConnect;
   const note = "Needs the permission to connect AI agents to this team.";
   const veil = veilProps(agent.veil, selected ? "on" : "hover");
@@ -104,8 +100,6 @@ export function AgentCard({
       <AgentMark agent={agent} />
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{agent.label}</span>
-        {/* No `block` here: `line-clamp-2` sets `display: -webkit-box`, and a
-            `block` beside it wins the cascade and turns the clamp off. */}
         <span className="mt-0.5 line-clamp-2 min-h-[2lh] text-xs leading-snug text-muted-foreground">
           {blocked ? note : agent.blurb}
         </span>

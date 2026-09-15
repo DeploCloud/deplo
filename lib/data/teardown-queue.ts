@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/operations/remove-a-server-or-uninstall
-
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -14,29 +12,17 @@ import { dispatchServerAlert } from "../notify/dispatch";
 import { mapLimit } from "../utils";
 import { recordActivity } from "./activity";
 
-// Three rules keep it safe: the row is written BEFORE the agent is dialed; matched on the
-// `deplo.project` LABEL, never the reusable slug; verified on the container list, because
-// DestroyStack's `ok` lies in both directions.
-
 // ponytail: the verdict covers containers, not volumes - no agent RPC lists
-// volumes. Upgrade path: a ListVolumes RPC, then check both here.
 
-/** One stack that must be destroyed on one host. */
 export interface TeardownEntry {
   serverId: string;
-  /** The compose project key: `<slug>`, `<slug>__pr-<n>`, or a database host. */
   deployKey: string;
-  /** The `deplo.project` label of what is being destroyed - the identity check. */
   projectLabel: string;
-  /** Human name for the Activity copy: by drain time the row it named is gone. */
   label: string;
-  /** NULL for a deleted team, which is also "nowhere to report to". */
   teamId: string | null;
-  /** Volumes to reclaim BY NAME on the destroy, on top of what `down -v` finds. */
   reclaimVolumes?: string[];
 }
 
-// Delay before attempt N+1, saturating on the last rung: 1m, 5m, 15m, 1h, 6h, 24h, 24h.
 const BACKOFF_MS = [
   60_000,
   5 * 60_000,
@@ -47,35 +33,27 @@ const BACKOFF_MS = [
   24 * 60 * 60_000,
 ];
 
-/** Attempts before Deplo gives up, the inline one included. 8 spans ~4 days. */
 export const MAX_TEARDOWN_ATTEMPTS = 8;
 
-/** Rows per drain: 8 at 4-way concurrency bounds one drain near 6 minutes. */
 const DRAIN_BATCH = 8;
 
-/** Teardowns dialed at once, matching the bulk delete's own fan-out. */
 const DRAIN_CONCURRENCY = 4;
 
-/** How long a freshly queued teardown is left alone. */
 const INLINE_GRACE_MS = 4 * 60_000;
 
-/** How long a given-up teardown waits before a reachable host earns it a new ladder. */
 const REOPEN_AFTER_MS = 60 * 60_000;
 
-/** How recently the host must have been seen to count as reachable again. */
 const SEEN_RECENTLY_MS = 5 * 60_000;
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** The slice of the agent a teardown touches. */
 type TeardownAgent = Pick<
   AgentConnection,
   "destroyStack" | "listInstances" | "stopStack" | "close"
 >;
 
-/** The dialer, swapped in tests: the pglite harness has no agent to answer. */
 let dial: (serverId: string) => Promise<TeardownAgent> = connectAgent;
 
 export function __setTeardownDialForTest(
@@ -84,7 +62,6 @@ export function __setTeardownDialForTest(
   dial = fn ?? connectAgent;
 }
 
-// What to do after a failed attempt. `attempts` INCLUDES the failure just recorded.
 export function nextTeardownAttempt(
   attempts: number,
   now: Date,
@@ -95,7 +72,6 @@ export function nextTeardownAttempt(
   return { giveUp: false, at: new Date(now.getTime() + step).toISOString() };
 }
 
-// Record the intents. One statement, `ON CONFLICT DO NOTHING`: a second enqueue is a no-op.
 export async function enqueueTeardowns(
   entries: TeardownEntry[],
 ): Promise<void> {
@@ -126,7 +102,6 @@ export async function enqueueTeardowns(
   }
 }
 
-/** The containers on `conn` that belong to this exact stack, by label AND key. */
 async function stackContainers(
   conn: TeardownAgent,
   entry: Pick<TeardownEntry, "deployKey" | "projectLabel">,
@@ -135,7 +110,6 @@ async function stackContainers(
     .listInstances(entry.projectLabel, entry.deployKey, "")
     .catch(() => null);
   if (rows === null) return null;
-  // Separate deploy keys that share a label: `blink` must not count `blink__pr-3`'s containers.
   const key = entry.deployKey;
   return rows
     .map((r) => r.name)
@@ -145,7 +119,6 @@ async function stackContainers(
     });
 }
 
-// `verifyFirst` is for a RETRY: the key may have been reclaimed, and destroying would kill it.
 async function attemptTeardown(
   entry: TeardownEntry,
   opts: { verifyFirst: boolean },
@@ -168,14 +141,12 @@ async function attemptTeardown(
       entry.reclaimVolumes,
     );
     const left = await stackContainers(conn, entry);
-    // An agent too old for the probe answers null: unverifiable, so the destroy's verdict stands.
     if (left === null)
       return {
         gone: res.ok,
         error: res.ok ? "" : res.error || "the teardown failed",
       };
     if (left.length === 0) return { gone: true, error: "" };
-    // Whatever survived must at least stop serving: the user asked for it to go.
     await conn.stopStack(entry.deployKey).catch(() => {});
     return {
       gone: false,
@@ -190,7 +161,6 @@ async function attemptTeardown(
   }
 }
 
-/** Book a failed attempt: bump the counter, back off, or give up out loud. */
 async function recordFailure(
   entry: TeardownEntry,
   error: string,
@@ -238,7 +208,6 @@ async function recordFailure(
   );
 }
 
-// No team: `recordActivity` would fall back to the oldest team - a stranger's audit trail.
 async function announce(
   entry: TeardownEntry,
   message: string,
@@ -258,7 +227,6 @@ async function announce(
     });
 }
 
-/** The server's name and whether Deplo currently believes it is reachable. */
 async function serverFacts(
   serverId: string,
 ): Promise<{ name: string; offline: boolean }> {
@@ -273,11 +241,9 @@ async function serverFacts(
   };
 }
 
-// Queue the intent, then try it once. Writes no Activity: the caller owns that copy.
 export async function teardownOrQueue(entry: TeardownEntry): Promise<boolean> {
   await enqueueTeardowns([entry]);
   const { name, offline } = await serverFacts(entry.serverId);
-  // ADR-0006 says `servers.status` is a cache and never a gate.
   if (offline) {
     await recordFailure(entry, `${name} is offline`, name, new Date());
     return false;
@@ -291,7 +257,6 @@ export async function teardownOrQueue(entry: TeardownEntry): Promise<boolean> {
   return true;
 }
 
-// Forget a queued teardown: that very stack is being brought up there again on purpose.
 export async function dropTeardown(
   serverId: string,
   deployKey: string,
@@ -306,7 +271,6 @@ export async function dropTeardown(
     );
 }
 
-// Retry every teardown that is due. Called from the reaper tick, under its lease. Never throws.
 export async function drainTeardowns(now: Date = new Date()): Promise<void> {
   await reopenReachableTeardowns(now).catch((e) =>
     console.error("[deplo] could not reopen teardowns:", errMsg(e)),
@@ -362,7 +326,6 @@ export async function drainTeardowns(now: Date = new Date()): Promise<void> {
   });
 }
 
-/** How many teardowns are still queued for a host. */
 export async function pendingTeardownsForServer(
   serverId: string,
 ): Promise<number> {

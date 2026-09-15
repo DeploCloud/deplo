@@ -14,7 +14,6 @@ import type { DocsTopic } from "@/lib/docs";
 
 type Side = "top" | "right" | "bottom" | "left";
 
-// InfoTip is the icon beside a label: a `type="button"` so it never submits, and interactive content so a click inside a `<label>` does not forward to the control.
 export function InfoTip({
   content,
   docs,
@@ -24,7 +23,6 @@ export function InfoTip({
   label = "More information",
 }: {
   content: React.ReactNode;
-  // Radix keeps the tooltip open while the pointer travels into it, so this link is clickable.
   docs?: DocsTopic;
   docsLabel?: string;
   side?: Side;
@@ -37,7 +35,6 @@ export function InfoTip({
         <button
           type="button"
           aria-label={label}
-          // Hint-only: `DialogContent` skips it when picking what to focus, since landing on an info icon gives a focus ring on something the user can't act on.
           data-hint-trigger=""
           className={cn(
             "inline-flex size-3.5 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground/70 transition-colors outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
@@ -61,7 +58,6 @@ export function InfoTip({
   );
 }
 
-// FieldLabel is a drop-in `<Label>` with an optional trailing InfoTip: pass `info` and it renders one, omit it and this is just a Label.
 export function FieldLabel({
   children,
   info,
@@ -79,7 +75,6 @@ export function FieldLabel({
   infoLabel?: string;
 }) {
   return (
-    // `w-fit` so the label and its info trigger hug their content instead of stretching the full column width.
     <Label
       className={cn("flex w-fit items-center gap-1.5", className)}
       {...props}

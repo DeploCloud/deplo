@@ -25,7 +25,6 @@ HTTPS_PORT=443; panel_url; echo
 });
 
 test("the panel's router orders no certificate while the proxy waits on an interim port", async () => {
-  // Five failed HTTP-01 tries lock the name at Let's Encrypt for an hour, and a proxy on a loopback port cannot answer one.
   const out = await bash(`set -euo pipefail
 ${await shellFn("install.sh", "panel_router")}
 HTTPS_PORT=8443; panel_router deplo-panel deplo-cb00710b.nip.io
@@ -38,7 +37,6 @@ HTTPS_PORT=443; panel_router deplo-panel deplo-cb00710b.nip.io
 });
 
 test("an update keeps the address the panel moved itself to", async () => {
-  // The panel writes its own route and .env only seeded it: re-rendering from .env took the custom domain away and left nip.io as the only way in.
   const dir = await updatedHost();
   const out = await adopt(dir);
   await rm(dir, { recursive: true, force: true });

@@ -14,7 +14,6 @@ interface LiveStatus {
   error: string | null;
 }
 
-// DestinationCombobox - pick a destination by typing; each row shows the stored verdict until the live probe lands.
 export function DestinationCombobox({
   destinations,
   value,
@@ -26,15 +25,12 @@ export function DestinationCombobox({
   canProbe = false,
 }: {
   destinations: DestinationOption[];
-  // The selected destination id, or "" for none.
   value: string;
   onChange: (id: string) => void;
   id?: string;
   disabled?: boolean;
-  // The server the thing being backed up runs on.
   sameDiskServerId?: string | null;
   sameDiskNoun?: "app" | "database";
-  // `manage_backup_destinations`, the capability the live probe needs.
   canProbe?: boolean;
 }) {
   const [live, setLive] = React.useState<Record<string, LiveStatus>>({});
@@ -51,7 +47,6 @@ export function DestinationCombobox({
     setProbing(true);
     void probeDestinations()
       .then((rows) => {
-        // A skipped or failed round leaves the stored badges in place: a dropdown is no place for an error nobody asked for.
         if (!rows) return;
         setLive(
           Object.fromEntries(
@@ -111,7 +106,6 @@ export function DestinationCombobox({
             <span className="block truncate font-mono text-xs text-muted-foreground">
               {d.where}
             </span>
-            {/* Why it is red, without making anyone open Storage. */}
             {status === "error" && error && !probing && (
               <span className="block truncate text-xs text-destructive">
                 {error}

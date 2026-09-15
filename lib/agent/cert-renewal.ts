@@ -10,7 +10,6 @@ import { connectAgent, connectAgentAt } from "../infra/agent-client/connect";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
 
-// Advertised by an agent that implements RenewalCSR + InstallRenewedCert.
 export const CERT_RENEWAL_CAPABILITY = "cert-renewal";
 
 const RENEWAL_WINDOW_MS = 30 * 24 * 3_600_000;
@@ -25,7 +24,6 @@ function leafNotAfter(certPem: string): Date | null {
   }
 }
 
-// Renew ONE server's agent mTLS leaf if it is within the renewal window.
 export async function renewAgentCertIfDue(
   serverId: string,
 ): Promise<{ renewed: boolean; reason: string }> {
@@ -53,12 +51,9 @@ export async function renewAgentCertIfDue(
         reason: "agent lacks the cert-renewal capability",
       };
 
-    // The agent mints the keypair + CSR: its private key never leaves the host.
     const { csrPem } = await conn.renewalCsr();
-    // Re-signed with the SAME dial addresses as SANs the bootstrap used.
     const dialHosts = [row.ip, row.host].filter(Boolean) as string[];
     const signed = await signAgentCsr(csrPem, dialHosts);
-    // The agent installs + hot-swaps first; only then is the fingerprint repinned.
     const res = await conn.installRenewedCert({
       certPem: signed.certPem,
       caPem: "",
@@ -81,7 +76,6 @@ export async function renewAgentCertIfDue(
   }
 }
 
-// Renew a server's agent leaf NOW with `dialHosts` as its SANs - the address edit's half of renewal (updateServerAddress).
 export async function renewAgentCert(
   serverId: string,
   dialHosts: string[],
@@ -121,7 +115,6 @@ function notAfterOf(certPem: string): string {
   return d ? d.toISOString() : "unknown";
 }
 
-// Renew every provisioned server whose leaf is within the window; a per-server failure is logged and never aborts the sweep.
 export async function sweepExpiringAgentCerts(): Promise<void> {
   const rows = await getDb()
     .select({ id: serversTable.id, name: serversTable.name })
@@ -134,7 +127,6 @@ export async function sweepExpiringAgentCerts(): Promise<void> {
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       console.warn(`[cert-renewal] ${s.name} (${s.id}): ${why}`);
-      // A renewal that keeps failing ends with Deplo locked out of the host, so the console is not enough.
       dispatchServerAlert(s.id, {
         key: "agent_certificate_failed",
         dedupe: { id: `certrenew:${s.id}`, state: "failed" },

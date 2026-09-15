@@ -33,7 +33,6 @@ const SCOPES: {
   },
 ];
 
-// ScopeStep - who the variable is shared with, as a multi-select of the three scopes.
 export function ScopeStep({
   scopes,
   projects,

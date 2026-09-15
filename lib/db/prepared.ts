@@ -4,7 +4,6 @@ import { getDb, type DrizzleClient } from "./client";
 
 const byClient = new WeakMap<object, Map<string, unknown>>();
 
-// prepared builds a query once per client; unnamed on purpose, so a pooler in transaction mode keeps working.
 export function prepared<T>(
   key: string,
   build: (db: DrizzleClient) => { prepare(name: string): T },

@@ -18,7 +18,6 @@ import type { GitProviderChoice } from "@/lib/types/git";
 
 import { nameFromArchive, nameFromImage } from "./source-hints";
 
-// SourceFields - the one input the picked source needs: a repository, an image reference, an archive.
 export function SourceFields({
   source,
   isTemplate,

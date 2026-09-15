@@ -2,7 +2,6 @@ import { GitAccount } from "@/components/shared/git-account";
 import { UserAvatar, type AvatarSize } from "@/components/shared/user-avatar";
 import { cn } from "@/lib/utils";
 
-// DeploymentCreator - who ran a deployment: a member's face, or the git account that pushed.
 export function DeploymentCreator({
   creator,
   creatorUser,

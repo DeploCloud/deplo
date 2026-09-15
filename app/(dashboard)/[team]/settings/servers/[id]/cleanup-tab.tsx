@@ -32,7 +32,6 @@ const CLEANUP_RUNS_SUBSCRIPTION = /* GraphQL */ `
   }
 `;
 
-// The scopes, in the allow-list's order.
 const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
   {
     id: "build_cache",
@@ -113,7 +112,6 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
   },
 ];
 
-// The numbers are held as text, so a half-typed field is not a NaN; the bounds are clamped server-side.
 interface PolicyForm {
   enabled: boolean;
   schedule: string;
@@ -158,11 +156,8 @@ export function ServerCleanupTab({
   const [saving, startSave] = React.useTransition();
   const [starting, setStarting] = React.useState(false);
   const [runs, setRuns] = React.useState(cleanup.runs);
-  // The runs THIS tab started: only the admin who clicked gets the result toast, not every other open page.
   const startedHere = React.useRef(new Set<string>());
 
-  // router.refresh() re-renders with the PERSISTED policy; adopting it as the baseline (setState during
-  // render) is what stops the form reading dirty against what it just saved.
   if (saved !== cleanup.policy) {
     setSaved(cleanup.policy);
     setForm(toForm(cleanup.policy));
@@ -177,7 +172,6 @@ export function ServerCleanupTab({
       (data) => {
         const next = data.dockerCleanupRuns;
         if (!next) return;
-        // The stream is instance-wide (one history, one fleet); this page is one host.
         setRuns(next.filter((r) => r.serverId === server.id));
         for (const run of next) {
           if (run.status === "running" || !startedHere.current.has(run.id))
@@ -192,7 +186,6 @@ export function ServerCleanupTab({
           }
         }
       },
-      // A dropped stream self-heals (gqlSubscribe retries, the generator re-emits the snapshot), so no toast.
       (e) => console.warn("[cleanup] live history stream error:", e.message),
     );
   }, [server.id]);
@@ -222,11 +215,9 @@ export function ServerCleanupTab({
             minAgeHours: Number(form.minAgeHours) || 0,
             keepImagesPerApp: Number(form.keepImagesPerApp) || 1,
             scopes: form.scopes,
-            // excludedServerIds deliberately absent: sending it would rewrite every OTHER host from a stale snapshot.
           },
         },
       );
-      // The server rejects an unparseable cron rather than repairing it, and its message names the fix.
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -259,8 +250,6 @@ export function ServerCleanupTab({
     });
   }
 
-  // No confirmation because nothing here is destructive: the agent's allow-list never removes a container,
-  // a named volume, or anything a container still uses.
   function runNow() {
     setStarting(true);
     startSave(async () => {
@@ -271,7 +260,6 @@ export function ServerCleanupTab({
         { serverId: server.id },
       );
       setStarting(false);
-      // Only pre-flight refusals reach here; anything the HOST fails at lands on the run row instead.
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -311,7 +299,6 @@ export function ServerCleanupTab({
             }
             side="right"
           >
-            {/* A wrapping span keeps the tooltip reachable: a disabled button swallows pointer events. */}
             <span tabIndex={0}>
               <Button
                 onClick={runNow}

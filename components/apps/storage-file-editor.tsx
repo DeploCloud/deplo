@@ -26,7 +26,6 @@ export function StorageFileEditor({
 }: {
   path: string;
   state: StorageFileDraft | undefined;
-  // COSMETIC: the real gate is `configure_apps` on the appStorageFile query and writeAppFile mutation.
   canManageFiles: boolean;
   onChange: (text: string) => void;
   onRetry: () => void;

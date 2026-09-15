@@ -11,7 +11,6 @@ import { MachineRow } from "./machine-row";
 import type { PendingMachine } from "./machine-state";
 import { useMachineInstall } from "./use-machine-install";
 
-// How long the finished step sits there before it moves on by itself.
 const SETTLE_MS = 2000;
 
 export function InstallStep({
@@ -27,17 +26,13 @@ export function InstallStep({
   onBack,
 }: {
   kind: SourceKind | null;
-  // The panel this imports from - the key a corrected address is filed under.
   sourceUrl: string;
   machines: PlanServer[];
-  // Registering a host is instance-admin only, like everywhere else.
   canAddServers: boolean;
   pending: Record<string, PendingMachine>;
   setPending: React.Dispatch<
     React.SetStateAction<Record<string, PendingMachine>>
   >;
-  // Which machines have a registration IN FLIGHT, so a re-render never starts a
-  // second one.
   attempted: React.RefObject<Set<string>>;
   onResolved: (
     sourceId: string,
@@ -60,8 +55,6 @@ export function InstallStep({
   });
   const { settled } = install;
 
-  // Only when it BECOMES settled here: a person who came back to this step must
-  // not be thrown forward again.
   const settledOnMount = React.useRef(settled);
   React.useEffect(() => {
     if (!settled || settledOnMount.current) return;
@@ -92,8 +85,6 @@ export function InstallStep({
         ))}
       </div>
 
-      {/* A step that was settled when it opened does not move on by itself, so it
-          says how: a second migration from the same panel used to end here. */}
       {settled && (
         <div className={cn("flex", onBack ? "justify-between" : "justify-end")}>
           {onBack && (

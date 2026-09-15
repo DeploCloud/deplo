@@ -19,7 +19,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { Team } from "@/lib/types/team";
 import { DocsLink } from "@/components/ui/docs-link";
 
-// CreateTeamDialog - creates a team the viewer owns and makes it the active team.
 export function CreateTeamDialog({
   open,
   onOpenChange,
@@ -29,14 +28,12 @@ export function CreateTeamDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  // False when the caller holds state a navigation would lose (the migration wizard's scan + API key).
   redirect?: boolean;
   onCreated?: (teamId: string) => void;
   defaultName?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // Back to the seed, not to empty: a dialog that stays mounted reopens on its caller's name.
   const [name, setName] = React.useState(defaultName ?? "");
 
   function onSubmit(e: React.FormEvent) {
@@ -55,9 +52,7 @@ export function CreateTeamDialog({
         toast.success("Team created");
         onOpenChange(false);
         setName(defaultName ?? "");
-        // The team a page shows IS its address, so landing on `/` puts the old one back.
         if (redirect && res.data) router.push(`/${res.data.slug}`);
-        // `createTeam` switches the active team server-side, so the page behind must re-read.
         router.refresh();
         if (res.data) onCreated?.(res.data.id);
       } else {

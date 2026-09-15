@@ -17,7 +17,6 @@ import { publicBaseUrl } from "../../public-url";
 
 export const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
 
-// normalizePreferredHost: a caller-supplied hostname as it would be STORED.
 export function normalizePreferredHost(raw: string | null | undefined): string {
   return (raw ?? "")
     .trim()
@@ -26,15 +25,11 @@ export function normalizePreferredHost(raw: string | null | undefined): string {
     .replace(/\/$/, "");
 }
 
-// isHostnameClaim: whether a hostname is a CLAIM on a name - what `manage_domains` gates.
 export function isHostnameClaim(raw: string | null | undefined): boolean {
   const host = normalizePreferredHost(raw);
   return host !== "" && DOMAIN_RE.test(host) && nipEmbeddedIp(host) == null;
 }
 
-// assertHostnameNotAnotherTeams: refuse a hostname an app in ANOTHER TEAM already routes.
-// Uniqueness is stored on `(name, coalesce(path_prefix,''))`, so one team may serve
-// `app.com` on `/` and on `/api` from two apps; another team's claim never may.
 export async function assertHostnameNotAnotherTeams(
   name: string,
   teamId: string,
@@ -49,7 +44,6 @@ export async function assertHostnameNotAnotherTeams(
     throw new Error(
       `${name} is already routed by another team on this Deplo. A hostname belongs to one team.`,
     );
-  // A preview host never enters `domains`, so its zone is claimed by the base.
   for (const base of await foreignPreviewBases(teamId))
     if (name === base || name.endsWith(`.${base}`))
       throw new Error(
@@ -71,15 +65,12 @@ async function foreignPreviewBases(teamId: string): Promise<string[]> {
   ];
 }
 
-// isPanelHost: the panel's own addresses. An app routed there would answer for the dashboard.
 export function isPanelHost(name: string): boolean {
   let own: string | null = null;
   try {
     const url = publicBaseUrl();
     own = url ? new URL(url).hostname.toLowerCase() : null;
-  } catch {
-    /* an unparseable public URL names nothing */
-  }
+  } catch {}
   return name === own || name === panelFallbackHost();
 }
 
@@ -90,7 +81,6 @@ export function assertNotPanelHost(name: string): void {
     );
 }
 
-// assertPreviewBaseNotAnotherTeams: refuse a PREVIEW BASE DOMAIN under a hostname another team routes.
 export async function assertPreviewBaseNotAnotherTeams(
   base: string,
   teamId: string,
@@ -106,18 +96,13 @@ export async function assertPreviewBaseNotAnotherTeams(
   const taken =
     rows.some(
       (r) => r.teamId !== teamId && sameZone(r.name.toLowerCase(), clean),
-    ) ||
-    // ...and the other teams' preview bases, in both directions too.
-    (await foreignPreviewBases(teamId)).some((b) => sameZone(b, clean));
+    ) || (await foreignPreviewBases(teamId)).some((b) => sameZone(b, clean));
   if (taken)
     throw new Error(
       `${clean} is served by another team on this Deplo, so previews can't be published under it. A preview domain belongs to one team.`,
     );
 }
 
-// domainNameExists: whether `name` is unavailable. With a `pathPrefix` the stored
-// rule applies - another team's claim still refuses it at any path; without one,
-// any row with that name is a taken name (what a generated host has to avoid).
 export async function domainNameExists(
   name: string,
   pathPrefix?: string,
@@ -135,7 +120,6 @@ export async function domainNameExists(
   );
 }
 
-// uniqueAutoDomainName: a generated nip.io hostname for `label` on `ip` that collides with no existing domain.
 export async function uniqueAutoDomainName(
   label: string,
   ip: string,
@@ -144,7 +128,5 @@ export async function uniqueAutoDomainName(
     const candidate = nipDomain(label, randomWords(), ip);
     if (!(await domainNameExists(candidate))) return candidate;
   }
-  // Exhausted retries (effectively impossible) - a random id segment guarantees
-  // uniqueness so creation never wedges.
   return nipDomain(label, `${randomWords()}-${newId("").slice(1, 5)}`, ip);
 }

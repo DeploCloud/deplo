@@ -5,16 +5,13 @@ import { createHash } from "node:crypto";
 import { isTestEnv } from "./db/pg";
 import { PasswordError } from "./password-policy";
 
-// K-anonymity: only the first five hex characters of the SHA-1 ever leave the box.
 const RANGE_API = "https://api.pwnedpasswords.com/range/";
 
 const TIMEOUT_MS = 3_000;
 
-// PWNED_PASSWORD_MESSAGE is shown verbatim by every surface, including the Better Auth plugin.
 export const PWNED_PASSWORD_MESSAGE =
   "This password has appeared in a data breach. Choose a different one.";
 
-// isPasswordPwned is true only when the range API lists the password; any failure answers false.
 export async function isPasswordPwned(password: string): Promise<boolean> {
   if (!password) return false;
   const sha1 = createHash("sha1")
@@ -43,9 +40,7 @@ export async function isPasswordPwned(password: string): Promise<boolean> {
   });
 }
 
-// assertPasswordNotPwned guards every path that stores a password.
 export async function assertPasswordNotPwned(password: string): Promise<void> {
-  // The suite writes credentials in hundreds of tests; with no egress each would sit out the timeout.
   if (isTestEnv()) return;
   if (await isPasswordPwned(password))
     throw new PasswordError(PWNED_PASSWORD_MESSAGE);

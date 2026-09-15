@@ -14,7 +14,6 @@ export type SourceKeyInput = {
   gitOptions: GitDeployOptionsValue;
 };
 
-// normalizedGitOptions: canonical form, so a whitespace-only watch-paths edit never reads as dirty.
 export function normalizedGitOptions(o: GitDeployOptionsValue) {
   return {
     triggerType: o.triggerType,
@@ -23,9 +22,6 @@ export function normalizedGitOptions(o: GitDeployOptionsValue) {
   };
 }
 
-// computeSourceKey: canonical string of the committed Deploy Source config.
-// Only the active source's saved fields contribute, so switching tabs or typing
-// in an inactive field never looks "dirty".
 export function computeSourceKey(s: SourceKeyInput): string {
   const usesRepo = s.source === "git" || s.source === "github";
   return JSON.stringify({
@@ -49,7 +45,6 @@ export function computeSourceKey(s: SourceKeyInput): string {
           }
         : null,
     compose: s.source === "compose" ? s.compose : null,
-    // Git deploy options travel with the repo (github + git sources only).
     gitOptions: usesRepo ? normalizedGitOptions(s.gitOptions) : null,
   });
 }

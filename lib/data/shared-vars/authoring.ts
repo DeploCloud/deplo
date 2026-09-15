@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/config/shared-variables
-
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -50,8 +48,6 @@ import {
 
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-// OWNER-only, whatever the reach: a team that merely receives a variable never edits or
-// destroys it. An instance-owned one (team_id NULL) answers to an instance admin.
 function ownedBy(teamId: string, admin: boolean) {
   return admin
     ? or(eq(varsTable.teamId, teamId), isNull(varsTable.teamId))
@@ -63,32 +59,18 @@ export async function saveSharedVar(input: {
   key: string;
   value: string;
   type: "plain" | "secret";
-  // Omitted (the UI no longer asks): a NEW var gets every runtime; an EDIT keeps
-  // whatever targets the var already has - an edit must never widen them.
   targets?: EnvTarget[];
-  // Every team whose apps this variable reaches. One ⇒ it is only SUGGESTED there (the
-  // per-app link injects, ADR-0012); two or more ⇒ it is injected into every app of
-  // every one of them, with no link, at the lowest precedence (ADR-0027).
   teamIds: string[];
   environmentIds: string[];
   projectIds: string[];
   appIds?: string[];
 }): Promise<string> {
-  // A team-wide var is injected into every app in the team at the highest deploy
-  // precedence, so authoring one from a project-scoped token would be that token
-  // setting variables on apps outside its own boundary.
   await requireTeamWide("shared variables");
   const { teamId, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
-  // Every OTHER team is its own gate, held across the whole of that team. The
-  // refusal is the same words as an unknown id: the picker must never be an oracle
-  // for which teams exist, nor for who is in them.
   const teamIds = [...new Set(input.teamIds)];
   const reach = await currentReach(input.id);
   for (const t of teamIds) {
-    // Keeping a team the variable already reaches is no escalation: the gate stops
-    // someone ADDING one they do not hold. Re-asking made an instance-wide variable
-    // unsavable by any admin who is not a member of every team on the instance.
     if (t === teamId || reach.teams.includes(t)) continue;
     if (!(await holdsTeamWideCapability(t, "manage_env")))
       throw new Error("Team not found");
@@ -96,12 +78,8 @@ export async function saveSharedVar(input: {
   const adminHere = await isInstanceAdmin();
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
-  // An omitted target set defaults to every runtime on INSERT, but on UPDATE it means
-  // "leave the stored targets alone" (null below): silently widening a legacy
-  // production-only secret would leak it into runtimes it was never meant to reach.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
 
-  // Keep only environments/projects/apps that belong to the active team.
   const environmentIds = await filterTeamEnvironments(
     teamId,
     input.environmentIds,
@@ -110,19 +88,12 @@ export async function saveSharedVar(input: {
   const appIds = input.appIds
     ? await filterTeamApps(teamId, input.appIds)
     : undefined;
-  // Reaching more than one team is what makes a variable inject with no link. On an
-  // EDIT the stored column decides instead (ADR-0027 §4) - see the update branch.
   const autoInject = teamIds.length > 1;
-  // The teams this save takes the reach away from. The acting team is excluded: its
-  // own per-app links are the `appIds` whole-set's business, not this cleanup's.
   const lostTeams = reach.teams.filter(
     (t) => t !== teamId && !teamIds.includes(t),
   );
   const storedLinks = await currentAppLinks(teamId, input.id);
 
-  // Both halves of the whole-set link replace are folder-gated writes, exactly like
-  // setSharedVarAppLink: ADDING a link injects this var into the app at the HIGHEST
-  // deploy precedence, REMOVING one strips it off the app's next deploy.
   if (appIds) {
     const incoming = new Set(appIds);
     const changed = [
@@ -133,17 +104,12 @@ export async function saveSharedVar(input: {
       await requireAppCapability(appId, "manage_env");
   }
 
-  // A shared var must be shared WITH something: offered through ≥1 availability
-  // scope, or linked to ≥1 app.
   const reachesByLink = appIds ? appIds.length > 0 : storedLinks.length > 0;
   const reachesNothing =
     teamIds.length === 0 &&
     environmentIds.length === 0 &&
     projectIds.length === 0 &&
     !reachesByLink;
-  // A variable whose only project / environment / app was DELETED already reaches
-  // nothing. The rule is there to stop an authored value STRANDING; refusing the
-  // next value edit as well left a row nobody could repair.
   const stranded =
     Boolean(input.id) &&
     reach.teams.length === 0 &&
@@ -153,9 +119,6 @@ export async function saveSharedVar(input: {
   if (reachesNothing && !stranded)
     throw new Error("Share with at least one app, project, or team");
 
-  // Two variables with the same key AND the same reach are indistinguishable in the
-  // table, and the newer one silently shadows the older at deploy time (created_at
-  // ASC). A key that repeats across DIFFERENT scopes stays legal.
   if (!input.id) {
     const same = (a: string[], b: string[]) =>
       a.length === b.length && [...a].sort().join() === [...b].sort().join();
@@ -174,13 +137,8 @@ export async function saveSharedVar(input: {
       );
   }
 
-  // The editor sends the MASK back unchanged when only the SCOPE changed on a
-  // secret - keep the stored value rather than encrypting the mask string. That
-  // round-trip is the only write a secret still accepts (see the refusal below).
   const keepValue = input.value === MASK;
   let savedId = input.id ?? "";
-  // Named in the OTHER teams' activity rows, so "where did this come from" is
-  // answerable there without reading the owner team's trail.
   const authorTeamName =
     (
       await getDb()
@@ -205,7 +163,6 @@ export async function saveSharedVar(input: {
         .where(and(eq(varsTable.id, input.id), owned))
         .limit(1);
       if (!existing[0]) throw new Error("Variable not found");
-      // A secret's VALUE, KEY and TYPE are frozen; WHO it reaches is not.
       if (existing[0].type === "secret") {
         const frozen =
           key !== existing[0].key || input.type !== "secret" || !keepValue;
@@ -217,26 +174,18 @@ export async function saveSharedVar(input: {
           key,
           ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
           type: input.type,
-          // ADR-0027 §4: the COLUMN, never the count. A reach row lost to a cascade
-          // must not disarm it on the next save, and an edit must not ARM one that
-          // never injected - only unticking a team it still reaches narrows it.
           autoInject:
             teamIds.length > 1 ||
             (existing[0].autoInject && lostTeams.length === 0),
-          // An edit never rewrites who created the var.
           updatedByUserId: userId,
           updatedAt: nowIso(),
         })
         .where(and(eq(varsTable.id, input.id), owned));
-      // Whole-set replace the scope junctions (targets only if explicitly sent).
       await replaceTargets(tx, input.id, targets);
       await tx.delete(envJunction).where(eq(envJunction.varId, input.id));
       await tx.delete(projJunction).where(eq(projJunction.varId, input.id));
       await insertScopeChildren(tx, input.id, environmentIds, projectIds);
       await replaceTeams(tx, input.id, teamIds);
-      // A team that loses the reach loses its apps' opt-ins with it. Left behind, a
-      // later re-share injects into those apps again - at the HIGHEST precedence,
-      // with nobody in that team having asked for it.
       if (lostTeams.length > 0) {
         const theirs = await tx
           .select({ id: appsTable.id })
@@ -277,8 +226,6 @@ export async function saveSharedVar(input: {
       savedId = id;
     }
   });
-  // One row per team it reaches, not just the author's: a variable that lands in
-  // another team's apps has to be answerable on THAT team's Activity page.
   const verb = input.id ? "Updated" : "Created";
   for (const t of new Set([teamId, ...teamIds]))
     await recordActivity(
@@ -309,9 +256,7 @@ export async function deleteSharedVar(id: string): Promise<void> {
     .select({ teamId: teamJunction.teamId })
     .from(teamJunction)
     .where(eq(teamJunction.varId, id));
-  // Before the delete: the per-app links CASCADE with it.
   await markPendingChangesForSharedVar(id);
-  // The five child sets CASCADE on the parent delete.
   await getDb()
     .delete(varsTable)
     .where(and(eq(varsTable.id, id), owned));
@@ -372,9 +317,6 @@ async function filterTeamApps(
   return rows.map((r) => r.id);
 }
 
-// listSharedVarTeams - the teams the author may share with: their own, minus the ones
-// where they do not hold `manage_env` across the WHOLE team. Advisory - the save
-// re-checks every id with the same predicate.
 export async function listSharedVarTeams(): Promise<
   { id: string; name: string; avatarUrl: string | null }[]
 > {

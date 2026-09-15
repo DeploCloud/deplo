@@ -2,7 +2,6 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import type { VarAuthor } from "@/lib/types/identity";
 
-// EnvAuthorCell - the "Modified by" cell of a variables table; a null author renders a dash.
 export function EnvAuthorCell({ author }: { author: VarAuthor | null }) {
   if (!author) {
     return <span className="text-xs text-muted-foreground">—</span>;

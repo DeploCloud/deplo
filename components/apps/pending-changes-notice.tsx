@@ -9,7 +9,6 @@ import { RedeployButton } from "@/components/apps/redeploy-button";
 import { useAppCan } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 
-// PendingChangesNotice - config saved but not live until the next deploy.
 export function PendingChangesNotice({
   appId,
   slug,

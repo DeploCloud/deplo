@@ -72,7 +72,6 @@ const CANDIDATES_QUERY = `query($folderId: ID!, $query: String) {
   }
 }`;
 
-// ShareFolderDialog - manage who can access a folder.
 export function ShareFolderDialog({
   folderId,
   folderName,
@@ -97,7 +96,6 @@ export function ShareFolderDialog({
   const [picked, setPicked] = React.useState<ShareCandidate | null>(null);
   const [caps, setCaps] = React.useState<Set<Capability>>(() => new Set());
 
-  // `view` is always implied by the server, so it is never a togglable box here.
   const togglableCaps = React.useMemo(
     () =>
       ALL_CAPABILITIES.filter(
@@ -295,7 +293,6 @@ export function ShareFolderDialog({
           className="grid grid-cols-[minmax(0,1fr)] gap-4"
           scroll={false}
         >
-          {/* Current access */}
           <div className="space-y-2">
             <Label>People with access</Label>
             {loading ? (
@@ -339,7 +336,6 @@ export function ShareFolderDialog({
                         {g.isOwner ? "Full access" : capSummary(g.capabilities)}
                       </p>
                     </div>
-                    {/* The owner row can't be revoked - ownership isn't a grant. */}
                     {!g.isOwner && (
                       <Button
                         variant="ghost"
@@ -358,7 +354,6 @@ export function ShareFolderDialog({
           </div>
 
           <form className="grid gap-4" onSubmit={onSubmit}>
-            {/* Add a person */}
             <div className="space-y-3 border-t border-border pt-4">
               {!picked ? (
                 <>
@@ -460,7 +455,6 @@ export function ShareFolderDialog({
                     >
                       What can they do?
                     </FieldLabel>
-                    {/* `view` is implied by the server and always on. */}
                     <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
                       <input
                         type="checkbox"
@@ -516,7 +510,6 @@ export function ShareFolderDialog({
               >
                 Close
               </Button>
-              {/* Always mounted: a button appearing on the pick would move Close across the footer. */}
               <Button type="submit" disabled={pending || !picked}>
                 <span className="grid place-items-center">
                   <span

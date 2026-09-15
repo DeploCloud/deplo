@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/current-user";
 import { getActiveTeamId, teamsForUser } from "@/lib/membership";
 
-// RootPage keeps the query: a full navigation to /?welcome=1 (the takeover landing) must arrive intact.
 export default async function RootPage(props: PageProps<"/">) {
   const user = await requireUser();
   const teams = await teamsForUser(user.id);

@@ -67,7 +67,6 @@ test("a linked shared var reaches a runtime only when it targets it", () => {
   assert.deepEqual(resolveEnvEntries("preview", APP, [], s), []);
 });
 
-// Precedence is ADR-0012.
 test("full precedence order: instance < app-own < linked shared", () => {
   const key = "DATABASE_URL";
   const out = resolveEnvEntries(
@@ -112,7 +111,6 @@ test("instance globals apply to every app and sit lowest", () => {
 });
 
 test("within the shared layer, the later entry wins on a key collision", () => {
-  // The loader hands shared vars over sorted created_at ASC, so the later one wins on fold.
   const out = resolveEnvEntries(
     "production",
     APP,
@@ -130,7 +128,6 @@ test("omitting the auto-injected layer defaults to app-own + shared", () => {
   assert.deepEqual(keys(resolveEnvEntries("production", APP, vars, [])), ["X"]);
 });
 
-// Preview overrides: ADR-0014.
 test("a preview override beats the app's own var AND a linked shared var", () => {
   const out = resolveEnvEntries(
     "preview",

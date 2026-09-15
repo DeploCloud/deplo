@@ -3,7 +3,6 @@
 import * as React from "react";
 
 let open = false;
-// The palette keys its body on this: a reopen before the close animation ends unmounts nothing, so its state would stay stale.
 let generation = 0;
 const listeners = new Set<() => void>();
 

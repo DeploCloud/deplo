@@ -1,7 +1,5 @@
-// Verify with scripts/check-docs-links.mts after the manual moves.
 export const DOCS_BASE = "https://deplo.build/docs";
 
-// Troubleshooting pages are accordions with no anchors, so those entries stay page-level on purpose.
 export const DOCS = {
   "docs.home": "",
 

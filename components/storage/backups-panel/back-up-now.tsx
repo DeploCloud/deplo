@@ -17,7 +17,6 @@ import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { gqlAction } from "@/lib/graphql-client";
 import { noun, type BackupTarget, type Destination } from "./target";
 
-// BackUpNow - the one-off dump, started from the Back up menu.
 export function BackUpNow({
   target,
   destinations,
@@ -29,11 +28,8 @@ export function BackUpNow({
   target: BackupTarget;
   destinations: Destination[];
   canTestDestinations: boolean;
-  /** Opened from the Back up menu, which carries the gate; no trigger here. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Puts a placeholder row on the page and keeps it refreshing until this
-   *  backup lands. */
   onStart: (destinationId: string, run: () => Promise<unknown>) => void;
 }) {
   const router = useRouter();
@@ -47,7 +43,6 @@ export function BackUpNow({
   }
 
   function submit() {
-    // The mutation runs the WHOLE dump - it resolves only once the archive is written.
     onOpenChange(false);
     const mutation =
       target.kind === "app"

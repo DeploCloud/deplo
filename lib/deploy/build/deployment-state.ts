@@ -18,7 +18,6 @@ import { formatBytes } from "../../utils";
 import { syncPreviewComment } from "../preview-comment";
 import { destroyStack } from "./stack-lifecycle";
 
-// log enqueues one build-log line into the buffered writer (fire-and-forget).
 export function log(
   depId: string,
   level: LogLine["level"],
@@ -27,7 +26,6 @@ export function log(
   appendLog(depId, { ts: nowIso(), level, text });
 }
 
-// settleMove finishes a pending server move once this deploy is up on the new host.
 export async function settleMove(
   depId: string,
   appId: string,
@@ -49,7 +47,6 @@ export async function settleMove(
     await setDep(depId, { status: "error" });
 }
 
-// setDep patches a deployment row.
 export async function setDep(
   depId: string,
   patch: Partial<Deployment>,
@@ -83,18 +80,13 @@ export async function setDep(
         : eq(deploymentsTable.id, depId),
     )
     .returning({ appId: deploymentsTable.appId });
-  // A deployment's status feeds the app's `latestDeployment` view, so push the
-  // owning app to live subscribers when it changes.
   const appId = rows[0]?.appId;
   if (appId && "status" in patch) publishAppChanged(appId);
   return rows.length > 0;
 }
 
-// DeployTarget is what a running deploy writes its LIVE state onto.
 export type DeployTarget = {
   appId: string;
-  // Alert routing. The runner is detached and has no request identity, which is why
-  // the team rides along rather than being resolved at dispatch time.
   teamId: string;
   name: string;
   slug: string;
@@ -103,7 +95,6 @@ export type DeployTarget = {
   | { kind: "preview"; previewId: string; prNumber: number; deployKey: string }
 );
 
-// targetFor names the target a deployment row belongs to. `preview_id` is the whole test.
 export function targetFor(
   dep: Pick<Deployment, "appId" | "previewId" | "prNumber" | "deployKey">,
   app: { teamId: string; name: string; slug: string },
@@ -125,8 +116,6 @@ export function targetFor(
     : { ...common, kind: "app" };
 }
 
-// settlePreviewDeployState writes a preview's deploy state, but only while the preview
-// still WANTS a stack - evicted or closed mid-build, the stack comes straight back down.
 export async function settlePreviewDeployState(
   previewId: string,
   deployKey: string,
@@ -136,7 +125,6 @@ export async function settlePreviewDeployState(
     .update(appPreviewsTable)
     .set({
       ...(status === undefined ? {} : { status }),
-      // The stack is about to exist again: from here on a teardown is owed.
       ...(status === "building" ? { tornDownAt: null } : {}),
       lastActivityAt: nowIso(),
       updatedAt: nowIso(),
@@ -164,7 +152,6 @@ export async function settlePreviewDeployState(
   return false;
 }
 
-// setDeployState patches the deploy's owner. `status` is the only key both owners understand.
 export async function setDeployState(
   target: DeployTarget,
   patch: Partial<typeof appsTable.$inferInsert>,
@@ -193,7 +180,6 @@ async function markStopped(depId: string, target: DeployTarget): Promise<void> {
     "warn",
     "Build stopped by user - result discarded. A build already running on the host may finish in the background; its output is not deployed.",
   );
-  // Settle ONLY if this canceled deploy is still its owner's current one.
   const settled =
     target.kind === "preview"
       ? await getDb()
@@ -219,8 +205,6 @@ async function markStopped(depId: string, target: DeployTarget): Promise<void> {
   if (settled.length > 0) publishAppChanged(target.appId);
 }
 
-// commitOutcome atomically writes a deployment's terminal outcome UNLESS a "Stop build"
-// already claimed the row.
 export async function commitOutcome(
   depId: string,
   target: DeployTarget,
@@ -230,7 +214,6 @@ export async function commitOutcome(
 ): Promise<boolean> {
   if (!(await setDep(depId, depPatch, { onlyIfNotCanceled: true }))) {
     await markStopped(depId, target);
-    // No alert: a cancel is somebody pressing "Stop build", and they know.
     return false;
   }
   const ok = depPatch.status === "ready";
@@ -247,8 +230,6 @@ export async function commitOutcome(
   dispatchAlert({
     teamId: target.teamId,
     key: ok ? "deployment_succeeded" : "deployment_failed",
-    // A rollback is not "a new version": saying so to a channel would tell the team
-    // something shipped forward at the exact moment somebody undid it.
     title: `${what} ${ok ? (opts.rollback ? "rolled back" : "deployed") : "failed to deploy"}`,
     body: ok
       ? opts.rollback
@@ -260,8 +241,6 @@ export async function commitOutcome(
         ? `/apps/${target.slug}/pull-requests`
         : `/apps/${target.slug}`,
   });
-  // Tell the pull request how its preview ended. Fire-and-forget by contract: a GitHub
-  // failure must never fail a deploy that already succeeded.
   if (target.kind === "preview" && depPatch.status) {
     const kind =
       depPatch.status === "ready"
@@ -274,8 +253,6 @@ export async function commitOutcome(
   return true;
 }
 
-// sweepAfterDeploy drops the superseded images beyond the policy's keep-count on this
-// deploy's server NOW, not at the next nightly sweep.
 export async function sweepAfterDeploy(
   depId: string,
   serverId: string,
@@ -290,8 +267,6 @@ export async function sweepAfterDeploy(
   }
 }
 
-// settleIfCanceled is the read-only cancel check for the pre-build window; the terminal
-// sites use `commitOutcome` (an atomic CAS) instead.
 export async function settleIfCanceled(
   depId: string,
   target: DeployTarget,
@@ -306,12 +281,10 @@ export async function settleIfCanceled(
   return true;
 }
 
-// isInFlightStatus says whether a deployment status is non-terminal - a build was in flight.
 export function isInFlightStatus(s: Deployment["status"]): boolean {
   return s === "queued" || s === "building";
 }
 
-// reconcileInFlightDeployments reconciles deployments orphaned by a control-plane restart.
 export async function reconcileInFlightDeployments(): Promise<number> {
   const db = getDb();
   const orphaned = await db
@@ -347,8 +320,6 @@ export async function reconcileInFlightDeployments(): Promise<number> {
         ),
       );
     for (const appId of affectedApps) publishAppChanged(appId);
-    // One alert per team, not one per deployment: this is a bulk flip that bypasses
-    // commitOutcome entirely, and a restart must not fan out N alerts.
     const perTeam = new Map<string, number>();
     for (const d of orphaned)
       perTeam.set(d.teamId, (perTeam.get(d.teamId) ?? 0) + 1);
@@ -364,6 +335,5 @@ export async function reconcileInFlightDeployments(): Promise<number> {
       `[deplo] reconciled ${orphaned.length} interrupted deployment(s) to error on startup`,
     );
   }
-  // QUEUED deploys are DURABLE across a restart: no build ever started.
   return orphaned.length;
 }

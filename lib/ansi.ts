@@ -72,7 +72,6 @@ function applySgr(state: SgrState, params: number[]): void {
         state.fg = "text-zinc-200";
       }
     }
-    // Background colors (40-47/100-107/48) are ignored: a full-width background looks wrong in a reflowing pane.
   }
 }
 
@@ -80,12 +79,10 @@ const CSI_OR_OSC = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const SGR = /^\x1b\[([0-9;]*)m$/;
 const STRAY = /[\x00-\x08\x0b-\x1f\x7f]/g;
 
-// Strip every ANSI/CSI/OSC escape and stray control char, returning the plain visible text.
 export function stripAnsi(input: string): string {
   return input.replace(CSI_OR_OSC, "").replace(STRAY, "");
 }
 
-// Parse a raw terminal string into styled segments; stateless across calls, so pass the full accumulated buffer.
 export function parseAnsi(input: string): AnsiSegment[] {
   const segments: AnsiSegment[] = [];
   const state = emptyState();

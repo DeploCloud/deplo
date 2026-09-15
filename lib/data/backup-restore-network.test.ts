@@ -21,8 +21,6 @@ import {
 } from "../db/schema/control-plane/projects";
 import { restoreBackup } from "./backups/restore";
 
-// The agent's Reroute prefers the compose inside the ARCHIVE - https://deplo.build/docs/advanced/network-isolation
-
 let db: TestDb;
 let pg: PGlite;
 let calls: { m: string; args: unknown[] }[] = [];

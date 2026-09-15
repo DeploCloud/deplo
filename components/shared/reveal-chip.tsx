@@ -4,14 +4,12 @@ import * as React from "react";
 import { Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// REVEAL_MASK - matches the server-side MASK for secrets in lib/data/env.ts / global-env.ts.
 export const REVEAL_MASK = "••••••••••••";
 
 const OUTER =
   "relative block h-7 w-full rounded-md align-middle ring-1 ring-inset";
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 
-// RevealChip - one covered value with an eye toggle; `locked` never opens, it is a padlock and dots.
 export function RevealChip({
   value = null,
   revealed = false,
@@ -38,7 +36,6 @@ export function RevealChip({
   className?: string;
 }) {
   function handleClick() {
-    // A drag to copy the value ends in a click; don't let that click slam the chip shut.
     if (revealed && (window.getSelection()?.toString().length ?? 0) > 0) return;
     onToggle?.();
   }
@@ -77,7 +74,6 @@ export function RevealChip({
       disabled={pending}
       aria-pressed={revealed}
       aria-label={revealed ? labels.hide : labels.reveal}
-      // The value is nowhere in the DOM until revealed - the title attribute included.
       title={revealed && value !== null ? value : "Click to reveal"}
       className={cn(
         OUTER,

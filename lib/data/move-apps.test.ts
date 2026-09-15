@@ -203,7 +203,6 @@ test("move_apps alone moves a whole selection at once", async () => {
 });
 
 test("filing an app into a folder takes it out of its project, and vice versa", async () => {
-  // An app lives in exactly ONE place (ADR-0009).
   await asMover(() => moveAppToProject(APP, PROJECT));
   await asMover(() => moveAppToFolder(APP, MY_FOLDER));
   const inFolder = await placementOf();

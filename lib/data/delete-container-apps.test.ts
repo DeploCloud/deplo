@@ -140,7 +140,6 @@ test("a project's Delete all apps covers every environment and a folder filed un
     await moveAppToProject("svc_staging", project.id);
     await moveAppToEnvironment("svc_staging", staging.id);
     await moveAppToProject("svc_blog", other.id);
-    // The pre-ADR-0009 shape the project tile still counts: a folder filed under it.
     const legacy = await createFolder("Legacy");
     await seedApp(db, { id: "svc_legacy", teamId: TEAM_A });
     await moveAppToFolder("svc_legacy", legacy.id);

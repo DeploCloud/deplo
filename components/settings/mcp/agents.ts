@@ -27,22 +27,17 @@ export interface AgentDef {
   label: string;
   blurb: string;
   icon: React.ComponentType<{ className?: string }>;
-  // Literal hexes, not tokens: a brand colour is not themeable, so the tile carries its own foreground.
   brand?: { bg: string; fg: string };
   veil?: LogoAccent;
-  // `web` is minted by the OAuth consent screen; `token` carries a `deplo_` bearer the wizard creates.
   kind: "web" | "token";
   file?: string;
   form: "command" | "file";
   language?: string;
   hint: string;
-  // On every entry because these client config formats move.
   docsUrl: string;
-  // `token` is the real secret for a token client, empty for a web one (which never sees a token here).
   snippet: (a: { url: string; token: string }) => string;
 }
 
-// TOKEN_PLACEHOLDER - shown while the wizard has a client picked but no token minted yet.
 export const TOKEN_PLACEHOLDER = "deplo_your_token";
 
 const webSnippet = ({ url }: { url: string }) => url;

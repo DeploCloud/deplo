@@ -5,12 +5,10 @@ import {
   WebAuthnError,
 } from "@simplewebauthn/browser";
 
-// passkeysSupported: whether this browser can do WebAuthn at all. Safe to call during render.
 export function passkeysSupported(): boolean {
   return typeof window !== "undefined" && browserSupportsWebAuthn();
 }
 
-// createPasskeyCredential runs `navigator.credentials.create` with the server's options.
 export async function createPasskeyCredential(
   optionsJSON: unknown,
 ): Promise<unknown> {
@@ -21,7 +19,6 @@ export async function createPasskeyCredential(
   });
 }
 
-// getPasskeyAssertion runs `navigator.credentials.get` with the server's options.
 export async function getPasskeyAssertion(
   optionsJSON: unknown,
 ): Promise<unknown> {
@@ -32,7 +29,6 @@ export async function getPasskeyAssertion(
   });
 }
 
-// passkeyError turns whatever the ceremony threw into one line a person can act on.
 export function passkeyError(e: unknown, panelUrl?: string | null): string {
   const wrongPlace = panelUrl
     ? `Passkeys only work on ${panelUrl}. Open the panel there and try again.`

@@ -9,7 +9,6 @@ import {
 } from "../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 
-// hostPortClaimed - a host port is a singleton on a shared server, so the answer can't depend on who asks.
 export async function hostPortClaimed(
   serverId: string,
   port: number,
@@ -35,7 +34,6 @@ export async function hostPortClaimed(
       and(
         eq(appsTable.serverId, serverId),
         eq(appPortsTable.published, port),
-        // A compose stack publishes only what its own YAML says - these rows are kept for a flip back.
         ne(appsTable.source, "compose"),
       ),
     );

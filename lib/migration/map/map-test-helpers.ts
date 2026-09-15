@@ -26,7 +26,6 @@ export function db(over: Partial<SourceDatabase> = {}): SourceDatabase {
   };
 }
 
-// What the Coolify adapter passes: the platform's name, and the per-resource network it puts every service of one stack on.
 export const COOLIFY_PLATFORM = {
   name: "Coolify",
   networks: ["ewc08w0", "coolify"],

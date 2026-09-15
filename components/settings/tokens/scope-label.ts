@@ -1,4 +1,3 @@
-// scopeLabel - one short phrase for what a token reaches, from its id lists.
 export function scopeLabel(
   token: {
     scoped: boolean;
@@ -16,7 +15,6 @@ export function scopeLabel(
     token.projectIds.length +
     token.folderIds.length +
     token.appIds.length;
-  // Every node it named has been deleted: it reaches nothing and no longer authenticates.
   if (total === 0) return { text: "Nothing left", empty: true };
 
   if (total === 1) {

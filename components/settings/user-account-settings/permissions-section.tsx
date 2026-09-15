@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/accordion";
 import { RowNotice, Section, ToggleRow } from "./section-shell";
 
-// PermissionsSection - the instance-wide grants, with the two narrow ones folded away.
 export function PermissionsSection({
   admin,
   onAdminChange,

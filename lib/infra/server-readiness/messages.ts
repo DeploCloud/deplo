@@ -1,4 +1,3 @@
-// READINESS_MESSAGES - every failure reason string this classifier can produce.
 export const READINESS_MESSAGES = {
   notProvisioned:
     "No agent has been provisioned for this server yet - nothing has called home, so there is nothing on the host to check.",
@@ -27,7 +26,6 @@ export const READINESS_MESSAGES = {
     "No team can deploy to this server: it is restricted, but no team has been granted access.",
 } as const;
 
-// READINESS_HINTS - every remediation this classifier can suggest.
 export const READINESS_HINTS = {
   installAgent:
     "Run the install command on the host (Server actions → Show install command). The agent calls home and provisions itself.",
@@ -41,8 +39,6 @@ export const READINESS_HINTS = {
     "Install Docker on the host, or start it (systemctl start docker), then run this check again.",
   installTraefik:
     "Normal for a database-only or worker host. Otherwise re-run the install command on the host - it brings Traefik up.",
-  // NOT installTraefik: Traefik is already running here, so calling this "normal" would invite
-  // the operator to dismiss the one row explaining why every domain on this host 404s.
   publishWebPorts:
     "Traefik is running but is not publishing the web ports. Check its port bindings on the host, then re-run the install command so it binds them.",
   freeWebPort:
@@ -55,7 +51,6 @@ export const READINESS_HINTS = {
     "Grant a team access (Server actions → Team access), or open the server to all teams.",
 } as const;
 
-// READINESS_DETAILS - interpolating copy; every argument is control-plane-owned, never error text.
 export const READINESS_DETAILS = {
   helloOk:
     "The agent answered a live handshake over its pinned, mutually-authenticated connection.",

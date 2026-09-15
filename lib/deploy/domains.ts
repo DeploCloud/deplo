@@ -9,13 +9,11 @@ import { publicBaseUrl } from "../public-url";
 
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
-// True for a syntactically valid dotted-quad IPv4 string.
 export function isIpv4(s: string): boolean {
   const m = IPV4_RE.exec(s.trim());
   return !!m && m.slice(1).every((o) => Number(o) <= 255);
 }
 
-// True for a loopback (127.0.0.0/8) address.
 export function isLoopbackIp(ip: string): boolean {
   return ip.startsWith("127.");
 }
@@ -32,7 +30,6 @@ function allNicIpv4(): string[] {
   const nets = networkInterfaces();
   for (const key of Object.keys(nets)) {
     for (const a of nets[key] ?? []) {
-      // family is "IPv4" on Node 18+ but was the number 4 on older runtimes.
       const fam = String(a.family);
       if ((fam === "IPv4" || fam === "4") && !a.internal && isIpv4(a.address)) {
         addrs.push(a.address);
@@ -42,10 +39,7 @@ function allNicIpv4(): string[] {
   return addrs;
 }
 
-// The address a container on this instance reaches its own host on: the default route's gateway.
 export function sameMachineHost(): string {
-  // Outside a container the default gateway is the ROUTER, not this box, and calling
-  // that "us" would make a server row for the router read as agent 0.
   try {
     readFileSync("/.dockerenv");
   } catch {
@@ -56,7 +50,6 @@ export function sameMachineHost(): string {
     for (const line of lines) {
       const [, dest, gw, , , , , mask] = line.split(/\s+/);
       if (dest !== "00000000" || mask !== "00000000" || !gw) continue;
-      // Little-endian hex, the way the kernel writes it.
       const n = parseInt(gw, 16);
       const ip = [
         n & 255,
@@ -83,7 +76,6 @@ function warnOnce(key: string, msg: string): void {
   console.warn(`[deplo] ${msg}`);
 }
 
-// Public IPv4 of this Deplo instance: DEPLO_SERVER_IP first, then the first non-internal NIC address.
 export function instanceHost(): string {
   const fromEnv = process.env.DEPLO_SERVER_IP?.trim();
   if (fromEnv) {
@@ -99,9 +91,6 @@ export function instanceHost(): string {
     try {
       const host = new URL(pub).hostname;
       if (isIpv4(host)) return host;
-      // The panel's nip.io host CARRIES this server's IP, so reading it back beats NIC
-      // detection on a multi-homed box; a hostname falls through instead, since it
-      // cannot be encoded as a nip.io label and would mint a host with no A record.
       const embedded = nipEmbeddedIp(host);
       if (embedded) return embedded;
     } catch {}
@@ -119,7 +108,6 @@ export function instanceHost(): string {
   return "127.0.0.1";
 }
 
-// The addresses that identify the control-plane host - the fleet server that also runs Deplo ("agent 0").
 export function deploHostSelfAddresses(): Set<string> {
   const now = Date.now();
   const key = `${process.env.DEPLO_SERVER_IP}|${process.env.DEPLO_PUBLIC_URL}|${publicBaseUrl()}`;
@@ -143,8 +131,6 @@ function computeSelfAddresses(): Set<string> {
     if (s) addrs.add(s);
   };
   add(process.env.DEPLO_SERVER_IP);
-  // Both the address this instance was INSTALLED with and the one it answers on now,
-  // so an operator who moved the panel still recognises their own host.
   for (const pub of [process.env.DEPLO_PUBLIC_URL?.trim(), publicBaseUrl()]) {
     if (!pub) continue;
     try {
@@ -152,14 +138,11 @@ function computeSelfAddresses(): Set<string> {
     } catch {}
   }
   for (const nic of allNicIpv4()) add(nic);
-  // Without the container gateway, the one address that reaches a panel on the same
-  // machine read as a stranger and Deplo asked for a second agent on its own box.
   const gateway = sameMachineHost();
   if (gateway !== "127.0.0.1") add(gateway);
   return addrs;
 }
 
-// Whether `server` is the host running Deplo: one of its addresses matches this instance's own.
 export function isDeploHostServer(
   server: { ip?: string; host?: string },
   self: ReadonlySet<string> = deploHostSelfAddresses(),
@@ -170,7 +153,6 @@ export function isDeploHostServer(
   return (!!ip && self.has(ip)) || (!!host && self.has(host));
 }
 
-// Whether a host compiles for an app whose own build server could not; `null` means the Deplo host.
 export function isBuildFallbackServer(
   server: { buildFallback: boolean | null; ip?: string; host?: string },
   self: ReadonlySet<string> = deploHostSelfAddresses(),
@@ -178,15 +160,12 @@ export function isBuildFallbackServer(
   return server.buildFallback ?? isDeploHostServer(server, self);
 }
 
-// Name of the Traefik ACME cert resolver baked into every router's `tls.certresolver` label.
 export function certResolver(): string {
   return process.env.DEPLO_CERT_RESOLVER?.trim() || "letsencrypt";
 }
 
-// Per-team cap on `letsencrypt` domains: uncapped, one team could exhaust the shared ACME budget.
 export const LETSENCRYPT_DOMAINS_PER_TEAM_CAP = 50;
 
-// Throw when one more `letsencrypt` domain would push a team past the cap.
 export function assertLetsencryptQuota(
   currentCount: number,
   provider: CertProvider | undefined,
@@ -200,12 +179,10 @@ export function assertLetsencryptQuota(
   }
 }
 
-// Name of the Traefik DNS-01 cert resolver used by the `cloudflare` certificate provider.
 export function cloudflareCertResolver(): string {
   return process.env.DEPLO_CLOUDFLARE_CERT_RESOLVER?.trim() || "cloudflare";
 }
 
-// The router TLS triplet for a domain's certificate-provider choice.
 export function domainTlsConfig(domain: {
   entrypoint?: DomainEntrypoint;
   certProvider?: CertProvider;
@@ -230,7 +207,6 @@ export function domainTlsConfig(domain: {
   };
 }
 
-// URL scheme a domain is served on - `http` only for the `none` certificate provider.
 export function domainScheme(domain: {
   certProvider?: CertProvider;
   proxied?: boolean | null;
@@ -238,7 +214,6 @@ export function domainScheme(domain: {
   return domain.proxied || domainTlsConfig(domain).tls ? "https" : "http";
 }
 
-// Whether a blueprint's auto domains are born with a TLS certificate, anchored on the app's own hosts.
 export function blueprintWantsTls(
   hosts: (string | null | undefined)[],
   texts: (string | null | undefined)[],
@@ -254,7 +229,6 @@ export function blueprintWantsTls(
   });
 }
 
-// The IPv4 to use for a server's domains: its recorded IP when usable, else the instance host.
 export function resolveServerIp(server?: { ip?: string }): string {
   if (server?.ip && isIpv4(server.ip) && !isLoopbackIp(server.ip)) {
     return server.ip;
@@ -262,7 +236,6 @@ export function resolveServerIp(server?: { ip?: string }): string {
   return instanceHost();
 }
 
-// `1.2.3.4` to `01020304`: the 8-char hexadecimal of an IPv4, the form nip.io accepts.
 export function ipToHex(ip: string): string {
   return ip
     .trim()
@@ -271,7 +244,6 @@ export function ipToHex(ip: string): string {
     .join("");
 }
 
-// `01020304` back to `1.2.3.4`: inverse of ipToHex, null for anything else.
 export function hexToIp(hex: string): string | null {
   if (!/^[0-9a-f]{8}$/i.test(hex)) return null;
   const ip = [0, 2, 4, 6]
@@ -283,23 +255,19 @@ export function hexToIp(hex: string): string | null {
 const NIP_HEXIP_RE = /-([0-9a-f]{8})\.nip\.io$/i;
 const NIP_HEXIP_EMBEDDED_RE = /-([0-9a-f]{8})\.nip\.io/gi;
 
-// The IPv4 embedded (as hex) in a `<hexip>.nip.io` hostname, or null.
 export function nipEmbeddedIp(name: string): string | null {
   const m = NIP_HEXIP_RE.exec(name.trim());
   return m ? hexToIp(m[1]) : null;
 }
 
-// The address the panel answers on when nobody gave it a domain.
 export function panelFallbackHost(ip = instanceHost()): string {
   return `deplo-${ipToHex(ip)}.nip.io`;
 }
 
-// Replace the embedded IP of a nip.io hostname (no-op for other names).
 export function rehostNip(name: string, ip: string): string {
   return name.replace(NIP_HEXIP_RE, `-${ipToHex(ip)}.nip.io`);
 }
 
-// Rewrite every embedded `<hexip>.nip.io` host inside a free-text string onto `toIp`.
 export function rehostEmbeddedNip(
   value: string,
   fromIp: string,
@@ -312,7 +280,6 @@ export function rehostEmbeddedNip(
   );
 }
 
-// The subset of a template's CreateAppInput whose nip.io hosts must follow the project to its target server.
 export interface BlueprintHosts {
   autoDomain?: string | null;
   extraDomains?:
@@ -321,7 +288,6 @@ export interface BlueprintHosts {
   env?: { key: string; value: string }[];
 }
 
-// Re-host a template's generated nip.io hosts from `fromIp` onto `toIp`. Returns a NEW object.
 export function rehostBlueprintHosts<T extends BlueprintHosts>(
   input: T,
   fromIp: string,
@@ -347,12 +313,10 @@ export function rehostBlueprintHosts<T extends BlueprintHosts>(
   };
 }
 
-// A random `adjective-animal` pair baked between a domain's app prefix and its hex IP.
 export function randomWords(): string {
   return friendlyWords();
 }
 
-// A nip.io hostname that resolves to `ip` with no DNS setup.
 export function nipDomain(
   label: string,
   words: string,
@@ -364,19 +328,16 @@ export function nipDomain(
       .replace(/[^a-z0-9-]/g, "-")
       .replace(/^-+|-+$/g, "");
   const tail = `${clean(words)}-${ipToHex(ip)}`;
-  // A DNS label stops at 63 characters, so the readable half is what gives way.
   const head = clean(label)
     .slice(0, Math.max(1, 62 - tail.length))
     .replace(/-+$/, "");
   return `${head}-${tail}.nip.io`;
 }
 
-// Production domain for a project slug, with freshly-generated words.
 export function productionDomain(slug: string, ip = instanceHost()): string {
   return nipDomain(slug, randomWords(), ip);
 }
 
-// The hostname a pull request preview answers on, and the certificate provider for its router.
 export function previewHost(opts: {
   appId: string;
   slug: string;
@@ -399,7 +360,6 @@ export function previewHost(opts: {
   };
 }
 
-// Whether a string can base a preview hostname: it lands in a Traefik `Host()` rule, so it is refused rather than escaped.
 export function isValidPreviewBaseDomain(base: string): boolean {
   const clean = base
     .trim()

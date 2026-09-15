@@ -26,11 +26,9 @@ export function CodeBlock({
           </span>
         </div>
       )}
-      {/* The scroll area reserves room (pr-12) so a long first line never slides under Copy. */}
       <div className="absolute top-2 right-2 z-10">
         <CopyButton value={code} />
       </div>
-      {/* Bounded box that scrolls on both axes rather than stretching the page. */}
       <pre className="max-h-[60vh] overflow-auto p-4 pr-12 text-xs leading-relaxed">
         <code className="font-mono text-zinc-200">{code}</code>
       </pre>
@@ -38,7 +36,6 @@ export function CodeBlock({
   );
 }
 
-// CommandLine - inline command with copy button, for install one-liners.
 export function CommandLine({
   command,
   truncate,
@@ -56,7 +53,6 @@ export function CommandLine({
       <span className="font-mono text-sm leading-relaxed text-muted-foreground select-none">
         $
       </span>
-      {/* Wrapped (break-all) rather than scrolled, so the whole one-liner stays visible and selectable. */}
       <code
         className={cn(
           "min-w-0 flex-1 font-mono text-sm leading-relaxed text-zinc-200",

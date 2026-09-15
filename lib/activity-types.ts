@@ -22,7 +22,6 @@ import {
 
 import type { ActivityType } from "./types/activity";
 
-// ACTIVITY_TYPES - every kind of event the trail records, in the event filter's order.
 export const ACTIVITY_TYPES: {
   value: ActivityType;
   label: string;
@@ -78,10 +77,8 @@ export const ACTIVITY_TYPES: {
   { value: "mcp", label: "MCP access", group: "Platform", icon: Bot },
 ];
 
-// ACTIVITY_ICON - a type's glyph, as a record React can read rather than call.
 export const ACTIVITY_ICON: Record<string, LucideIcon> = Object.fromEntries(
   ACTIVITY_TYPES.map((t) => [t.value, t.icon]),
 );
 
-// UNKNOWN_ACTIVITY_ICON - the glyph for a value an older build wrote and this one has no name for.
 export const UNKNOWN_ACTIVITY_ICON = ActivityIcon;

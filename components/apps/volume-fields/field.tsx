@@ -6,7 +6,6 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import type { DocsTopic } from "@/lib/docs";
 import { cn } from "@/lib/utils";
 
-// Field is a labelled input whose help lives in the label's tooltip, never below it.
 export function Field({
   label,
   optional,

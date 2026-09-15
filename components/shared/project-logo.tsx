@@ -5,7 +5,6 @@ import { Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { plateClass } from "@/components/templates/veil";
 
-// AppLogo - an app's display avatar: its own logo when set, otherwise a generic glyph.
 export function AppLogo({
   logo,
   tone,
@@ -27,7 +26,6 @@ export function AppLogo({
   );
 }
 
-// LogoImage - the avatar tile itself, shared by every resource that has a display logo.
 export function LogoImage({
   src,
   size = 36,
@@ -40,7 +38,6 @@ export function LogoImage({
   fallback: React.ReactNode;
 }) {
   const [broken, setBroken] = React.useState(false);
-  // A new source deserves a fresh attempt: otherwise a replaced logo shows the fallback until a remount.
   const [triedSrc, setTriedSrc] = React.useState(src);
   if (triedSrc !== src) {
     setTriedSrc(src);

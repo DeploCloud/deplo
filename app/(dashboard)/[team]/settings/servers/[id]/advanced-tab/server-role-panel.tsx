@@ -18,14 +18,11 @@ import { BetaChip } from "@/components/shared/beta-chip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "../server-detail-tabs";
 
-// ServerRolePanel: it runs apps, or it only builds, or it only holds backups.
 export function ServerRolePanel({ server }: { server: ServerSummary }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [role, setRole] = React.useState(server.role);
 
-  // `dockerVersion` is only ever non-empty because an agent reported one, so it is
-  // the honest signal that this install has no Docker to become anything else with.
   const stuckOnStorage = server.role === "storage" && !server.dockerVersion;
 
   function save(e: React.FormEvent) {
@@ -52,8 +49,6 @@ export function ServerRolePanel({ server }: { server: ServerSummary }) {
     });
   }
 
-  // Saying "move them off first" only helps ahead of the refusal, so it is shown
-  // while the choice is still unsaved - not after the server has said no.
   const needsEmptying = role !== "everything" && server.role === "everything";
 
   return (
@@ -74,7 +69,6 @@ export function ServerRolePanel({ server }: { server: ServerSummary }) {
           <ServerRoleOptions
             value={role}
             onChange={setRole}
-            // A host installed without Docker can only hold backups.
             disabled={(r: ServerRole) =>
               r === "storage" ? pending : pending || stuckOnStorage
             }

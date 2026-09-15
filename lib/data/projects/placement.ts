@@ -22,7 +22,6 @@ import { inProjectScope } from "../../auth/request-context";
 import { appInScope } from "../node-scope";
 import { assertContainerNotMigrating } from "../migration-guard";
 
-// defaultEnvironmentFor - a project's default environment (else first by position).
 export async function defaultEnvironmentFor(
   projectId: string,
 ): Promise<{ id: string; name: string } | null> {
@@ -42,8 +41,6 @@ export async function defaultEnvironmentFor(
   return { id: def.id, name: def.name };
 }
 
-// moveAppToProject - lands in the project's DEFAULT environment (ADR-0009), or
-// back to the top level (`null`).
 export async function moveAppToProject(
   appId: string,
   projectId: string | null,
@@ -63,8 +60,6 @@ export async function moveAppToProject(
   )[0];
   if (!s) throw new Error("App not found");
   if ((s.projectId ?? null) === projectId) return;
-  // The destination, BOTH branches. Two messages, because they answer different
-  // questions.
   if (
     !appInScope(await currentMemberScope(), {
       id: appId,
@@ -93,11 +88,7 @@ export async function moveAppToProject(
         )
         .limit(1)
     )[0];
-    // The DESTINATION, which was only ever checked against the team: a caller who
-    // reaches part of the team could file an app into a project outside its scope.
     if (!p || !inProjectScope(projectId)) throw new Error("Project not found");
-    // The DESTINATION is a row too: a migration still writing this project owns
-    // what lands in it until it finishes.
     await assertContainerNotMigrating("project", projectId);
     const env = await defaultEnvironmentFor(projectId);
     environmentId = env?.id ?? null;
@@ -119,14 +110,11 @@ export async function moveAppToProject(
       })
       .where(eq(appsTable.id, appId));
   });
-  // A different Environment is a different network: bring the stack up again on it.
   await reapplyNetworkAfterMove([appId]);
   await warnLostNeighbours(appId, s.name, { teamId, environmentId });
   await recordActivity("project", msg, userName, appId, teamId);
 }
 
-// moveAppToEnvironment - the app's project follows the environment; entering also
-// leaves any folder. No-op when already there.
 export async function moveAppToEnvironment(
   appId: string,
   environmentId: string,
@@ -163,8 +151,6 @@ export async function moveAppToEnvironment(
       .where(eq(environmentsTable.id, environmentId))
       .limit(1)
   )[0];
-  // The DESTINATION, asked the way the app itself would be asked if it already lived
-  // there - `appInScope`, not `projectInScope`.
   if (
     !env ||
     env.teamId !== teamId ||
@@ -177,10 +163,7 @@ export async function moveAppToEnvironment(
     })
   )
     throw new Error("Environment not found");
-  // The DESTINATION is a row too - see moveAppToProject.
   await assertContainerNotMigrating("environment", environmentId);
-  // Check and write under one lock: apart, two concurrent moves both read the name
-  // as free and both take it.
   await withNetworkLock({ teamId, environmentId: env.id }, async () => {
     await assertAppNamesFreeAt(appId, teamId, env.id);
     await getDb()
@@ -204,8 +187,6 @@ export async function moveAppToEnvironment(
   );
 }
 
-// The names this app answers to must be free on the network it is moving ONTO -
-// moving is the other way to create the overlap creating either side is checked for.
 async function assertAppNamesFreeAt(
   appId: string,
   teamId: string,
@@ -231,9 +212,6 @@ async function assertAppNamesFreeAt(
   });
 }
 
-// Record what a placement change took out of reach: moving apps into a Project
-// leaves a top-level database behind and drops the app on its next deploy.
-// Never refuses: the detector is a heuristic, and a move is the user's call.
 async function warnLostNeighbours(
   appId: string,
   appName: string,
@@ -249,7 +227,5 @@ async function warnLostNeighbours(
       appId,
       to.teamId,
     );
-  } catch {
-    // A warning that could not be produced must never fail the move.
-  }
+  } catch {}
 }

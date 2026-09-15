@@ -31,7 +31,6 @@ test("a multi-team token names the other teams it takes down", () => {
 });
 
 test("revoking your own token from outside its reach names its teams too", () => {
-  // The tokens page lists every token you minted, so the active team may be one it never touched.
   const text = revokeDescription({
     teams: [B, C],
     activeTeamId: A.id,
@@ -41,7 +40,6 @@ test("revoking your own token from outside its reach names its teams too", () =>
 });
 
 test("an unscoped token has no stored teams to name", () => {
-  // Its reach is "every team the creator belongs to", resolved live.
   const text = revokeDescription({
     teams: [],
     activeTeamId: A.id,

@@ -1,6 +1,5 @@
 import type { CertProvider, DomainStatus } from "../types/domain";
 
-/** Cloudflare's published proxy IPv4 ranges. */
 export const CLOUDFLARE_IPV4_RANGES = [
   "173.245.48.0/20",
   "103.21.244.0/22",
@@ -19,7 +18,6 @@ export const CLOUDFLARE_IPV4_RANGES = [
   "131.0.72.0/22",
 ] as const;
 
-/** Cloudflare's published proxy IPv6 ranges. */
 export const CLOUDFLARE_IPV6_RANGES = [
   "2400:cb00::/32",
   "2606:4700::/32",
@@ -55,7 +53,6 @@ function inV4Cidr(ipInt: number, cidr: string): boolean {
   return (ipInt & mask) >>> 0 === (baseInt & mask) >>> 0;
 }
 
-// IPv4-mapped tails are not needed for Cloudflare's ranges, so they are treated as invalid.
 function ipv6ToBigInt(ip: string): bigint | null {
   const raw = ip.trim();
   if (!raw.includes(":")) return null;
@@ -70,7 +67,6 @@ function ipv6ToBigInt(ip: string): bigint | null {
     halves.length === 2
       ? [...head, ...Array(missing).fill("0"), ...tail]
       : head;
-  // BigInt(...) calls, not `0n` literals: that syntax needs ES2020 and this project targets ES2017.
   let n = BigInt(0);
   for (const g of groups) {
     if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null;
@@ -91,7 +87,6 @@ function inV6Cidr(ipInt: bigint, cidr: string): boolean {
   return (ipInt & mask) === (baseInt & mask);
 }
 
-/** Whether `ip` belongs to one of Cloudflare's published proxy ranges. */
 export function isCloudflareIp(ip: string): boolean {
   if (ip.includes(":")) {
     const v6 = ipv6ToBigInt(ip);
@@ -101,11 +96,8 @@ export function isCloudflareIp(ip: string): boolean {
   return v4 !== null && CLOUDFLARE_IPV4_RANGES.some((c) => inV4Cidr(v4, c));
 }
 
-// `cloudflare` is plausible but unverified, never confirmed: the domain may just as well be forwarded to somebody else's server.
-/** The three outcomes of classifying a domain's resolved A records against the server it should point at. */
 export type DomainDnsClass = "valid" | "cloudflare" | "misconfigured";
 
-/** Classify a domain's resolved A records against the `target` server IP it must point at. */
 export function classifyDomainDns(
   resolvedIps: string[],
   target: string,
@@ -115,23 +107,19 @@ export function classifyDomainDns(
   return "misconfigured";
 }
 
-/** The settled DNS status plus the user's own "something else answers for this hostname" declaration. */
 export interface DomainReach {
   status: DomainStatus;
   proxied?: boolean | null;
 }
 
-/** Whether something answers for the hostname in FRONT of this server - detected or declared. */
 export function isProxiedDomain(d: DomainReach): boolean {
   return d.status === "cloudflare" || d.proxied === true;
 }
 
-/** Whether a domain gets a Traefik router at all: DNS points straight here, or a proxy answers for it. */
 export function isRoutableDomain(d: DomainReach): boolean {
   return d.status === "valid" || isProxiedDomain(d);
 }
 
-/** The ONE place the "proxied ⇒ Cloudflare issues the certificate" rule lives. */
 export function certProviderForDns<T extends CertProvider | undefined>(
   status: DomainStatus,
   current: T,

@@ -16,7 +16,6 @@ export interface Outcome {
   error?: string;
 }
 
-// gql sends one document as `userId`, exactly as /api/graphql would build the context.
 export async function gql(
   userId: string,
   query: string,
@@ -38,8 +37,6 @@ export async function gql(
     }));
     return await runGraphql(query, variables, ctx);
   } catch (e) {
-    // The context itself refuses (an unmet 2FA mandate, not a member): the
-    // request never reaches the schema, which is what the route does too.
     return { data: null, error: (e as Error).message };
   }
 }
@@ -49,7 +46,6 @@ const REFUSAL =
 
 export type Verdict = "allowed" | "refused" | "blocked";
 
-// "blocked" is the lab's missing host: the gate was passed and the dial failed.
 export function verdict(r: Outcome): Verdict {
   if (!r.error) return "allowed";
   if (REFUSAL.test(r.error)) return "refused";
@@ -68,26 +64,22 @@ export function passed(r: Outcome, why: string): void {
   assert.notEqual(verdict(r), "refused", `${why} - refused: ${r.error}`);
 }
 
-// appLookup is what `app(slug:)` answered: the id, or null for "not found".
 export function appLookup(r: Outcome): string | null {
   assert.equal(r.error, undefined, r.error);
   return (r.data as { app: { id: string } | null }).app?.id ?? null;
 }
 
-// ids are the ids a list query answered with.
 export function ids(r: Outcome, field: string): string[] {
   assert.equal(r.error, undefined, r.error);
   const rows = (r.data as Record<string, { id: string }[] | null>)[field];
   return (rows ?? []).map((x) => x.id).sort();
 }
 
-// field is what a mutation answered with, asserting it did not fail.
 export function field<T>(r: Outcome, name: string): T {
   assert.equal(r.error, undefined, r.error);
   return (r.data as Record<string, T>)[name];
 }
 
-// An app made to be deleted, so a teardown landing later never touches a fixture.
 export async function throwawayApp(
   userId: string,
   name: string,
@@ -98,7 +90,6 @@ export async function throwawayApp(
   ).id;
 }
 
-// mintToken mints a token as `userId` and hands back the grant a bearer request would carry.
 export async function mintToken(
   userId: string,
   input: Record<string, unknown>,

@@ -2,7 +2,6 @@
 
 import { Checkbox } from "@/components/ui/checkbox";
 
-// DeleteAppsOption - the "Delete all apps" opt-in on a folder or project delete dialog.
 export function DeleteAppsOption({
   checked,
   onChange,

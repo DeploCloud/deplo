@@ -15,7 +15,6 @@ export interface FilterableLogLine {
   text: string;
 }
 
-// LogFilterState - `levels: []` means every level: an empty pick is the absence of a filter, not one that excludes all.
 export interface LogFilterState {
   q: string;
   levels: string[];
@@ -23,7 +22,6 @@ export interface LogFilterState {
 
 export const EMPTY_LOG_FILTERS: LogFilterState = { q: "", levels: [] };
 
-// RUNTIME_LEVELS - `command` is producer-only and nothing infers it, so it is not offered here.
 export const RUNTIME_LEVELS: LogLevel[] = [
   "error",
   "warn",
@@ -32,7 +30,6 @@ export const RUNTIME_LEVELS: LogLevel[] = [
   "debug",
 ];
 
-// BUILD_LEVELS - most-severe first, so the menu reads as a scale.
 export const BUILD_LEVELS: LogLevel[] = [
   "error",
   "warn",
@@ -57,7 +54,6 @@ function levelFacet(levels: LogLevel[]): EnvFacet<FilterableLogLine> {
   };
 }
 
-// Raw text first because it almost always answers; stripping ANSI only catches a needle straddling an escape.
 function matchesQuery(text: string, needle: string): boolean {
   return (
     text.toLowerCase().includes(needle) ||
@@ -65,7 +61,6 @@ function matchesQuery(text: string, needle: string): boolean {
   );
 }
 
-// Not `useEnvFilters`: that hook wants a `key` and an `updatedAt` a log line does not have.
 export function useLogFilters<T extends FilterableLogLine>(
   rows: T[],
   levels: LogLevel[] = RUNTIME_LEVELS,
@@ -76,7 +71,6 @@ export function useLogFilters<T extends FilterableLogLine>(
   const needle = state.q.trim().toLowerCase();
   const picked = state.levels;
 
-  // Split out from the level pass because each count must be "how many would picking this level leave".
   const searched = React.useMemo(
     () => (needle ? rows.filter((r) => matchesQuery(r.text, needle)) : rows),
     [rows, needle],
@@ -106,7 +100,6 @@ export function useLogFilters<T extends FilterableLogLine>(
     shown,
     counts,
     filtering: needle !== "" || picked.length > 0,
-    // For `LogRow`'s `highlight`: trimmed, but not lowercased.
     highlight: state.q.trim(),
   };
 }
@@ -147,7 +140,6 @@ export function LogLevelFilter({
   onChange: (values: string[]) => void;
   className?: string;
 }) {
-  // `FacetMenu`'s trigger is `flex-1` and would eat the row, so its width is pinned here.
   return (
     <div className={cn("flex w-36 shrink-0 items-center", className)}>
       <FacetMenu

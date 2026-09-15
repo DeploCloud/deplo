@@ -4,7 +4,6 @@ import { plateClass, veilProps } from "@/components/templates/veil";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import { cn } from "@/lib/utils";
 
-// LogoTile - the one renderer for a template's logo on every surface: washed in its own colour, plated when the mark would vanish into the theme.
 export function LogoTile({
   src,
   accent,
@@ -14,9 +13,7 @@ export function LogoTile({
 }: {
   src: string | null;
   accent?: LogoAccent;
-  // Tile edge in px.
   size: number;
-  // Logo edge in px, ~2/3 of the tile.
   logoSize: number;
   className?: string;
 }) {

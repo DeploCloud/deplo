@@ -20,8 +20,6 @@ import type { RunCredential, RunRow } from "./runner-state";
 import { panelNameFor } from "./runner-state";
 import { stopped } from "./stop";
 
-// Nothing is created until every machine this run reads from ANSWERS: the
-// install step's proof has an age, and a resumed run may be hours old.
 async function assertMachinesAnswer(row: RunRow): Promise<void> {
   const ids = new Set(
     (
@@ -54,8 +52,6 @@ interface ProjectGroup {
   placements: ServicePlacement[];
 }
 
-// A project with nothing IN it on the panel. Left out silently, it read as a
-// project that vanished between the scan and the report.
 async function noteEmptyProjects(row: RunRow, c: RunCredential): Promise<void> {
   let projects;
   try {
@@ -122,14 +118,11 @@ async function pendingGroups(runId: string): Promise<ProjectGroup[]> {
     }
     g.rowIds.push(r.id);
     g.serviceIds.push(r.serviceId);
-    // Only a placement with a server is one: anything without one falls back to
-    // the machine-wide choice in `migration_run_servers`.
     if (r.serverId)
       g.placements.push({
         serviceId: r.serviceId,
         serverId: r.serverId,
         buildServerId: r.buildServerId,
-        // Absent unless the review actually decided it - see `exposedPortSet`.
         ...(r.exposedPortSet ? { exposedPort: r.exposedPort } : {}),
       });
   }
@@ -157,15 +150,10 @@ export async function runConfigPhase(
       .where(eq(runServersTable.runId, row.id))
   ).map((r) => ({ from: r.fromId, to: r.toId }));
 
-  // Two in a row is the line. One project failing is a hiccup; two is the
-  // situation, and a report where nothing came across is what this must avoid.
   let inARow = 0;
   let done = row.doneSteps;
 
   await noteEmptyProjects(row, c);
-  // A key belongs to ONE organization, and neither panel's API will list the
-  // others - so a second tenant's whole estate is absent from a report that
-  // reads complete.
   await appendRunItem(row.id, panelNameFor(row), {
     path: "{panel}",
     sourceKind: "organization",
@@ -211,15 +199,11 @@ export async function runConfigPhase(
     await setProgress(row.id, { doneSteps: done });
   }
 
-  // Read the RUN's own counter rather than a local tally: a resumed run did some
-  // of its creating in an earlier process.
   const [after] = await getDb()
     .select({ created: runsTable.created, skipped: runsTable.skipped })
     .from(runsTable)
     .where(eq(runsTable.id, row.id))
     .limit(1);
-  // A skip is a service that is ALREADY here, which is what a second run looks
-  // like. Read as nothing, it reverted the run and took the agent off the source.
   if ((after?.created ?? 0) === 0 && (after?.skipped ?? 0) === 0)
     throw new Error(
       "Nothing came across, so Deplo stopped before touching any data. The report says what refused.",

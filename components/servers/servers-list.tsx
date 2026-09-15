@@ -27,15 +27,12 @@ import {
 
 export type ServerListItem = {
   id: string;
-  // Name, host and IP, lowercased - everything the search box matches on.
   search: string;
   use: ServerUse;
-  // Card and row are rendered on the server, so the cards stay RSC.
   card: React.ReactNode;
   row: React.ReactNode;
 };
 
-// ServersList shows the fleet, searchable and filtered by what each server is for.
 export function ServersList({ items }: { items: ServerListItem[] }) {
   const [query, setQuery] = React.useState("");
   const [use, setUse] = React.useState<ServerUse | "all">("all");
@@ -48,7 +45,6 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
 
   return (
     <div className="space-y-4">
-      {/* One server needs no search box. */}
       {items.length > 1 && (
         <ListToolbar
           query={query}

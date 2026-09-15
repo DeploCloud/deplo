@@ -33,8 +33,6 @@ const DELETE_ALL = `mutation ($appId: ID, $serverId: ID, $status: String) { dele
 const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID, $status: String) { cancelAllDeployments(appId: $appId, serverId: $serverId, status: $status) }`;
 const CANCEL_ONE = `mutation ($id: String!) { cancelDeployment(id: $id) }`;
 
-// DeploymentsTable is the deployments history with multi-select DELETION. Only
-// FINISHED deployments are selectable; an in-progress one must be canceled first.
 export function DeploymentsTable({
   deployments,
   header,
@@ -46,29 +44,16 @@ export function DeploymentsTable({
   canRollbackApps = false,
 }: {
   deployments: DeploymentRow[];
-  /** Title/subtitle block rendered on the left of the header row, opposite the
-   *  bulk-action buttons. Plain markup - passed straight through from the RSC page. */
   header?: React.ReactNode;
-  /** Rendered LAST in the header row's right-hand cluster, after the bulk
-   *  actions - a way to the settings page belongs past the buttons that act on
-   *  this one. */
   actions?: React.ReactNode;
-  /** Show the owning-app column (the global page). Off on an app's page. */
   showApp?: boolean;
-  /** Show the owning-server column + Server/App filters (the global page). */
   showServer?: boolean;
-  /** Scope the bulk sweeps to this app; omit to scope across the whole team. */
   scopeAppId?: string;
-  /** Whether to show the delete affordances (cosmetic - server re-checks). */
   canManage: boolean;
-  /** Whether the viewer holds `rollback_apps`. Its own permission, so it is its
-   *  own prop: the Rollback item greys out rather than vanishing. */
   canRollbackApps?: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
-  // Deleted deployments leave the table on the click - one row, the selection, or a
-  // whole filtered sweep.
   const {
     visible: remaining,
     remove,
@@ -78,8 +63,6 @@ export function DeploymentsTable({
   const [deleteAllOpen, setDeleteAllOpen] = React.useState(false);
   const [cancelAllOpen, setCancelAllOpen] = React.useState(false);
 
-  // Live Status chips: overlays the in-flight build's status onto its row so the
-  // badge tracks queued → building → ready/error without a reload (both pages).
   const liveStatusOf = useLiveDeploymentStatuses(deployments);
   const filters = useDeploymentFilters({
     deployments,
@@ -109,8 +92,6 @@ export function DeploymentsTable({
         .map((d) => d.id),
     [visible],
   );
-  // In-progress (queued/building) deployments in the visible scope - the "Stop all
-  // builds" targets. The server re-derives the real set (and honors folder caps).
   const inProgressCount = React.useMemo(
     () => visible.filter((d) => IN_PROGRESS.has(d.status)).length,
     [visible],
@@ -120,8 +101,6 @@ export function DeploymentsTable({
     [selectableIds],
   );
 
-  // Keep the selection honest across refreshes and filter changes: drop ids that are
-  // gone, filtered out, or no longer selectable (e.g. a row that started building).
   const effectiveSelected = React.useMemo(
     () => [...selected].filter((id) => selectableSet.has(id)),
     [selected, selectableSet],
@@ -165,14 +144,9 @@ export function DeploymentsTable({
   }
 
   async function deleteAll() {
-    // The sweep's scope IS the selectable rows in view, so they all go now; a
-    // refusal puts them back and the refresh settles anything in between.
     const swept = selectableIds;
     swept.forEach(remove);
     setSelected(new Set());
-    // Search and Created narrow the view but have no sweep argument, so with
-    // either active the button deletes the ids in view instead - "Delete all"
-    // must never reach a row the filters are hiding.
     const res = hasClientNarrower
       ? await gqlAction<{ deleteDeployments: number }, number>(
           DELETE_DEPLOYMENTS,
@@ -200,8 +174,6 @@ export function DeploymentsTable({
   }
 
   async function cancelAll() {
-    // Same reason as `deleteAll`: with a client-only narrower active the sweep
-    // args can't express the view, so each build in view is stopped by id.
     if (hasClientNarrower) {
       const ids = visible
         .filter((d) => IN_PROGRESS.has(d.status))
@@ -232,9 +204,6 @@ export function DeploymentsTable({
       (d) => d.cancelAllDeployments,
     );
     if (res.ok) {
-      // Outcome-only copy: the server returns how many were ACTUALLY stopped, which
-      // can be 0 either because they finished in the gap or because they sit in
-      // folders the caller can't manage (silently skipped). Don't assert none existed.
       toast.success(`Stopped ${res.data} build${res.data === 1 ? "" : "s"}`);
       router.refresh();
     }
@@ -358,8 +327,6 @@ export function DeploymentsTable({
         </Table>
       </Card>
 
-      {/* Endless scroll: the sentinel loads the next batch as it nears the fold,
-          and the count says where you are in the filtered set. */}
       {(hasMore || paged.length > PAGE_SIZE) && (
         <div className="flex items-center justify-center">
           <div ref={sentinelRef} aria-hidden className="h-px w-px" />

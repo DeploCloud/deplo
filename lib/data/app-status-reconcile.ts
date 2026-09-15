@@ -13,7 +13,6 @@ import { reportAppHealth } from "../notify/apps";
 
 const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
 
-// Keying strictly on `state` would switch this off for part of a mixed-version fleet.
 export function telemetrySaysRunning(
   stats: readonly PbContainerStat[],
 ): boolean {
@@ -22,9 +21,6 @@ export function telemetrySaysRunning(
   return stats.some((s) => (s.state ? s.state === "running" : s.running));
 }
 
-// Clear `error` off every App on `serverId` that this frame proves is running.
-// Unconditional on purpose: 5 of the 8 writers of this column are too, so a
-// read-then-decide would lose every race with a deploy landing in the gap.
 export async function reconcileAppStatusFromTelemetry(
   serverId: string,
   byProject: ReadonlyMap<string, readonly PbContainerStat[]>,
@@ -74,7 +70,6 @@ export async function reconcileAppStatusFromTelemetry(
     }
     return corrected.map((r) => r.id);
   } catch (e) {
-    // Best-effort: a DB blip must never take down the telemetry stream.
     console.error("[deplo] reconcileAppStatusFromTelemetry failed:", e);
     return [];
   }

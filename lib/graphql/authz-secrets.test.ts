@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
 import { graphql, isNonNullType } from "graphql";
 
-// Set BEFORE the data modules load: the deploy hook otherwise reaches for request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -111,12 +110,10 @@ async function readAs(userId: string, doc: string): Promise<string> {
       identity: null,
     };
     const result = await graphql({ schema, source: doc, contextValue: ctx });
-    // The whole payload, errors included: a message quoting the value is a leak too.
     return JSON.stringify(result);
   });
 }
 
-// Real fixture ids wherever an argument names one: a sweep of unreachable ids proves nothing.
 function everyQueryDocument(): { name: string; doc: string }[] {
   const query = schema.getQueryType()!;
   const docs: { name: string; doc: string }[] = [];

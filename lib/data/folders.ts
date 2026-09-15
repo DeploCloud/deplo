@@ -53,7 +53,6 @@ function summarizeFolder(
   };
 }
 
-// The id of `folderId` plus every folder nested anywhere beneath it.
 export function descendantFolderIds(
   folderId: string,
   folders: Pick<Folder, "id" | "parentId">[],
@@ -77,7 +76,6 @@ export function descendantFolderIds(
   return out;
 }
 
-// Roll DIRECT per-folder app counts up the tree so each total covers the WHOLE subtree.
 export function rollUpAppCounts(
   folders: Pick<Folder, "id" | "parentId">[],
   direct: Map<string, number>,
@@ -87,7 +85,6 @@ export function rollUpAppCounts(
   for (const f of folders) {
     const n = direct.get(f.id) ?? 0;
     if (n === 0) continue;
-    // The seen-set breaks stale cycles.
     const seen = new Set<string>();
     let cur: Pick<Folder, "id" | "parentId"> | undefined = f;
     while (cur && !seen.has(cur.id)) {
@@ -109,7 +106,6 @@ async function teamFoldersWithCounts(teamId: string): Promise<{
     .from(foldersTable)
     .where(eq(foldersTable.teamId, teamId));
   const folders = folderRows.map(assembleFolder);
-  // Rolled up the tree: the Overview shows one level, so a parent over populated subfolders must not read empty.
   const projRows = await getDb()
     .select({ folderId: appsTable.folderId })
     .from(appsTable)
@@ -129,7 +125,6 @@ async function teamFoldersWithCounts(teamId: string): Promise<{
   return { folders, appCounts, subfolderCounts };
 }
 
-// Folders in the active team, in the team-wide manual order, newest-first otherwise.
 export const listFolders = cache(async function listFolders(): Promise<
   FolderSummary[]
 > {
@@ -137,13 +132,10 @@ export const listFolders = cache(async function listFolders(): Promise<
   const { folders, appCounts, subfolderCounts } =
     await teamFoldersWithCounts(teamId);
   const rank = await folderOrderRank(teamId);
-  // Only surface folders the caller may SEE: owned, granted, or all of them for a super-user.
   const visible = await visibleFolderIds(teamId);
   const granted =
     visible === "all" ? folders : folders.filter((f) => visible.has(f.id));
-  // …and only the ones a narrowed API token reaches; its `folderIds` are already flattened.
   const seen = granted.filter((f) => inFolderScope(f.id));
-  // Recompute over the VISIBLE set: a folder must not disclose child folders the caller can't see.
   const shownSubfolderCounts =
     visible === "all"
       ? subfolderCounts
@@ -184,7 +176,6 @@ export function cleanName(name: string): string {
   return trimmed;
 }
 
-// Reconcile a client order against the authoritative id set, so the stored order stays total.
 export function mergeOrder(orderedIds: string[], allIds: string[]): string[] {
   const valid = new Set(allIds);
   const seen = new Set<string>();
@@ -208,7 +199,6 @@ export async function createFolder(
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
   const cleanColor = color ? normalizeHexColor(color) : null;
-  // An unknown/foreign/invisible parent is rejected: a stale client can't nest under someone else's folder.
   if (parentId) {
     if (
       !(await folderInTeam(parentId, teamId)) ||
@@ -272,7 +262,6 @@ export async function renameFolder(id: string, name: string): Promise<void> {
     "organize_folders",
   );
   const clean = cleanName(name);
-  // Verify existence only when nothing changed, so a rename-to-same-name doesn't error.
   const updated = await getDb()
     .update(foldersTable)
     .set({ name: clean, updatedAt: nowIso() })
@@ -297,7 +286,6 @@ export async function renameFolder(id: string, name: string): Promise<void> {
   );
 }
 
-// Set (or clear, with `null`) a folder's accent colour; no-op when unchanged.
 export async function setFolderColor(
   id: string,
   color: string | null,
@@ -330,12 +318,10 @@ export async function setFolderColor(
   );
 }
 
-// Move a folder under a new parent, or to the top level when `parentId` is null.
 export async function moveFolder(
   id: string,
   parentId: string | null,
 ): Promise<void> {
-  // Seeing the destination parent too, so a user can't file a folder under one they can't use.
   const { teamId, userName } = await requireFolderCapability(
     id,
     "organize_folders",
@@ -375,8 +361,6 @@ export async function deleteFolder(
     id,
     "delete_folders",
   );
-  // Before the folder row goes, while its apps still resolve THROUGH it (ADR-0016).
-  // Imported lazily: apps.ts imports this module, so a static import would close the cycle.
   if (opts.deleteApps) {
     const { deleteAppsIn } = await import("./apps/bulk");
     await deleteAppsIn({ folderId: id });
@@ -400,20 +384,16 @@ export async function deleteFolder(
       .where(
         and(eq(foldersTable.teamId, teamId), eq(foldersTable.parentId, id)),
       );
-    // The team_folder_order row CASCADEs when the folder row is deleted.
     await tx.delete(foldersTable).where(eq(foldersTable.id, id));
     return f.name;
   });
-  // Outside the transaction: recordActivity's own connection deadlocks against an open tx on pglite.
   await recordActivity("app", `Deleted folder ${name}`, userName, null, teamId);
 }
 
-// Move an app into a folder, or back to the top level when `folderId` is null.
 export async function moveAppToFolder(
   appId: string,
   folderId: string | null,
 ): Promise<void> {
-  // The SOURCE gate covering every placement: the ladder resolves the app through folder, project, membership (ADR-0016).
   const { teamId } = await requireAppCapability(appId, "move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const proj = await getDb()
@@ -443,12 +423,10 @@ export async function moveAppToFolder(
     if (p.folderId == null) return;
     msg = `Moved ${p.name} out of its folder`;
   }
-  // Check and write under one lock, or two concurrent moves both read the name as free.
   await withNetworkLock({ teamId, environmentId: null }, async () => {
     if (folderId) await assertAppNamesFreeAtTeamLevel([appId], teamId);
     await getDb()
       .update(appsTable)
-      // An app lives in ONE place: filing it into a folder pulls it out of any project/environment (ADR-0009).
       .set({
         folderId,
         ...(folderId ? { projectId: null, environmentId: null } : {}),
@@ -456,13 +434,11 @@ export async function moveAppToFolder(
       })
       .where(eq(appsTable.id, appId));
   });
-  // The placement IS the network, so the stack has to be brought up again to follow.
   await reapplyNetworkAfterMove([appId]);
   await warnLostNeighbours([appId], teamId, folderId ? null : null);
   if (msg) await recordActivity("app", msg, userName, appId, teamId);
 }
 
-// Move SEVERAL apps into a folder (or to the top level) in one write; returns how many moved.
 export async function moveAppsToFolder(
   appIds: string[],
   folderId: string | null,
@@ -500,7 +476,6 @@ export async function moveAppsToFolder(
     .filter((p) => (p.folderId ?? null) !== folderId)
     .map((p) => p.id);
   if (toMove.length === 0) return 0;
-  // The same source gate as the single move, batched: `move_apps` ON EACH APP.
   const reach = await appCapabilitiesForTeam(
     teamId,
     owned
@@ -513,20 +488,16 @@ export async function moveAppsToFolder(
       })),
   );
   for (const id of toMove) {
-    // Same message an unknown id gets: a refusal never spells out which ones they may not move.
     if (!(reach.get(id) ?? []).includes("move_apps"))
       throw new Error("App not found");
   }
-  // The check the batched gate cannot make: it skips `requireAppCapability`, where a migrating app is refused.
   for (const p of owned)
     if (toMove.includes(p.id))
       assertNotMigrating("app", p.name, p.migrationRunId);
-  // Checked for the whole selection before the single write, so a clash refuses instead of half-applying.
   await withNetworkLock({ teamId, environmentId: null }, async () => {
     if (folderId) await assertAppNamesFreeAtTeamLevel(toMove, teamId);
     await getDb()
       .update(appsTable)
-      // Same one-home rule as the single move: filing into a folder leaves the project/environment (ADR-0009).
       .set({
         folderId,
         ...(folderId ? { projectId: null, environmentId: null } : {}),
@@ -547,9 +518,7 @@ export async function moveAppsToFolder(
   return toMove.length;
 }
 
-// Persist the team-wide order of folders in the Overview grid.
 export async function reorderFolders(orderedIds: string[]): Promise<void> {
-  // A TEAM-WIDE setting, so a lone folder owner can't define it - gate on the super-user role.
   const { teamId } = await requireMembership();
   if (!(await isInstanceAdmin()) && !(await hasCapability("manage_team")))
     throw new Error("You don't have permission to reorder folders");
@@ -571,7 +540,6 @@ export async function reorderFolders(orderedIds: string[]): Promise<void> {
   });
 }
 
-// The team's top level is a network too: the names have to be free there.
 async function assertAppNamesFreeAtTeamLevel(
   appIds: string[],
   teamId: string,
@@ -587,10 +555,8 @@ async function assertAppNamesFreeAtTeamLevel(
     })
     .from(appsTable)
     .where(inArray(appsTable.id, appIds));
-  // The SIBLINGS of this batch land on the same network in the same write, and still carry their old placement.
   const takenByBatch = new Map<string, string>();
   for (const row of rows) {
-    // Already at the top level: the move changes no network.
     if (!row.environmentId) continue;
     const claims = row.compose?.trim()
       ? composeNamesOnNetwork(row.compose)
@@ -634,8 +600,6 @@ async function warnLostNeighbours(
         id,
         teamId,
       );
-    } catch {
-      // Never fail a move for a warning it could not produce.
-    }
+    } catch {}
   }
 }

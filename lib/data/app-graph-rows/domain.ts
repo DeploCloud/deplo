@@ -12,7 +12,6 @@ export type DomainMiddlewareRow = typeof domainMiddlewares.$inferSelect;
 type DomainInsert = typeof domains.$inferInsert;
 type DomainMiddlewareInsert = typeof domainMiddlewares.$inferInsert;
 
-/** Reassemble a {@link Domain} from its row + ordered middleware rows. */
 export function assembleDomain(
   row: DomainRow,
   middlewares: DomainMiddlewareRow[],
@@ -46,7 +45,6 @@ export function assembleDomain(
   };
 }
 
-/** The flat `domains` row for a {@link Domain} (middlewares handled separately). */
 export function domainToRow(d: Domain): DomainInsert {
   return {
     id: d.id,
@@ -56,8 +54,6 @@ export function domainToRow(d: Domain): DomainInsert {
     isPrimary: d.primary,
     redirectTo: d.redirectTo ?? null,
     ssl: d.ssl,
-    // entrypoint/certProvider/source NULLABLE with NO default - the auto/manual
-    // tri-state; never coerce an absent value to a concrete one.
     source: d.source ?? null,
     port: d.port ?? null,
     entrypoint: d.entrypoint ?? null,

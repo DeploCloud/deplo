@@ -14,7 +14,6 @@ import { completeBootstrap } from "./servers/agent-handshake";
 import { getServerById } from "./servers/roster";
 
 x509.cryptoProvider.set(webcrypto as unknown as Crypto);
-// The PKI (signBootstrapCsr) derives its CA from DEPLO_SECRET; pin one.
 process.env.DEPLO_SECRET = "test-secret-for-agent-mtls-pki-aaaaaaaa";
 
 let db: TestDb;

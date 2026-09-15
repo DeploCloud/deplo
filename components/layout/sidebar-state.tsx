@@ -12,7 +12,6 @@ const CLOSE_AT = DEFAULT_WIDTH * 0.66;
 const clampWidth = (n: number) =>
   Math.min(MAX_WIDTH, Math.max(DEFAULT_WIDTH, n));
 
-// resizeStep - one pointer position → resize, slide out, or snap shut.
 export function resizeStep(clientX: number) {
   if (clientX >= DEFAULT_WIDTH)
     return { width: clampWidth(clientX), peek: 0, close: false };
@@ -32,7 +31,6 @@ type SidebarState = {
 
 const SidebarContext = React.createContext<SidebarState | null>(null);
 
-// SidebarProvider - owns the desktop sidebar's collapsed flag and width.
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState({
     collapsed: false,
@@ -49,9 +47,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       storedCollapsed = window.localStorage.getItem(COLLAPSE_KEY) === "1";
       const w = Number(window.localStorage.getItem(WIDTH_KEY));
       if (Number.isFinite(w) && w > 0) storedWidth = clampWidth(w);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     widthRef.current = storedWidth;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- apply persisted UI preference after mount
     setState({
@@ -66,9 +62,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       const next = !prev.collapsed;
       try {
         window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       return { ...prev, collapsed: next };
     });
   }, []);
@@ -92,9 +86,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       try {
         window.localStorage.setItem(WIDTH_KEY, String(widthRef.current));
         if (close) window.localStorage.setItem(COLLAPSE_KEY, "1");
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
     function onUp() {
       finish(false);

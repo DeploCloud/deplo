@@ -22,7 +22,6 @@ const ROLE_ICON: Record<string, LucideIcon> = {
   viewer: Eye,
 };
 
-// RoleSelect picks the role a member holds; a hand-picked set shows as "Custom" and any role replaces it.
 export function RoleSelect({
   roles,
   value,
@@ -33,7 +32,6 @@ export function RoleSelect({
   roles: TeamRoleDTO[];
   value: string | null;
   onChange: (roleId: string) => void;
-  // Only an owner may hand out the owner rank.
   canAssignOwner?: boolean;
   isCustom?: boolean;
 }) {

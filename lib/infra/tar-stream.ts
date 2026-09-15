@@ -1,7 +1,6 @@
 const BLOCK_SIZE = 512;
 const MAX_META_BYTES = 64 * 1024;
 
-// TarEntry - one regular-file entry surfaced by tarEntries.
 export interface TarEntry {
   name: string;
   size: number;
@@ -164,7 +163,6 @@ function isRegularFile(type: string): boolean {
   return type === "0" || type === "\0" || type === "7";
 }
 
-// tarEntries - iterate the regular-file entries, buffering only what the read predicate accepts.
 export async function* tarEntries(
   chunks: AsyncIterable<Uint8Array>,
   opts: TarEntriesOptions = {},
@@ -272,7 +270,6 @@ export interface ReadTarEntryOptions {
   maxScanBytes: number;
 }
 
-// readTarEntry - pull ONE named entry's bytes out of a tar stream, or null when it isn't there.
 export async function readTarEntry(
   chunks: AsyncIterable<Uint8Array>,
   opts: ReadTarEntryOptions,

@@ -46,7 +46,6 @@ type Counted = { url: string; impact: Impact | null; error: string | null };
 
 export type ImpactSeverity = "critical" | "manual" | "minor";
 
-// ImpactNote - a consequence only the caller can vouch for, e.g. the proxy restarting.
 export type ImpactNote = { severity: ImpactSeverity; text: string };
 
 type Row = ImpactNote & { weight: number };
@@ -171,7 +170,6 @@ export function PanelAddressDialog({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Portalled in the DOM, but React still bubbles the submit to an outer form.
     e.stopPropagation();
     if (busy) return;
     startTransition(async () => {
@@ -187,7 +185,6 @@ export function PanelAddressDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Wider than the house confirm: this one opens on an audit. */}
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
         <form className="grid grid-cols-[minmax(0,1fr)]" onSubmit={onSubmit}>
           <div className="flex justify-center border-b border-border bg-surface px-6 pt-7 pb-5">
@@ -200,7 +197,6 @@ export function PanelAddressDialog({
           >
             <DialogHeader className="space-y-2">
               <DialogTitle>{title}</DialogTitle>
-              {/* The counts are the summary: how many things break, graded. */}
               <DialogDescription className="leading-relaxed">
                 {unchanged
                   ? "This is the address the panel already answers on, so nothing changes."
@@ -210,7 +206,6 @@ export function PanelAddressDialog({
               </DialogDescription>
             </DialogHeader>
 
-            {/* The move is still allowed: a failed probe is information, not a refusal. */}
             {failed && (
               <p className="rounded-lg border border-destructive/40 bg-destructive-wash p-4 text-sm text-destructive">
                 {failed}
@@ -226,7 +221,6 @@ export function PanelAddressDialog({
                   key={tier.severity}
                   className={cn("rounded-lg border p-4", tier.box)}
                 >
-                  {/* The icon grades the group once, in the heading. */}
                   <p
                     className={cn(
                       "flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase",
@@ -265,7 +259,6 @@ export function PanelAddressDialog({
               </p>
             )}
 
-            {/* Last line, always: the one address this change cannot break. */}
             {impact?.panelFallbackUrl && (
               <p className="flex items-start gap-2.5 rounded-lg bg-surface p-3 text-sm text-muted-foreground">
                 <LifeBuoy className="mt-0.5 size-4 shrink-0" />
@@ -293,7 +286,6 @@ export function PanelAddressDialog({
                 aria-busy={busy}
                 aria-label={busy ? confirmLabel : undefined}
               >
-                {/* The label stays mounted, just hidden, so the footer cannot jump. */}
                 <span className="grid place-items-center">
                   <span
                     className={cn(
@@ -325,7 +317,6 @@ function PanelMoveGraphic() {
       aria-label="The panel moving from its old address to its new one"
       className="h-24 w-auto max-w-full sm:h-28"
     >
-      {/* The old address. */}
       <g>
         <rect
           x="16"
@@ -380,7 +371,6 @@ function PanelMoveGraphic() {
         />
       </g>
 
-      {/* The wire. */}
       <path
         d="M94 56 H146"
         className="deplo-move-wire stroke-muted-foreground/50"
@@ -394,7 +384,6 @@ function PanelMoveGraphic() {
         className="deplo-move-packet fill-primary"
       />
 
-      {/* Drawn before the new window so it lands behind its strokes. */}
       <circle
         cx="188"
         cy="56"
@@ -403,7 +392,6 @@ function PanelMoveGraphic() {
         strokeWidth="1.5"
       />
 
-      {/* The new address. */}
       <g>
         <rect
           x="152"
@@ -477,7 +465,6 @@ function summarise(rows: Row[]): string {
 }
 
 function countedRows(impact: Impact): Row[] {
-  // Origin-bound credentials die on a host change or on losing https; http -> https keeps the session.
   const originDies = impact.hostChanges || impact.losesHttps;
   const rows: Row[] = [];
 

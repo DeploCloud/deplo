@@ -97,7 +97,6 @@ async function url(): Promise<string | null> {
   return row?.u ?? null;
 }
 
-// Seeding writes rows directly, so each test starts from the URL a consistent app would already have.
 async function syncUrlDirect(): Promise<void> {
   const rows = await db
     .select()

@@ -83,14 +83,10 @@ const AddServerInputType = builder.inputType("AddServerInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     host: t.string({ required: true }),
-    // Omit / true → all teams. false + teamIds → restrict to those teams (editable later via setServerTeams).
     allTeams: t.boolean({ required: false }),
     teamIds: t.stringList({ required: false }),
-    // Backups only: the install command skips Docker and Traefik, and the readiness/health checks stop expecting them.
     storageOnly: t.boolean({ required: false }),
-    // Builds only: the install command skips Traefik, and the host stays out of every deploy-target picker.
     buildOnly: t.boolean({ required: false }),
-    // A MIGRATION SOURCE: another platform's host, registered only to import from.
     importOnly: t.boolean({ required: false }),
   }),
 });

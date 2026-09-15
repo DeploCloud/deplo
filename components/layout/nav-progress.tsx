@@ -10,7 +10,6 @@ const GIVE_UP_MS = 30_000;
 
 type Phase = "idle" | "running" | "done";
 
-// leavesThisPage - does following `href` from `here` load a new page in this tab?
 export function leavesThisPage(href: string, here: string): boolean {
   let to: URL, from: URL;
   try {
@@ -34,7 +33,6 @@ function navigates(e: MouseEvent): boolean {
   return leavesThisPage(anchor.href, location.href);
 }
 
-// NavProgress - the bar across the top of the window while a page loads.
 export function NavProgress() {
   const pathname = usePathname();
   const query = useSearchParams().toString();

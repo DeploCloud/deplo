@@ -41,8 +41,6 @@ import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
 import { landingServerId } from "./target-servers";
 
-// The stack's compose text: its inline copy, or the resolved file the panel hands
-// over. Null when there is none - the report already carries the reason.
 export async function loadComposeText(
   c: SourceCredential,
   svc: SourceService,
@@ -60,9 +58,6 @@ export async function loadComposeText(
       sourceName: name,
       outcome: "failed",
       targetKind: "app",
-      // Coolify keeps every stack's compose on the resource itself and has no
-      // "resolved file" endpoint at all, so blaming a git repository sent people to
-      // check their Source settings over a token scope.
       message:
         sourceClient(c).platform === "coolify"
           ? "{panel} handed over no compose file for this stack. A token without root is what usually does that - mint one with it and import again. Otherwise create the app and paste the compose in."
@@ -73,9 +68,6 @@ export async function loadComposeText(
   return yamlText;
 }
 
-// What createApp needs to know about the source, and every note that decision owes
-// the report. Mutates `domains.value` and `env` in place where a service rename has
-// to follow into a route or a connection string.
 export async function resolveAppSource(
   c: SourceCredential,
   svc: SourceService,
@@ -95,21 +87,17 @@ export async function resolveAppSource(
 ) {
   const { isCompose, yamlText, asRepoApp, repoTarget, domains, mounts, env } =
     shape;
-  // Services this import renamed to keep them off a name the network answers to.
   let serviceRenames = new Map<string, string>();
   let source: Parameters<typeof createApp>[0]["source"] = "upload";
   let repo: Parameters<typeof createApp>[0]["repo"] = null;
   let dockerImage: string | null = null;
   let compose: string | null = null;
-  // Host ports the source published, carried over after the app exists.
   let ports: PublishedPort[] = [];
   const build: Partial<BuildConfig> = {};
 
   if (asRepoApp && repoTarget) {
     source = repoTarget.provider === "github" ? "github" : "git";
     repo = repoTarget;
-    // `build: .` in compose IS a Dockerfile build - the context dir's own
-    // Dockerfile unless the block names another. Nothing here has to guess.
     build.buildMethod = "dockerfile";
     build.methodSettings = {
       dockerfilePath: asRepoApp.dockerfilePath ?? "Dockerfile",
@@ -131,8 +119,6 @@ export async function resolveAppSource(
         "The compose file is kept inline from now on, so changes in the repository will not follow.",
       );
     const adapted = adaptComposeForDeplo(yamlText, composePlatform(c, svc));
-    // An `env_file` naming a file this stack does not carry is the other platform's own
-    // env file under its own name (`stack.env` and friends).
     const retargeted = retargetPlatformEnvFiles(
       adapted.compose,
       mounts.value.files.map((f) => f.filePath),
@@ -143,18 +129,11 @@ export async function resolveAppSource(
       ...retargeted.changes,
       ...composeRegistryNotes(compose),
     );
-    // Every stack in an Environment shares ONE network (ADR-0028), so two one-click
-    // apps that both call their database `db` collide - and `createApp` refuses the
-    // second one, which lost the whole app. The names are rewritten instead, here,
-    // because only the import knows what is already answering on that network.
     const takenNames = await namesTakenOnNetwork({
       teamId: await requireActiveTeamId(),
       environmentId: home.environmentId,
       serverId: await landingServerId(home.serverId),
     });
-    // Only the names this stack actually PUTS on that network: one it keeps to
-    // itself (sealed `internal:`, `network_mode:`, a reserved name) contests
-    // nothing, and renaming it would be an edit to the author's file for nothing.
     const mine = new Set(composeNamesOnNetwork(compose));
     const renamed = renameClashingServices(
       compose,
@@ -165,21 +144,14 @@ export async function resolveAppSource(
     if (renamed.renames.size > 0) {
       compose = renamed.compose;
       notes.push(...renamed.changes);
-      // A domain routes to a service BY NAME, and the panel answered with the old
-      // one: left alone, every renamed stack's address answered nothing.
       for (const d of domains.value) {
         const to = d.service && renamed.renames.get(d.service.toLowerCase());
         if (to) d.service = to;
       }
       serviceRenames = renamed.renames;
-      // The stack reads its own hostnames out of the env file too, not only out of
-      // the YAML - a compose one-click puts `DATABASE_URL` there and nowhere else.
       renameHostTokens(env, renamed.renames);
     }
     notes.push(...composeAdvice(compose));
-    // A compose file that parses to nothing deployable still comes across (its
-    // variables, domains and mounts are the part that takes an afternoon to retype),
-    // but it used to do so without a word - and the app it makes can never deploy.
     const builders = composeBuildServices(compose);
     if (builders.length > 0)
       notes.push(
@@ -194,9 +166,6 @@ export async function resolveAppSource(
       notes.push(
         "Its compose file declares no services, so there is nothing to deploy yet. Add them under Compose.",
       );
-    // An `env_file` the author wrote resolves inside the stack's own directory, which
-    // is a thing the AGENT does - and an older one on this host does not, so the stack
-    // would come up looking for a file that is not there.
     if (/^\s*env_file\s*:/m.test(compose) && home.serverId) {
       const { serverSupports } =
         await import("../../infra/agent-client/preflight");
@@ -207,7 +176,6 @@ export async function resolveAppSource(
           "Its compose file names an `env_file`, which needs a newer agent on this server than the one running there. Update the server's agent under Servers before deploying.",
         );
     }
-    // The host ports the stack binds, checked against the machine it is landing on.
     const wantedPorts = composeHostPorts(compose);
     if (wantedPorts.length > 0 && home.serverId && (await canExposePorts())) {
       try {
@@ -217,9 +185,7 @@ export async function resolveAppSource(
           notes.push(
             `It publishes ${probe.inUse.join(", ")} on the host, and ${probe.inUse.length === 1 ? "that port is" : "those ports are"} already taken on this server - the stack will not start until you change ${probe.inUse.length === 1 ? "it" : "them"} under Compose.`,
           );
-      } catch {
-        /* A probe is a courtesy: never let it fail an import. */
-      }
+      } catch {}
     }
     if (detail.isolatedDeployment)
       notes.push(
@@ -236,9 +202,6 @@ export async function resolveAppSource(
       source = "docker-image";
       dockerImage = mapped.value.image;
     } else {
-      // Nothing deployable came across (an uploaded archive, an image reference
-      // Deplo will not take). The app is still worth creating: its variables,
-      // domains, mounts and limits are the part that takes an afternoon to retype.
       source = "upload";
       const watched = (app.watchPaths ?? []).filter((p) => p.trim());
       notes.push(

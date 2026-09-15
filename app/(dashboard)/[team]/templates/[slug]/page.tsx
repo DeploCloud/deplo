@@ -72,7 +72,6 @@ export default async function TemplatePage(
   const [placement, canDeploy, template] = await Promise.all([
     resolveOverviewPlacement(placementFromSearchParams(searchParams)),
     hasCapability("create_apps"),
-    // A stale ?template= link or an unreachable catalogue degrades to "not available", not a 500.
     getTemplate(slug).catch(() => null),
   ]);
 
@@ -93,17 +92,14 @@ export default async function TemplatePage(
       </div>
     );
 
-  // An invalid or missing ?variant returns to the family default, never array order.
   const fallbackVariant = defaultVariant(template);
   const wanted = Array.isArray(searchParams.variant)
     ? searchParams.variant[0]
     : searchParams.variant;
-  // Never an unselected state: a disabled Deploy over a description you are reading is a dead end.
   const variant =
     template.variants.find((v) => v.slug === wanted) ?? fallbackVariant;
   const manyVariants = template.variants.length > 1;
 
-  // `getTemplate` hands back raw asset paths, unlike `listCatalog`.
   const logo = variant.logo ? templateAssetUrl(variant.logo) : null;
   const images = variant.images.map(templateAssetUrl);
   const accent = await templateAccent(template.slug, logo);
@@ -132,7 +128,6 @@ export default async function TemplatePage(
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <TopBar placement={placement} />
 
-      {/* Header */}
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <LogoTile
@@ -174,7 +169,6 @@ export default async function TemplatePage(
 
       <RemoteMarkdown source={variant.description} />
 
-      {/* A row is omitted, never faked, when the catalogue has no value for it. */}
       <dl className="grid gap-x-8 gap-y-4 border-t border-border pt-6 sm:grid-cols-2">
         <Row label="Category">
           <span className="flex items-center gap-1.5">
@@ -308,7 +302,6 @@ function DeployButton({
       </div>
     );
   return (
-    // A disabled button swallows pointer events, so the tooltip needs a focusable wrapper.
     <SimpleTooltip content="Needs the “Create apps” permission">
       <span tabIndex={0} className="shrink-0">
         <Button disabled className="w-full sm:w-32">

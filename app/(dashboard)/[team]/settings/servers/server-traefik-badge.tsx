@@ -12,13 +12,11 @@ import {
   type ServerHealthState,
 } from "./server-health-provider";
 
-// ServerTraefikBadge shows whether Traefik runs on this host, and ages the observation out like the health chip beside it.
 export function ServerTraefikBadge({
   serverId,
   fallback,
 }: {
   serverId: string;
-  // The stored observation, for the render before the provider's state settles.
   fallback: ServerHealthState;
 }) {
   const { health, now } = useServerHealth();
@@ -33,7 +31,6 @@ export function ServerTraefikBadge({
             : "No Traefik proxy is running on this host. Apps deployed here won't be reachable by domain until one is."
         }
       >
-        {/* Green is reserved for the server being online: a proxy that is up is ordinary, a missing one is not. */}
         <Badge variant={state.traefikEnabled ? "muted" : "destructive"}>
           <Network className="size-3" />
           Traefik {state.traefikEnabled ? "on" : "off"}

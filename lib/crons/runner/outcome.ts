@@ -13,12 +13,8 @@ import type { CronRunStatus } from "../../types/cron";
 import { RETRY_BACKOFF_MS } from "./deadlines";
 import type { InFlightRun } from "./targets";
 
-// CRON_OUTPUT_TAIL_BYTES is the retained output per stream, per run. Declared in
-// agent.proto too, so the two cannot drift silently.
 export const CRON_OUTPUT_TAIL_BYTES = 16 * 1024;
 
-// tailOutput keeps the END of the output: a job's value is its last lines - the error,
-// the summary - while its head is startup boilerplate.
 export function tailOutput(s: string): string {
   if (s.length <= CRON_OUTPUT_TAIL_BYTES) return s;
   return `[deplo] earlier output trimmed\n${s.slice(-CRON_OUTPUT_TAIL_BYTES)}`;
@@ -31,7 +27,6 @@ export interface SettleFields {
   error?: string | null;
 }
 
-// settle writes a run's terminal status, prunes the job's history, and raises the alert.
 export async function settle(
   r: InFlightRun,
   status: Exclude<CronRunStatus, "running">,
@@ -59,7 +54,7 @@ export async function settle(
       and(eq(cronRunsTable.id, r.run.id), eq(cronRunsTable.status, "running")),
     )
     .returning({ id: cronRunsTable.id });
-  if (done.length === 0) return false; // somebody else settled it first
+  if (done.length === 0) return false;
 
   await getDb()
     .update(cronJobsTable)
@@ -75,19 +70,13 @@ export async function settle(
   return true;
 }
 
-// `settle` is the ONLY caller, which is what makes "a retry alerts only on the last
-// attempt" structural rather than a flag somebody can forget to pass.
 function raiseAlert(
   r: InFlightRun,
   status: Exclude<CronRunStatus, "running">,
   fields: SettleFields,
 ): void {
-  // A skipped run is not a failure: an app stopped on purpose must not page
-  // anyone at 03:00. It is visible in the history and on the job's row instead.
   if (status === "skipped") return;
 
-  // One repeated condition per job: an every-minute job that keeps failing says
-  // so once per cooldown, not 1440 times a day.
   const dedupeId = `cron:${r.job.id}`;
   const attempts = r.run.attempt + 1;
   const tried = attempts > 1 ? ` after ${attempts} attempts` : "";
@@ -122,16 +111,12 @@ function raiseAlert(
   });
 }
 
-// settleOrRetry settles, unless an attempt is left - then the row stays `running` with
-// its agent handle cleared and a time to relaunch, and the next reap picks it up.
 export async function settleOrRetry(
   r: InFlightRun,
   status: Exclude<CronRunStatus, "running" | "skipped">,
   fields: SettleFields,
   at: Date = new Date(),
 ): Promise<void> {
-  // `lost` never retries: we do not know that the command failed - we know we
-  // stopped watching. Running it again could double-charge a card.
   const retryable = status === "failed" || status === "timedout";
   if (retryable && r.run.attempt + 1 < r.run.maxAttempts) {
     await getDb()
@@ -156,8 +141,6 @@ export async function settleOrRetry(
   await settle(r, status, fields, at);
 }
 
-// pruneRuns drops the runs past this job's retention, ordered by `seq`: two runs can
-// share a start minute, and `seq` is the only total order the table has.
 export async function pruneRuns(
   jobId: string,
   keepRuns: number,

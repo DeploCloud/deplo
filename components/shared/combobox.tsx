@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
 import { cn } from "@/lib/utils";
 
-// Combobox - pick one thing from a list by typing; free text is never a value.
 export function Combobox<T>({
   items,
   value,
@@ -104,7 +103,6 @@ export function Combobox<T>({
       });
     };
     place();
-    // Capture: scroll does not bubble, so a scroll inside any ancestor must be heard too.
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
     return () => {
@@ -113,7 +111,6 @@ export function Combobox<T>({
     };
   }, [open]);
 
-  // Escape closes the MENU only - without this it closed the whole wizard and lost every answer.
   React.useEffect(() => {
     if (!open) return;
     function onEscape(e: KeyboardEvent) {
@@ -127,7 +124,6 @@ export function Combobox<T>({
     return () => window.removeEventListener("keydown", onEscape, true);
   }, [open, autoFocus]);
 
-  // pointerdown, captured: a Radix menu elsewhere sets pointer-events:none on the body, so mousedown never lands here.
   React.useEffect(() => {
     function onPointerDown(e: PointerEvent) {
       const target = e.target as Node;
@@ -197,7 +193,6 @@ export function Combobox<T>({
       e.preventDefault();
       step(-1);
     } else if (e.key === "Enter") {
-      // Swallowed even with nothing to pick: the dialog's submit must not fire from an open menu.
       e.preventDefault();
       if (activeIndex >= 0) choose(filtered[activeIndex]!);
     } else if (e.key === "Tab") {
@@ -207,7 +202,6 @@ export function Combobox<T>({
 
   return (
     <div ref={containerRef}>
-      {/* The positioning context is the FIELD, not whatever the caller hangs under it. */}
       <div ref={fieldRef} className="relative">
         {selected && renderLeading && (
           <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2">
@@ -239,7 +233,6 @@ export function Combobox<T>({
             setHighlight(0);
           }}
           onFocus={() => {
-            // A dialog placing focus here as it opens is Radix, not the user.
             if (isOverlayAutoFocusing()) return;
             if (!open) openMenu();
           }}
@@ -294,7 +287,6 @@ export function Combobox<T>({
                           ref={i === activeIndex ? activeRef : undefined}
                           aria-selected={getKey(item) === value}
                           onMouseEnter={() => setHighlight(i)}
-                          // mousedown, not click: the input's blur closes the menu first.
                           onMouseDown={(e) => {
                             e.preventDefault();
                             choose(item);
@@ -324,7 +316,6 @@ export function Combobox<T>({
           )}
       </div>
 
-      {/* Outside the field's positioning box, so the footer can be as tall as it needs. */}
       {footer}
     </div>
   );

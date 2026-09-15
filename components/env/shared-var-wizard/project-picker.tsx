@@ -8,7 +8,6 @@ import type { TeamEnvironment } from "@/lib/data/environments";
 import type { ProjectRef, ProjectScope } from "./types";
 import { PickerSearch } from "./picker-search";
 
-// ProjectsSection - details for the "Projects" scope: which projects, and how much of each.
 export function ProjectsSection({
   projects,
   envsByProject,
@@ -29,8 +28,6 @@ export function ProjectsSection({
     );
   }, [projects, q]);
 
-  // Search hides rows, never selections - the count is the only thing that can
-  // vouch for a checked project the current needle filtered out of view.
   const count = Object.keys(scopes).length;
 
   function toggleProject(id: string) {
@@ -75,8 +72,6 @@ export function ProjectsSection({
             : "This team has no projects yet."}
         </p>
       )}
-      {/* No scroller of its own: the dialog's body is the ONE scrolling region,
-          so a long project list never traps the wheel in a nested box. */}
       <div className="space-y-2">
         {shown.map((p) => {
           const scope = scopes[p.id];
@@ -171,7 +166,6 @@ export function ProjectsSection({
   );
 }
 
-// ModeButton - the all/some switch of one checked project.
 function ModeButton({
   selected,
   onSelect,
@@ -200,7 +194,6 @@ function ModeButton({
   );
 }
 
-// ProjectTile - a Project's avatar: its colour, or the neutral tile when it has none.
 function ProjectTile({ color }: { color: string | null }) {
   return (
     <span

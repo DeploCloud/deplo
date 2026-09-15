@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/advanced/api-tokens-and-oauth
-
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -46,8 +44,6 @@ function cleanTokenName(raw: string): string {
   return name;
 }
 
-// The teams a token will act in, from its resolved scope: the ones it names, or
-// everywhere its owner may use tokens.
 async function reachOf(
   scope: ResolvedScope,
   userId: string,
@@ -57,21 +53,15 @@ async function reachOf(
     : (await tokenReach(userId)).map((t) => t.id);
 }
 
-// DEFAULT_TOKEN_DAYS - what a token gets when the caller says nothing; omitting
-// the field used to mint the credential nobody remembers to revoke.
 export const DEFAULT_TOKEN_DAYS = 90;
 
 async function defaultExpiry(): Promise<string> {
   const ninety = Date.now() + DEFAULT_TOKEN_DAYS * 24 * 60 * 60 * 1000;
-  // A token minted BY a token can never outlive it, so the default is the
-  // sooner of the two - otherwise leaving the field out would be refused.
   const parent = await actingTokenExpiry();
   const at = parent ? Math.min(ninety, Date.parse(parent)) : ninety;
   return new Date(at).toISOString();
 }
 
-// An ISO instant in the future, or null for never. No upper bound: refusing a
-// five-year token would only push people back to "never".
 function cleanExpiry(raw: string | null | undefined): string | null {
   const value = (raw ?? "").trim();
   if (!value) return null;
@@ -82,19 +72,14 @@ function cleanExpiry(raw: string | null | undefined): string | null {
   return new Date(at).toISOString();
 }
 
-// createToken - returns the raw token ONCE; only the hash is persisted.
 export async function createToken(
   input: {
     name: string;
     capabilities?: Capability[];
     instanceAdmin?: boolean;
-    // ISO instant this token stops working. ABSENT ⇒ the default expiry the
-    // editor offers; explicit `null` ⇒ never.
     expiresAt?: string | null;
   } & TokenScopeInput,
 ): Promise<{ raw: string; token: ApiTokenDTO }> {
-  // Any member may mint: a token adds no power, it is clamped to what its
-  // owner holds in each team it reaches.
   const { id: userId } = await assertUser();
   const name = cleanTokenName(input.name);
   const { scoped, instanceAdmin } = await validateScope(input);
@@ -114,9 +99,6 @@ export async function createToken(
   await getDb().transaction(async (tx) => {
     await tx.insert(apiTokens).values({
       id,
-      // The token acts as its owner for user-scoped fields, and its power is
-      // clamped to theirs on every request, but it is NOT them: what it may do
-      // is the set below, chosen here and editable later.
       userId,
       name,
       prefix: raw.slice(0, 12),
@@ -133,8 +115,6 @@ export async function createToken(
     await writeScope(tx, id, scope);
   });
 
-  // Every team the credential can act in learns that it exists: the trail is
-  // how a team knows who holds API access here, since it never sees the token.
   await trail(reach, `Created the ${name} API token`, "token_created");
   return {
     raw,
@@ -150,12 +130,9 @@ export async function createToken(
       appIds: scope.appIds,
       teamsReached: await namedTeams(reach),
       instanceAdmin,
-      // Set by `mintMcpConnection` right after this, in the same flow, when the
-      // mint came from an OAuth consent rather than from the tokens page.
       oauthClientName: null,
       mcp: false,
       expiresAt,
-      // Refused if it were not (see cleanExpiry).
       expired: false,
       lastUsedAt: null,
       createdAt,
@@ -163,15 +140,12 @@ export async function createToken(
   };
 }
 
-// updateToken - re-scope a live token without re-minting it.
 export async function updateToken(
   input: {
     id: string;
     name: string;
     capabilities?: Capability[];
     instanceAdmin?: boolean;
-    // ABSENT leaves the expiry alone; `null` clears it (back to never), so an
-    // older client renaming a token cannot silently un-expire it.
     expiresAt?: string | null;
   } & TokenScopeInput,
 ): Promise<void> {
@@ -186,10 +160,6 @@ export async function updateToken(
   assertScopeWithinActingToken(scope, scoped);
 
   const db = getDb();
-  // Read and gate BEFORE opening the transaction: these helpers query on their
-  // own connection, and pglite deadlocks if that happens inside one.
-  // Somebody else's token resolves to nothing, the same "not found" a made-up id
-  // gets: its existence is its owner's business.
   const existing = (
     await db
       .select({ instanceAdmin: apiTokens.instanceAdmin })
@@ -202,7 +172,6 @@ export async function updateToken(
   const reach = await reachOf(scope, userId);
   const capabilities = await ownerCeiling(userId, input.capabilities, reach);
 
-  // Keeping the instance-admin bit alive is itself an instance-admin action.
   if (existing.instanceAdmin) await requireInstanceAdmin();
 
   await db.transaction(async (tx) => {
@@ -215,8 +184,6 @@ export async function updateToken(
         ...(expiresAt === undefined ? {} : { expiresAt }),
       })
       .where(and(eq(apiTokens.id, input.id), eq(apiTokens.userId, userId)));
-    // Whole-set replace on every junction: an edit says what the token grants
-    // now, it does not add to what it granted before.
     await tx
       .delete(apiTokenCapabilities)
       .where(eq(apiTokenCapabilities.tokenId, input.id));

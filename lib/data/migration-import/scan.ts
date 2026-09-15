@@ -50,31 +50,19 @@ import {
 } from "./source-machines";
 import { planMembers, type PlanMember } from "./source-people";
 
-// PlanStatus - what one source service would become here, and whether it can.
 export type PlanStatus = "new" | "exists" | "unsupported" | "needs_grant";
 
 export interface PlanService {
   sourceId: string;
-  // `application` | `compose` | one of the five engine tables.
   kind: string;
   name: string;
-  // `app` | `database`, or null when Deplo has no such thing.
   targetKind: string | null;
   status: PlanStatus;
-  // The panel's server it runs on; empty string means the panel's own host.
   sourceServerId: string;
-  // Whether Deplo would ever COMPILE this, which is what makes a build server mean
-  // anything for it.
   buildsFromSource: boolean;
-  // Deplo's OWN engine id for a database (`mongo` over there is `mongodb` here), so a
-  // review screen can show the engine's real brand mark instead of a generic glyph.
   engine: string | null;
-  // The host port this database publishes on the panel, or null when it publishes none
-  // (and for anything that is not a database).
   exposedPort: number | null;
-  // Hostnames that would be imported (the throwaway ones already dropped).
   domains: string[];
-  // The icon this service would arrive with, already validated, or null when it has none.
   logo: string | null;
   notes: string[];
 }
@@ -94,40 +82,27 @@ export interface PlanProject {
 }
 
 export interface MigrationPlan {
-  // Which product answered. The wizard names it instead of asking.
   platform: MigrationPlatform;
   sourceUrl: string;
   orgName: string | null;
-  // The panel's OTHER teams, so the wizard can say which ones this token does not
-  // cover. Null when the panel cannot say - see `SourceIdentity`.
   otherTeams: string[] | null;
   projects: PlanProject[];
   servers: PlanServer[];
   members: PlanMember[];
 }
 
-// SourceIdentity - what one token turns out to read.
 export interface SourceIdentity {
   platform: MigrationPlatform;
-  // The source team's own id, which tells two tokens of ONE team apart from two tokens
-  // of two teams. Null when the panel would not say.
   teamId: string | null;
   teamName: string | null;
-  // The panel's other teams, by name - never the ones already added here, which only
-  // the caller knows. Null when the panel cannot say, and the wizard then has to ask.
   otherTeams: string[] | null;
 }
 
-// identifyMigrationSource - WHICH team a token reads, without reading it all: a token
-// covers exactly one team, so collecting several must not cost a full scan each (a
-// fresh key is rate-limited to ten requests a day).
 export async function identifyMigrationSource(
   input: ConnectInput,
 ): Promise<SourceIdentity> {
   await assertPanelReadGate();
   const c = await credentialFor(input);
-  // The same refusal the scan opens with, one token earlier: a token that cannot
-  // read values is worth catching while it is still one line in a list.
   await sourceClient(c).assertReadable();
   const [team, others] = await Promise.all([
     sourceClient(c).sourceTeam(),
@@ -141,19 +116,14 @@ export async function identifyMigrationSource(
   };
 }
 
-// scanMigrationSource - describe what an import would do, without writing anything.
 export async function scanMigrationSource(
   input: ConnectInput,
-  // `newTeam`: the plan for a team that does not exist yet. Nothing is there already,
-  // and every other team's hostname is somebody else's.
   opts: { newTeam?: boolean } = {},
 ): Promise<MigrationPlan> {
   const { teamId } = opts.newTeam
     ? await assertPanelReadGate()
     : await assertImportGate();
   const c = await credentialFor(input);
-  // Before anything is read in bulk: can this credential read at all? A panel that
-  // hides values silently would produce a migration that looks like it worked.
   await sourceClient(c).assertReadable();
 
   const [sourceTeam, otherTeams, servers, projects] = await Promise.all([
@@ -165,9 +135,6 @@ export async function scanMigrationSource(
     sourceClient(c).listProjects(),
   ]);
 
-  // A source an earlier run registered belongs to THAT run's team, and a scan in
-  // another team could not see it - so the Install step offered to register a
-  // machine Deplo already stands on. A source is the migration's, not a team's.
   if (!opts.newTeam)
     await adoptMigrationSources(
       teamId,
@@ -189,8 +156,6 @@ export async function scanMigrationSource(
     opts.newTeam ? null : teamId,
   );
 
-  // Which source machines ARE Deplo servers, for the address note below. Read
-  // once and lazily: the listing is a call to the panel.
   let machineIds: Map<string, string | null> | null = null;
   const machineServer = async (sourceServerId: string) => {
     if (!machineIds)
@@ -217,8 +182,6 @@ export async function scanMigrationSource(
 
       const list = servicesOf(env);
       const services: PlanService[] = new Array(list.length);
-      // `mapLimit` runs the callback for its side effects, so the slot is filled
-      // by index, which is also what keeps the preview in Dokploy's own order.
       await mapLimit(
         list.map((svc, index) => ({ svc, index })),
         5,
@@ -226,8 +189,6 @@ export async function scanMigrationSource(
           const line: PlanService = {
             sourceId: svc.id,
             kind: svc.kind,
-            // Replaced by the detail row's name below; the id is what a service whose
-            // detail cannot be read is called, since it is all Dokploy gave us.
             name: svc.name || svc.id,
             targetKind:
               svc.kind === "compose" || svc.kind === "application"
@@ -237,8 +198,6 @@ export async function scanMigrationSource(
                   : null,
             status: "new",
             sourceServerId: svc.serverId,
-            // Only a repository source ever reaches the builder; every other kind
-            // flips this below or leaves it false.
             buildsFromSource: false,
             engine: deploEngineFor(svc.kind as SourceDbKind),
             exposedPort: null,
@@ -246,14 +205,8 @@ export async function scanMigrationSource(
             logo: null,
             notes: [],
           };
-          // An engine Deplo does not have is settled here, without a detail call:
-          // asking about a libsql row we can do nothing with would turn a plain
-          // fact into an HTTP 404 in the report.
           if (line.targetKind === null) {
             line.status = "unsupported";
-            // Its NAME is still worth one call. `project.all` gives a database nothing but its
-            // id, so the line otherwise reads "jiNnZQIEqsTkIARVHq0He has no equivalent here" -
-            // true, and useless to the person who has to decide what to do about it.
             line.name = await nameOfService(c, svc);
             line.notes.push(`Deplo has no ${svc.kind} engine.`);
             services[index] = line;
@@ -274,15 +227,9 @@ export async function scanMigrationSource(
             return;
           }
 
-          // The detail row is the first place a name is guaranteed: `project.all`
-          // gives a database nothing but its id, so until now this line may have had
-          // no name at all. Same for the MACHINE: the tree carries no server, so
-          // every service on the second host was read as the panel's own.
           line.name = nameOf(detail, svc);
           line.sourceServerId = detail.serverId?.trim() || line.sourceServerId;
           line.logo = mapLogo((detail as SourceApplication).icon);
-          // What the ADAPTER saw and no shared mapper can: a field of its own
-          // platform with no home here.
           line.notes.push(
             ...((detail as SourceApplication).platformNotes ?? []),
           );
@@ -294,23 +241,18 @@ export async function scanMigrationSource(
               ...(detail as SourceDatabase),
               name: line.name,
             });
-            // The port the review needs to talk about.
             line.exposedPort = mappedDb.value?.exposedPort ?? null;
             line.notes.push(...mappedDb.notes);
             services[index] = line;
             return;
           }
 
-          // Apps: name is unique per (project, environment) for our purposes.
           const homeKey = existingEnv
             ? `${existingEnv}:${line.name.trim().toLowerCase()}`
             : null;
           if (homeKey && existing.apps.has(homeKey)) line.status = "exists";
 
           const isCompose = svc.kind === "compose";
-          // The scan has to say what the import would say. Two different facts:
-          // a reference to a shared variable BECOMES one here, and everything else
-          // the panel templates arrives as it is written.
           const scanned = parseEnvBlob((detail as SourceApplication).env);
           const scannedRefs = (detail as SourceApplication).sharedRefs ?? [];
           const willLink = scannedRefs
@@ -341,10 +283,6 @@ export async function scanMigrationSource(
           });
           line.domains = domains.value.map((d) => d.host);
           line.notes.push(...domains.notes);
-          // Said BEFORE anyone presses import, because it is the one thing about a
-          // migrated app that is not the same afterwards: the address. The route
-          // survives; the name cannot (it carries the source server's IP) - unless
-          // that machine is a Deplo server, where it still resolves.
           const onDeploServer =
             (await machineServer(line.sourceServerId)) != null;
           for (const host of new Set(
@@ -383,8 +321,6 @@ export async function scanMigrationSource(
             }
           } else {
             const app = detail as SourceApplication;
-            // The same call the notes come from: a git source is the only one Deplo
-            // builds, so this costs nothing beyond keeping the result.
             const src = mapSource(app);
             line.buildsFromSource = src.value.kind === "git";
             line.notes.push(...src.notes);
@@ -432,17 +368,12 @@ export async function scanMigrationSource(
     });
   }
 
-  // The mappers write `{panel}`; the preview is the first place a person reads
-  // one, so it is resolved here rather than in every push above.
   const panel = sourceClient(c).displayName;
   for (const p of planned)
     for (const env of p.environments)
       for (const svc of env.services)
         svc.notes = svc.notes.map((n) => withPanel(n, panel));
 
-  // Only the machines something importable lives on: with a Coolify team whose
-  // resources all sit on a listed server, the panel's own host (behind a proxy,
-  // with no address to install at) held the Install step for nothing.
   const used = new Set(
     planned.flatMap((p) =>
       p.environments.flatMap((e) =>
@@ -471,7 +402,6 @@ interface ExistingNames {
   databases: Map<string, string>;
 }
 
-// What a team that is not made yet already holds.
 function nothingHere(): ExistingNames {
   return {
     projects: new Map(),
@@ -481,7 +411,6 @@ function nothingHere(): ExistingNames {
   };
 }
 
-// Everything already in this team, by lowercase name, for the skip decision.
 async function existingNames(teamId: string): Promise<ExistingNames> {
   const projects = new Map<string, string>();
   const environments = new Map<string, string>();
@@ -514,9 +443,6 @@ async function existingNames(teamId: string): Promise<ExistingNames> {
   return { projects, environments, apps, databases };
 }
 
-// Every hostname on this instance that belongs to a DIFFERENT team: knowing the set up
-// front is what lets the preview say so before anything is written. `null` is a team
-// not made yet, to which every hostname is another team's.
 async function hostnamesOwnedElsewhere(
   teamId: string | null,
 ): Promise<Set<string>> {

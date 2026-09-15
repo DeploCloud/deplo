@@ -22,7 +22,6 @@ let pg: PGlite;
 
 const SERVER = "srv_target";
 const OTHER = "srv_other";
-// RFC 5737 TEST-NET-1: guaranteed never to be assigned to an interface.
 const REMOTE_IP = "192.0.2.10";
 const SELF_IP = "192.0.2.200";
 
@@ -106,7 +105,6 @@ test("blocks removal while a backup destination keeps its artifacts here", async
     (e: Error) => {
       assert.match(e.message, /backup destinations/i);
       assert.match(e.message, /Nightly backups/);
-      // backup_destination.server_id is RESTRICT: without the guard the DELETE blows up after trust is revoked.
       assert.doesNotMatch(e.message, /foreign key|violates/i);
       return true;
     },
@@ -122,7 +120,6 @@ test("blocks removal while a database is hosted - a clean message, not a raw FK 
     (e: Error) => {
       assert.match(e.message, /Move or delete the databases/i);
       assert.match(e.message, /pg-main/);
-      // databases.server_id is RESTRICT: without the guard Postgres' FK violation reached the operator.
       assert.doesNotMatch(e.message, /foreign key|violates/i);
       return true;
     },
@@ -150,7 +147,6 @@ test("a clean removal deletes the row and returns the host-side uninstall comman
 });
 
 test("warns (but does not block) when an App is mid-move OFF the server", async () => {
-  // migrate_from_server_id: the app moved but its volumes are still here, and it is SET NULL on delete.
   const appId = await seedApp(db, {
     id: "prj_api",
     slug: "api",
@@ -275,7 +271,6 @@ async function seedMigrationSource(host = "192.0.2.50") {
   const { servers } = await import("../db/schema/control-plane/servers");
   await db
     .update(servers)
-    // Fingerprints are unique across the fleet (a partial unique index).
     .set({ agentCertFingerprint: `sha256:${server.id}`, agentPort: 9443 })
     .where(eq(servers.id, server.id));
   return server.id;
@@ -306,7 +301,6 @@ test("uninstalling a migration source removes the agent, then the row", async ()
 
 test("an agent that cannot uninstall itself KEEPS the row, and hands over the command", async () => {
   const id = await seedMigrationSource();
-  // Too old to know the RPC: it does not advertise the capability.
   const calls = fakeAgent({ capabilities: ["self-update"] });
   try {
     const res = await asAdmin(() => uninstallServerAgent(id));
@@ -346,7 +340,6 @@ test("a migration source Deplo cannot reach can still be forgotten", async () =>
 
 test("a blocked removal fails BEFORE the host is touched", async () => {
   const id = await seedMigrationSource();
-  // server_id is ON DELETE RESTRICT: uninstalling first strips the agent off a server that cannot be deleted.
   await seedDestination(db, {
     id: "dst_on_source",
     name: "Nightly backups",
@@ -430,7 +423,6 @@ test("a server Deplo already reaches is offered, never registered twice", async 
     SERVER,
     "a second row was created for one machine",
   );
-  // A second row would let the installer re-bootstrap a real server AS a source.
   assert.equal(res.installCommand, "", "a real server was told to reinstall");
   assert.equal((await listAllServers()).length, before);
   const server = await getServerById(SERVER);
@@ -476,7 +468,6 @@ test("a source that already answered is offered, not re-bootstrapped", async () 
     addServer({ name: "coolify-host", host: "192.0.2.70", importOnly: true }),
   );
   assert.equal(res.server.id, id);
-  // Re-minting a token on a TRUSTED agent arms a re-pin window that can replace its certificate.
   assert.equal(res.installCommand, "");
 });
 

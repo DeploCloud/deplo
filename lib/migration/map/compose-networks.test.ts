@@ -31,7 +31,6 @@ test("adaptComposeForDeplo removes Dokploy's network, declaration and every refe
   };
   assert.deepEqual(Object.keys(doc.networks), ["internal"]);
   assert.deepEqual(doc.services.web.networks, ["internal"]);
-  // An emptied key goes away entirely rather than leaving `networks: []`, which compose rejects.
   assert.equal("networks" in doc.services.worker, false);
 });
 
@@ -75,7 +74,6 @@ test("adaptComposeForDeplo drops a network made on the source host", () => {
     services: Record<string, { networks?: unknown }>;
     networks: Record<string, unknown>;
   };
-  // Left in place, compose refuses the whole stack: "declared as external, but could not be found".
   assert.deepEqual(Object.keys(doc.networks), ["own"]);
   assert.deepEqual(doc.services.app.networks, ["own"]);
   assert.ok(
@@ -119,7 +117,6 @@ test("adaptComposeForDeplo drops a network_mode naming a host network", () => {
   const doc = yaml.load(compose) as {
     services: Record<string, Record<string, unknown>>;
   };
-  // `networks:` stays empty while this is set, so the service would join nothing and resolve nothing.
   assert.equal("network_mode" in doc.services.app, false);
   assert.ok(changes.some((c) => c.includes("network_mode: shared-net")));
 });
@@ -198,7 +195,6 @@ test("adaptComposeForDeplo removes a per-resource network named by its key", () 
   assert.equal("networks" in doc.services.app, false);
 });
 
-// A network the stack declares itself is the stack's, whatever it is called; only Dokploy's fixed name speaks for itself without `external:`.
 test("adaptComposeForDeplo keeps an internal network that merely shares the name", () => {
   const source = [
     "services:",

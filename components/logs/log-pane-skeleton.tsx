@@ -1,6 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-// One tuple per placeholder log line: [level-gutter width, message width].
 const LINES: [string, string][] = [
   ["w-11", "w-3/4"],
   ["w-12", "w-1/2"],
@@ -22,7 +21,6 @@ const LINES: [string, string][] = [
   ["w-12", "w-11/12"],
 ];
 
-// LogPaneSkeleton - one frame for every log route: `loading.tsx` cannot read searchParams, so it cannot tell the chooser from the pane.
 export function LogPaneSkeleton() {
   return (
     <div
@@ -31,10 +29,8 @@ export function LogPaneSkeleton() {
       aria-busy
       aria-label="Loading logs"
     >
-      {/* Toolbar. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Skeleton className="size-4" />
-        {/* The name. */}
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-9 w-36 rounded-md" />
         <Skeleton className="h-4 w-20 rounded-full" />
@@ -49,7 +45,6 @@ export function LogPaneSkeleton() {
         </div>
       </div>
 
-      {/* Log stream. */}
       <div className="min-h-0 flex-1 space-y-2 overflow-hidden bg-black/90 p-3">
         {LINES.map(([pill, msg], i) => (
           <div key={i} className="flex items-center gap-3">

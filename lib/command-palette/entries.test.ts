@@ -132,7 +132,6 @@ test("a feature switched off is not offered; switched on it is", () => {
 });
 
 test("an app's own switches decide which of its pages are reachable", () => {
-  // The palette used to assume every switch was off, so a console someone had turned on was unsearchable.
   const pagesOf = (features: {
     pullRequests: boolean;
     cronJobs: boolean;
@@ -153,7 +152,6 @@ test("an app's own switches decide which of its pages are reachable", () => {
     assert.ok(!off.includes(label), `"${label}" is switched off`);
   }
 
-  // Nothing said at all is the safe assumption, not an optimistic one.
   const unknown = ownedPageEntries(
     [{ id: "p2", slug: "quiet", name: "quiet", logo: null }],
     [],
@@ -162,14 +160,12 @@ test("an app's own switches decide which of its pages are reachable", () => {
 });
 
 test("no two rows wear the same label", () => {
-  // An alias repeating a word nav-config already uses puts the same row on screen twice.
   const labels = staticEntries().map((e) => e.label);
   const twice = labels.filter((l, i) => labels.indexOf(l) !== i);
   assert.deepEqual(twice, [], `duplicated: ${twice.join(", ")}`);
 });
 
 test("the palette's own query is valid against the schema", () => {
-  // Nothing else catches a renamed field: the document is a string, so it would only fail on a keystroke.
   const errors = validate(
     buildSchema(readFileSync("schema.graphql", "utf8")),
     parse(SEARCH_QUERY),
@@ -198,7 +194,6 @@ test("every owned page names its owner and has a unique id", () => {
 });
 
 test("two words reach one app's page: 'Deplo variables'", () => {
-  // nav-config calls that page "Environment" and nobody types that, so the match reads its description too.
   assert.deepEqual(
     matchOwnedPages(OWNED, "Deplo variables").map((e) => [
       e.owner?.name,
@@ -234,7 +229,6 @@ test("one word naming a page reaches every app's copy of it", () => {
 });
 
 test("a word that names the app is spent on the app, not on its pages", () => {
-  // "deplo" is a prefix of "deployments", so typing an app's name used to bury it under its own pages.
   assert.deepEqual(
     matchOwnedPages(OWNED, "deplo").map((e) => e.owner?.name),
     [],
@@ -295,7 +289,6 @@ test("an app is named by its slug too, as it is on the server", () => {
 });
 
 test("the palette navigates and nothing else", () => {
-  // Every row is a destination: no Redeploy, no Copy URL, no group called "Actions".
   const stat = staticEntries();
   assert.deepEqual(
     stat.filter((e) => e.group === "Actions"),
@@ -307,7 +300,6 @@ test("the palette navigates and nothing else", () => {
 });
 
 test("a row is findable by what its capability is called", () => {
-  // "manage" is nowhere on the MCP row - it lives only in `manage_mcp`'s catalogue entry.
   const all = staticEntries();
   const label = (q: string) => matchEntries(all, q).map((e) => e.label);
 
@@ -345,7 +337,6 @@ test("two apps may share a display name - the same app in two environments", () 
 });
 
 test("an app called after a page does not take that word away from everyone", () => {
-  // Someone WILL name an app "logs", and that used to stop `logs` reaching any app's Logs page.
   const owned = ownedPageEntries(
     [
       { id: "p1", slug: "logs", name: "logs", logo: null },
@@ -370,7 +361,6 @@ test("an accent is not a different letter", () => {
 });
 
 test("a word that only PREFIXES a page name still names the app", () => {
-  // "deplo" is a prefix of "deployments"; the app is what was meant.
   const owned = ownedPageEntries(
     [
       { id: "p1", slug: "deplo-web", name: "deplo-web", logo: null },
@@ -387,7 +377,6 @@ test("a word that only PREFIXES a page name still names the app", () => {
 });
 
 test("every gate names a capability that exists", () => {
-  // A typo is invisible twice over: `canSee` hides the row, and its capability words never join the search corpus.
   const rows = [
     ...staticEntries(),
     ...appPageEntries("blog"),
@@ -431,7 +420,6 @@ test("a database's pages stay inside that database", () => {
       `${entry.label} leaves the database: ${entry.href}`,
     );
   }
-  // Its Overview and its settings root are one page, listed once.
   const hrefs = entries.map((e) => e.href);
   assert.equal(new Set(hrefs).size, hrefs.length, "no destination twice");
 });
@@ -448,7 +436,6 @@ test("a database's switched-off tabs are not offered either", () => {
 });
 
 test("folding never invents a word across two real ones", () => {
-  // "access login" folded to one string reads "accesSSLogin", so the Access page answered to "ssl".
   const pages = appPageEntries("blog");
   assert.deepEqual(
     matchEntries(pages, "ssl").map((e) => e.label),
@@ -456,7 +443,6 @@ test("folding never invents a word across two real ones", () => {
     "and not Access, which only spelled it across a word boundary",
   );
 
-  // The hyphen inside ONE word still folds away, which is why the rule ignores separators.
   const rows = [
     {
       id: "x",
@@ -472,7 +458,6 @@ test("folding never invents a word across two real ones", () => {
 });
 
 test("the words people type reach the page that answers them", () => {
-  // Each of these reached nothing while its page sat right there.
   const stat = staticEntries();
   const expected: [string, string][] = [
     ["2fa", "Security"],

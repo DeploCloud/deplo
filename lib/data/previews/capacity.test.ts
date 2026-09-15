@@ -51,8 +51,6 @@ test("a push does NOT revive an evicted preview, but Redeploy does", async () =>
   assert.equal((await previewOf(h.db, 1)).status, "evicted");
   const evictedKey = (await previewOf(h.db, 1)).deployKey;
 
-  // Reviving here would evict #2, whose next push would evict #1 again - two pull requests trading
-  // full builds forever.
   const push = await openOrSyncPreview(
     "prj_1",
     { ...PR, number: 1, headSha: "newsha1" },

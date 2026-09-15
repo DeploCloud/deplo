@@ -28,7 +28,6 @@ import type { GithubApp, GithubInstallation } from "../types/git";
 import type { ManifestConversion } from "../github/manifest";
 import type { AccessRequirement } from "../git/provider-access";
 
-/** Client-safe view of a connected App and its installations (no secrets). */
 export interface GithubInstallationDTO {
   id: string;
   installationId: number;
@@ -102,7 +101,6 @@ export async function listGithubApps(): Promise<GithubAppDTO[]> {
   return apps.map((a) => toAppDTO(a, installs));
 }
 
-/** Installations of the active team's connected Apps (for repo source pickers). */
 export async function listGithubInstallations(): Promise<
   GithubInstallationDTO[]
 > {
@@ -120,7 +118,6 @@ export async function listGithubInstallations(): Promise<
   );
 }
 
-/** Persist a newly-created App from its manifest conversion. Secrets encrypted. */
 export async function createGithubApp(
   conversion: ManifestConversion,
 ): Promise<GithubApp> {
@@ -150,13 +147,11 @@ export async function createGithubApp(
   return app;
 }
 
-/** What one connected App is missing, and where its owner fixes it. */
 export interface GithubAppAccessDTO {
   missing: AccessRequirement[];
   settingsUrl: string;
 }
 
-// githubAppsAccess reads LIVE from GitHub (never stored) what each App is missing.
 export async function githubAppsAccess(
   opts: { previews?: boolean } = {},
 ): Promise<Record<string, GithubAppAccessDTO>> {
@@ -178,7 +173,6 @@ export async function githubAppsAccess(
   return out;
 }
 
-// installationAccess reports what ONE installation's App is missing, active team only.
 export async function installationAccess(
   installationId: string,
   opts: { previews?: boolean } = {},
@@ -211,7 +205,6 @@ export async function installationAccess(
   };
 }
 
-/** Whether the active team uses pull request previews on any app. */
 export async function teamUsesPreviews(): Promise<boolean> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
@@ -224,7 +217,6 @@ export async function teamUsesPreviews(): Promise<boolean> {
   return rows.length > 0;
 }
 
-// upsertInstallation records (or refreshes) an installation of a connected App.
 export async function upsertInstallation(input: {
   appDbId: string;
   installationId: number;
@@ -235,7 +227,6 @@ export async function upsertInstallation(input: {
   const { membership } = await requireCapability("manage_git");
   const user = (await getCurrentUser())!;
   const db = getDb();
-  // The App must belong to the caller's active team, else it is a cross-tenant write.
   const app = await db
     .select({ id: githubAppsTable.id })
     .from(githubAppsTable)
@@ -295,7 +286,6 @@ export async function removeGithubApp(id: string): Promise<void> {
     )
     .limit(1);
   if (app.length === 0) throw new Error("GitHub App not found");
-  // `github_installation.app_id` is ON DELETE CASCADE, so this drops them too.
   await db.delete(githubAppsTable).where(eq(githubAppsTable.id, id));
   await recordActivity(
     "integration",

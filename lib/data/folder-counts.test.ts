@@ -92,7 +92,6 @@ test("project appCount reaches services inside a legacy folder-in-project subtre
     const p = await createProject("Container");
     const legacy = await createFolder("Legacy");
     const nested = await createFolder("Nested", null, legacy.id);
-    // A LEGACY folder-in-project row (pre-ADR-0009), which the UI can no longer write.
     await db
       .update(foldersTable)
       .set({ projectId: p.id })

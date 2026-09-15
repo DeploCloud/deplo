@@ -15,11 +15,8 @@ import { passkeyRelyingParty } from "../public-url";
 import { recordActivity } from "./activity";
 import { stepUpPassword } from "./two-factor";
 
-// Passkeys are USER-scoped, never team-scoped: a credential belongs to a person.
-
 const MAX_PASSKEYS = 20;
 
-// PasskeyKind is what holds the credential, for the row's icon and subtitle.
 export type PasskeyKind = "synced" | "device" | "securityKey";
 
 function passkeyKind(
@@ -40,7 +37,6 @@ export interface PasskeyDTO {
   kind: PasskeyKind;
 }
 
-// listMyPasskeys lists the passkeys on this account, newest first.
 export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
   requirePersonalSession("your passkeys");
   const user = await assertUser();
@@ -56,11 +52,9 @@ export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
     })
     .from(passkeyTable)
     .where(eq(passkeyTable.userId, user.id))
-    // NULLS LAST, not the Postgres default: an undated row is the oldest thing here, never the newest.
     .orderBy(sql`${passkeyTable.createdAt} desc nulls last`);
   return rows.map((r) => ({
     id: r.id,
-    // The column is nullable because the library can write undefined; Deplo always sends a label.
     name: r.name?.trim() || "Passkey",
     createdAt: r.createdAt ? r.createdAt.toISOString() : null,
     usableHere: rpId !== null && r.rpId === rpId,
@@ -68,7 +62,6 @@ export const listMyPasskeys = cache(async (): Promise<PasskeyDTO[]> => {
   }));
 });
 
-// startPasskeyRegistration returns the creation options for navigator.credentials.create.
 export async function startPasskeyRegistration(
   password: string,
 ): Promise<unknown> {
@@ -78,7 +71,6 @@ export async function startPasskeyRegistration(
       "Passkeys need this panel to be reachable at its own https address.",
     );
   const user = await stepUpPassword(password);
-  // A ceiling, not a rate limit: the step-up limiter already bounds how fast these arrive.
   if ((await countMyPasskeys(user.id)) >= MAX_PASSKEYS)
     throw new Error(
       `This account already has ${MAX_PASSKEYS} passkeys. Remove one before adding another.`,
@@ -89,7 +81,6 @@ export async function startPasskeyRegistration(
   });
 }
 
-// finishPasskeyRegistration verifies the authenticator's answer and stamps the rpID the plugin never records.
 export async function finishPasskeyRegistration(input: {
   response: unknown;
   name: string;
@@ -122,7 +113,6 @@ export async function finishPasskeyRegistration(input: {
   };
 }
 
-// renamePasskey relabels one passkey; the userId clause here is the gate, not a library middleware.
 export async function renamePasskey(input: {
   id: string;
   name: string;
@@ -140,7 +130,6 @@ export async function renamePasskey(input: {
     throw new Error("That passkey is no longer on this account.");
 }
 
-// deletePasskey removes one; count and delete share a transaction (FOR UPDATE) so two clicks cannot race.
 export async function deletePasskey(input: {
   id: string;
   password: string;
@@ -164,7 +153,6 @@ export async function deletePasskey(input: {
       .for("update");
     const target = mine.find((p) => p.id === input.id);
     if (!target) throw new Error("That passkey is no longer on this account.");
-    // Only credentials that still work here count: one minted elsewhere satisfies nothing.
     const usable = mine.filter((p) => rpId !== null && p.rpId === rpId);
     const losingTheLastOne =
       usable.length <= 1 && usable.some((p) => p.id === input.id);

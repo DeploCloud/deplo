@@ -20,7 +20,6 @@ import { renderResourceLimitsYaml } from "../resources";
 import { traefikRouterLabels } from "../routing";
 import { appEnv, type PreviewEnvContext } from "./deploy-env";
 
-// renderCompose renders the single-image stack YAML. Pure: no docker, store or fs access.
 export function renderCompose(opts: {
   name: string;
   image: string;
@@ -52,10 +51,7 @@ export function renderCompose(opts: {
   const injectPort = opts.injectPort ?? true;
   const vols = opts.volumes ?? [];
   const namedVols = vols.filter((v) => v.type !== "host" && v.type !== "app");
-  // Absolute, per-project files dir - the same sandbox the `./<x>` compose convention
-  // resolves to, so a "service" mount is never resolved against the stack dir by docker.
   const filesDir = stackFilesDir(deployKey);
-  // Default PORT to the app's container port so 12-factor apps bind where Traefik forwards.
   const env = injectPort
     ? { PORT: String(port), ...opts.env }
     : { ...opts.env };
@@ -78,8 +74,6 @@ export function renderCompose(opts: {
     "deplo.managed=true",
     `deplo.project=${trackingId}`,
     `deplo.slug=${deployKey}`,
-    // Only emitted when the tracking id is NOT the app id (a preview): adding it
-    // unconditionally would break the byte-identical-reroute contract.
     ...(trackingId === appId ? [] : [`deplo.app=${appId}`]),
   ];
   const labelsYaml = labels
@@ -94,8 +88,6 @@ export function renderCompose(opts: {
         .join("\n") +
       "\n"
     : "";
-  // Every fragment is exactly "" when the app has none, so the generated stack stays
-  // byte-identical to the no-volumes baseline (the reroute contract).
   const appVolsYaml = vols.length
     ? "    volumes:\n" +
       vols
@@ -148,15 +140,12 @@ networks:
 ${topVolsYaml}`;
 }
 
-// portMappings renders an app's published ports as compose `ports:` entries.
 export function portMappings(ports: App["ports"]): string[] {
   return (ports ?? []).map(
     (p) => `${p.published}:${p.target}${p.protocol === "udp" ? "/udp" : ""}`,
   );
 }
 
-// renderDeployStack renders the single-image stack this deploy ships, and the decrypted
-// env that goes with it. The control plane stays the sole source of both (D2/D4).
 export async function renderDeployStack(opts: {
   project: App;
   name: string;
@@ -164,8 +153,6 @@ export async function renderDeployStack(opts: {
   trackingId: string;
   environment: DeploymentEnvironment;
   preview: PreviewEnvContext | null;
-  // A preview's port override is where its router forwards AND the PORT its container
-  // is told to listen on: one without the other is a Bad Gateway.
   previewPort: number | null;
   routes: RoutableDomain[];
   image: string;
@@ -177,8 +164,6 @@ export async function renderDeployStack(opts: {
   const { project, preview, deployKey } = opts;
   const env = await appEnv(project.id, opts.environment, { preview });
   const basicAuthUsers = await basicAuthUsersValue(project.id);
-  // A preview is sealed in a network of its own; everything else joins its
-  // Environment's (or its team's, when it has no Environment).
   const network = deployNetwork(project, preview ? deployKey : null);
   const composeYaml = renderCompose({
     name: opts.name,
@@ -191,11 +176,8 @@ export async function renderDeployStack(opts: {
     routes: opts.routes,
     env,
     basicAuthUsers,
-    // A prebuilt image is deployed as-is: never inject PORT and override the listen
-    // address its author baked in. Built sources DO get it.
     injectPort: project.source !== "docker-image",
     volumes: project.volumes ?? [],
-    // A host port is a singleton on the machine, and production is already holding it.
     ports: preview ? [] : portMappings(project.ports),
     resources: project.resources,
     healthCheck: project.healthCheck,

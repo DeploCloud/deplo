@@ -62,8 +62,6 @@ test("the copy reads the source host, and the bytes land in the target volume", 
 
 test("a source volume that is not on that host wipes nothing and is not a copy", async () => {
   await seedMigrationHostServer();
-  // Docker CREATES a missing named volume, so the export answers with an empty archive
-  // instead of failing - the whole bug this guards.
   delete state.volumes.srv_migration_host["blink-web-abc_uploads"];
   const before = state.volumes[SERVER_1]["deplo-blink-web-uploads"];
   const runId = await openRun();

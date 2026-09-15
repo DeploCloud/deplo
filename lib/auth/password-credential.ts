@@ -7,13 +7,8 @@ import { createLocalAccountIssuer } from "better-auth";
 import { hashPassword, verifyPassword } from "../crypto";
 import { newId } from "../ids";
 
-// CREDENTIAL_ISSUER is `account.issuer`, required since Better Auth 1.7.0, which
-// keys an account on `(issuer, accountId)`.
 export const CREDENTIAL_ISSUER = createLocalAccountIssuer("credential");
 
-// insertCredentialAccount writes the `credential` provider row for a user. `account_id`
-// is the provider's own subject id; for `credential` that is the user id, matching the
-// 0055 backfill.
 export async function insertCredentialAccount(
   db: DrizzleClient | DbTx,
   userId: string,
@@ -29,8 +24,6 @@ export async function insertCredentialAccount(
   });
 }
 
-// verifyUserPassword is the re-auth step in front of every sensitive account action
-// (change email / change password / transfer ownership / enable or disable 2FA).
 export async function verifyUserPassword(
   userId: string,
   password: string,
@@ -50,7 +43,6 @@ export async function verifyUserPassword(
   return await verifyPassword(password, stored);
 }
 
-// setUserPassword replaces a user's stored credential (admin reset + the recover script).
 export async function setUserPassword(
   userId: string,
   password: string,
@@ -67,7 +59,5 @@ export async function setUserPassword(
       ),
     )
     .returning({ id: accountTable.id });
-  // An account created before it had a credential row (or one whose provider row
-  // was deleted) still needs a password to be settable.
   if (updated.length === 0) await insertCredentialAccount(db, userId, password);
 }

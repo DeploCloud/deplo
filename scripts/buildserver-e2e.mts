@@ -1,11 +1,3 @@
-/**
- * End-to-end proof of the BUILD SERVER path against two REAL fleet hosts. It is
- * the manual proof the unit tests cannot give, and it is what caught that the
- * FIRST version of its own existence check was wrong (see hasImage).
- */
-// Relative, like every other script here: an absolute path off this box
-// resolves nowhere else, and `tsc` on a checkout that is not /root/projects
-// answers TS2307 for all four plus an implicit `any` per callback.
 import { connectAgent } from "../lib/infra/agent-client/connect";
 import { copyImageBetween } from "../lib/data/volume-migration";
 import { SourceKind, BuildKind } from "../lib/agent/gen/agent";
@@ -15,7 +7,6 @@ const SLUG = "zz-buildsrv-probe";
 const TAG = `deplo/${SLUG}:${Date.now().toString(16).slice(-12)}`;
 
 const servers = await listAllServers();
-// Two provisioned hosts of the SAME architecture; override with BUILDER/TARGET.
 const usable = servers.filter(
   (s) => s.agent?.certFingerprint && !s.storageOnly,
 );
@@ -30,7 +21,6 @@ if (!builder || !target) {
 }
 console.log(`builder=${builder.name}  target=${target.name}  tag=${TAG}\n`);
 
-// A build context that needs no registry pull for its FROM: scratch has no layers.
 const { mkdtempSync, writeFileSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
@@ -116,15 +106,12 @@ console.log(`   trasferiti ${bytes} byte`);
 
 console.log("\n== 3. VERIFICA ==");
 
-/**
- * Esiste quel tag su quell'host?
- */
 async function hasImage(serverId: string, tag: string): Promise<boolean> {
   const c = await connectAgent(serverId);
   try {
     let bytes = 0;
     for await (const ch of c.exportImage(tag, false)) bytes += ch.length;
-    return bytes > 512; // un'immagine vera, non il solo involucro gzip
+    return bytes > 512;
   } catch {
     return false;
   } finally {
@@ -139,12 +126,10 @@ console.log(
   `   builder ha ancora l'immagine: ${onBuilder ? "SI (male)" : "NO (corretto)"}`,
 );
 
-// Pulizia del target.
 const t3 = await connectAgent(target.id);
 try {
   for await (const _c of t3.exportImage(TAG, true)) void _c;
 } catch {
-  /* gia' via */
 } finally {
   t3.close();
 }

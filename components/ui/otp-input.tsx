@@ -12,7 +12,6 @@ import {
 } from "@/lib/otp-field";
 import { cn } from "@/lib/utils";
 
-// OtpInput renders a one-time code as separate boxes; every edit rule lives in lib/otp-field.ts so it is testable without a DOM.
 export function OtpInput({
   value,
   onChange,
@@ -41,13 +40,11 @@ export function OtpInput({
     el?.select();
   }, []);
 
-  // The value as of the LAST EDIT: `apply` moves focus synchronously, so the newly focused box runs `onFocus` before the re-render and would bounce focus backwards.
   const editedRef = React.useRef(value);
   React.useEffect(() => {
     editedRef.current = value;
   }, [value]);
 
-  // The caller clears a rejected code while the boxes are still disabled, which drops focus on the floor and swallows the next keystroke.
   const filledRef = React.useRef(value.length > 0);
   React.useEffect(() => {
     const wasFilled = filledRef.current;
@@ -56,7 +53,6 @@ export function OtpInput({
   }, [value, disabled, focusBox]);
 
   function apply(edit: { value: string; caret: number }) {
-    // Before `focusBox`, which triggers the focus guard below in this same tick.
     editedRef.current = edit.value;
     if (edit.value !== value) onChange(edit.value);
     focusBox(edit.caret);
@@ -91,20 +87,16 @@ export function OtpInput({
             ref={(el) => {
               refs.current[i] = el;
             }}
-            // Not `number`: it brings spinners, accepts "e" and "-", and strips leading zeros.
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
-            // Only on the first box, where the platform expects to autofill.
             autoComplete={i === 0 ? "one-time-code" : "off"}
-            // Not maxLength=1: a controlled box that is already full would swallow the keystroke instead of letting it replace the digit.
             value={char}
             disabled={disabled}
             autoFocus={autoFocus && i === 0}
             aria-label={`Digit ${i + 1} of ${length}`}
             aria-invalid={invalid || undefined}
             onChange={(e) => {
-              // Not always one keystroke: an autofilled code arrives here whole, with no paste event.
               apply(typeOrFill(value, i, e.target.value, !char, length));
             }}
             onKeyDown={(e) => onKeyDown(e, i)}
@@ -115,7 +107,6 @@ export function OtpInput({
               );
             }}
             onFocus={() => {
-              // Clicking an unreachable box lands on the caret instead of leaving a gap behind.
               const legal = caretFor(editedRef.current, length);
               if (i > legal) focusBox(legal);
               else refs.current[i]?.select();

@@ -20,7 +20,6 @@ import { EditorSkeleton } from "./editor-skeleton";
 import { PermissionsSection } from "./permissions-section";
 import { Section } from "./section-shell";
 
-// EditUserSeedUser - header/identity seed, the minimum any caller already has.
 export interface EditUserSeedUser {
   userId: string;
   username: string;
@@ -29,7 +28,6 @@ export interface EditUserSeedUser {
   avatarUrl: string | null;
 }
 
-// EditUserSeedFlags - optional instant-render seed of the editable global flags.
 export interface EditUserSeedFlags {
   isInstanceAdmin: boolean;
   isInstanceOwner: boolean;
@@ -54,7 +52,6 @@ const UPDATE_USER = /* GraphQL */ `
   }
 `;
 
-// UserAccountSettings - the instance-admin editor for ONE user's global account.
 export function UserAccountSettings({
   user,
   seed,
@@ -65,21 +62,17 @@ export function UserAccountSettings({
   onDeleted,
 }: {
   user: EditUserSeedUser;
-  // Present ⇒ render immediately; absent ⇒ fetch then render.
   seed?: EditUserSeedFlags;
   isSelf: boolean;
-  // Draw the avatar + name + state badges; a page with a header of its own passes false.
   showHeader?: boolean;
   onCancel?: () => void;
   onSaved?: () => void;
   onDeleted?: () => void;
 }) {
   const router = useRouter();
-  // Email and the team list are never in a list row, so they are always fetched.
   const [detail, setDetail] = React.useState<UserDetailDTO | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  // Staged form state - committed by "Save changes".
   const [admin, setAdmin] = React.useState(seed?.isInstanceAdmin ?? false);
   const [exposePorts, setExposePorts] = React.useState(
     seed?.canExposePorts ?? false,
@@ -89,8 +82,6 @@ export function UserAccountSettings({
   );
   const [password, setPassword] = React.useState("");
 
-  // Server truth: `suspended` is NOT a form field, the danger zone applies it
-  // immediately, so this only ever mirrors what the server confirmed.
   const [suspended, setSuspended] = React.useState(seed?.suspended ?? false);
   const [savedGrants, setSavedGrants] = React.useState<Grants>({
     isInstanceAdmin: seed?.isInstanceAdmin ?? false,
@@ -108,8 +99,6 @@ export function UserAccountSettings({
   const [advancedOpen, setAdvancedOpen] = React.useState(
     Boolean(seed?.canExposePorts || seed?.canMountHostVolumes),
   );
-  // A boolean, not the inline-rebuilt `seed` object, so it is safe both as an
-  // effect dependency and read during render.
   const hasSeed = seed != null;
 
   React.useEffect(() => {
@@ -140,8 +129,6 @@ export function UserAccountSettings({
       if (cancelled) return;
       if (res.ok && res.data) {
         setDetail(res.data);
-        // The fetch is the freshest truth there is, so it always refreshes the
-        // server-side baseline (a seeded list row can be minutes old)…
         setSavedGrants({
           isInstanceAdmin: res.data.isInstanceAdmin,
           canExposePorts: res.data.canExposePorts,
@@ -150,8 +137,6 @@ export function UserAccountSettings({
         setSuspended(res.data.suspended);
         setTwoFactorEnabled(res.data.twoFactorEnabled);
         setPasskeyCount(res.data.passkeyCount);
-        // …but it seeds the FORM only when the caller had nothing to seed it
-        // with, never clobber a switch the admin just flipped.
         if (!hasSeed) {
           setAdmin(res.data.isInstanceAdmin);
           setExposePorts(res.data.canExposePorts);
@@ -173,14 +158,9 @@ export function UserAccountSettings({
   const teams = detail?.teams ?? null;
   const teamCount = teams?.length ?? seed?.teamCount ?? 0;
 
-  // The instance owner's account is editable only by the owner themselves, no other
-  // admin may demote, suspend, reset or delete them, because all of those are routes
-  // to the same takeover (see lib/data/instance-owner.ts).
   const isOwner = seed?.isInstanceOwner ?? detail?.isInstanceOwner ?? false;
   const ownerLocked = isOwner && !isSelf;
-  // Ownership leaves only through a transfer that names a successor.
   const ownerFlagsLocked = isOwner;
-  // Suspending and deleting are refused for your own account and for the owner's.
   const showDanger = !isSelf && !isOwner;
 
   const dirty =
@@ -274,7 +254,6 @@ export function UserAccountSettings({
     return { ok: true as const };
   }
 
-  // Reactivating is safe, so it applies on the spot - no confirm to sit through.
   function reactivate() {
     startTransition(async () => {
       const res = await commit({ suspended: false });
@@ -302,8 +281,6 @@ export function UserAccountSettings({
 
       <form className="grid gap-4" onSubmit={onSubmit}>
         {!ready ? (
-          // `isSelf` is a prop, so the one section whose presence we can't know
-          // before the fetch is the danger zone on the instance OWNER.
           <EditorSkeleton withDanger={!isSelf} />
         ) : (
           <>
@@ -394,8 +371,6 @@ export function UserAccountSettings({
             }
             aria-busy={pending}
           >
-            {/* The label stays mounted (just hidden) under the spinner so the
-                button keeps its width and the footer doesn't jump. */}
             <span className="grid place-items-center">
               <span
                 className={cn(

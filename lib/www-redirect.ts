@@ -1,4 +1,3 @@
-// Which hostname of a `www`/non-`www` pair serves the app, relative to the domain being edited.
 export type WwwRedirect = "none" | "toThis" | "toCounterpart";
 
 const TWO_LABEL_SUFFIXES = new Set([
@@ -63,7 +62,6 @@ function clean(host: string): string {
     .replace(/[./]+$/, "");
 }
 
-// The other half of a hostname's `www` pair, or null when it has no meaningful one.
 export function wwwCounterpart(host: string): string | null {
   const h = clean(host);
   if (!h || h.includes("/") || h.includes(" ")) return null;
@@ -82,12 +80,10 @@ export function wwwCounterpart(host: string): string | null {
   return apex ? `www.${h}` : null;
 }
 
-// A host on public wildcard DNS: it resolves without a record, and no public CA issues for it.
 export function isWildcardDnsHost(host: string): boolean {
   return WILDCARD_DNS_SUFFIXES.some((s) => host.endsWith(s));
 }
 
-// The WwwRedirect state a domain is currently in, read off the app's rows.
 export function deriveWwwRedirect(
   host: string,
   domains: { name: string; redirectTo?: string | null }[],

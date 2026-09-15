@@ -10,8 +10,6 @@ import {
   type ActivityParams,
 } from "./activity-filter";
 
-/** `activities` has no retention, so the rail's window is never left open. */
-
 const NOW = Date.parse("2026-08-31T00:00:00.000Z");
 const params = (p: Partial<ActivityParams>): ActivityParams => ({
   ...EMPTY_ACTIVITY_PARAMS,
@@ -53,8 +51,6 @@ test("a custom range wins even when only one end is set", () => {
   );
 });
 
-/** A scoped page pins one dimension, and the URL must not be able to widen it. */
-
 test("a person's own page ignores an actor picked in the URL", () => {
   const p = params({
     actorUserIds: ["usr_someone_else"],
@@ -66,7 +62,6 @@ test("a person's own page ignores an actor picked in the URL", () => {
     scopedActivityFilter(p, { kind: "actor", userId: "usr_ada" }, NOW),
     {
       actorUserIds: ["usr_ada"],
-      // Everything the reader DID pick still narrows on top of the pin.
       types: ["deployment"],
       resourceIds: ["prj_1"],
       from: "2026-08-24T00:00:00.000Z",

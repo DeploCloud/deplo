@@ -34,7 +34,6 @@ import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import { sameCapabilities } from "@/lib/membership-shared";
 import type { TeamRoleDTO } from "@/lib/data/roles/role-list";
 
-// RoleEditor - a page, not a dialog.
 export function RoleEditor({
   mode,
   role,
@@ -61,7 +60,6 @@ export function RoleEditor({
         basedOn?.capabilities ?? ["view" as Capability],
       requireTwoFactor:
         role?.requireTwoFactor ?? basedOn?.requireTwoFactor ?? false,
-      // Unrestricted shows as everything ticked - blank made "whole team" read as "nothing".
       scope:
         (role?.scope ?? basedOn?.scope ?? null) != null
           ? toSelection(role?.scope ?? basedOn?.scope ?? null)
@@ -85,7 +83,6 @@ export function RoleEditor({
     (scope.environmentIds?.length ?? 0) +
     scope.folderIds.length +
     scope.appIds.length;
-  // Unrestricted is stored as no scope at all, so tomorrow's project is included.
   const scoped = !coversEverything(tree, scope);
   const mutedCaps = React.useMemo(
     () =>
@@ -143,7 +140,6 @@ export function RoleEditor({
             description,
             capabilities: caps,
             requireTwoFactor: twoFactor,
-            // Two fields: "absent" must keep meaning "leave it alone" for older clients.
             scope: scoped ? scopeInput(scope) : undefined,
             clearScope: !scoped,
           },
@@ -241,7 +237,6 @@ export function RoleEditor({
           </CardContent>
         </Card>
 
-        {/* Scope before Permissions: the reach decides what the permissions mean. */}
         <Card>
           <CardContent className="pt-6">
             <ScopePicker
@@ -277,7 +272,6 @@ export function RoleEditor({
         </Card>
       </div>
 
-      {/* Sticky right rail: the primary action stays reachable while the list scrolls. */}
       <aside className="h-fit space-y-4 xl:sticky xl:top-20">
         <Card>
           <CardHeader>
@@ -516,7 +510,6 @@ function toSelection(
   };
 }
 
-// The four fields `RoleScopeInput` defines, and only those.
 function scopeInput(scope: ScopeSelection) {
   return {
     projectIds: scope.projectIds,
@@ -526,7 +519,6 @@ function scopeInput(scope: ScopeSelection) {
   };
 }
 
-// Order-blind: the picker emits its sets in whatever order it walked them.
 function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
   const same = (x: string[], y: string[]) =>
     x.length === y.length && [...x].sort().join() === [...y].sort().join();

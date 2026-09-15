@@ -16,7 +16,6 @@ export default async function AppAccessSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // Lists nothing without `manage_basic_auth` - a direct hit gets the read-only empty state, not an error.
   const basicAuthUsers = await listBasicAuthUsers(project.id);
 
   return (
@@ -26,7 +25,6 @@ export default async function AppAccessSettingsPage(
         title="Access"
         docs="domains.overview"
       />
-      {/* The provider holds the pulsing placeholder for a new credential, so it must wrap the manager. */}
       <CapabilityFieldset cap="manage_basic_auth">
         <PendingCreateProvider count={basicAuthUsers.length}>
           <BasicAuthManager appId={project.id} users={basicAuthUsers} />

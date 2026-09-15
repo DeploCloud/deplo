@@ -26,12 +26,10 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-// useConsoleAck - whether the user has confirmed the console warning.
 export function useConsoleAck(): boolean | null {
   return React.useSyncExternalStore(subscribe, readAck, () => null);
 }
 
-// acknowledgeConsole - persist the acknowledgement and notify every subscriber.
 export function acknowledgeConsole(): void {
   try {
     window.localStorage.setItem(ACK_KEY, "1");

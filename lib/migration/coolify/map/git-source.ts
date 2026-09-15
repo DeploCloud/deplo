@@ -1,6 +1,5 @@
 import type { CoolifyApplication } from "../client";
 
-/** Which host each of Coolify's git source models lives on by default. */
 const SOURCE_HOSTS: Record<string, string> = {
   githubapp: "https://github.com",
   gitlabapp: "https://gitlab.com",
@@ -8,10 +7,8 @@ const SOURCE_HOSTS: Record<string, string> = {
   giteaapp: "https://gitea.com",
 };
 
-/** The providers a Coolify source can name; `git` when the address stands alone. */
 type GitOrigin = "git" | "github" | "gitlab" | "bitbucket" | "gitea";
 
-/** And which provider each of them authenticates with once Deplo has a credential. */
 const SOURCE_ORIGINS: Record<string, GitOrigin> = {
   githubapp: "github",
   gitlabapp: "gitlab",
@@ -19,16 +16,9 @@ const SOURCE_ORIGINS: Record<string, GitOrigin> = {
   giteaapp: "gitea",
 };
 
-/**
- * The clone URL for a Coolify application. `git_repository` is a whole URL for a
- * PUBLIC repo and a bare `owner/repo` behind a source, which `git clone` refuses
- * with "repository does not exist" - every git app a migration brought over.
- */
 export function coolifyGitUrl(row: CoolifyApplication): {
   url: string | null;
   assumed: boolean;
-  /** Which provider authenticates the clone. `git` when the address stands on its
-   *  own: a public repository clones here anonymously, exactly as it did there. */
   origin: GitOrigin;
 } {
   const raw = row.git_repository?.trim() ?? "";
@@ -49,8 +39,6 @@ export function coolifyGitUrl(row: CoolifyApplication): {
   return {
     url: `${(host ?? SOURCE_HOSTS.githubapp).replace(/\/+$/, "")}/${path}.git`,
     assumed: !host,
-    // No host to read means the URL above assumed github.com: say so here too, or
-    // the clone goes out anonymous against an address Deplo itself invented.
     origin: named ?? (host ? "git" : "github"),
   };
 }

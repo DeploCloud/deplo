@@ -141,7 +141,6 @@ test("servers: observedTraefik reports nothing when the Hello never looked", () 
     observedTraefik({ dockerAvailable: true, traefikRunning: false }),
     false,
   );
-  // The agent FORCES traefikRunning false when Docker is unreachable: "we did not look", not "it is off".
   assert.equal(
     observedTraefik({ dockerAvailable: false, traefikRunning: false }),
     undefined,
@@ -302,7 +301,6 @@ test("activities: recordActivity falls back to the first team when none resolves
   });
   const rows = await db.select().from(activitiesTable);
   assert.equal(rows.length, 1);
-  // The first team by createdAt - seedIdentity seeds team_a before team_b.
   assert.equal(rows[0]!.teamId, TEAM_A);
 });
 

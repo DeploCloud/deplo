@@ -141,7 +141,6 @@ test("beta sees a variable alpha shared with it, read-only and stripped", async 
   assert.equal(seen.editable, false);
   assert.equal(seen.ownerTeam?.id, TEAM_A);
   assert.equal(seen.autoInject, true);
-  // Alpha's object graph must not be enumerable from beta.
   assert.deepEqual(seen.appIds, []);
   assert.deepEqual(seen.projectIds, []);
   assert.deepEqual(seen.environmentIds, []);
@@ -194,7 +193,6 @@ test("a member of alpha alone cannot tick beta, and nothing is created", async (
 });
 
 test("a token without manage_env of its own cannot tick a second team", async () => {
-  // `membershipFor`'s clamp bails for another team, so the token's OWN set is read.
   await assert.rejects(
     () =>
       runWithIdentity(
@@ -234,7 +232,6 @@ test("a token holding beta only by project cannot tick beta", async () => {
             capabilities: ["view", "manage_env"],
             scope: {
               teamIds: [TEAM_A, TEAM_B],
-              // Breadth, not depth: beta is reachable, but not WHOLLY.
               wholeTeamIds: [TEAM_A],
               projectIds: [],
               folderIds: [],
@@ -261,7 +258,6 @@ test("a token holding beta only by project cannot tick beta", async () => {
 test("deleting the second team does NOT disarm the variable in the first", async () => {
   await mkVar([TEAM_A, TEAM_B]);
   await db.delete(teamsTable).where(eq(teamsTable.id, TEAM_B));
-  // `auto_inject` is a column: losing a reach row to a cascade must not disarm it.
   assert.deepEqual(keys(await loadAutoInjectedVarsForApp(APP_A)), ["SHARED"]);
 });
 
@@ -277,7 +273,6 @@ test("an instance-owned variable reaches its teams and only an admin edits it", 
   assert.deepEqual(keys(await loadAutoInjectedVarsForApp(APP_A)), ["GLOBAL"]);
   assert.deepEqual(await loadAutoInjectedVarsForApp(APP_B), []);
   const [seen] = await inA(() => listSharedVars());
-  // BOTH is seeded `owner`, which is an instance admin.
   assert.equal(seen!.editable, true);
   assert.equal(seen!.ownerTeam, null);
   await db
@@ -291,7 +286,6 @@ test("an instance-owned variable reaches its teams and only an admin edits it", 
 test("beta's opt-in does not lock the owner out of its own variable", async () => {
   const id = await mkVar([TEAM_A, TEAM_B]);
   await inB(() => setSharedVarAppLink(id, APP_B, true));
-  // The link replace owns the ACTING team's links only; alpha never has beta's `manage_env`.
   await inA(() =>
     saveSharedVar({
       id,
@@ -329,7 +323,6 @@ test("revoking beta's reach takes beta's per-app links with it", async () => {
       projectIds: [],
     }),
   );
-  // Left behind, the row would inject again the moment beta is re-shared with.
   assert.deepEqual(
     await db.select().from(appJunction).where(eq(appJunction.varId, id)),
     [],
@@ -338,7 +331,6 @@ test("revoking beta's reach takes beta's per-app links with it", async () => {
 
 test("a team the variable already reaches is not re-gated on a save", async () => {
   const id = await mkVar([TEAM_A, TEAM_B]);
-  // Re-checking the STORED reach is what made a migrated instance-wide variable unsavable.
   await inA(() =>
     runWithIdentity(
       {
@@ -387,7 +379,6 @@ test("a reach row lost to a cascade survives the next ordinary save", async () =
       projectIds: [],
     }),
   );
-  // ADR-0027 §4 all the way through: the column, not the count.
   assert.deepEqual(keys(await loadAutoInjectedVarsForApp(APP_A)), ["SHARED"]);
 });
 
@@ -431,7 +422,6 @@ test("an edit never ARMS an instance-owned variable that was not injecting", asy
 });
 
 test("beta is told who owns the variable, not which other teams run on it", async () => {
-  // The author needs gamma too, to be allowed to share with all three.
   await db.insert(membershipsTable).values({
     id: "mbr_both_c",
     userId: BOTH,
@@ -448,7 +438,6 @@ test("beta is told who owns the variable, not which other teams run on it", asyn
   await mkVar([TEAM_A, TEAM_B, TEAM_C]);
   const [seen] = await inB(() => listSharedVars());
   assert.equal(seen!.ownerTeam?.id, TEAM_A);
-  // Gamma exists, and beta has no business knowing that.
   assert.deepEqual(seen!.teamIds, [TEAM_B]);
   assert.deepEqual(
     seen!.teams.map((t) => t.id),

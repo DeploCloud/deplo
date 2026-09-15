@@ -2,7 +2,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const LINES = ["w-52", "w-2/3", "w-1/3", "w-44", "w-3/4", "w-1/2", "w-24"];
 
-// ConsoleSkeleton - the console route's loading frame, shared by the App and database routes.
 export function ConsoleSkeleton({ label }: { label: string }) {
   return (
     <div
@@ -11,7 +10,6 @@ export function ConsoleSkeleton({ label }: { label: string }) {
       aria-busy
       aria-label={label}
     >
-      {/* Mirrors the real toolbar: name, container picker, status, shell picker, Shell/Attach, actions. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Skeleton className="size-4" />
         <Skeleton className="h-4 w-28" />

@@ -10,7 +10,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
 import type { DatabaseStatus } from "@/lib/types/database";
 
-// DatabaseControls - Start / Stop / Restart for a database.
 export function DatabaseControls({
   id,
   status: serverStatus,
@@ -24,7 +23,6 @@ export function DatabaseControls({
   const provisioning = status === "provisioning";
   const running = status === "running";
 
-  // Fire and let the live status subscription answer; a spinner here only delays the click.
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id });

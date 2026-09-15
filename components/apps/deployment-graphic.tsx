@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Deployments empty-state illustration: a crate riding a conveyor into a server, which then boots up and goes live. */
 export function DeploymentGraphic({ className }: { className?: string }) {
   return (
     <svg

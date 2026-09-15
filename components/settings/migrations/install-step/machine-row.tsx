@@ -19,7 +19,6 @@ import {
 } from "./machine-state";
 import type { MachineInstall } from "./use-machine-install";
 
-// MachineRow is one machine of the source: its verdict, its line to run, its address.
 export function MachineRow({
   m,
   canAddServers,

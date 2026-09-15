@@ -17,7 +17,6 @@ test("the default 5s cadence is read twice per sample, not five times", () => {
 });
 
 test("a host reporting every second is still read every second", () => {
-  // Half of 1s is under the floor, so the floor wins: a fast host must not render slower than it reports.
   assert.equal(pollIntervalFor(at(1000)), POLL_MS);
 });
 
@@ -25,7 +24,6 @@ test("a slow cadence is capped so the 'as of' clock keeps moving", () => {
   assert.equal(pollIntervalFor(at(60_000)), 10_000);
 });
 
-// A reconnect leaves one wide gap in a steady series; the median is what stops it slowing every viewer for 16 minutes.
 test("one outlier gap does not move the cadence", () => {
   const ts = at(5000);
   ts.push(ts[ts.length - 1] + 45_000);

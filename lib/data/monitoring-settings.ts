@@ -9,17 +9,13 @@ import { recordActivity } from "./activity";
 import { clearMetricsHistory } from "../monitoring/history";
 import { clearContainerHistory } from "../monitoring/container-history";
 
-// MonitoringSettings is the instance-wide singleton behind "Save metrics on server".
 export interface MonitoringSettings {
-  /** Keep a rolling in-memory metrics history per server on the control plane. */
   saveMetrics: boolean;
-  /** Null until the row has been written once (the defaults are in effect). */
   updatedAt: string | null;
 }
 
 const SETTINGS_ID = "default";
 
-// Default ON: ~15 minutes of history costs ~0.5 MB per server, so a reload keeps the charts.
 const DEFAULTS: MonitoringSettings = { saveMetrics: true, updatedAt: null };
 
 async function loadSettings(): Promise<MonitoringSettings> {
@@ -30,14 +26,11 @@ async function loadSettings(): Promise<MonitoringSettings> {
     : DEFAULTS;
 }
 
-// getMonitoringSettings reads the settings; any logged-in member may (flipping is gated).
 export async function getMonitoringSettings(): Promise<MonitoringSettings> {
   await assertUser();
   return loadSettings();
 }
 
-// The live dashboard poll asks "is saving on?" once per second per viewer; the memo keeps
-// that question off the database.
 const MEMO_TTL_MS = 10_000;
 let memo: { value: boolean; at: number } | null = null;
 
@@ -49,7 +42,6 @@ export async function isMetricsSavingEnabled(): Promise<boolean> {
   return saveMetrics;
 }
 
-// setSaveMetrics flips "save metrics on server"; off also drops the buffered history.
 export async function setSaveMetrics(
   enabled: boolean,
 ): Promise<MonitoringSettings> {
@@ -83,7 +75,6 @@ export async function setSaveMetrics(
   return loadSettings();
 }
 
-/** Test-only: forget the poll-path memo. */
 export function __resetMonitoringSettingsMemo(): void {
   memo = null;
 }

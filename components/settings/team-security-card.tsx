@@ -11,7 +11,6 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { TwoFactorGraphic } from "@/components/settings/two-factor-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 
-// TeamSecurityCard - the team-wide two-factor policy.
 export function TeamSecurityCard({
   requireTwoFactor,
   canManage,
@@ -20,7 +19,6 @@ export function TeamSecurityCard({
 }: {
   requireTwoFactor: boolean;
   canManage: boolean;
-  // Members of this team with no second factor yet.
   without: number;
   total: number;
 }) {
@@ -29,7 +27,6 @@ export function TeamSecurityCard({
   const [pending, startTransition] = React.useTransition();
 
   function toggle(next: boolean) {
-    // The server refuses when the actor has no second factor of their own, so the switch snaps back.
     setOn(next);
     startTransition(async () => {
       const res = await gqlAction(
@@ -62,7 +59,6 @@ export function TeamSecurityCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3">
-        {/* The box takes the slack so the card keeps its neighbour's height; the drawing caps itself. */}
         <div className="flex min-h-0 flex-1 items-center justify-center py-2">
           <TwoFactorGraphic className="max-h-20" />
         </div>

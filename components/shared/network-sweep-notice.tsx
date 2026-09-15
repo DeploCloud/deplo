@@ -13,7 +13,6 @@ const RETRY = /* GraphQL */ `
   }
 `;
 
-// NetworkSweepNotice lists the stacks the network-isolation move could not reach.
 export function NetworkSweepNotice({
   failed,
   canRetry,

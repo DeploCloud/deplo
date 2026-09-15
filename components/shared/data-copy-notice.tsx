@@ -26,7 +26,6 @@ const ACCEPT_DATABASE = /* GraphQL */ `
   }
 `;
 
-// DataCopyNotice shows the data a migration could not bring, where somebody is about to press Deploy.
 export function DataCopyNotice({
   kind,
   id,
@@ -62,7 +61,6 @@ export function DataCopyNotice({
               ? "Its storage is empty, so it is kept stopped: redeploy to copy the data again, or accept starting without it."
               : `Its storage is empty, so ${verb.toLowerCase()} is held until the data is copied again or you accept starting without it.`}
           </p>
-          {/* Verbatim: the host's or the engine's own sentence. */}
           <p className="rounded bg-muted px-2 py-1 font-mono text-xs break-words text-muted-foreground">
             {error}
           </p>

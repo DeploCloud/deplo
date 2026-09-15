@@ -36,11 +36,9 @@ export function readRecents(key: string): Recent[] {
 
 export function useRecents(userId: string, teamId: string) {
   const key = keyFor(userId, teamId);
-  // Only ever mounts inside an open dialog, so reading storage into the initial state cannot mismatch a server pass.
   const [recents, setRecents] = React.useState<Recent[]>(() =>
     readRecents(key),
   );
-  // React may run a state updater more than once, so the storage write stays outside of one.
   const current = React.useRef(recents);
 
   const remember = React.useCallback(
@@ -58,7 +56,6 @@ export function useRecents(userId: string, teamId: string) {
   return { recents, remember };
 }
 
-// nextRecents - most recent first, one row per id, capped.
 export function nextRecents(prev: Recent[], entry: Recent): Recent[] {
   return [entry, ...prev.filter((r) => r.id !== entry.id)].slice(0, CAP);
 }

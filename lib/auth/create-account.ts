@@ -31,7 +31,6 @@ import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { insertCredentialAccount } from "./password-credential";
 
-// Validate-free user insert shared by createAccountWithTeam and createAccountWithTeams.
 async function insertUserCore(
   tx: DbTx,
   input: {
@@ -57,8 +56,6 @@ async function insertUserCore(
     throw new Error("That username is taken");
   if (dup[0]) throw new Error("An account with this email already exists");
 
-  // Derived from the name, exactly like a team's mark: the letters and the
-  // colour then change together on a rename.
   const avatarColor = monogramColor(input.name);
 
   const now = new Date().toISOString();
@@ -82,8 +79,6 @@ async function insertUserCore(
     isInstanceAdmin: user.isInstanceAdmin ?? false,
     suspended: false,
     avatarColor: user.avatarColor,
-    // Nobody picked one, so the account still gets a face rather than falling
-    // back to its own letters: a name is not a picture.
     image: input.image ?? randomFaceValue(),
     createdAt: user.createdAt,
     updatedAt: now,
@@ -92,10 +87,8 @@ async function insertUserCore(
   return user;
 }
 
-// createAccountWithTeam creates a brand-new account AND its own team in one transaction.
 export async function createAccountWithTeam(
   input: {
-    /** Omitted by first-run setup, which derives the handle from the name. */
     username?: string | null;
     name: string;
     email: string;
@@ -124,7 +117,6 @@ export async function createAccountWithTeam(
 
   const teamName = input.teamName.trim();
   if (!teamName) throw new Error("Team name is required");
-  // Straight off a form: the same gate `updateMyAvatar` applies.
   const image = input.image?.trim() || null;
   if (image && !isValidUserAvatarValue(image))
     throw new Error("Unsupported profile picture");
@@ -137,11 +129,8 @@ export async function createAccountWithTeam(
 
   const now = new Date().toISOString();
 
-  // The optional token consume + all uniqueness re-checks + the writes happen in ONE
-  // db.transaction, so the whole critical section is atomic against concurrent
-  // requests.
   const result = await getDb().transaction(async (tx) => {
-    if (opts.guard) await opts.guard(tx); // e.g. consume the registration token
+    if (opts.guard) await opts.guard(tx);
 
     const user = await insertUserCore(
       tx,
@@ -149,8 +138,6 @@ export async function createAccountWithTeam(
       { isInstanceAdmin: opts.isInstanceAdmin, userRole: "owner" },
     );
 
-    // The crown, claimed in the same transaction as the account it belongs to. This is
-    // ALSO the atomic first-run guard.
     if (opts.isInstanceOwner) {
       const claimed = await tx
         .insert(instanceSettingsTable)
@@ -165,7 +152,6 @@ export async function createAccountWithTeam(
         throw new Error("Setup has already been completed");
     }
 
-    // Team name uniqueness + slug dedupe against live rows.
     const teamDup = await tx
       .select({ id: teamsTable.id })
       .from(teamsTable)
@@ -184,7 +170,6 @@ export async function createAccountWithTeam(
       name: teamName,
       slug: finalSlug,
       plan: "pro",
-      // The registrant is the founder (absolute owner / "crown") of their team.
       founderUserId: user.id,
       avatarUrl: teamImage,
       createdAt: now,
@@ -192,8 +177,6 @@ export async function createAccountWithTeam(
     const membershipId = `mbr_${randomBytes(8).toString("hex")}`;
     const ownerCaps = capabilitiesForRole("owner");
 
-    // FK-safe inserts: team → membership → membership_capabilities (the user row
-    // was already inserted by insertUserCore above, so the founder FK resolves).
     await tx.insert(teamsTable).values({
       id: team.id,
       name: team.name,
@@ -219,8 +202,6 @@ export async function createAccountWithTeam(
   return result;
 }
 
-// createAccountWithTeams creates a brand-new account that JOINS existing teams as a
-// member (it owns none), with the per-team role + capabilities baked into the link.
 export async function createAccountWithTeams(
   input: {
     username: string;
@@ -248,10 +229,8 @@ export async function createAccountWithTeams(
     throw new Error("This registration link has no teams to join");
 
   return getDb().transaction(async (tx) => {
-    if (opts.guard) await opts.guard(tx); // consume the registration token atomically
+    if (opts.guard) await opts.guard(tx);
 
-    // Re-resolve assignments against teams that still exist (one may have been
-    // deleted since the link was minted). Drop the missing; fail if none remain.
     const live = await tx
       .select({ id: teamsTable.id })
       .from(teamsTable)

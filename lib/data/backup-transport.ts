@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/operations/disaster-recovery
-
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { mapBackupUnsupported } from "../infra/agent-client/errors";
 import { connectBackupAgent } from "../infra/agent-client/preflight";
@@ -21,7 +19,6 @@ import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
 import type { BackupDestination, BackupTargetKind } from "../types/backup";
 import { parseS3Args } from "../backups/s3-args";
 
-// What a backup needs to know about its target, independent of destination.
 export interface TransportTarget {
   serverId: string;
   kind: BackupTargetKind;
@@ -38,7 +35,6 @@ export interface BackupOutcome {
   sha256: string;
 }
 
-// Thrown out of the relay's generator to CANCEL the destination write; `relayBackup` catches it.
 class RelayAborted extends Error {
   constructor() {
     super("the source ended the backup without a usable artifact");
@@ -52,7 +48,6 @@ function wireKind(kind: BackupTargetKind): BackupKind {
     : BackupKind.BACKUP_KIND_PROJECT;
 }
 
-// Advanced S3 flags - the soft capability gate warns when the host is too old to apply them.
 function hasS3Args(dest: BackupDestination): boolean {
   return dest.kind === "s3" && parseS3Args(dest.s3ExtraArgs).length > 0;
 }
@@ -75,11 +70,9 @@ export async function backupToDestination(
     streamOut: false,
   };
 
-  // Shapes 1 and 2: the destination is reachable from the workload's own host.
   if (dest.kind === "s3" || destServer === target.serverId) {
     const conn = await connectBackupAgent(target.serverId, {
       store: dest.kind === "server",
-      // An agent that ignores the recipient would write the app's whole decrypted env to the bucket in the clear.
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
     });
@@ -92,7 +85,6 @@ export async function backupToDestination(
     }
   }
 
-  // Shape 3: relay. Two connections, one pipe, backpressure end to end.
   return relayBackup(creds, target, objectKey, destServer, req, signal);
 }
 
@@ -142,7 +134,6 @@ async function consumeBackup(
   );
 }
 
-// The message names which check ran: corrupt and short send an operator to different places.
 function digestMismatch(
   produced: BackupOutcome,
   landed: { bytesWritten: number; sha256: string },
@@ -168,20 +159,15 @@ async function relayBackup(
   signal?: AbortSignal,
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
-  // `store: true` even though the SOURCE writes nothing: `stream_out` rides the same `backup-store` capability.
   const src = await connectBackupAgent(target.serverId, { store: true });
   let sink: AgentConnection | null = null;
-  // Registered as each connection opens, so a cancel between the two dials still stops the running one.
   let release = abortWith(signal, src);
   try {
     sink = await connectBackupAgent(destServer, { store: true });
-    // Both halves now, so a cancel tears down the whole pipe instead of leaving the destination waiting.
     release();
     release = abortWith(signal, src, sink);
-    // A box rather than a bare `let`: assigned inside the generator's closure, which TypeScript cannot see.
     const source: { result: BackupOutcome | null } = { result: null };
 
-    // writeStoreFile consumes the generator to completion, so `source.result` is set once it resolves.
     const bytes = (async function* () {
       for await (const ev of src.backup({
         ...base,
@@ -213,7 +199,6 @@ async function relayBackup(
         bytes,
       );
     } catch (e) {
-      // Our own abort: report the SOURCE's reason, which is the one that explains anything.
       if (!(e instanceof RelayAborted)) throw e;
       return (
         source.result ?? {
@@ -251,7 +236,6 @@ async function relayBackup(
     }
     const mismatch = digestMismatch(produced, landed);
     if (mismatch) {
-      // Unlike every other failure above, THIS one has already committed a file on the destination.
       try {
         await sink.storeDelete(storeTargetFor(dest, objectKey));
       } catch (e) {
@@ -274,9 +258,7 @@ async function relayBackup(
       error: "",
       objectKey,
       sizeBytes: landed.bytesWritten,
-      // The SOURCE's: the destination was handed ciphertext and never saw the artifact inside it.
       decryptedSizeBytes: produced.decryptedSizeBytes,
-      // The DESTINATION's digest is what that disk actually fsynced, and what a later restore reads back.
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {
@@ -286,12 +268,10 @@ async function relayBackup(
   }
 }
 
-// Restore from wherever the artifact lives.
 export async function restoreFromDestination(
   creds: DestinationWithSecrets,
   target: TransportTarget,
   objectKey: string,
-  // Empty for a run taken before integrity checking shipped, which skips the check.
   expectedSha256 = "",
 ): Promise<{ ok: boolean; error: string }> {
   const dest = creds.destination;
@@ -305,13 +285,11 @@ export async function restoreFromDestination(
       s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
       store:
         dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
-      // The identity travels on BOTH kinds; empty on a destination whose objects are still plaintext.
       ageIdentity: creds.ageIdentity,
       expectedSha256,
     };
     const conn = await connectBackupAgent(target.serverId, {
       store: dest.kind === "server",
-      // Same gate on the way back: an agent that ignores the identity would feed ciphertext to gunzip.
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
     });
@@ -326,7 +304,6 @@ export async function restoreFromDestination(
   let workload: AgentConnection | null = null;
   try {
     workload = await connectBackupAgent(target.serverId, { store: true });
-    // Verbatim: the ciphertext is decrypted inside the workload's agent, the only place that sees plaintext.
     const bytes = src.readStoreFile({ store: storeTargetFor(dest, objectKey) });
     return await consumeRestore(
       workload.restoreFrom(
@@ -336,7 +313,6 @@ export async function restoreFromDestination(
           project: target.project,
           ageIdentity: creds.ageIdentity,
           expectedSha256,
-          // FALSE, deliberately: Deplo wrote this artifact, and its configuration snapshot is the point of restoring it.
           untrustedConfig: false,
         },
         bytes,
@@ -348,11 +324,8 @@ export async function restoreFromDestination(
   }
 }
 
-// Restore from an artifact that has no destination at all: the bytes arrive from the operator's browser.
 export async function openUploadRestore(
   target: TransportTarget,
-  // The operator's recovery key, or an ephemeral one when the control plane wrapped a
-  // plaintext upload - so it is never empty here.
   ageIdentity: string,
   chunks: AsyncIterable<Buffer>,
 ): Promise<{
@@ -371,7 +344,6 @@ export async function openUploadRestore(
         project: target.project,
         ageIdentity,
         expectedSha256: "",
-        // The bytes came from outside the fleet, so nothing in them configures what comes back up.
         untrustedConfig: true,
       },
       chunks,
@@ -399,7 +371,6 @@ async function consumeRestore(
   );
 }
 
-// Delete an artifact (or a target's whole folder) from a destination.
 export async function deleteFromDestination(
   creds: DestinationWithSecrets,
   targetServerId: string,
@@ -412,7 +383,6 @@ export async function deleteFromDestination(
   return only!;
 }
 
-// Delete SEVERAL artifacts over ONE connection - what retention does.
 export async function deleteManyFromDestination(
   creds: DestinationWithSecrets,
   targetServerId: string,
@@ -439,7 +409,6 @@ export async function deleteManyFromDestination(
         );
       } catch (e) {
         const mapped = mapBackupUnsupported(e);
-        // An agent that cannot serve the verb fails every key the same way - surface it, don't log it fifty times.
         if (mapped.name.startsWith("AgentBackup")) throw mapped;
         out.push({ ok: false, error: mapped.message, deleted: 0 });
       }
@@ -450,11 +419,8 @@ export async function deleteManyFromDestination(
   }
 }
 
-// Stream one artifact out DECRYPTED, for the download route.
 export async function openArtifactDownload(
   creds: DestinationWithSecrets,
-  // The destination's own host for a store, a host that can dial the bucket for S3
-  // (the destinationServerId seam, ADR-0019).
   viaServerId: string,
   objectKey: string,
   expectedSha256 = "",
@@ -464,7 +430,6 @@ export async function openArtifactDownload(
 }> {
   const dest = creds.destination;
   const store = dest.kind === "server";
-  // The agent decrypts on the way out, so what reaches the browser is the .tar.gz / .dump.gz itself.
   const conn = await connectBackupAgent(viaServerId, {
     store,
     s3Read: !store,

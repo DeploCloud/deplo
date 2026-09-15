@@ -19,7 +19,6 @@ import type { Deployment } from "../../types/deployment";
 
 const ROLLBACK_SCAN_LIMIT = 200;
 
-// canRollbackTo answers whether ONE deployment is a rollback target.
 export async function canRollbackTo(dep: Deployment): Promise<boolean> {
   if (!dep.imageRef || dep.rollbackOf || dep.status !== "ready") return false;
   const [app] = await getDb()
@@ -60,13 +59,7 @@ export async function canRollbackTo(dep: Deployment): Promise<boolean> {
   ).has(dep.id);
 }
 
-// rollbackTargetIds names the deployments an app can be put back on.
-// Rollback re-runs an image a previous build LEFT ON THE HOST - Deplo pushes to
-// no registry - so the offer has to match what retention kept.
-//
 // ponytail: ranks SUCCESSFUL builds while the host ranks IMAGES, so a target at
-// the very edge of the window can still be gone. The failure is legible, and the
-// exact answer needs an image-listing RPC the agent does not have.
 export function rollbackTargetIds(
   app: {
     serverId: string | null;
@@ -76,7 +69,6 @@ export function rollbackTargetIds(
     repoUrl: string | null;
     dockerImage: string | null;
   },
-  // NEWEST FIRST - a prefix is fine (truncating can only drop candidates).
   deps: Pick<
     Deployment,
     "id" | "status" | "environment" | "imageRef" | "rollbackOf" | "serverId"
@@ -86,8 +78,6 @@ export function rollbackTargetIds(
   const production = deps.filter(
     (d) => d.environment === "production" && d.status === "ready",
   );
-  // The live image: the newest successful production deploy, rollback rows
-  // INCLUDED (a rollback is how the live image most recently changed).
   const liveImage = production[0]?.imageRef ?? null;
   const builds = production.filter((d) => !d.rollbackOf && d.imageRef);
   return new Set(
@@ -98,7 +88,6 @@ export function rollbackTargetIds(
   );
 }
 
-// rollbackDeployment puts an app back on a previous deployment - its image, not its settings.
 export async function rollbackDeployment(
   deploymentId: string,
 ): Promise<Deployment> {
@@ -127,7 +116,6 @@ export async function rollbackDeployment(
     .limit(1);
   if (!app) throw new Error("App not found");
 
-  // The app AS IT IS NOW.
   if (!appBuildsItsOwnImage({ ...app, repo: app.repoUrl })) {
     throw new Error(
       "This app doesn't build an image Deplo can re-run, so it has nothing to roll back to. Only an app deployed from a repository or an uploaded archive can.",
@@ -155,8 +143,6 @@ export async function rollbackDeployment(
       "This deployment ran on another server, and its image stayed there. Only builds from this app's current server can be rolled back to.",
     );
 
-  // Same function the list uses to decide what to offer, so the button and the
-  // gate can never disagree.
   const history = await loadDeploymentsForApp(dep.appId);
   const targets = rollbackTargetIds(app, history);
   if (!targets.has(dep.id)) {

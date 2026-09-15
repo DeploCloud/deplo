@@ -17,7 +17,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// CSRF: refuse a state-changing request whose `Origin` points at another site.
 function isCrossSite(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
@@ -34,7 +33,6 @@ function isCrossSite(request: NextRequest): boolean {
   return originHost !== host;
 }
 
-// Single Node process (next.config standalone); a multi-process deploy must move this into the store.
 const uploadsInFlight = new Set<string>();
 
 export async function POST(
@@ -55,7 +53,6 @@ export async function POST(
   if (!project)
     return Response.json({ error: "App not found" }, { status: 404 });
 
-  // Gate BEFORE any bytes hit disk: setAppUpload re-checks deploy only after a 512 MiB stream is written, so a viewer-only member must be refused here.
   try {
     await requireAppCapability(appId, "deploy_apps");
   } catch (err) {
@@ -66,7 +63,6 @@ export async function POST(
     return Response.json({ error: message }, { status: 403 });
   }
 
-  // Refuse to clobber an archive a build is still extracting: one deploy at a time per app; the client surfaces this 409 message.
   const inFlightRows = await getDb()
     .select({ id: deploymentsTable.id })
     .from(deploymentsTable)
@@ -84,7 +80,6 @@ export async function POST(
     );
   }
 
-  // The deploy guard above cannot see an upload that has not created its deployment yet.
   if (uploadsInFlight.has(appId)) {
     return Response.json(
       { error: "An upload is already in progress - wait for it to finish" },
@@ -103,7 +98,6 @@ export async function POST(
       );
     }
 
-    // Fast-fail only; the streaming cap in storeUpload is the real guard (Content-Length can be absent or lie).
     const declared = Number(request.headers.get("content-length") || "0");
     if (declared > MAX_UPLOAD_BYTES) {
       return Response.json({ error: "Archive too large" }, { status: 413 });
@@ -124,7 +118,6 @@ export async function POST(
       return Response.json({ error: "Empty archive" }, { status: 400 });
     }
 
-    // Commit the pointer FIRST, then prune: the app must never point at a deleted archive, and a rejected upload leaves the previous one intact.
     try {
       await setAppUpload(appId, upload);
     } catch {
@@ -133,7 +126,6 @@ export async function POST(
     }
     await pruneUploads(appId, upload.id).catch(() => {});
 
-    // No deploy here: the caller deploys on demand, so the server can be chosen before the first build.
     return Response.json({
       ok: true,
       upload: {

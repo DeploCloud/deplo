@@ -8,8 +8,6 @@ import { toast } from "sonner";
 import { validateArchive } from "@/lib/deploy/upload-client";
 import { setPendingArchive } from "@/lib/deploy/pending-archive";
 
-// ArchiveDropZone - drop an archive anywhere on the page and it becomes an app.
-// https://deplo.build/docs/guides/deploy/upload-code
 export function ArchiveDropZone({
   href,
   onFile,
@@ -19,7 +17,6 @@ export function ArchiveDropZone({
 }) {
   const router = useRouter();
   const [over, setOver] = React.useState(false);
-  // dragenter/dragleave fire per crossed element, so the overlay closes on a counter.
   const depth = React.useRef(0);
 
   React.useEffect(() => {

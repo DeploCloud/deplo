@@ -26,7 +26,6 @@ type PanelHttps = {
 
 const PANEL_HTTPS_FIELDS = "domain enabled certificateTrusted unavailable";
 
-// usePanelHttps: reads the panel's own route off the host that serves it.
 function usePanelHttps(): {
   cert: PanelHttps | null;
   loading: boolean;
@@ -36,7 +35,6 @@ function usePanelHttps(): {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    // Opening the page IS the read, same as the certificate accounts.
     void (async () => {
       const res = await gqlAction<{ panelHttps: PanelHttps }>(
         `mutation PanelHttps { panelHttps { ${PANEL_HTTPS_FIELDS} } }`,
@@ -49,7 +47,6 @@ function usePanelHttps(): {
   return { cert, loading, setCert };
 }
 
-// PanelHttpCard: the one way to serve the panel over plain http.
 export function PanelHttpCard() {
   const router = useRouter();
   const { cert, loading, setCert } = usePanelHttps();
@@ -64,8 +61,6 @@ export function PanelHttpCard() {
     );
     if (!res.ok) return res;
     setCert(res.data?.setPanelHttps ?? null);
-    // The scheme moved the STORED address with it, and that address is what the
-    // General tab renders: without this it would keep showing the old one.
     router.refresh();
     return res;
   }
@@ -104,8 +99,6 @@ export function PanelHttpCard() {
         </div>
       </CardContent>
 
-      {/* The SAME confirm the address field opens: the scheme is half of an origin,
-          so turning https off takes every passkey with it as a new hostname would. */}
       {cert?.domain && (
         <PanelAddressDialog
           open={confirming}
@@ -144,7 +137,6 @@ export function PanelHttpCard() {
   );
 }
 
-// PanelServingRow: the certificate's own state, which the switch below it does not say.
 function PanelServingRow({
   cert,
   loading,
@@ -152,7 +144,6 @@ function PanelServingRow({
   cert: PanelHttps | null;
   loading: boolean;
 }) {
-  // The real box, not a guessed height, so the row settles in place.
   if (loading)
     return (
       <div className="rounded-lg border border-border p-3">
@@ -196,8 +187,6 @@ function PanelServingRow({
   );
 }
 
-// HttpsLabel: the HTTPS row's fixed half, drawn while loading too so the box is
-// already the height it will settle at.
 function HttpsLabel({ children }: { children?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 text-sm font-medium">

@@ -16,15 +16,10 @@ import {
   composeMountsForeignStorage,
 } from "./compose-lint/volumes";
 
-// The gates parse YAML 1.2; `docker compose` reads the same bytes as YAML 1.1, with an
-// env-file behind every `$VAR`. Every case here was verified against `docker compose config`.
-
 const svc = (body: string): string =>
   `services:\n  a:\n    image: alpine\n${body}`;
 
 test("compose's own booleans are true: yes, on, y and a quoted true", () => {
-  // Verified against `docker compose config`: it casts all of these and refuses `1`/`t`
-  // outright, which this reads as true anyway - one refusal ahead of a failing deploy.
   for (const v of [true, 1, "yes", "Yes", "YES", "on", "y", "1", "true"])
     assert.equal(composeTruthy(v), true, `${String(v)} should read as true`);
   for (const v of [
@@ -80,8 +75,6 @@ test("`$$` is compose's escape and interpolates nothing", () => {
 });
 
 test("an interpolated volume source is a host bind until proven otherwise", () => {
-  // `${HOSTPATH}:/host` with HOSTPATH=/ binds the whole server, and the env-file it
-  // comes from is written after every check here.
   assert.equal(
     composeHasHostBindMount(svc('    volumes:\n      - "${HOSTPATH}:/host"')),
     true,

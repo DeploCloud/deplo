@@ -26,7 +26,6 @@ import {
 import { toAgentError } from "./errors";
 import { bytesFrom, type AgentChannel } from "./mtls-channel";
 
-// backupRpc - dump/restore to S3 (ADR-0007) and to a store on a server's disk.
 export function backupRpc(
   channel: AgentChannel,
 ): Pick<
@@ -50,13 +49,10 @@ export function backupRpc(
   });
   return {
     backup(req: BackupRequest) {
-      return streamEvents(
-        client.backup(req, backupDeadline()),
-        // BOUNDED, like every other stream that can carry bytes. Harmless for the ordinary
-        // log-line shape, where the consumer drains in a tight loop and the bound is never
-        // reached.
-        { normalise: toAgentError, pauseAbove: STREAM_BYTES_PAUSE_ABOVE },
-      );
+      return streamEvents(client.backup(req, backupDeadline()), {
+        normalise: toAgentError,
+        pauseAbove: STREAM_BYTES_PAUSE_ABOVE,
+      });
     },
     restore(req: RestoreRequest) {
       return streamEvents(client.restore(req, backupDeadline()), {
@@ -136,7 +132,6 @@ export function backupRpc(
       ageIdentity = "",
       expectedSha256 = "",
     ) {
-      // An artifact is exactly the kind of stream an unbounded queue turns into an OOM.
       return (async function* () {
         yield* bytesFrom<StoreChunk>(
           client.readStoreFile(
@@ -151,8 +146,6 @@ export function backupRpc(
       overwrite: boolean,
       chunks: AsyncIterable<Buffer>,
     ) {
-      // Header frame first, then data frames, honouring write backpressure so a slow
-      // destination disk cannot make the relay buffer the whole artifact here.
       return new Promise<{
         ok: boolean;
         error: string;
@@ -177,23 +170,17 @@ export function backupRpc(
           { header: { store, overwrite } },
           chunks,
           (data) => ({ data }),
-          // Normalised like every other rejection here, so a transport drop
-          // mid-relay surfaces as AgentUnreachableError rather than a raw
-          // ServiceError the data layer would not recognise.
           (e) => reject(toAgentError(e)),
         );
       });
     },
     restoreFrom(header: RestoreChunk_Header, chunks: AsyncIterable<Buffer>) {
-      // The only BIDI call in the client: bytes go up while progress comes down.
       const call = client.restoreFrom(backupDeadline());
       pumpClientStream<RestoreChunk>(
         call,
         { header },
         chunks,
         (data) => ({ data }),
-        // A write-side failure surfaces on the read side too (the agent sees the
-        // stream break and ends), so it needs no separate rejection path here.
         () => {},
       );
       return streamEvents<RestoreEvent>(call, { normalise: toAgentError });

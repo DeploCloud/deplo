@@ -17,7 +17,6 @@ export default async function DatabaseCronJobsPage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  // `manage_crons` is seeded from EITHER console capability, so app-console access alone must not reach a database; the data layer enforces the same pair.
   const [canCron, canConsole] = await Promise.all([
     hasCapability("manage_crons"),
     hasCapability("open_database_console"),

@@ -9,8 +9,6 @@ import {
 } from "@/lib/data/environments";
 import type { Environment } from "@/lib/types/team";
 
-// An Environment (ADR-0008 Phase 3).
-
 export const EnvironmentRef = builder
   .objectRef<Environment>("Environment")
   .implement({

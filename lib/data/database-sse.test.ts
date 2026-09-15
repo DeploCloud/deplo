@@ -76,7 +76,6 @@ test("databaseStatusStream rejects an unknown id / wrong team / no team", async 
     () => databaseStatusStream("db_1", null, USER_1).next(),
     /Database not found/,
   );
-  // The gate this replaced answered "unrestricted" when it could not resolve a user.
   await assert.rejects(
     () => databaseStatusStream("db_1", TEAM_A, null).next(),
     /Database not found/,

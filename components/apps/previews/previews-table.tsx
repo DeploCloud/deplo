@@ -46,7 +46,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { AppPreviewDTO } from "@/lib/data/previews";
 import { gitProfileUrl, timeAgo } from "@/lib/utils";
 
-// PreviewsTable renders the pull request previews of one app.
 export function PreviewsTable({
   appSlug,
   previews,
@@ -61,14 +60,12 @@ export function PreviewsTable({
   const router = useRouter();
   const [, startTransition] = React.useTransition();
   const live = useLiveApp();
-  // The row is dropped server-side before its stack comes down, so waiting out the teardown leaves a dead row with a live Destroy.
   const {
     visible: rows,
     remove,
     restore,
   } = useOptimisticRemove(previews, (p) => p.id);
 
-  // Preview build changes arrive on the owning app's live stream, so re-read the rows when one lands mid-flight.
   const inFlight = rows.some(
     (p) => p.status === "queued" || p.status === "building",
   );
@@ -100,7 +97,6 @@ export function PreviewsTable({
     });
   }
 
-  // Counting closed, evicted or blocked previews would read "at its limit" while slots were free.
   const liveCount = rows.filter(
     (p) => !p.closed && p.status !== "evicted" && p.status !== "blocked",
   ).length;
@@ -142,7 +138,6 @@ export function PreviewsTable({
                         <span aria-hidden>to</span>
                         <span className="font-mono">{p.baseBranch}</span>
                       </span>
-                      {/* Previews only ever come from a GitHub pull request, so the provider is always github. */}
                       {p.author && (
                         <GitAccount
                           login={p.author}
@@ -192,7 +187,6 @@ export function PreviewsTable({
                         {p.host}
                       </a>
                     ) : p.status === "evicted" ? (
-                      // Eviction keeps the host reserved for this pull request, so Redeploy brings the same address back.
                       <span
                         className="font-mono text-xs text-muted-foreground"
                         title="Redeploy to bring this address back"

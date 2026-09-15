@@ -29,7 +29,6 @@ const REBUILD_TIP: Record<DeploySource, string> = {
     "Pulls every service's image again and replaces every container, for a stack that looks stuck.",
 };
 
-// RebuildContainerCard is the advanced-settings card that rebuilds the container.
 export function RebuildContainerCard({
   appId,
   slug,
@@ -73,7 +72,6 @@ export function RebuildContainerCard({
           Rebuild container
           <InfoTip content={REBUILD_TIP[source]} docs="deploy.trace" />
         </CardTitle>
-        {/* The consequence, before clicking. */}
         <CardDescription>
           Volumes, domains and data are untouched, and the current container
           keeps serving until the new build is ready.

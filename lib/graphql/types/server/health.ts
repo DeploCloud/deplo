@@ -43,7 +43,6 @@ const ServerReadinessCheckRef = builder
     description:
       "One row of a server readiness report: a single thing Deplo could verify about the host, and what it found.",
     fields: (t) => ({
-      // A String, not an enum: the ids contain dots ("build.nixpacks").
       id: t.exposeString("id", {
         description:
           'Stable row id, e.g. "docker.available" or "build.nixpacks".',
@@ -95,10 +94,6 @@ const ServerReadinessReportRef = builder
   });
 
 builder.mutationFields((t) => ({
-  // These probes are MUTATIONS, not queries, even though they read: they dial out over the
-  // network and app/api/graphql/route.ts serves GET, so a side-effecting query would be
-  // reachable by a plain link (prefetch, crawler, CSRF). None takes a host/port, only an
-  // opaque serverId resolved through the pinned dial target.
   checkServerHealth: t.field({
     type: ServerRef,
     authScopes: { instanceAdmin: true },

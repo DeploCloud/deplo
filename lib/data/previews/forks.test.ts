@@ -161,8 +161,6 @@ test("a fork approved at one commit is blocked again by the next push", async ()
   );
 });
 
-// The hole a manual-only app opened: a fork approved at commit A, then a push of commit B that the
-// webhook used to IGNORE, so the row still said "approved at A" while Redeploy built the branch tip.
 test("a manual-only fork push withdraws the approval for the new commit", async () => {
   await seedPreviewApp(h.db, "prj_1", { slug: "blog" });
   const fork = { ...PR, isFork: true, headRepo: "mallory/blog" };

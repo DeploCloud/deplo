@@ -20,8 +20,6 @@ import { admitPassthrough, deniedRootFields, runGraphql } from "./execute";
 import { schema } from "../graphql/schema";
 import { MCP_TOOLS } from "./tools/catalog";
 
-// If `runGraphql` stopped wrapping `execute` in `runWithIdentity`, tools would keep answering, as the wrong caller.
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -42,7 +40,6 @@ beforeEach(async () => {
   await seedIdentity(db);
 });
 
-// Builds the context `/api/mcp` builds for a freshly minted token.
 async function contextFor(
   capabilities: Parameters<typeof createToken>[0]["capabilities"],
 ) {
@@ -94,7 +91,6 @@ test("a capability the token was not granted is refused, not silently allowed", 
 });
 
 test("the team hint decides which team a document resolves in", async () => {
-  // USER_1 is in TEAM_A only: a token can never be talked into a team its creator has no membership in.
   const raw = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     createToken({ name: "mcp", capabilities: ["view"] }),
   );
@@ -106,8 +102,6 @@ test("the team hint decides which team a document resolves in", async () => {
     "an unreachable hint falls back, never through",
   );
 });
-
-// `tools.test.ts` enforces ADR-0021 rule 4 by scanning each row's `query`, and the passthrough's is empty.
 
 const refusal = (query: string, kind: "query" | "mutation" = "query") => {
   try {
@@ -127,7 +121,6 @@ test("the passthrough refuses every field that hands back a credential", () => {
     const kind = schema.getMutationType()!.getFields()[field]
       ? "mutation"
       : "query";
-    // The guard runs before validation, so the assertion cannot pass on some unrelated complaint.
     const message = refusal(`${kind} X { ${field} }`, kind);
     assert.match(
       message,
@@ -156,7 +149,6 @@ test("a denied field is refused from inside a fragment too", () => {
 });
 
 test("a field that merely shares a denied name is not refused", () => {
-  // `login` is a denied root mutation, but the guard reads the PARENT TYPE, so a `login` field stays readable.
   const guard = deniedRootFields();
   assert.ok(guard.has("login"));
   assert.equal(refusal(`query X { apps { id slug } }`), "");
@@ -194,13 +186,11 @@ test("the passthrough carries /api/graphql's own depth limit", () => {
 });
 
 test("an unknown field is a refusal, not a silently empty answer", () => {
-  // Unvalidated, graphql-js drops the field and answers `{"apps":[{}]}`, which reads as empty, not misspelled.
   assert.match(refusal(`query X { apps { naem } }`), /Cannot query field/);
 });
 
 test("a driver error reaches the model masked, exactly as it reaches /api/graphql", async () => {
   const ctx = await contextFor(["view"]);
-  // A NUL byte is refused by Postgres itself, so the error is the driver's - the kind carrying the SQL and its values.
   const res = await runGraphql(
     'query { app(slug: "a\u0000b") { id } }',
     {},

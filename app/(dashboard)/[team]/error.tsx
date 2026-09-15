@@ -10,12 +10,8 @@ export default function DashboardError({
   retry,
 }: {
   error: Error & { digest?: string };
-  // `retry` re-fetches and re-renders the children, including the Server Components
-  // that failed.
   retry: () => void;
 }) {
-  // A tab left open across a Deplo update asks for chunk files that build
-  // replaced. Nothing is wrong with the page - reloading renders it.
   const stale = isStaleBuildError(error);
 
   useEffect(() => {
@@ -23,12 +19,9 @@ export default function DashboardError({
       reloadOnce();
       return;
     }
-    // Surface to the server logs; do not expose internals to the UI.
     console.error(error);
   }, [error, stale]);
 
-  // The reload is automatic; the button is what is left when the cooldown
-  // suppressed it (a second stale error moments after the first).
   if (stale)
     return (
       <div className="flex flex-col items-center justify-center gap-5 rounded-xl border border-dashed border-border py-20 text-center">

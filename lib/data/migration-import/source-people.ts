@@ -12,20 +12,13 @@ import type { SourceCredential } from "../../migration/source";
 export interface PlanMember {
   email: string;
   name: string;
-  // The role they held on the panel, for the admin to act on. Not imported.
   sourceRole: string;
-  // Already has a Deplo account (matched on email).
   hasAccount: boolean;
-  // Their picture and monogram colour, for the ones who do. Null for a stranger: an
-  // imported address is not sent to Gravatar.
   avatarUrl: string | null;
   avatarColor: string | null;
-  // Already a member of this team.
   inTeam: boolean;
 }
 
-// What to call an imported person: the panel's `name` column is their ACCOUNT - the
-// address - and their own name sits in `firstName`, so they were all listed by email.
 function personName(m: {
   user?: {
     name?: string | null;
@@ -44,7 +37,6 @@ function personName(m: {
   return named.includes("@") ? named.split("@")[0] : named;
 }
 
-// planMembers - the panel's members, told apart by whether they already exist here.
 export async function planMembers(
   c: SourceCredential,
   teamId: string,
@@ -53,8 +45,6 @@ export async function planMembers(
   try {
     rows = await sourceClient(c).listMembers();
   } catch {
-    // A member-scoped key cannot list the organization. Not knowing who is on the
-    // other side must not stop a project import.
     return [];
   }
 
@@ -62,7 +52,6 @@ export async function planMembers(
     .map((m) => ({
       email: (m.user?.email ?? m.email ?? "").trim().toLowerCase(),
       name: personName(m),
-      // Empty only when the panel really does not say - both of them do.
       sourceRole: (m.role ?? "").trim(),
     }))
     .filter((p) => p.email.includes("@"));

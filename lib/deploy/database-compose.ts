@@ -1,5 +1,3 @@
-// https://deplo.build/docs/guides/data/databases
-
 import { escapeComposeDollars } from "./compose-stack/compose-read";
 import { deploLabels } from "./compose-stack/service-stamp";
 import { renderResourceLimitsYaml } from "./resources";
@@ -7,7 +5,6 @@ import type { ResourceLimits } from "../types/container";
 import type { DatabaseType } from "../types/database";
 import { isOfficialEngineImage } from "../databases/images";
 
-// Derived engine image per type+version.
 export const DB_IMAGES: Record<DatabaseType, (v: string) => string> = {
   postgres: (v) => `postgres:${v}-alpine`,
   mysql: (v) => `mysql:${v}`,
@@ -26,7 +23,6 @@ const DB_PORTS: Record<DatabaseType, number> = {
   clickhouse: 8123,
 };
 
-// The in-container path each engine's image actually writes its data to.
 export const DB_DATA_DIRS: Record<DatabaseType, string> = {
   postgres: "/var/lib/postgresql/data",
   mysql: "/var/lib/mysql",
@@ -36,7 +32,6 @@ export const DB_DATA_DIRS: Record<DatabaseType, string> = {
   clickhouse: "/var/lib/clickhouse",
 };
 
-// The image a database runs: the expert override when set, else the derived engine image.
 export function effectiveDatabaseImage(d: {
   type: DatabaseType;
   version: string;
@@ -58,7 +53,6 @@ const DB_HEALTHCHECKS: Record<
     "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping",
 };
 
-// The official mysql/mariadb images ALWAYS need a root password; `*_USER` is an optional extra user.
 function mysqlEnv(
   prefix: "MYSQL" | "MARIADB",
   username: string,
@@ -81,8 +75,6 @@ export function generateDatabaseCompose(input: {
   version: string;
   username: string;
   password: string;
-  // MUST match the connection-string path segment and the backup dump target, or a
-  // backup silently dumps a database that does not exist.
   dbName: string;
   hostPort?: number;
   resources?: ResourceLimits | null;
@@ -134,8 +126,6 @@ export function generateDatabaseCompose(input: {
     type === "redis"
       ? `redis-server --requirepass ${escapeComposeDollars(password)}`
       : "";
-  // A USER-supplied command is emitted double-quoted (JSON is valid YAML) so embedded
-  // quotes or a `: ` can never change the YAML parse.
   const command = customCommand
     ? `    command: ${escapeComposeDollars(JSON.stringify(customCommand))}\n`
     : defaultCommand
@@ -196,7 +186,6 @@ networks:
 `;
 }
 
-// Build the (unencrypted) connection string for a managed database.
 export function buildConnectionString(a: {
   type: DatabaseType;
   username: string;
@@ -211,10 +200,8 @@ export function buildConnectionString(a: {
     case "redis":
       return `redis://${auth}`;
     case "mongodb":
-      // The root user is always created in the `admin` database, hence ?authSource=admin.
       return `mongodb://${auth}/${dbName}?authSource=admin`;
     case "mariadb":
-      // The mariadb wire protocol is mysql's, so clients use the mysql:// scheme.
       return `mysql://${auth}/${dbName}`;
     case "postgres":
     case "mysql":
@@ -223,7 +210,6 @@ export function buildConnectionString(a: {
   }
 }
 
-// Recover the engine password embedded in a connection string.
 export function parseConnectionPassword(conn: string): string {
   try {
     return decodeURIComponent(new URL(conn).password);

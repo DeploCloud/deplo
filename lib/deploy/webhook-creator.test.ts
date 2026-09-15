@@ -7,7 +7,6 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
-// build.ts reads DEPLO_DATA_DIR at module load, so this must precede the imports.
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-creator-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -46,7 +45,6 @@ before(async () => {
 
 after(async () => {
   __resetQueueForTest();
-  // Queued log flushes are still in flight; let them land before the test db goes.
   await new Promise((r) => setTimeout(r, 250));
   __resetTestDb();
   await pg.close();

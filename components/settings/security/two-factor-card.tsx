@@ -28,12 +28,9 @@ const REGENERATE = /* GraphQL */ `
   }
 `;
 
-// TwoFactorCard - two-factor status, plus turning it on, off, and minting fresh recovery codes.
 export function TwoFactorCard({
   enabled,
-  // Named when a team or role policy makes 2FA mandatory: disabling is refused.
   requiredBy,
-  // Where the passkey stands right now, which is not whether the account owns one.
   passkeyStanding = "none",
   wizardOpen,
   onWizardOpenChange,
@@ -41,7 +38,6 @@ export function TwoFactorCard({
   enabled: boolean;
   requiredBy?: string | null;
   passkeyStanding?: "none" | "idle" | "carrying";
-  // Owned by the page, so the Account protection card can open it too.
   wizardOpen: boolean;
   onWizardOpenChange: (open: boolean) => void;
 }) {

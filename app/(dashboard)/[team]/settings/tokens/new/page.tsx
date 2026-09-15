@@ -20,7 +20,6 @@ export default async function NewTokenPage(
     listScopeTree(),
     requireActiveTeamId(),
   ]);
-  // An unknown or stale `?preset=` degrades to a blank token rather than erroring.
   const preset = wanted ? tokenPreset(wanted) : null;
 
   return (

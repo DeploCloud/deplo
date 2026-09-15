@@ -32,8 +32,6 @@ export function validateEnv(env: EnvEntry[]): EnvEntry[] {
   return out;
 }
 
-/** Replace a job's extra environment. Values are encrypted and never read back;
- *  a null value carries the stored ciphertext over, since nothing can re-send it. */
 export async function writeEnv(jobId: string, env: EnvEntry[]): Promise<void> {
   await getDb().transaction(async (tx) => {
     const stored = new Map(
@@ -64,8 +62,6 @@ export async function writeEnv(jobId: string, env: EnvEntry[]): Promise<void> {
   });
 }
 
-/** The NAMES of each job's extra variables. Never `value_enc` - a secret has no
- *  reveal path, and these DTOs are handed straight to the client. */
 export async function envKeysFor(
   jobIds: string[],
 ): Promise<Map<string, string[]>> {

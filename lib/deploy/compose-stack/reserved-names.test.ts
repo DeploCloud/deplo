@@ -145,9 +145,6 @@ test("a service kept off the network says so, route and all", () => {
 });
 
 test("a service whose name a neighbour already answers to stays off the network", () => {
-  // Measured in production: two stacks in one environment both registered `db` on the
-  // shared network, Docker round-robined them, and paperless spent 106 restarts querying
-  // wordpress's database.
   const warnings: string[] = [];
   const doc = networksOf(
     "services:\n  webserver:\n    image: p\n  db:\n    image: postgres:16\n  broker:\n    image: redis\n",
@@ -162,7 +159,6 @@ test("a service whose name a neighbour already answers to stays off the network"
 });
 
 test("a preview has no neighbours, so production's names hold nothing back", () => {
-  // A preview is sealed in a network of its own (ADR-0028).
   const warnings: string[] = [];
   const doc = networksOf(
     "services:\n  web:\n    image: n\n  db:\n    image: postgres:16\n",

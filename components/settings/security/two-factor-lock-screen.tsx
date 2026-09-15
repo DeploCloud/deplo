@@ -17,7 +17,6 @@ import { TwoFactorWizard } from "./two-factor-wizard";
 import { gqlAction } from "@/lib/graphql-client";
 import { DocsLink } from "@/components/ui/docs-link";
 
-// TwoFactorLockScreen - what a member sees instead of the dashboard when a 2FA policy is unmet.
 export function TwoFactorLockScreen({
   reason,
   otherTeams,
@@ -30,7 +29,6 @@ export function TwoFactorLockScreen({
     slug: string;
     avatarUrl: string | null;
   }[];
-  // This account holds a passkey that works here, but did not sign in with it.
   hasPasskey?: boolean;
 }) {
   const [wizard, setWizard] = React.useState(false);
@@ -52,7 +50,6 @@ export function TwoFactorLockScreen({
           <Button className="w-full" onClick={() => setWizard(true)}>
             Turn on two-factor authentication
           </Button>
-          {/* ADR-0024: registering a passkey is a user-verified ceremony, so it unblocks this session. */}
           <p className="text-center text-sm text-muted-foreground">
             {hasPasskey ? (
               <>Or sign out and sign back in with your passkey.</>
@@ -76,7 +73,6 @@ export function TwoFactorLockScreen({
                 Or switch to a team that does not require it:
               </p>
               <div className="flex flex-wrap gap-2">
-                {/* A link, not a mutation: the team a page is in IS its address. */}
                 {otherTeams.map((t) => (
                   <Button key={t.id} asChild variant="outline" size="sm">
                     <Link href={`/${t.slug}`}>
@@ -100,7 +96,6 @@ export function TwoFactorLockScreen({
               className="w-full"
               onClick={async () => {
                 await gqlAction(`mutation { logout }`, {});
-                // Hard, not the router: what it cached belongs to the session just ended.
                 window.location.assign("/login");
               }}
             >
