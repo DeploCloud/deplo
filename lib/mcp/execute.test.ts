@@ -62,7 +62,7 @@ test("a tool's document resolves as the token, in the token's team", async () =>
   const whoami = MCP_TOOLS.find((t) => t.name === "whoami")!;
 
   const { data, error } = await runGraphql(whoami.query, {}, ctx);
-  assert.equal(error, undefined, error);
+  assert.equal(error, undefined, error ?? "");
 
   const result = data as {
     apiContext: { via: string; teamId: string };

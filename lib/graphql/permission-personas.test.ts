@@ -449,13 +449,13 @@ test("saving a member's page keeps the folders that were shared with them", asyn
       grants: [{ folderIds: [FLD_P], capabilities: ["deploy_apps"] }],
     },
   });
-  assert.equal(saved.error, undefined, saved.error);
+  assert.equal(saved.error, undefined, saved.error ?? "");
   passed(await gql(MEMBER, M.redeploy, { appId: APP_P }), "the share survived");
 
   const bare = await gql(OWNER, M.setMemberAccess, {
     input: { userId: MEMBER, roleId, granular: false, capabilities: own },
   });
-  assert.equal(bare.error, undefined, bare.error);
+  assert.equal(bare.error, undefined, bare.error ?? "");
   passed(await gql(MEMBER, M.redeploy, { appId: APP_P }), "still shared");
 });
 
@@ -580,7 +580,7 @@ test("re-assigning a role from the roster hands the member back to the role", as
   const trimmed = await gql(OWNER, M.setMemberAccess, {
     input: { userId: NEWBIE, roleId, granular: false, capabilities: own },
   });
-  assert.equal(trimmed.error, undefined, trimmed.error);
+  assert.equal(trimmed.error, undefined, trimmed.error ?? "");
   refused(await gql(NEWBIE, M.deleteApp, { id: APP_TOP }), "trimmed");
 
   passed(
@@ -677,7 +677,7 @@ test("removing a member takes every corner they were given with them", async () 
 
 test("removing a member hands the folders they owned to the primary owner", async () => {
   const made = await gql(MEMBER, M.createFolder, { name: "mine" });
-  assert.equal(made.error, undefined, made.error);
+  assert.equal(made.error, undefined, made.error ?? "");
   const folderId = (made.data as { createFolder: { id: string } }).createFolder
     .id;
   passed(

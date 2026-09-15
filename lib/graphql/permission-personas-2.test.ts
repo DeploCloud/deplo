@@ -170,7 +170,7 @@ test("a member given one project holds it whole, environments included", async (
       ],
     },
   });
-  assert.equal(saved.error, undefined, saved.error);
+  assert.equal(saved.error, undefined, saved.error ?? "");
   assert.deepEqual(ids(await gql(VIEWER, Q.apps), "apps"), [
     APP_A_PROD,
     APP_A_STG,
@@ -205,7 +205,7 @@ test("a member given one folder holds its subtree, and a nearer app grant wins i
       ],
     },
   });
-  assert.equal(saved.error, undefined, saved.error);
+  assert.equal(saved.error, undefined, saved.error ?? "");
   assert.deepEqual(ids(await gql(VIEWER, Q.apps), "apps"), [
     APP_F,
     APP_F_CHILD,
@@ -509,7 +509,7 @@ test("a manager hands out only what they hold, and the member reads as more than
       capabilities: [...capabilitiesForRole("viewer"), "manage_roles"],
     },
   });
-  assert.equal(saved.error, undefined, saved.error);
+  assert.equal(saved.error, undefined, saved.error ?? "");
   assert.equal(
     field<{ customCapabilities: boolean }[]>(saved, "setMemberAccess")[0]
       .customCapabilities,
@@ -603,7 +603,7 @@ test("a token dies with the permission its owner was put back on a role without"
       capabilities: [...capabilitiesForRole("member"), "manage_tokens"],
     },
   });
-  assert.equal(saved.error, undefined, saved.error);
+  assert.equal(saved.error, undefined, saved.error ?? "");
   const { raw } = await mintToken(MEMBER, {
     name: "ci",
     capabilities: ["view", "deploy_apps"],

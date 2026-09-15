@@ -1,3 +1,5 @@
+// @peculiar/x509 v2 resolves through tsyringe, which needs the Reflect polyfill loaded first.
+import "reflect-metadata";
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
@@ -37,7 +39,7 @@ async function makeCsr(): Promise<string> {
   const keys = (await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
     "sign",
     "verify",
-  ])) as CryptoKeyPair;
+  ])) as unknown as CryptoKeyPair;
   const csr = await x509.Pkcs10CertificateRequestGenerator.create({
     name: "CN=deplo-agent",
     keys,

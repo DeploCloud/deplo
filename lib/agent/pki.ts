@@ -1,4 +1,6 @@
 import "server-only";
+// @peculiar/x509 v2 resolves through tsyringe, which needs the Reflect polyfill loaded first.
+import "reflect-metadata";
 
 import * as x509 from "@peculiar/x509";
 import {
@@ -31,11 +33,13 @@ function ed25519KeyFromSeed(seed: Buffer): KeyObject {
 }
 
 async function toWebCryptoKeys(node: KeyObject): Promise<CryptoKeyPair> {
-  const pkcs8 = node.export({ format: "der", type: "pkcs8" }) as Buffer;
-  const spki = createPublicKey(node).export({
-    format: "der",
-    type: "spki",
-  }) as Buffer;
+  // A Node Buffer is generic over ArrayBufferLike; WebCrypto wants a real ArrayBuffer.
+  const pkcs8 = new Uint8Array(
+    node.export({ format: "der", type: "pkcs8" }) as Buffer,
+  );
+  const spki = new Uint8Array(
+    createPublicKey(node).export({ format: "der", type: "spki" }) as Buffer,
+  );
   const alg = { name: "Ed25519" };
   const privateKey = await crypto.subtle.importKey("pkcs8", pkcs8, alg, true, [
     "sign",
@@ -43,7 +47,8 @@ async function toWebCryptoKeys(node: KeyObject): Promise<CryptoKeyPair> {
   const publicKey = await crypto.subtle.importKey("spki", spki, alg, true, [
     "verify",
   ]);
-  return { privateKey, publicKey };
+  // x509 v2 types against the DOM CryptoKey; node's webcrypto is structurally its own.
+  return { privateKey, publicKey } as unknown as CryptoKeyPair;
 }
 
 function pemPrivateKey(node: KeyObject): string {

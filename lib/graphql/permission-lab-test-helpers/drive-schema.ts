@@ -65,18 +65,18 @@ export function passed(r: Outcome, why: string): void {
 }
 
 export function appLookup(r: Outcome): string | null {
-  assert.equal(r.error, undefined, r.error);
+  assert.equal(r.error, undefined, r.error ?? "");
   return (r.data as { app: { id: string } | null }).app?.id ?? null;
 }
 
 export function ids(r: Outcome, field: string): string[] {
-  assert.equal(r.error, undefined, r.error);
+  assert.equal(r.error, undefined, r.error ?? "");
   const rows = (r.data as Record<string, { id: string }[] | null>)[field];
   return (rows ?? []).map((x) => x.id).sort();
 }
 
 export function field<T>(r: Outcome, name: string): T {
-  assert.equal(r.error, undefined, r.error);
+  assert.equal(r.error, undefined, r.error ?? "");
   return (r.data as Record<string, T>)[name];
 }
 

@@ -7,12 +7,12 @@ import {
   teams,
   users,
 } from "../db/schema/control-plane/identity";
-import { createLocalAccountIssuer } from "better-auth";
 import { account } from "../db/schema/auth";
 import { capabilitiesForRole } from "../membership-shared";
 import { hashPassword, sha256Hex } from "../crypto";
 import type { TestDb } from "../db/test-harness";
 import type { Capability, Role } from "../types/identity";
+import { CREDENTIAL_ISSUER } from "../auth/password-credential";
 
 const seedHashes = new Map<string, Promise<string>>();
 function seedHash(password: string): Promise<string> {
@@ -91,7 +91,7 @@ export async function seedIdentity(
         userId: u.id,
         accountId: u.id,
         providerId: "credential",
-        issuer: createLocalAccountIssuer("credential"),
+        issuer: CREDENTIAL_ISSUER,
         password: await seedHash(u.password ?? "password1"),
       })),
     ),

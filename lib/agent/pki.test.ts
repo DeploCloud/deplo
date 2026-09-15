@@ -1,3 +1,5 @@
+// @peculiar/x509 v2 resolves through tsyringe, which needs the Reflect polyfill loaded first.
+import "reflect-metadata";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import tls from "node:tls";
@@ -108,7 +110,7 @@ test("signAgentCsr: a CSR-signed agent cert chains to the CA and uses control-pl
   );
   const csr = await x509.Pkcs10CertificateRequestGenerator.create({
     name: "CN=deplo-agent",
-    keys: agentKeys as CryptoKeyPair,
+    keys: agentKeys as unknown as CryptoKeyPair,
     signingAlgorithm: { name: "Ed25519" },
     extensions: [
       new x509.SubjectAlternativeNameExtension([
@@ -146,7 +148,7 @@ test("signAgentCsr: rejects a CSR whose self-signature does not verify", async (
   ]);
   const good = await x509.Pkcs10CertificateRequestGenerator.create({
     name: "CN=deplo-agent",
-    keys: a as CryptoKeyPair,
+    keys: a as unknown as CryptoKeyPair,
     signingAlgorithm: { name: "Ed25519" },
   });
   const der = Buffer.from(good.rawData);
@@ -194,7 +196,7 @@ test("the CSR-signed agent cert completes a real mTLS handshake with the control
   };
   const csr = await x509.Pkcs10CertificateRequestGenerator.create({
     name: "CN=deplo-agent",
-    keys: keys as CryptoKeyPair,
+    keys: keys as unknown as CryptoKeyPair,
     signingAlgorithm: { name: "Ed25519" },
   });
   const signed = await signAgentCsr(csr.toString("pem"), ["127.0.0.1"]);

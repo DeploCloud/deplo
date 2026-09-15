@@ -3,12 +3,12 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { getDb, type DbTx, type DrizzleClient } from "../db/client";
 import { account as accountTable } from "../db/schema/auth";
-import { createLocalAccountIssuer } from "better-auth";
 import { hashPassword, verifyPassword } from "../crypto";
 import { newId } from "../ids";
 
 // Required since Better Auth 1.7.0, which keys an account on (issuer, accountId).
-export const CREDENTIAL_ISSUER = createLocalAccountIssuer("credential");
+// The value Better Auth 1.7.2 wrote. 1.7.5 dropped the helper; account.issuer stays NOT NULL.
+export const CREDENTIAL_ISSUER = "local:credential";
 
 export async function insertCredentialAccount(
   db: DrizzleClient | DbTx,
